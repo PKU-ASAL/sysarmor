@@ -14,7 +14,7 @@ func TestStandaloneTelemetryWithoutStoreDoesNotMutateEndpointPolicy(t *testing.T
 		Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}, Telemetry: config.DefaultTelemetryConfig(),
 	}}
 	runner.setEndpointPolicy(agentpolicy.EndpointPolicy{PolicyID: "endpoint-a", Version: 7})
-	controller := newPolicyController(runner, nil, nil)
+	controller := newApplicationPolicyController(runner, nil, nil)
 
 	result := controller.ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		Context:    agentcontrol.RequestContext{TenantID: "tenant-a", AgentID: "agent-a"},

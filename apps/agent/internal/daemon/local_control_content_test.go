@@ -82,7 +82,7 @@ func TestDetectionPolicyWaitsForContentTransaction(t *testing.T) {
 		capability: contract.Capability{Backend: "fake", SupportsExec: true},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
-	controller := newPolicyController(runner, nil, nil)
+	controller := newApplicationPolicyController(runner, nil, nil)
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	go runner.withDetectionUpdateTransaction(func() {

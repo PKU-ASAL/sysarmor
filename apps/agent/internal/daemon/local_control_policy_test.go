@@ -128,7 +128,7 @@ func TestManagedAgentRejectsLocalEndpointPolicyMutation(t *testing.T) {
 		capability: contract.Capability{Backend: "fake", SupportsExec: true}, localStore: store,
 	}
 	installTestDetection(t, runner)
-	controller := newPolicyController(runner, sensorruntime.New(runner.Sensor), nil)
+	controller := newApplicationPolicyController(runner, sensorruntime.New(runner.Sensor), nil)
 	result := controller.ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "endpoint", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"policy_id":"local-policy","version":2,"collection":{"behaviors":["process.exec"]},"detection":{"policy_id":"local-detection","version":1,"rulesets":[{"ref":"ruleset:cep-endpoint","enabled":true}]},"telemetry":{"max_batch_items":64,"max_batch_bytes":65536,"flush_interval":"1s"},"response":{}}`,
@@ -242,7 +242,7 @@ func TestApplyTelemetryPolicyPersistsUnifiedEndpointPolicy(t *testing.T) {
 	defer store.Close()
 	runner := &AgentRuntime{localStore: store, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
 	runner.setEndpointPolicy(agentpolicy.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
-	result := newPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
+	result := newApplicationPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "telemetry", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"max_batch_items":512,"max_batch_bytes":524288,"flush_interval":"2s"}`,
 	})
