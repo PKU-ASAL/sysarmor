@@ -26,7 +26,7 @@ func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorrun
 	handler := localapi.NewHandler(localapi.Dependencies{
 		Status:     statusService,
 		Telemetry:  telemetryService,
-		Policy:     newPolicyController(r, rt, batcher),
+		Policy:     newApplicationPolicyController(r, rt, batcher),
 		Content:    agentcontrol.NewContentController(newContentRuntime(r)),
 		Enrollment: coordinator,
 		Validate:   r.validateControlContext,

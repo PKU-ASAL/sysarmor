@@ -65,7 +65,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 		return err
 	}
 	dispatcher := remoteapi.NewDispatcher(remoteapi.Dependencies{
-		Policy:   newPolicyController(runner, r.sensor, r.batcher),
+		Policy:   newApplicationPolicyController(runner, r.sensor, r.batcher),
 		Content:  agentcontrol.NewContentController(newContentRuntime(runner)),
 		Response: agentcontrol.NewResponseController(newResponseRuntime(runner)),
 	}, runner.Out)

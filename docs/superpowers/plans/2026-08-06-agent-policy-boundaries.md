@@ -191,25 +191,25 @@ git commit -m "refactor(agent): move collection policy use case into control"
 - Consumes: endpoint, collection, detection, and telemetry controllers plus projection snapshots from the daemon runtime.
 - Produces: a concrete control controller satisfying the existing `PolicyController` interface.
 
-- [ ] **Step 1: Write failing routing and projection tests**
+- [x] **Step 1: Write failing routing and projection tests**
 
 Verify empty type routes to endpoint, managed always routes to endpoint, standalone types route to their dedicated controllers, unsupported types reject, endpoint JSON wins over legacy runtime JSON, and pending Store state is projected exactly.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control -run 'TestPolicyController|TestCurrentPolicy' -count=1`
 
 Expected: FAIL because the concrete control policy controller is not implemented.
 
-- [ ] **Step 3: Implement control routing/projection and direct assembly**
+- [x] **Step 3: Implement control routing/projection and direct assembly**
 
 Keep `localapi` and `remoteapi` unchanged. Replace daemon `newPolicyController` construction with the concrete control controller and daemon runtime adapters. Keep protobuf conversion only in API boundary packages or a narrowly scoped daemon adapter still required by legacy tests.
 
-- [ ] **Step 4: Add architecture contract**
+- [x] **Step 4: Add architecture contract**
 
 Require the concrete controller under `apps/agent/internal/control` and reject production `apps/agent/internal/daemon/policy_controller.go` and `policy_controller_runtime.go`.
 
-- [ ] **Step 5: Run full verification**
+- [x] **Step 5: Run full verification**
 
 Run:
 
@@ -221,7 +221,7 @@ git diff --check
 
 Expected: all PASS; socket tests must run outside the restricted sandbox.
 
-- [ ] **Step 6: Request independent review and commit**
+- [x] **Step 6: Request independent review and commit**
 
 Fix every Critical and Important finding, then commit:
 
