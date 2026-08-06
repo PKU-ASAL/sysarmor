@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -106,19 +105,6 @@ func (r *AgentRuntime) buildDetectionWithSnapshot(snapshot agentcontent.Snapshot
 	policy := policymodel.Normalize(r.activePolicy())
 	engine, report := detection.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), detectionContentSnapshotFromContent(snapshot), r.detectionLimits())
 	return engine, report
-}
-
-func (r *AgentRuntime) commitDetectionContent(record agentcontent.Record, snapshot agentcontent.Snapshot, engine *detection.Engine, report detection.ApplyReport) error {
-	if report.Status == "rejected" {
-		r.setDetectionStatus(r.activePolicy(), report, r.contentStore().Snapshot())
-		return fmt.Errorf("%s", report.Message)
-	}
-	if err := r.contentStore().Commit(record); err != nil {
-		return err
-	}
-	r.setDetection(engine)
-	r.setDetectionStatus(r.activePolicy(), report, snapshot)
-	return nil
 }
 
 func (r *AgentRuntime) setDetectionStatus(policy policymodel.Policy, report detection.ApplyReport, snapshot agentcontent.Snapshot) {

@@ -146,7 +146,7 @@ func TestManagedAgentRejectsLocalContentMutation(t *testing.T) {
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
 	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}}, localStore: store}
-	result := newContentController(runner).ApplyContent(t.Context(), agentcontrol.ContentCommand{
+	result := agentcontrol.NewContentController(newContentRuntime(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
 		Document: "{}", AllowUnsigned: true, Source: agentcontrol.PolicySourceStandalone,
 	})
 	if result.Status != "rejected" || !strings.Contains(result.Message, "managed policy authority") {

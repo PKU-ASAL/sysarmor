@@ -265,6 +265,13 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         self.assertIn("func NewResponseController", response)
         self.assertFalse((root / "daemon/response_controller.go").exists())
 
+    def test_content_use_case_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        content = (root / "control/content.go").read_text()
+        self.assertIn("func NewContentController", content)
+        self.assertFalse((root / "daemon/content_controller.go").exists())
+        self.assertFalse((root / "daemon/content_controller_runtime.go").exists())
+
     def test_agent_daemon_does_not_own_local_api_watch_streams(self):
         daemon = self.repo / "apps/agent/internal/daemon"
         violations = []
