@@ -5,57 +5,13 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
-
-func (s *policyController) applyTelemetryPolicy(ctx context.Context, req *controlplanev1.ApplyPolicyRequest, fallback *policymodel.TelemetryPolicy) *controlplanev1.ControlAck {
-	if fallback == nil && strings.TrimSpace(req.GetPolicyJson()) != "" {
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(req.GetPolicyJson()), &raw); err != nil {
-			return rejectedAck(s.runner.Config, req.GetContext(), "telemetry", "invalid telemetry policy json: "+err.Error())
-		}
-		payload := []byte(req.GetPolicyJson())
-		if nested, ok := raw["telemetry"]; ok {
-			payload = nested
-		}
-		var telemetry policymodel.TelemetryPolicy
-		if err := json.Unmarshal(payload, &telemetry); err != nil {
-			return rejectedAck(s.runner.Config, req.GetContext(), "telemetry", "invalid telemetry policy json: "+err.Error())
-		}
-		fallback = &telemetry
-	}
-	telemetryPolicy, err := telemetryPolicyFromRequest(req, fallback)
-	if err != nil {
-		return rejectedAck(s.runner.Config, req.GetContext(), "telemetry", err.Error())
-	}
-	if telemetryPolicy == nil {
-		return rejectedAck(s.runner.Config, req.GetContext(), "telemetry", "telemetry policy is required")
-	}
-	if req.GetDryRun() {
-		return telemetryAck(s.runner.Config, req.GetContext(), "validated", "telemetry policy accepted in dry-run", *telemetryPolicy)
-	}
-	if err := s.runner.persistTelemetryPolicy(ctx, *telemetryPolicy); err != nil {
-		return rejectedAck(s.runner.Config, req.GetContext(), "telemetry", err.Error())
-	}
-	s.runner.applyTelemetryConfig(*telemetryPolicy)
-	s.reconfigureTelemetryBatcher()
-	return telemetryAck(s.runner.Config, req.GetContext(), "applied", "telemetry policy applied", *telemetryPolicy)
-}
-
-func (s *policyController) reconfigureTelemetryBatcher() {
-	if s == nil || s.batcher == nil {
-		return
-	}
-	effective := s.runner.currentEffectiveTelemetry()
-	s.batcher.Reconfigure(telemetry.BatchSettings{MaxItems: effective.MaxBatchItems, MaxBytes: effective.MaxBatchBytes, FlushInterval: effective.FlushInterval})
-}
 
 func (s *policyController) applyCollectionPolicy(ctx context.Context, req *controlplanev1.ApplyPolicyRequest) *controlplanev1.ControlAck {
 	s.runner.detectionUpdateMu.Lock()
@@ -155,57 +111,4 @@ func (s *policyController) applyDetectionPolicy(ctx context.Context, req *contro
 	s.runner.setDetection(engine)
 	s.runner.setDetectionStatus(active, report, s.runner.contentStore().Snapshot())
 	return detectionAck(s.runner.Config, req.GetContext(), active, report.Status, report.Message, false, report)
-}
-
-func (r *AgentRuntime) persistTelemetryPolicy(ctx context.Context, policy policymodel.TelemetryPolicy) error {
-	effective, err := config.ResolveTelemetry(r.Config.Telemetry, &policy)
-	if err != nil {
-		return err
-	}
-	if r.localStore == nil {
-		r.setEffectiveTelemetry(effective)
-		return nil
-	}
-	endpoint := r.currentEndpointPolicy()
-	endpoint.Telemetry = policy
-	endpoint.Version++
-	if err := r.persistEndpointPolicy(ctx, localstore.PolicySourceStandalone, endpoint); err != nil {
-		return err
-	}
-	r.setEffectiveTelemetry(effective)
-	return nil
-}
-
-func telemetryPolicyFromRequest(req *controlplanev1.ApplyPolicyRequest, fallback *policymodel.TelemetryPolicy) (*policymodel.TelemetryPolicy, error) {
-	if req.GetTelemetry() != nil {
-		telemetryPolicy := &policymodel.TelemetryPolicy{
-			MaxBatchItems: int(req.GetTelemetry().GetMaxBatchItems()),
-			MaxBatchBytes: int(req.GetTelemetry().GetMaxBatchBytes()),
-			FlushInterval: req.GetTelemetry().GetFlushInterval(),
-		}
-		if err := validateTelemetryPolicy(telemetryPolicy); err != nil {
-			return nil, err
-		}
-		return telemetryPolicy, nil
-	}
-	if fallback == nil {
-		return nil, nil
-	}
-	telemetryPolicy := *fallback
-	if err := validateTelemetryPolicy(&telemetryPolicy); err != nil {
-		return nil, err
-	}
-	return &telemetryPolicy, nil
-}
-
-func validateTelemetryPolicy(policy *policymodel.TelemetryPolicy) error {
-	_, err := config.ResolveTelemetry(config.DefaultTelemetryConfig(), policy)
-	return err
-}
-
-func (r *AgentRuntime) applyTelemetryConfig(telemetryPolicy policymodel.TelemetryPolicy) {
-	effective, err := config.ResolveTelemetry(r.Config.Telemetry, &telemetryPolicy)
-	if err == nil {
-		r.setEffectiveTelemetry(effective)
-	}
 }

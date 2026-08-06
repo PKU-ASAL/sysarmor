@@ -34,17 +34,17 @@
 - Consumes: `PolicyCommand`, `Result`, `config.ResolveTelemetry`, `policymodel.TelemetryPolicy`.
 - Produces: `TelemetryPolicyRuntime` and `(*TelemetryPolicyController).Apply(context.Context, PolicyCommand) Result`.
 
-- [ ] **Step 1: Write failing control tests**
+- [x] **Step 1: Write failing control tests**
 
 Cover nested and direct JSON, structured telemetry fields, missing policy, invalid limits, dry-run without mutation, persistence failure, and successful persist-before-activate-before-batcher ordering.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control -run TestTelemetryPolicy -count=1`
 
 Expected: FAIL because `NewTelemetryPolicyController` is undefined.
 
-- [ ] **Step 3: Implement the minimal controller and daemon runtime adapter**
+- [x] **Step 3: Implement the minimal controller and daemon runtime adapter**
 
 Use this boundary:
 
@@ -60,7 +60,7 @@ type TelemetryPolicyRuntime interface {
 
 The controller must parse and validate first, return immediately on dry-run, persist before activation, and construct `Result` without protobuf dependencies.
 
-- [ ] **Step 4: Verify GREEN and compatibility**
+- [x] **Step 4: Verify GREEN and compatibility**
 
 Run:
 
@@ -70,7 +70,7 @@ GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control ./apps
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "refactor(agent): move telemetry policy use case into control"
@@ -228,4 +228,3 @@ Fix every Critical and Important finding, then commit:
 ```bash
 git commit -m "refactor(agent): move policy orchestration into control"
 ```
-

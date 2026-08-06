@@ -1,6 +1,10 @@
 package control
 
-import policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+import (
+	"encoding/json"
+
+	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+)
 
 func rejectedPolicyResult(identity PolicyIdentity, requestID, section, message string) Result {
 	return Result{
@@ -28,5 +32,14 @@ func endpointPolicyResult(identity PolicyIdentity, requestID string, policy poli
 			{Name: "telemetry", Status: telemetryStatus, Message: telemetryMessage},
 			{Name: "collection", Status: "unsupported", Message: "collection hot reload requires compiler/runtime apply in the next phase", RequiresRestart: true},
 		},
+	}
+}
+
+func telemetryPolicyResult(identity PolicyIdentity, requestID, status, message string, policy policymodel.TelemetryPolicy) Result {
+	report, _ := json.Marshal(map[string]any{"telemetry": policy})
+	return Result{
+		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
+		Status: status, Message: message, ReportJSON: string(report),
+		Sections: []SectionResult{{Name: "telemetry", Status: status, Message: message, ReportJSON: string(report)}},
 	}
 }

@@ -36,6 +36,9 @@ func (c *policyController) ApplyPolicy(ctx context.Context, command agentcontrol
 		}
 		return agentcontrol.NewEndpointPolicyController(newEndpointPolicyRuntime(c.runner, c.runtime, batcher)).Apply(ctx, command)
 	}
+	if policyType == "telemetry" {
+		return agentcontrol.NewTelemetryPolicyController(newTelemetryPolicyRuntime(c.runner, c.batcher)).Apply(ctx, command)
+	}
 	req := applyPolicyRequest(command)
 	if err := c.runner.validateControlContext(req.GetContext()); err != nil {
 		return controlResult(rejectedAck(c.runner.Config, req.GetContext(), "policy", err.Error()))
@@ -54,8 +57,6 @@ func (c *policyController) applyStandalonePolicy(ctx context.Context, req *contr
 		return c.applyCollectionPolicy(ctx, req)
 	case "detection":
 		return c.applyDetectionPolicy(ctx, req)
-	case "telemetry":
-		return c.applyTelemetryPolicy(ctx, req, nil)
 	default:
 		return rejectedAck(c.runner.Config, req.GetContext(), "policy", fmt.Sprintf("unsupported policy type %q", policyType))
 	}

@@ -14,25 +14,6 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-func telemetryAck(cfg config.Config, req *controlplanev1.RequestContext, status, message string, telemetryPolicy policymodel.TelemetryPolicy) *controlplanev1.ControlAck {
-	report, _ := json.Marshal(map[string]any{"telemetry": telemetryPolicy})
-	return &controlplanev1.ControlAck{
-		RequestId: requestID(req),
-		TenantId:  cfg.Agent.TenantID,
-		AgentId:   cfg.Agent.ID,
-		Status:    status,
-		Message:   message,
-		Sections: []*controlplanev1.AppliedSection{{
-			Name:            "telemetry",
-			Status:          status,
-			Message:         message,
-			RequiresRestart: false,
-			ReportJson:      string(report),
-		}},
-		ReportJson: string(report),
-	}
-}
-
 func appliedAck(cfg config.Config, req *controlplanev1.RequestContext, policy policymodel.Policy, status, message string, requiresRestart bool) *controlplanev1.ControlAck {
 	telemetryStatus := "unchanged"
 	telemetryMessage := "telemetry policy unchanged"

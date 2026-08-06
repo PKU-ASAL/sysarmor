@@ -242,11 +242,12 @@ func TestApplyTelemetryPolicyPersistsUnifiedEndpointPolicy(t *testing.T) {
 	defer store.Close()
 	runner := &AgentRuntime{localStore: store, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
 	runner.setEndpointPolicy(agentpolicy.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
-	ack := newPolicyController(runner, nil, nil).applyTelemetryPolicy(t.Context(), &controlplanev1.ApplyPolicyRequest{
-		PolicyType: "telemetry", PolicyJson: `{"max_batch_items":512,"max_batch_bytes":524288,"flush_interval":"2s"}`,
-	}, nil)
-	if ack.GetStatus() != "applied" {
-		t.Fatalf("ack=%+v", ack)
+	result := newPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
+		PolicyType: "telemetry", Source: agentcontrol.PolicySourceStandalone,
+		Document: `{"max_batch_items":512,"max_batch_bytes":524288,"flush_interval":"2s"}`,
+	})
+	if result.Status != "applied" {
+		t.Fatalf("result=%+v", result)
 	}
 	record, ok, err := store.Policy(t.Context(), "endpoint")
 	if err != nil || !ok {
