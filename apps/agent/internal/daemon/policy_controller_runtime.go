@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
@@ -74,41 +73,4 @@ func (s *policyController) applyCollectionPolicy(ctx context.Context, req *contr
 		return collectionAck(s.runner.Config, req.GetContext(), policy, "degraded", "collection policy applied; detection dependencies degraded: "+strings.Join(report.Warnings, "; "), false, compileReport, &report.Coverage)
 	}
 	return collectionAck(s.runner.Config, req.GetContext(), policy, "applied", "collection policy applied", false, compileReport, &report.Coverage)
-}
-
-func (s *policyController) applyDetectionPolicy(ctx context.Context, req *controlplanev1.ApplyPolicyRequest) *controlplanev1.ControlAck {
-	s.runner.detectionUpdateMu.Lock()
-	defer s.runner.detectionUpdateMu.Unlock()
-	var envelope struct {
-		Detection *policymodel.DetectionPolicy `json:"detection"`
-	}
-	var next policymodel.DetectionPolicy
-	if err := json.Unmarshal([]byte(req.GetPolicyJson()), &envelope); err == nil && envelope.Detection != nil {
-		next = *envelope.Detection
-	} else if err := json.Unmarshal([]byte(req.GetPolicyJson()), &next); err != nil {
-		return rejectedAck(s.runner.Config, req.GetContext(), "detection", "invalid detection policy json: "+err.Error())
-	}
-	next = policymodel.NormalizeDetectionPolicy(next)
-	engine, report := detection.NewWithRuntimeLimits(&next, s.runner.currentCollectionIntent(), s.runner.detectionContentSnapshot(), s.runner.detectionLimits())
-	active := policymodel.Normalize(s.runner.activePolicy())
-	active.Detection = &next
-	if req.GetDryRun() {
-		return detectionAck(s.runner.Config, req.GetContext(), active, report.Status, "detection policy accepted in dry-run: "+report.Message, false, report)
-	}
-	if report.Status == "rejected" {
-		s.runner.setDetectionStatus(active, report, s.runner.contentStore().Snapshot())
-		return detectionAck(s.runner.Config, req.GetContext(), active, "rejected", "detection policy rejected: "+strings.Join(report.Details, "; "), false, report)
-	}
-	if s.runner.localStore != nil {
-		endpoint := s.runner.currentEndpointPolicy()
-		endpoint.Detection = next
-		endpoint.Version++
-		if err := s.runner.persistEndpointPolicy(ctx, localstore.PolicySourceStandalone, endpoint); err != nil {
-			return detectionAck(s.runner.Config, req.GetContext(), active, "rejected", "persist detection policy: "+err.Error(), false, report)
-		}
-	}
-	s.runner.setPolicy(active)
-	s.runner.setDetection(engine)
-	s.runner.setDetectionStatus(active, report, s.runner.contentStore().Snapshot())
-	return detectionAck(s.runner.Config, req.GetContext(), active, report.Status, report.Message, false, report)
 }

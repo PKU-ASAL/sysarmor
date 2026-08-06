@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -89,11 +90,11 @@ func TestDetectionPolicyWaitsForContentTransaction(t *testing.T) {
 		<-release
 	})
 	<-entered
-	done := make(chan *controlplanev1.ControlAck, 1)
+	done := make(chan agentcontrol.Result, 1)
 	go func() {
-		done <- controller.applyDetectionPolicy(context.Background(), &controlplanev1.ApplyPolicyRequest{
-			Context:    &controlplanev1.RequestContext{TenantId: "default"},
-			PolicyJson: `{"policy_id":"concurrent-policy","version":2,"mode":"observe"}`,
+		done <- controller.ApplyPolicy(context.Background(), agentcontrol.PolicyCommand{
+			Context: agentcontrol.RequestContext{TenantID: "default"}, PolicyType: "detection", Source: agentcontrol.PolicySourceStandalone,
+			Document: `{"policy_id":"concurrent-policy","version":2,"mode":"observe"}`,
 		})
 	}()
 	select {

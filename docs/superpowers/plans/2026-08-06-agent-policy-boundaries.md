@@ -90,21 +90,21 @@ git commit -m "refactor(agent): move telemetry policy use case into control"
 - Consumes: active runtime policy, collection intent, detection content, limits, standalone endpoint persistence.
 - Produces: `DetectionPolicyRuntime` and `(*DetectionPolicyController).Apply(context.Context, PolicyCommand) Result`.
 
-- [ ] **Step 1: Write failing control tests**
+- [x] **Step 1: Write failing control tests**
 
 Cover nested/direct JSON, dry-run, rejected detection status projection, persistence failure without in-memory activation, and successful durable-before-memory activation.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control -run TestDetectionPolicy -count=1`
 
 Expected: FAIL because `NewDetectionPolicyController` is undefined.
 
-- [ ] **Step 3: Implement the minimal controller and adapter**
+- [x] **Step 3: Implement the minimal controller and adapter**
 
 Keep the detection update transaction around prepare, persistence, and activation. Build the engine in control, but expose Store and in-memory activation as separate runtime operations so failure remains fail-closed.
 
-- [ ] **Step 4: Verify GREEN and compatibility**
+- [x] **Step 4: Verify GREEN and compatibility**
 
 Run:
 
@@ -114,7 +114,7 @@ GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control ./apps
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "refactor(agent): move detection policy use case into control"

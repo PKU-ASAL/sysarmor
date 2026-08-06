@@ -3,7 +3,6 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
@@ -140,45 +139,6 @@ func collectionReportJSON(report contract.CollectionCompileReport, coverage *det
 		out.DetectionCoverage = coverage
 	}
 	data, err := json.Marshal(out)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
-func detectionAck(cfg config.Config, req *controlplanev1.RequestContext, policy policymodel.Policy, status, message string, requiresRestart bool, report detection.ApplyReport) *controlplanev1.ControlAck {
-	if status == "" {
-		status = "applied"
-	}
-	if message == "" {
-		message = "detection policy applied"
-	}
-	sectionMessage := message
-	if len(report.Details) > 0 {
-		sectionMessage = sectionMessage + ": " + strings.Join(report.Details, "; ")
-	}
-	reportJSON := detectionReportJSON(report)
-	return &controlplanev1.ControlAck{
-		RequestId:     requestID(req),
-		TenantId:      cfg.Agent.TenantID,
-		AgentId:       cfg.Agent.ID,
-		Status:        status,
-		Message:       sectionMessage,
-		PolicyId:      policy.PolicyID,
-		PolicyVersion: policy.Version,
-		Sections: []*controlplanev1.AppliedSection{{
-			Name:            "detection",
-			Status:          status,
-			Message:         sectionMessage,
-			RequiresRestart: requiresRestart,
-			ReportJson:      reportJSON,
-		}},
-		ReportJson: reportJSON,
-	}
-}
-
-func detectionReportJSON(report detection.ApplyReport) string {
-	data, err := json.Marshal(report)
 	if err != nil {
 		return ""
 	}
