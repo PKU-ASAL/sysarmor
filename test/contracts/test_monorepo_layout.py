@@ -290,6 +290,20 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
 
+    def test_agent_local_control_tests_are_grouped_by_behavior(self):
+        root = self.repo / "apps/agent/internal/daemon"
+        expected = (
+            "local_control_status_test.go",
+            "local_control_policy_test.go",
+            "local_control_content_test.go",
+            "local_control_watch_test.go",
+            "local_control_detection_test.go",
+            "local_control_test_support_test.go",
+        )
+        for name in expected:
+            with self.subTest(name=name):
+                self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
+
     def test_legacy_manager_implementation_paths_are_absent(self):
         legacy = (
             "internal/manager",
