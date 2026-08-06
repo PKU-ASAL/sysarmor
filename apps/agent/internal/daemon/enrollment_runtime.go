@@ -130,7 +130,8 @@ func (r *enrollmentRuntime) RevokeEnrollment(ctx context.Context, enrollment loc
 }
 
 func (r *enrollmentRuntime) RestoreStandalonePolicy(ctx context.Context, activate func(context.Context) error) error {
-	return restoreStandaloneEndpointPolicyWithActivation(ctx, r.runner, r.runtime, activate)
+	controller := agentcontrol.NewEndpointPolicyController(newEndpointPolicyRuntime(r.runner, r.runtime, nil))
+	return controller.RestoreStandalone(ctx, activate)
 }
 
 func (r *enrollmentRuntime) RemoveEnrollmentCredentials(enrollment localstore.Enrollment) error {

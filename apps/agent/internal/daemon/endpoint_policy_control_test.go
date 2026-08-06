@@ -14,6 +14,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -32,8 +33,8 @@ func TestManagerDefaultEndpointPolicyPassesStrictPreparation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare manager default endpoint policy: %v", err)
 	}
-	if len(prepared.policy.Detection.RuleSets) != 1 || prepared.policy.Detection.RuleSets[0].Ref != "ruleset:cep-endpoint" {
-		t.Fatalf("manager default rulesets = %+v", prepared.policy.Detection.RuleSets)
+	if len(prepared.Endpoint.Detection.RuleSets) != 1 || prepared.Endpoint.Detection.RuleSets[0].Ref != "ruleset:cep-endpoint" {
+		t.Fatalf("manager default rulesets = %+v", prepared.Endpoint.Detection.RuleSets)
 	}
 }
 
@@ -111,7 +112,7 @@ func TestApplyAndActivateIntentReportsRollbackFailure(t *testing.T) {
 	previous := contract.CollectionIntent{Behaviors: []string{"process.exec"}}
 	next := contract.CollectionIntent{Behaviors: []string{"file.write"}}
 	applyCalls := 0
-	err := applyAndActivateIntent(t.Context(), previous, next, func(_ context.Context, intent contract.CollectionIntent) error {
+	err := agentcontrol.ApplyAndActivateEndpointIntent(t.Context(), previous, next, func(_ context.Context, intent contract.CollectionIntent) error {
 		applyCalls++
 		if applyCalls == 2 && len(intent.Behaviors) == 1 && intent.Behaviors[0] == "process.exec" {
 			return errors.New("rollback failed")
@@ -183,7 +184,7 @@ func TestPendingManagerPolicyBecomesAppliedAfterSensorRecovery(t *testing.T) {
 	if ack.GetStatus() != "pending" || runner.pendingEndpoint == nil {
 		t.Fatalf("pending ack=%+v pending=%+v", ack, runner.pendingEndpoint)
 	}
-	if err := runner.completePendingEndpointPolicy(t.Context(), runner.pendingEndpoint.intent); err != nil {
+	if err := runner.completePendingEndpointPolicy(t.Context(), runner.pendingEndpoint.Intent); err != nil {
 		t.Fatal(err)
 	}
 	_, status, ok, err := store.DesiredPolicy(t.Context(), "endpoint", localstore.PolicySourceManaged)
@@ -194,6 +195,27 @@ func TestPendingManagerPolicyBecomesAppliedAfterSensorRecovery(t *testing.T) {
 	}
 	if enrollmentErr != nil || enrollment.State != localstore.StateManaged || runner.currentEndpointPolicy().PolicyID != "managed" || runner.currentIdentity().AgentID != "agent-a" {
 		t.Fatalf("enrollment=%+v policy=%+v identity=%+v err=%v", enrollment, runner.currentEndpointPolicy(), runner.currentIdentity(), enrollmentErr)
+	}
+}
+
+func TestManagedEndpointPolicyDoesNotReconfigureTelemetryBatcher(t *testing.T) {
+	store, runner, pendingController := setupPendingEndpointPolicyTest(t)
+	defer store.Close()
+	sensor := runner.Sensor.(*applyErrorSensor)
+	sensor.err = nil
+	batcher := telemetry.NewBatcher(nil, 10, time.Hour, 2, 12345)
+	controller := newPolicyController(runner, pendingController.runtime, batcher)
+	request := managedPolicyRequest("managed", 5)
+
+	result := controller.ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
+		Document: request.GetPolicyJson(), PolicyType: "endpoint", Source: agentcontrol.PolicySourceManaged,
+	})
+
+	if result.Status == "rejected" || result.Status == "pending" {
+		t.Fatalf("result=%+v", result)
+	}
+	if got := batcher.Stats().MaxBytes; got != 12345 {
+		t.Fatalf("batch max bytes=%d want 12345", got)
 	}
 }
 
@@ -236,7 +258,7 @@ func TestRestorePendingManagerPolicyAfterRestart(t *testing.T) {
 	runner := newEndpointPolicyRunner(t, store, nil)
 	server := newPolicyController(runner, nil, nil)
 	prepared, ok, err := server.loadPendingManagedEndpointPolicy(t.Context())
-	if err != nil || !ok || prepared.policy.PolicyID != "managed" || len(prepared.intent.Behaviors) != 1 {
+	if err != nil || !ok || prepared.Endpoint.PolicyID != "managed" || len(prepared.Intent.Behaviors) != 1 {
 		t.Fatalf("prepared=%+v ok=%t err=%v", prepared, ok, err)
 	}
 }
@@ -258,12 +280,12 @@ func TestDuplicateManagedPolicyDoesNotDeadlockStartupPendingActivation(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := agentpolicy.SaveDesiredManagedEndpointPolicy(t.Context(), store, pending.policy); err != nil {
+	if err := agentpolicy.SaveDesiredManagedEndpointPolicy(t.Context(), store, pending.Endpoint); err != nil {
 		t.Fatal(err)
 	}
 	runner.setPendingEndpointPolicy(pending)
 	manager := sensorruntime.New(runner.Sensor)
-	supervisor := sensorruntime.NewSubscriptionSupervisor(sensorruntime.AdaptManager(manager), pending.intent, sensorruntime.RetryOptions{})
+	supervisor := sensorruntime.NewSubscriptionSupervisor(sensorruntime.AdaptManager(manager), pending.Intent, sensorruntime.RetryOptions{})
 	runner.setSensorSupervisor(supervisor)
 	callbackReady := make(chan struct{})
 	allowCallback := make(chan struct{})
@@ -295,6 +317,57 @@ func TestDuplicateManagedPolicyDoesNotDeadlockStartupPendingActivation(t *testin
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("duplicate managed policy deadlocked startup pending activation")
 	}
+}
+
+func (s *policyController) endpointPolicyControl() *agentcontrol.EndpointPolicyController {
+	return agentcontrol.NewEndpointPolicyController(newEndpointPolicyRuntime(s.runner, s.runtime, s.batcher))
+}
+
+func (s *policyController) prepareEndpointPolicy(document string) (agentcontrol.PreparedEndpointPolicy, error) {
+	return s.endpointPolicyControl().Prepare(document)
+}
+
+func (s *policyController) applyEndpointPolicyInternal(ctx context.Context, req *controlplanev1.ApplyPolicyRequest, source localstore.PolicySource) *controlplanev1.ControlAck {
+	command := agentcontrol.PolicyCommand{
+		Context: agentcontrol.RequestContext{
+			RequestID: req.GetContext().GetRequestId(), TenantID: req.GetContext().GetTenantId(), AgentID: req.GetContext().GetAgentId(),
+		},
+		PolicyType: "endpoint", Document: req.GetPolicyJson(), DryRun: req.GetDryRun(), Source: agentcontrol.PolicySource(source),
+	}
+	return policyResultAck(s.endpointPolicyControl().Apply(ctx, command))
+}
+
+func (s *policyController) restoreStandaloneEndpointPolicy(ctx context.Context) error {
+	return s.endpointPolicyControl().RestoreStandalone(ctx, func(ctx context.Context) error {
+		return s.runner.localStore.ActivateStandalonePolicy(ctx, "endpoint")
+	})
+}
+
+func (s *policyController) loadPendingManagedEndpointPolicy(ctx context.Context) (agentcontrol.PreparedEndpointPolicy, bool, error) {
+	return s.endpointPolicyControl().LoadPending(ctx)
+}
+
+func (r *AgentRuntime) setPendingEndpointPolicy(policy agentcontrol.PreparedEndpointPolicy) {
+	newEndpointPolicyRuntime(r, nil, nil).SetPendingEndpointPolicy(policy)
+}
+
+func (r *AgentRuntime) completePendingEndpointPolicy(ctx context.Context, intent contract.CollectionIntent) error {
+	return agentcontrol.NewEndpointPolicyController(newEndpointPolicyRuntime(r, nil, nil)).CompletePending(ctx, intent)
+}
+
+func policyResultAck(result agentcontrol.Result) *controlplanev1.ControlAck {
+	ack := &controlplanev1.ControlAck{
+		RequestId: result.RequestID, TenantId: result.TenantID, AgentId: result.AgentID,
+		Status: result.Status, Message: result.Message, PolicyId: result.PolicyID, PolicyVersion: result.Version,
+		Details: append([]string(nil), result.Details...), ReportJson: result.ReportJSON,
+	}
+	for _, section := range result.Sections {
+		ack.Sections = append(ack.Sections, &controlplanev1.AppliedSection{
+			Name: section.Name, Status: section.Status, Message: section.Message,
+			RequiresRestart: section.RequiresRestart, Details: append([]string(nil), section.Details...), ReportJson: section.ReportJSON,
+		})
+	}
+	return ack
 }
 
 func setupPendingEndpointPolicyTest(t *testing.T) (*localstore.Store, *AgentRuntime, *policyController) {

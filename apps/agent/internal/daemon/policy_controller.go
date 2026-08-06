@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -25,16 +24,21 @@ func newPolicyController(runner *AgentRuntime, runtime sensorruntime.Runtime, ba
 }
 
 func (c *policyController) ApplyPolicy(ctx context.Context, command agentcontrol.PolicyCommand) agentcontrol.Result {
-	req := applyPolicyRequest(command)
-	if err := c.runner.validateControlContext(req.GetContext()); err != nil {
-		return controlResult(rejectedAck(c.runner.Config, req.GetContext(), "policy", err.Error()))
-	}
 	policyType := strings.TrimSpace(command.PolicyType)
 	if policyType == "" {
 		policyType = "endpoint"
 	}
-	if command.Source == agentcontrol.PolicySourceManaged {
-		return controlResult(c.applyEndpointPolicyInternal(ctx, req, localstore.PolicySourceManaged))
+	if command.Source == agentcontrol.PolicySourceManaged || policyType == "endpoint" {
+		command.PolicyType = "endpoint"
+		batcher := c.batcher
+		if command.Source == agentcontrol.PolicySourceManaged {
+			batcher = nil
+		}
+		return agentcontrol.NewEndpointPolicyController(newEndpointPolicyRuntime(c.runner, c.runtime, batcher)).Apply(ctx, command)
+	}
+	req := applyPolicyRequest(command)
+	if err := c.runner.validateControlContext(req.GetContext()); err != nil {
+		return controlResult(rejectedAck(c.runner.Config, req.GetContext(), "policy", err.Error()))
 	}
 	return controlResult(c.applyStandalonePolicy(ctx, req, policyType))
 }
@@ -52,8 +56,6 @@ func (c *policyController) applyStandalonePolicy(ctx context.Context, req *contr
 		return c.applyDetectionPolicy(ctx, req)
 	case "telemetry":
 		return c.applyTelemetryPolicy(ctx, req, nil)
-	case "endpoint":
-		return c.applyEndpointPolicyInternal(ctx, req, localstore.PolicySourceStandalone)
 	default:
 		return rejectedAck(c.runner.Config, req.GetContext(), "policy", fmt.Sprintf("unsupported policy type %q", policyType))
 	}
