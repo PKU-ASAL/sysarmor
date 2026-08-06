@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/remoteapi"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -66,7 +67,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	dispatcher := remoteapi.NewDispatcher(remoteapi.Dependencies{
 		Policy:   newPolicyController(runner, r.sensor, r.batcher),
 		Content:  newContentController(runner),
-		Response: newResponseController(runner),
+		Response: agentcontrol.NewResponseController(newResponseRuntime(runner)),
 	}, runner.Out)
 	remoteIdentity := remoteapi.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 	for _, frame := range frames {

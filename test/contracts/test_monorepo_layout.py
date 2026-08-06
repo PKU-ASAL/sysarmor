@@ -259,6 +259,12 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                     path = f"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/{target}"
                     self.assertNotIn(path, text, f"{source} imports forbidden {target}")
 
+    def test_response_use_case_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        response = (root / "control/response.go").read_text()
+        self.assertIn("func NewResponseController", response)
+        self.assertFalse((root / "daemon/response_controller.go").exists())
+
     def test_agent_daemon_does_not_own_local_api_watch_streams(self):
         daemon = self.repo / "apps/agent/internal/daemon"
         violations = []
