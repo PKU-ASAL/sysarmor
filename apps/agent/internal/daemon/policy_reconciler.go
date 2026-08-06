@@ -13,10 +13,6 @@ type endpointPolicyReconciler struct {
 	supervisor *sensorruntime.SubscriptionSupervisor
 }
 
-func (s *policyController) policyReconciler() endpointPolicyReconciler {
-	return endpointPolicyReconciler{runtime: s.runtime, supervisor: s.runner.currentSensorSupervisor()}
-}
-
 func (r endpointPolicyReconciler) Apply(ctx context.Context, intent contract.CollectionIntent) (contract.ApplyResult, error) {
 	if r.supervisor != nil {
 		if err := r.supervisor.Reconcile(ctx, intent); err != nil {

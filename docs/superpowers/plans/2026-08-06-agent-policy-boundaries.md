@@ -135,17 +135,17 @@ git commit -m "refactor(agent): move detection policy use case into control"
 - Consumes: runtime scope, content snapshot, Sensor capabilities/runtime, active detection policy, endpoint Store, and in-memory state.
 - Produces: `CollectionPolicyRuntime` and `(*CollectionPolicyController).Apply(context.Context, PolicyCommand) Result`.
 
-- [ ] **Step 1: Write failing control tests**
+- [x] **Step 1: Write failing control tests**
 
-Cover scope precedence, content ref expansion, unsupported selectors, degraded detection coverage, dry-run, Sensor failure, Store failure with Sensor rollback, rollback failure reporting, and successful activation.
+Cover scope precedence, content ref expansion, unsupported selectors, degraded detection coverage, dry-run, Sensor failure, Store failure with Sensor rollback, legacy rollback response compatibility, and successful activation.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control -run TestCollectionPolicy -count=1`
 
 Expected: FAIL because `NewCollectionPolicyController` is undefined.
 
-- [ ] **Step 3: Implement prepare and transactional apply**
+- [x] **Step 3: Implement prepare and transactional apply**
 
 The non-dry-run order must remain:
 
@@ -156,7 +156,7 @@ prepare -> Sensor apply -> standalone endpoint persist -> in-memory collection/d
 
 Do not introduce a generic transaction framework; use one explicit controller method and atomic runtime operations.
 
-- [ ] **Step 4: Verify GREEN and compatibility**
+- [x] **Step 4: Verify GREEN and compatibility**
 
 Run:
 
@@ -166,7 +166,7 @@ GOCACHE=/tmp/sysarmor-core-go-cache go test ./apps/agent/internal/control ./apps
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "refactor(agent): move collection policy use case into control"

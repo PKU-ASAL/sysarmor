@@ -42,6 +42,9 @@ func (c *policyController) ApplyPolicy(ctx context.Context, command agentcontrol
 	if policyType == "detection" {
 		return agentcontrol.NewDetectionPolicyController(newDetectionPolicyRuntime(c.runner)).Apply(ctx, command)
 	}
+	if policyType == "collection" {
+		return agentcontrol.NewCollectionPolicyController(newCollectionPolicyRuntime(c.runner, c.runtime)).Apply(ctx, command)
+	}
 	req := applyPolicyRequest(command)
 	if err := c.runner.validateControlContext(req.GetContext()); err != nil {
 		return controlResult(rejectedAck(c.runner.Config, req.GetContext(), "policy", err.Error()))
@@ -56,8 +59,6 @@ func (c *policyController) applyStandalonePolicy(ctx context.Context, req *contr
 	}
 	defer release()
 	switch policyType {
-	case "collection":
-		return c.applyCollectionPolicy(ctx, req)
 	default:
 		return rejectedAck(c.runner.Config, req.GetContext(), "policy", fmt.Sprintf("unsupported policy type %q", policyType))
 	}
