@@ -28,7 +28,7 @@ func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorrun
 		Telemetry:  telemetryService,
 		Policy:     newPolicyController(r, rt, batcher),
 		Content:    agentcontrol.NewContentController(newContentRuntime(r)),
-		Enrollment: newEnrollmentController(coordinator),
+		Enrollment: coordinator,
 		Validate:   r.validateControlContext,
 	})
 	return localapi.New(socketPath, handler, r.Out).Start(ctx)

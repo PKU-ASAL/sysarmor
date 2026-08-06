@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -25,7 +26,7 @@ func TestEnrollmentCoordinatorKeepsManagedAuthorityWhileRevocationIsPending(t *t
 	}
 	coordinator := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 
-	result := coordinator.Unenroll(t.Context())
+	result := coordinator.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{})
 	enrollment, err := store.Enrollment(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +52,7 @@ func TestEnrollmentCoordinatorPersistsCompletionBeforeRevocation(t *testing.T) {
 		return "receipt-a", time.Now().UTC(), nil
 	}
 
-	if result := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)).Unenroll(t.Context()); result.Status != "applied" {
+	if result := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)).Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{}); result.Status != "applied" {
 		t.Fatalf("Unenroll() result=%+v", result)
 	}
 }
@@ -69,7 +70,7 @@ func TestEnrollmentCoordinatorRejectsEnrollmentBeforeRemoteRequestWhileCompletio
 	}
 	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{health: contract.Health{Backend: "fake"}})
 
-	result := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)).Enroll(t.Context(), "://invalid", "token", false)
+	result := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)).Enroll(t.Context(), agentcontrol.EnrollmentCommand{ManagerURL: "://invalid", Token: "token"})
 	if result.Status != "pending" || !strings.Contains(result.Message, "completion") {
 		t.Fatalf("Enroll() result=%+v", result)
 	}
@@ -90,7 +91,7 @@ func TestEnrollmentCoordinatorUnenrollsMigratedLegacyEnrollment(t *testing.T) {
 		return "legacy-receipt", time.Now().UTC(), nil
 	}
 
-	result := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)).Unenroll(t.Context())
+	result := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)).Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{})
 	current, err := store.Enrollment(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +115,7 @@ func TestEnrollmentCoordinatorDoesNotReportBeforeLocalCompletion(t *testing.T) {
 	coordinator := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 	coordinator.completeUnenrollment = func(context.Context, string) error { return errors.New("sqlite commit failed") }
 
-	if result := coordinator.Unenroll(t.Context()); result.Status != "rejected" {
+	if result := coordinator.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{}); result.Status != "rejected" {
 		t.Fatalf("Unenroll() result=%+v", result)
 	}
 	if reportCalls.Load() != 0 {
@@ -228,7 +229,7 @@ func TestEnrollmentCoordinatorSuccessfulUnenrollmentRemovesCredentials(t *testin
 	}
 	coordinator := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 
-	if result := coordinator.Unenroll(t.Context()); result.Status != "applied" {
+	if result := coordinator.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{}); result.Status != "applied" {
 		t.Fatalf("Unenroll() result=%+v", result)
 	}
 	for _, path := range []string{current.TLSCAPath, current.TLSCertPath, current.TLSKeyPath} {
@@ -249,8 +250,8 @@ func TestEnrollmentCoordinatorCompletesConfirmedUnenrollmentAfterRequestCancella
 	}
 	coordinator := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(sensor))
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
-	done := make(chan enrollmentResult, 1)
-	go func() { done <- coordinator.Unenroll(requestCtx) }()
+	done := make(chan agentcontrol.Result, 1)
+	go func() { done <- coordinator.Unenroll(requestCtx, agentcontrol.UnenrollmentCommand{}) }()
 
 	<-applyStarted
 	cancelRequest()
@@ -286,8 +287,8 @@ func TestEnrollmentCoordinatorDoesNotHoldPolicyAuthorityWhileReconcilingStandalo
 	supervisor.Start(t.Context())
 	<-apply
 	coordinator := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
-	done := make(chan enrollmentResult, 1)
-	go func() { done <- coordinator.Unenroll(t.Context()) }()
+	done := make(chan agentcontrol.Result, 1)
+	go func() { done <- coordinator.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{}) }()
 	waitForRevocationConfirmation(t, store)
 	close(releaseApply)
 
