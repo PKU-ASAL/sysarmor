@@ -275,6 +275,21 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         path = self.repo / "apps/agent/internal/daemon/daemon.go"
         self.assertLessEqual(len(path.read_text().splitlines()), 500)
 
+    def test_agent_daemon_tests_are_grouped_by_behavior(self):
+        root = self.repo / "apps/agent/internal/daemon"
+        expected = (
+            "daemon_detection_test.go",
+            "daemon_identity_test.go",
+            "daemon_config_test.go",
+            "daemon_telemetry_test.go",
+            "daemon_transport_test.go",
+            "daemon_sensor_test.go",
+            "daemon_test_support_test.go",
+        )
+        for name in expected:
+            with self.subTest(name=name):
+                self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
+
     def test_legacy_manager_implementation_paths_are_absent(self):
         legacy = (
             "internal/manager",
