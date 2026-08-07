@@ -16,6 +16,7 @@ MATCHER_VARIANTS="${MATCHER_VARIANTS:-}"
 MATRIX_MODE="${MATRIX_MODE:-cross}"
 STOP_ON_ERROR="${STOP_ON_ERROR:-0}"
 EVALUATION_SCOPE="${EVALUATION_SCOPE:-manager}"
+failed_cases=0
 
 mkdir -p "$OUT_DIR"
 
@@ -129,6 +130,7 @@ run_case() {
       "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$case_run_id" >"$case_dir/status.json"
   else
     local rc=$?
+    failed_cases=$((failed_cases + 1))
     printf '{"name":"%s","variant":"%s","matcher_strategy":"%s","workload":"%s","scenario":"%s","status":"failed","exit_code":%s,"bench_run_id":"%s"}\n' \
       "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$rc" "$case_run_id" >"$case_dir/status.json"
     if [[ "$STOP_ON_ERROR" == "1" ]]; then
@@ -204,6 +206,10 @@ else
 fi
 
 python3 "$HERE/report.py" "$OUT_DIR"
+if (( failed_cases > 0 )); then
+  echo "[detection-topology][ERROR] $failed_cases case(s) failed; see $OUT_DIR/matrix.csv" >&2
+  exit 1
+fi
 python3 "$ROOT/shared/reports/detection_report.py" \
   --bench-matrix-dir "$OUT_DIR" \
   --output-dir "$RESULTS/detection/$RUN_ID" \

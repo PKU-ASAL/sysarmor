@@ -28,7 +28,7 @@ SHELL
 
 Vagrant.configure("2") do |c|
   c.vm.synced_folder "../..", "/vagrant/test", type: "rsync",
-    rsync__exclude: [".vagrant/", "**/__pycache__/", ".results/"]
+    rsync__exclude: [".vagrant/", "**/__pycache__/", ".results/", "environments/*/deploy/"]
 
   c.vm.define "node-a" do |m|
     m.vm.box = "generic/ubuntu2204"
