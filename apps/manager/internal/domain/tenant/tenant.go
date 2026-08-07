@@ -18,6 +18,8 @@ func NewID(raw string) (ID, error) {
 
 func (id ID) String() string { return string(id) }
 
+func (id ID) IsZero() bool { return strings.TrimSpace(id.String()) == "" }
+
 type Role string
 
 const (
@@ -76,6 +78,9 @@ type Actor struct {
 }
 
 func (actor Actor) Require(role Role) error {
+	if actor.TenantID.IsZero() {
+		return failure.New(failure.Unauthenticated, "tenant is required")
+	}
 	if actor.Roles.Has(role) {
 		return nil
 	}

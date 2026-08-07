@@ -43,3 +43,10 @@ func TestActorRequireRejectsMissingRole(t *testing.T) {
 		t.Fatalf("Actor.Require() error kind = %q, want %q", failure.KindOf(err), failure.PermissionDenied)
 	}
 }
+
+func TestActorRequireRejectsEmptyTenant(t *testing.T) {
+	actor := Actor{Roles: NewRoleSet(RoleAdmin)}
+	if err := actor.Require(RoleOperator); failure.KindOf(err) != failure.Unauthenticated {
+		t.Fatalf("Actor.Require() error kind = %q, want %q", failure.KindOf(err), failure.Unauthenticated)
+	}
+}

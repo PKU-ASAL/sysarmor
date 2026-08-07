@@ -29,10 +29,6 @@ LEGACY_ROOTS = {
 IMPORT_PATTERN = re.compile(r'^\s*(?:[._\w]+\s+)?"([^"]+)"', re.MULTILINE)
 
 
-def project_imports(source):
-    return [path for path in IMPORT_PATTERN.findall(source) if path.startswith(MODULE)]
-
-
 def target_layer(import_path, product):
     prefix = f"{MODULE}apps/{product}/internal/"
     if import_path.startswith(prefix):
@@ -41,6 +37,19 @@ def target_layer(import_path, product):
     if import_path.startswith(f"{MODULE}packages/contracts/"):
         return "contracts"
     return None
+
+
+def import_allowed(owner, imported, product):
+    target = target_layer(imported, product)
+    if target is not None:
+        return target in ALLOWED[owner]
+    if imported.startswith(MODULE):
+        return False
+    if "." in imported.split("/", 1)[0]:
+        return owner in {"adapters", "bootstrap"}
+    if owner in {"domain", "application", "ports"}:
+        return imported not in {"database/sql", "net/http", "os", "os/exec", "syscall"}
+    return True
 
 
 class LayeredArchitectureContractTest(unittest.TestCase):
@@ -57,17 +66,54 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                         path.is_dir(), f"missing {path.relative_to(self.repo)}"
                     )
 
+    def test_legacy_exemptions_are_explicit_existing_roots(self):
+        for relative in LEGACY_ROOTS:
+            with self.subTest(relative=relative):
+                self.assertTrue((self.repo / relative).is_dir())
+
+    def test_inner_layers_reject_infrastructure_imports(self):
+        forbidden = (
+            f"{MODULE}apps/manager/internal/store",
+            f"{MODULE}packages/policy",
+            "github.com/segmentio/kafka-go",
+            "net/http",
+        )
+        for imported in forbidden:
+            with self.subTest(imported=imported):
+                self.assertFalse(import_allowed("domain", imported, "manager"))
+
+    def test_outer_layers_allow_technical_dependencies(self):
+        self.assertTrue(import_allowed("adapters", "github.com/segmentio/kafka-go", "manager"))
+
+    def test_go_import_syntax_is_parsed(self):
+        source = '''
+package sample
+
+import "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
+import (
+    alias "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
+    _ "github.com/segmentio/kafka-go"
+)
+'''
+        self.assertEqual(
+            [
+                f"{MODULE}apps/manager/internal/domain/tenant",
+                f"{MODULE}apps/manager/internal/ports",
+                "github.com/segmentio/kafka-go",
+            ],
+            IMPORT_PATTERN.findall(source),
+        )
+
     def test_layered_packages_obey_dependency_matrix(self):
         violations = []
         for product in ("agent", "manager"):
             internal = self.repo / "apps" / product / "internal"
             for owner in LAYERS:
                 for source in (internal / owner).rglob("*.go"):
-                    for imported in project_imports(source.read_text()):
-                        target = target_layer(imported, product)
-                        if target is not None and target not in ALLOWED[owner]:
+                    for imported in IMPORT_PATTERN.findall(source.read_text()):
+                        if not import_allowed(owner, imported, product):
                             relative = source.relative_to(self.repo)
-                            violations.append(f"{relative}: {owner} imports {target}")
+                            violations.append(f"{relative}: {owner} imports {imported}")
         self.assertEqual([], violations, "forbidden layered imports:\n" + "\n".join(violations))
 
     def test_products_do_not_import_each_others_internals(self):
@@ -96,3 +142,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
     def test_architecture_contract_is_wired_into_ci(self):
         workflow = self.repo / ".github" / "workflows" / "architecture.yml"
         self.assertTrue(workflow.is_file(), "missing .github/workflows/architecture.yml")
+
+    def test_layer_governance_links_resolve(self):
+        for product in ("agent", "manager"):
+            for layer in LAYERS:
+                readme = self.repo / "apps" / product / "internal" / layer / "README.md"
+                relative = re.search(r"\]\(([^)]+)\)", readme.read_text()).group(1)
+                with self.subTest(product=product, layer=layer):
+                    self.assertTrue((readme.parent / relative).is_file())
