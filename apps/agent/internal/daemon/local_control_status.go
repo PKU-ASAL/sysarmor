@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -80,8 +81,12 @@ func (r *AgentRuntime) managementLifecycleStatus(ctx context.Context) (*controlp
 	if err != nil {
 		return nil, err
 	}
+	mode, err := management.Resolve(enrollment.State)
+	if err != nil {
+		return nil, err
+	}
 	status := &controlplanev1.ManagementLifecycleStatus{
-		Mode:                string(enrollment.State),
+		Mode:                string(mode.State),
 		TransitionPhase:     enrollment.TransitionPhase,
 		RevocationConfirmed: enrollment.RevocationConfirmed,
 		LastTransitionError: enrollment.LastTransitionError,

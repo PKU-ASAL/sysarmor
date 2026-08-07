@@ -2,11 +2,14 @@ package daemon
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -102,6 +105,32 @@ func TestHealthResponseIncludesDefaultManifestVersion(t *testing.T) {
 	response := healthResponse(agenthealth.AgentHealth{Detection: agenthealth.DetectionHealth{DefaultManifestVersion: "release-v1"}})
 	if got := response.GetDetection().GetDefaultManifestVersion(); got != "release-v1" {
 		t.Fatalf("health manifest version = %q, want release-v1", got)
+	}
+}
+
+func TestManagementLifecycleStatusRejectsInvalidState(t *testing.T) {
+	root := t.TempDir()
+	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	db, err := sql.Open("sqlite", filepath.Join(root, "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(t.Context(), "PRAGMA ignore_check_constraints = ON"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(t.Context(), "UPDATE enrollment SET state='corrupt' WHERE singleton=1"); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &AgentRuntime{localStore: store}
+	_, err = runner.managementLifecycleStatus(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "unsupported management state") {
+		t.Fatalf("error=%v", err)
 	}
 }
 
