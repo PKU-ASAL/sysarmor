@@ -137,11 +137,7 @@ func (r *endpointPolicyRuntime) PromoteManagedAuthority(ctx context.Context) err
 	if enrollment.State != localstore.StateManaged {
 		return nil
 	}
-	r.runner.applyEnrollmentIdentity(enrollment)
-	if r.runner.network != nil {
-		r.runner.network.PromoteEnrollment(enrollment)
-	}
-	return nil
+	return r.runner.reconcileManagementContext(enrollment)
 }
 
 func (r *endpointPolicyRuntime) LoadEndpointPolicy(ctx context.Context, source agentcontrol.PolicySource) (agentpolicy.EndpointPolicy, bool, error) {

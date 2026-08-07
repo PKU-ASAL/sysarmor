@@ -18,7 +18,9 @@ func TestAgentRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	runner.telemetryBatcher = telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 2)
 	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
-	runner.applyEnrollmentIdentity(localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"})
+	if err := runner.reconcileManagementContext(localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
+		t.Fatal(err)
+	}
 	boundary := <-runner.telemetryBatcher.Batches()
 	if boundary.GetHeader().GetAgentId() != "device-a" || boundary.GetHeader().GetTenantId() != "local" {
 		t.Fatalf("boundary batch identity = %+v", boundary.GetHeader())
@@ -36,7 +38,9 @@ func TestAgentRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 		t.Fatalf("managed ack identity = %+v", ack)
 	}
 
-	runner.applyEnrollmentIdentity(localstore.Enrollment{State: localstore.StateStandalone})
+	if err := runner.reconcileManagementContext(localstore.Enrollment{State: localstore.StateStandalone}); err != nil {
+		t.Fatal(err)
+	}
 	standalone := runner.newDataBatch(time.Now())
 	if standalone.GetHeader().GetAgentId() != "device-a" || standalone.GetHeader().GetTenantId() != "local" {
 		t.Fatalf("standalone batch identity = %+v", standalone.GetHeader())

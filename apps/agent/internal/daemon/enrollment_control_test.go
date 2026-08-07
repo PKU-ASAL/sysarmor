@@ -57,7 +57,8 @@ func TestUnenrollDoesNotWaitForManagedFlowWhileHoldingPolicyAuthority(t *testing
 		runner.policyAuthorityMu.Lock()
 		runner.policyAuthorityMu.Unlock()
 	})
-	runner.network.ApplyEnrollment(localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a"})
+	enrollment := localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a"}
+	runner.network.ApplyEnrollment(enrollment, managementContextForTest(t, enrollment.State))
 	<-flowStarted
 	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 	done := make(chan agentcontrol.Result, 1)

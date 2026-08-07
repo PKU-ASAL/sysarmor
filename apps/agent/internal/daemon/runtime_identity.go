@@ -3,6 +3,7 @@ package daemon
 import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -56,16 +57,17 @@ func (r *AgentRuntime) currentIdentity() runtimeIdentity {
 	return runtimeIdentity{AgentID: r.Config.Agent.ID, HostID: r.Config.Agent.HostID, TenantID: r.Config.Agent.TenantID}
 }
 
-func (r *AgentRuntime) applyEnrollmentIdentity(enrollment localstore.Enrollment) {
-	identity := r.standaloneRuntimeIdentity()
-	if enrollment.State == localstore.StateManaged || enrollment.State == localstore.StateUnenrolling {
-		identity.AgentID = enrollment.AgentID
-		identity.TenantID = enrollment.TenantID
+func (r *AgentRuntime) applyEnrollmentIdentity(enrollment localstore.Enrollment) error {
+	mode, err := management.Resolve(enrollment.State)
+	if err != nil {
+		return err
 	}
-	if identity != r.currentIdentity() && r.telemetryBatcher != nil {
-		r.telemetryBatcher.Flush("identity")
+	identity, err := r.identityForManagementContext(enrollment, mode)
+	if err != nil {
+		return err
 	}
-	r.setRuntimeIdentity(identity)
+	r.applyProjectedIdentity(identity)
+	return nil
 }
 
 func (r *AgentRuntime) standaloneRuntimeIdentity() runtimeIdentity {

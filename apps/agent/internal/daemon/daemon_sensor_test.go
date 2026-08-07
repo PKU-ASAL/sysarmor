@@ -159,7 +159,9 @@ func TestAgentRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T)
 		}},
 	}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
-	runner.applyEnrollmentIdentity(localstore.Enrollment{State: localstore.StateManaged, AgentID: "managed-agent", TenantID: "managed-tenant"})
+	if err := runner.reconcileManagementContext(localstore.Enrollment{State: localstore.StateManaged, AgentID: "managed-agent", TenantID: "managed-tenant"}); err != nil {
+		t.Fatal(err)
+	}
 	rt := sensorruntime.New(runner.Sensor)
 	if _, err := rt.Probe(context.Background()); err != nil {
 		t.Fatal(err)

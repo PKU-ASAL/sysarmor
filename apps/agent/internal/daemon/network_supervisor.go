@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 )
 
 type networkSupervisor struct {
@@ -17,20 +18,18 @@ type networkSupervisor struct {
 	cancel          context.CancelFunc
 	done            chan struct{}
 	enrollment      localstore.Enrollment
+	mode            management.Context
 }
 
 func newNetworkSupervisor(parent context.Context, startStandalone func(context.Context), startManaged func(context.Context, localstore.Enrollment)) *networkSupervisor {
 	return &networkSupervisor{parent: parent, startStandalone: startStandalone, startManaged: startManaged}
 }
 
-func (s *networkSupervisor) ApplyEnrollment(enrollment localstore.Enrollment) {
-	if enrollment.State != localstore.StateManaged && enrollment.State != localstore.StateEnrolling && enrollment.State != localstore.StateUnenrolling {
-		enrollment = localstore.Enrollment{State: localstore.StateStandalone}
-	}
+func (s *networkSupervisor) ApplyEnrollment(enrollment localstore.Enrollment, mode management.Context) {
 	s.transitionMu.Lock()
 	defer s.transitionMu.Unlock()
 	s.mu.Lock()
-	if s.cancel != nil && reflect.DeepEqual(s.enrollment, enrollment) {
+	if s.cancel != nil && reflect.DeepEqual(s.enrollment, enrollment) && s.mode == mode {
 		s.mu.Unlock()
 		return
 	}
@@ -43,8 +42,9 @@ func (s *networkSupervisor) ApplyEnrollment(enrollment localstore.Enrollment) {
 	s.cancel = cancel
 	s.done = done
 	s.enrollment = enrollment
+	s.mode = mode
 	s.mu.Unlock()
-	go s.run(ctx, enrollment, done)
+	go s.run(ctx, enrollment, mode, done)
 }
 
 func (s *networkSupervisor) Stop() {
@@ -56,23 +56,27 @@ func (s *networkSupervisor) Stop() {
 	stopNetworkFlow(cancel, done)
 }
 
-func (s *networkSupervisor) PromoteEnrollment(enrollment localstore.Enrollment) {
+func (s *networkSupervisor) PromoteEnrollment(enrollment localstore.Enrollment, mode management.Context) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.cancel != nil && s.enrollment.State == localstore.StateEnrolling && enrollment.State == localstore.StateManaged {
-		s.enrollment = enrollment
+	if s.cancel == nil || s.mode.State != management.StateEnrolling || mode.State != management.StateManaged ||
+		s.mode.Transport != management.TransportManaged || mode.Transport != management.TransportManaged {
+		return false
 	}
+	s.enrollment = enrollment
+	s.mode = mode
+	return true
 }
 
 func (s *networkSupervisor) Managed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.cancel != nil && (s.enrollment.State == localstore.StateManaged || s.enrollment.State == localstore.StateEnrolling || s.enrollment.State == localstore.StateUnenrolling)
+	return s.cancel != nil && s.mode.Transport == management.TransportManaged
 }
 
-func (s *networkSupervisor) run(ctx context.Context, enrollment localstore.Enrollment, done chan struct{}) {
+func (s *networkSupervisor) run(ctx context.Context, enrollment localstore.Enrollment, mode management.Context, done chan struct{}) {
 	defer close(done)
-	if enrollment.State == localstore.StateStandalone {
+	if mode.Transport == management.TransportStandalone {
 		s.startStandalone(ctx)
 		return
 	}
@@ -84,6 +88,7 @@ func (s *networkSupervisor) detachLocked() (context.CancelFunc, chan struct{}) {
 	s.cancel = nil
 	s.done = nil
 	s.enrollment = localstore.Enrollment{}
+	s.mode = management.Context{}
 	return cancel, done
 }
 

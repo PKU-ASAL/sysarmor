@@ -230,8 +230,9 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 				return failStartup("enrollment", err)
 			}
 		}
-		r.applyEnrollmentIdentity(enrollment)
-		r.network.ApplyEnrollment(enrollment)
+		if err := r.reconcileManagementContext(enrollment); err != nil {
+			return failStartup("management_context", err)
+		}
 		defer r.network.Stop()
 	} else {
 		go transportRuntime.RunDataFlow(dataPlaneCtx)
