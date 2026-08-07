@@ -82,6 +82,7 @@ func TestDetectionPolicyWaitsForContentTransaction(t *testing.T) {
 		capability: contract.Capability{Backend: "fake", SupportsExec: true},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	ensureTestLocalStore(t, runner)
 	controller := newApplicationPolicyController(runner, nil, nil)
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -140,16 +141,26 @@ func TestLocalControlContentApplyRebuildsDetection(t *testing.T) {
 		"metadata":{"id":"ioc:c2-control-port-feed","version":"local-9443"},
 		"spec":{"value_type":"port","values":["9443"]}
 	}`
-	if _, err := client.ApplyContent(context.Background(), &controlplanev1.ApplyContentRequest{
+	ack, err := client.ApplyContent(context.Background(), &controlplanev1.ApplyContentRequest{
 		Context:       &controlplanev1.RequestContext{TenantId: "default", AgentId: "agent-a", RequestId: "req-content-rebuild"},
 		ContentJson:   contentJSON,
 		AllowUnsigned: true,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("ApplyContent() error = %v", err)
+	}
+	if ack.GetStatus() != "applied" {
+		t.Fatalf("ApplyContent() ack = %+v", ack)
+	}
+	if record, ok := runner.contentStore().Get("ioc:c2-control-port-feed"); !ok || record.Version != "local-9443" {
+		t.Fatalf("content record = %+v ok=%t", record, ok)
 	}
 
 	norm := normalize.New("agent-a", "host-a", nil)
-	appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("network.connect", 100, "/bin/bash", "", "10.66.0.99:9443"))
+	batch := appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("network.connect", 100, "/bin/bash", "", "10.66.0.99:9443"))
+	if len(batch.GetSignals()) == 0 {
+		t.Fatal("signals after content update = none")
+	}
 	signalStream, err := client.WatchSignals(context.Background(), &controlplanev1.WatchSignalsRequest{IncludeRecent: true, Limit: 1, RuleId: "reverse_shell_pattern", Where: "endpoint"})
 	if err != nil {
 		t.Fatalf("WatchSignals() error = %v", err)

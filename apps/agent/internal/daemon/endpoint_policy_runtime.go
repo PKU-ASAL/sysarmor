@@ -7,6 +7,7 @@ import (
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
@@ -135,7 +136,7 @@ func (r *endpointPolicyRuntime) PromoteManagedAuthority(ctx context.Context) err
 		return fmt.Errorf("read enrollment for managed policy activation: %w", err)
 	}
 	if enrollment.State != localstore.StateManaged {
-		return nil
+		return fmt.Errorf("managed policy authority promotion requires managed enrollment, got %s", enrollment.State)
 	}
 	return r.runner.reconcileManagementContext(enrollment)
 }
@@ -160,16 +161,21 @@ func (r *AgentRuntime) beginLocalPolicyMutation(ctx context.Context, mutation bo
 	}
 	r.policyAuthorityMu.RLock()
 	if r.localStore == nil {
-		return r.policyAuthorityMu.RUnlock, nil
+		r.policyAuthorityMu.RUnlock()
+		return nil, fmt.Errorf("local store is unavailable")
 	}
 	enrollment, err := r.localStore.Enrollment(ctx)
 	if err != nil {
 		r.policyAuthorityMu.RUnlock()
 		return nil, fmt.Errorf("read enrollment state: %w", err)
 	}
-	if enrollment.State != localstore.StateStandalone {
+	mode, err := management.Resolve(enrollment.State)
+	if err == nil {
+		err = mode.Authorize(management.PolicyWriteLocal)
+	}
+	if err != nil {
 		r.policyAuthorityMu.RUnlock()
-		return nil, fmt.Errorf("managed policy authority is active; local policy mutation is not allowed")
+		return nil, err
 	}
 	return r.policyAuthorityMu.RUnlock, nil
 }

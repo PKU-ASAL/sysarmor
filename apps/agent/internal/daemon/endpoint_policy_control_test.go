@@ -95,6 +95,18 @@ func TestRestoreStandaloneEndpointPolicyCannotBypassManagedAuthority(t *testing.
 	}
 }
 
+func TestPromoteManagedAuthorityRejectsUnexpectedEnrollmentState(t *testing.T) {
+	store := openEndpointPolicyStore(t)
+	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{})
+	runtime := newEndpointPolicyRuntime(runner, sensorruntime.New(runner.Sensor), nil)
+
+	err := runtime.PromoteManagedAuthority(t.Context())
+
+	if err == nil || !strings.Contains(err.Error(), "requires managed enrollment") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestManagerPolicyPromotesEnrollingAgentToManaged(t *testing.T) {
 	store := openEndpointPolicyStore(t)
 	defer store.Close()

@@ -155,7 +155,12 @@ func TestManagedAgentRejectsLocalContentMutation(t *testing.T) {
 }
 
 func TestManagedTransitionWaitsForLocalPolicyMutation(t *testing.T) {
-	runner := &AgentRuntime{}
+	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	runner := &AgentRuntime{localStore: store}
 	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -177,6 +182,39 @@ func TestManagedTransitionWaitsForLocalPolicyMutation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("managed transition remained blocked after local mutation")
 	}
+}
+
+func TestEnrollingAgentRejectsLocalPolicyMutation(t *testing.T) {
+	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.SetEnrolling(t.Context(), testRemoteEnrollment()); err != nil {
+		t.Fatal(err)
+	}
+	runner := &AgentRuntime{localStore: store}
+
+	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
+
+	if err == nil || release != nil || !strings.Contains(err.Error(), "managed policy authority") {
+		t.Fatalf("release_present=%t error=%v", release != nil, err)
+	}
+}
+
+func TestLocalPolicyMutationFailsClosedWithoutStore(t *testing.T) {
+	runner := &AgentRuntime{}
+
+	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
+
+	if err == nil || release != nil || !strings.Contains(err.Error(), "local store is unavailable") {
+		t.Fatalf("release_present=%t error=%v", release != nil, err)
+	}
+	readRelease, err := runner.beginLocalPolicyMutation(t.Context(), false)
+	if err != nil || readRelease == nil {
+		t.Fatalf("read-only release_present=%t error=%v", readRelease != nil, err)
+	}
+	readRelease()
 }
 
 func TestLocalControlApplyTelemetryPolicyContract(t *testing.T) {

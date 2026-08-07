@@ -96,9 +96,7 @@ func appendEndpointEventForTest(t testing.TB, runner *AgentRuntime, bus *telemet
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bus != nil {
-		bus.PublishBatch(batch)
-	}
+	commitEndpointBatchForTest(t, runner, bus, batch)
 	return batch
 }
 
@@ -108,10 +106,29 @@ func appendEndpointSignalsForTest(t testing.TB, runner *AgentRuntime, bus *telem
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bus != nil {
-		bus.PublishBatch(batch)
-	}
+	commitEndpointBatchForTest(t, runner, bus, batch)
 	return batch
+}
+
+func commitEndpointBatchForTest(t testing.TB, runner *AgentRuntime, bus *telemetry.Bus, batch *dataplanev1.DataBatch) {
+	t.Helper()
+	if runner.localStore == nil {
+		if bus != nil {
+			bus.PublishBatch(batch)
+		}
+		return
+	}
+	batcher := telemetry.NewBatcher(runner.newDataBatch, 1, time.Hour, 1)
+	batcher.Add(batch)
+	batch = <-batcher.Batches()
+	batcher.CloseAndFlush("test")
+	sender := &localStoreBatchSender{store: runner.localStore}
+	if bus != nil {
+		sender.onCommit = bus.PublishBatch
+	}
+	if _, err := sender.SendBatch(batch); err != nil {
+		t.Fatalf("commit endpoint batch: %v", err)
+	}
 }
 
 func installTestDetection(t testing.TB, runner *AgentRuntime) {

@@ -1,15 +1,15 @@
 package daemon
 
 import (
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 )
 
-func TestStandaloneTelemetryWithoutStoreDoesNotMutateEndpointPolicy(t *testing.T) {
+func TestStandaloneTelemetryFailsClosedWithoutStore(t *testing.T) {
 	runner := &AgentRuntime{Config: config.Config{
 		Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}, Telemetry: config.DefaultTelemetryConfig(),
 	}}
@@ -22,13 +22,13 @@ func TestStandaloneTelemetryWithoutStoreDoesNotMutateEndpointPolicy(t *testing.T
 		Telemetry: &agentcontrol.TelemetryPolicy{MaxBatchItems: 64, MaxBatchBytes: 128 << 10, FlushInterval: "2s"},
 	})
 
-	if result.Status != "applied" {
+	if result.Status != "rejected" || !strings.Contains(result.Message, "local store is unavailable") {
 		t.Fatalf("result=%+v", result)
 	}
 	if endpoint := runner.currentEndpointPolicy(); endpoint.PolicyID != "endpoint-a" || endpoint.Version != 7 {
 		t.Fatalf("endpoint=%+v", endpoint)
 	}
-	if effective := runner.currentEffectiveTelemetry(); effective.MaxBatchItems != 64 || effective.FlushInterval != 2*time.Second {
+	if effective := runner.currentEffectiveTelemetry(); effective.MaxBatchItems != 0 {
 		t.Fatalf("effective=%+v", effective)
 	}
 }
