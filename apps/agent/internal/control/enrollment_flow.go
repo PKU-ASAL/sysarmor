@@ -41,18 +41,24 @@ func (c *EnrollmentCoordinator) commitEnrollment(ctx context.Context, command En
 		enrollment.ManagedFromSequence = stats.OldestEventSequence
 	}
 	c.runtime.StopEnrollmentNetwork()
+	committed := false
 	err = c.runtime.WithPolicyAuthority(func() error {
 		if err := c.store.SetEnrolling(ctx, enrollment); err != nil {
 			return err
 		}
-		c.runtime.ApplyEnrollmentIdentity(enrollment)
-		return nil
+		committed = true
+		return c.runtime.ReconcileEnrollment(enrollment)
 	})
 	if err != nil {
-		c.runtime.ApplyEnrollmentNetwork(localstore.Enrollment{State: localstore.StateStandalone})
+		if committed {
+			c.runtime.FinalizeEnrollment(preparation)
+			return c.result(command.Context, "pending", "enrollment committed; runtime reconciliation is pending: "+err.Error())
+		}
+		if reconcileErr := c.runtime.ReconcileEnrollment(localstore.Enrollment{State: localstore.StateStandalone}); reconcileErr != nil {
+			err = fmt.Errorf("%w; restore standalone runtime: %v", err, reconcileErr)
+		}
 		return c.rollbackEnrollment(command.Context, preparation, err)
 	}
-	c.runtime.ApplyEnrollmentNetwork(enrollment)
 	c.runtime.FinalizeEnrollment(preparation)
 	return c.result(command.Context, "pending", "enrollment credentials accepted; waiting for manager endpoint policy")
 }

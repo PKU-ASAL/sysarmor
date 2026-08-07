@@ -52,9 +52,8 @@ type EnrollmentRuntime interface {
 	RollbackEnrollment(EnrollmentPreparation, error) error
 	FinalizeEnrollment(EnrollmentPreparation)
 	StopEnrollmentNetwork()
-	ApplyEnrollmentNetwork(localstore.Enrollment)
+	ReconcileEnrollment(localstore.Enrollment) error
 	WithPolicyAuthority(func() error) error
-	ApplyEnrollmentIdentity(localstore.Enrollment)
 	RevokeEnrollment(context.Context, localstore.Enrollment, string) (string, time.Time, error)
 	RestoreStandalonePolicy(context.Context, func(context.Context) error) error
 	RemoveEnrollmentCredentials(localstore.Enrollment) error

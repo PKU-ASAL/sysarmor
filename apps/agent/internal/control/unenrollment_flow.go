@@ -83,9 +83,7 @@ func (c *EnrollmentCoordinator) completeConfirmed(ctx context.Context, current l
 		return err
 	}
 	standalone := localstore.Enrollment{State: localstore.StateStandalone}
-	c.runtime.ApplyEnrollmentNetwork(standalone)
-	c.runtime.ApplyEnrollmentIdentity(standalone)
-	return nil
+	return c.runtime.ReconcileEnrollment(standalone)
 }
 
 func (c *EnrollmentCoordinator) prepareUnenrollment(ctx context.Context) (localstore.Enrollment, localstore.UnenrollmentCompletion, error) {

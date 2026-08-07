@@ -2,8 +2,6 @@ package daemon
 
 import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -55,19 +53,6 @@ func (r *AgentRuntime) currentIdentity() runtimeIdentity {
 		return r.identity
 	}
 	return runtimeIdentity{AgentID: r.Config.Agent.ID, HostID: r.Config.Agent.HostID, TenantID: r.Config.Agent.TenantID}
-}
-
-func (r *AgentRuntime) applyEnrollmentIdentity(enrollment localstore.Enrollment) error {
-	mode, err := management.Resolve(enrollment.State)
-	if err != nil {
-		return err
-	}
-	identity, err := r.identityForManagementContext(enrollment, mode)
-	if err != nil {
-		return err
-	}
-	r.applyProjectedIdentity(identity)
-	return nil
 }
 
 func (r *AgentRuntime) standaloneRuntimeIdentity() runtimeIdentity {

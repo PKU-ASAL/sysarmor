@@ -9,7 +9,6 @@ import (
 
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 )
 
@@ -107,29 +106,14 @@ func (r *enrollmentRuntime) StopEnrollmentNetwork() {
 	}
 }
 
-func (r *enrollmentRuntime) ApplyEnrollmentNetwork(enrollment localstore.Enrollment) {
-	mode, err := management.Resolve(enrollment.State)
-	if err != nil {
-		if r.runner.Out != nil {
-			fmt.Fprintf(r.runner.Out, "apply enrollment network: %v\n", err)
-		}
-		return
-	}
-	if r.runner.network != nil {
-		r.runner.network.ApplyEnrollment(enrollment, mode)
-	}
+func (r *enrollmentRuntime) ReconcileEnrollment(enrollment localstore.Enrollment) error {
+	return r.runner.reconcileManagementContext(enrollment)
 }
 
 func (r *enrollmentRuntime) WithPolicyAuthority(run func() error) error {
 	r.runner.policyAuthorityMu.Lock()
 	defer r.runner.policyAuthorityMu.Unlock()
 	return run()
-}
-
-func (r *enrollmentRuntime) ApplyEnrollmentIdentity(enrollment localstore.Enrollment) {
-	if err := r.runner.applyEnrollmentIdentity(enrollment); err != nil && r.runner.Out != nil {
-		fmt.Fprintf(r.runner.Out, "apply enrollment identity: %v\n", err)
-	}
 }
 
 func (r *enrollmentRuntime) RevokeEnrollment(ctx context.Context, enrollment localstore.Enrollment, tokenHash string) (string, time.Time, error) {

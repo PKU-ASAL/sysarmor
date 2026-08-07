@@ -87,9 +87,10 @@ type recordingEnrollmentRuntime struct {
 	stopNetworkCalls int
 	restoreCalls     int
 	reportCalls      int
+	finalizeCalls    int
 	authorityCalls   int
-	networkStates    []localstore.EnrollmentState
-	identityStates   []localstore.EnrollmentState
+	reconcileStates  []localstore.EnrollmentState
+	reconcileErr     error
 }
 
 func (r *recordingEnrollmentRuntime) EnrollmentIdentity() EnrollmentIdentity { return r.identity }
@@ -103,21 +104,18 @@ func (r *recordingEnrollmentRuntime) RollbackEnrollment(EnrollmentPreparation, e
 	return nil
 }
 
-func (r *recordingEnrollmentRuntime) FinalizeEnrollment(EnrollmentPreparation) {}
+func (r *recordingEnrollmentRuntime) FinalizeEnrollment(EnrollmentPreparation) { r.finalizeCalls++ }
 
 func (r *recordingEnrollmentRuntime) StopEnrollmentNetwork() { r.stopNetworkCalls++ }
-
-func (r *recordingEnrollmentRuntime) ApplyEnrollmentNetwork(enrollment localstore.Enrollment) {
-	r.networkStates = append(r.networkStates, enrollment.State)
-}
 
 func (r *recordingEnrollmentRuntime) WithPolicyAuthority(run func() error) error {
 	r.authorityCalls++
 	return run()
 }
 
-func (r *recordingEnrollmentRuntime) ApplyEnrollmentIdentity(enrollment localstore.Enrollment) {
-	r.identityStates = append(r.identityStates, enrollment.State)
+func (r *recordingEnrollmentRuntime) ReconcileEnrollment(enrollment localstore.Enrollment) error {
+	r.reconcileStates = append(r.reconcileStates, enrollment.State)
+	return r.reconcileErr
 }
 
 func (r *recordingEnrollmentRuntime) RevokeEnrollment(context.Context, localstore.Enrollment, string) (string, time.Time, error) {
@@ -164,8 +162,8 @@ func TestEnrollmentCoordinatorRestoresStandaloneOnlyAfterRevocation(t *testing.T
 	if runtime.restoreCalls != 1 || runtime.stopNetworkCalls != 1 || runtime.reportCalls != 1 || runtime.authorityCalls != 1 {
 		t.Fatalf("runtime=%+v", runtime)
 	}
-	if len(runtime.networkStates) != 1 || runtime.networkStates[0] != localstore.StateStandalone {
-		t.Fatalf("network states=%v", runtime.networkStates)
+	if len(runtime.reconcileStates) != 1 || runtime.reconcileStates[0] != localstore.StateStandalone {
+		t.Fatalf("reconcile states=%v", runtime.reconcileStates)
 	}
 }
 
@@ -177,7 +175,7 @@ func TestEnrollmentCoordinatorPolicyRestoreFailureRemainsUnenrolling(t *testing.
 	if result.Status != "rejected" || store.enrollment.State != localstore.StateUnenrolling || !store.enrollment.RevocationConfirmed {
 		t.Fatalf("result=%+v enrollment=%+v", result, store.enrollment)
 	}
-	if store.completeCalls != 0 || len(runtime.networkStates) != 0 || len(runtime.identityStates) != 0 {
+	if store.completeCalls != 0 || len(runtime.reconcileStates) != 0 {
 		t.Fatalf("runtime=%+v complete calls=%d", runtime, store.completeCalls)
 	}
 }
@@ -200,7 +198,7 @@ func TestEnrollmentCoordinatorRollsBackCredentialsWhenStoreRejectsEnrollment(t *
 	runtime := &recordingEnrollmentRuntime{
 		identity: EnrollmentIdentity{TenantID: "local", AgentID: "device-a"},
 		preparation: EnrollmentPreparation{Enrollment: localstore.Enrollment{
-			TenantID: "tenant-a", AgentID: "agent-a", ManagerURL: "https://manager.example",
+			State: localstore.StateEnrolling, TenantID: "tenant-a", AgentID: "agent-a", ManagerURL: "https://manager.example",
 		}},
 	}
 	result := NewEnrollmentCoordinator(t.Context(), store, runtime).Enroll(t.Context(), EnrollmentCommand{
@@ -210,8 +208,51 @@ func TestEnrollmentCoordinatorRollsBackCredentialsWhenStoreRejectsEnrollment(t *
 	if result.Status != "rejected" || runtime.rollbackCalls != 1 || store.enrollment.State != localstore.StateStandalone {
 		t.Fatalf("result=%+v store=%+v runtime=%+v", result, store, runtime)
 	}
-	if len(runtime.networkStates) != 1 || runtime.networkStates[0] != localstore.StateStandalone {
-		t.Fatalf("network states=%v", runtime.networkStates)
+	if len(runtime.reconcileStates) != 1 || runtime.reconcileStates[0] != localstore.StateStandalone {
+		t.Fatalf("reconcile states=%v", runtime.reconcileStates)
+	}
+}
+
+func TestEnrollmentCoordinatorReconcilesCommittedEnrollment(t *testing.T) {
+	store := &recordingEnrollmentStore{enrollment: localstore.Enrollment{State: localstore.StateStandalone}}
+	runtime := &recordingEnrollmentRuntime{
+		identity: EnrollmentIdentity{TenantID: "local", AgentID: "device-a"},
+		preparation: EnrollmentPreparation{Enrollment: localstore.Enrollment{
+			State: localstore.StateEnrolling, TenantID: "tenant-a", AgentID: "agent-a", ManagerURL: "https://manager.example",
+		}},
+	}
+
+	result := NewEnrollmentCoordinator(t.Context(), store, runtime).Enroll(t.Context(), EnrollmentCommand{
+		ManagerURL: "https://manager.example", Token: "token-a",
+	})
+
+	if result.Status != "pending" || store.enrollment.State != localstore.StateEnrolling || runtime.finalizeCalls != 1 || runtime.rollbackCalls != 0 {
+		t.Fatalf("result=%+v store=%+v runtime=%+v", result, store, runtime)
+	}
+	if len(runtime.reconcileStates) != 1 || runtime.reconcileStates[0] != localstore.StateEnrolling {
+		t.Fatalf("reconcile states=%v", runtime.reconcileStates)
+	}
+}
+
+func TestEnrollmentCoordinatorKeepsCommittedEnrollmentWhenReconcileFails(t *testing.T) {
+	store := &recordingEnrollmentStore{enrollment: localstore.Enrollment{State: localstore.StateStandalone}}
+	runtime := &recordingEnrollmentRuntime{
+		identity:     EnrollmentIdentity{TenantID: "local", AgentID: "device-a"},
+		reconcileErr: errors.New("runtime unavailable"),
+		preparation: EnrollmentPreparation{Enrollment: localstore.Enrollment{
+			State: localstore.StateEnrolling, TenantID: "tenant-a", AgentID: "agent-a", ManagerURL: "https://manager.example",
+		}},
+	}
+
+	result := NewEnrollmentCoordinator(t.Context(), store, runtime).Enroll(t.Context(), EnrollmentCommand{
+		ManagerURL: "https://manager.example", Token: "token-a",
+	})
+
+	if result.Status != "pending" || !strings.Contains(result.Message, "runtime reconciliation is pending") {
+		t.Fatalf("result=%+v", result)
+	}
+	if store.enrollment.State != localstore.StateEnrolling || runtime.finalizeCalls != 1 || runtime.rollbackCalls != 0 {
+		t.Fatalf("store=%+v runtime=%+v", store, runtime)
 	}
 }
 
