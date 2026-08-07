@@ -23,7 +23,7 @@ export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 .DEFAULT_GOAL := help
 
 .PHONY: doctor up down up-container up-vm-endpoint up-vm-topology up-all down-container down-vm-endpoint down-vm-topology down-all provision status clean help
-.PHONY: test-unit functional-core
+.PHONY: test-unit test-layered-architecture functional-core
 .PHONY: functional-endpoint functional-endpoint-local functional-endpoint-container functional-platform functional-platform-full functional-topology
 .PHONY: detection-topology detection-report distribution-package distribution-published release-candidate release-published
 .PHONY: performance-endpoint performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
@@ -124,8 +124,11 @@ clean:
 
 # Unit and functional suites --------------------------------------------------
 
-test-unit:
+test-unit: test-layered-architecture
 	cd .. && go test ./...
+
+test-layered-architecture:
+	cd .. && python3 -m unittest test.contracts.test_layered_architecture -v
 
 functional-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint bash suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh

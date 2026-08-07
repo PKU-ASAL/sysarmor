@@ -144,6 +144,14 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                 violations.append(str(source.relative_to(self.repo)))
         self.assertEqual([], violations, f"agent imports manager implementation: {violations}")
 
+    def test_manager_does_not_import_agent_implementation(self):
+        manager = self.repo / "apps/manager"
+        violations = []
+        for source in manager.rglob("*.go"):
+            if "github.com/sysarmor/sysarmor-next-project/apps/agent/" in source.read_text():
+                violations.append(str(source.relative_to(self.repo)))
+        self.assertEqual([], violations, f"manager imports agent implementation: {violations}")
+
     def test_manager_implementation_is_owned_by_manager_app(self):
         expected = (
             "apps/manager/internal/api",
