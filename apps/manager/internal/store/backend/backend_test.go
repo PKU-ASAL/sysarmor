@@ -1243,6 +1243,28 @@ func TestOpenPostgresProjectsRarityBaselineTable(t *testing.T) {
 	}
 }
 
+func TestOpenPostgresProjectsTenantMetricsAndRarity(t *testing.T) {
+	fakeSetExecError(nil)
+	fakeSetSnapshot(nil)
+	result, err := Open(context.Background(), Options{
+		Kind: KindPostgres, PostgresDriver: fakeDriverName, PostgresDSN: "test-dsn",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.Store.RecordDataBatchIngestForTenant("tenant-a", 3, 2, 0, 0, time.Millisecond)
+	result.Store.ObserveRaritySignalsForTenant("tenant-a", []*signalv1.Signal{{Name: "tenant-signal"}})
+	if err := result.Store.Save(); err != nil {
+		t.Fatal(err)
+	}
+	execLog := fakeExecLog()
+	for _, want := range []string{"INSERT INTO metrics", "tenant-a", `"events_ingested":3`, "INSERT INTO rarity_baseline", "tenant-signal"} {
+		if !strings.Contains(execLog, want) {
+			t.Fatalf("postgres exec log missing %q:\n%s", want, execLog)
+		}
+	}
+}
+
 func TestOpenPostgresPreservesIdempotentIngestAcrossReopen(t *testing.T) {
 	fakeSetExecError(nil)
 	fakeSetSnapshot(nil)

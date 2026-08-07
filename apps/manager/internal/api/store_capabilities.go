@@ -92,7 +92,7 @@ type telemetryStore interface {
 	AddEvent(*eventv1.CanonicalEvent) bool
 	AddSignal(*signalv1.Signal) bool
 	AddSignalForTenant(string, *signalv1.Signal) bool
-	GetSignal(string) (*signalv1.Signal, bool)
+	GetSignalForTenant(string, string) (*signalv1.Signal, bool)
 	ListEvents(store.LabelSelector, string) []*eventv1.CanonicalEvent
 	ListEventsForTenant(string, store.LabelSelector, string) []*eventv1.CanonicalEvent
 	ListIncidents(store.LabelSelector) []*incidentv1.Incident
@@ -101,6 +101,7 @@ type telemetryStore interface {
 	ListSignalsForTenant(string, store.LabelSelector, string, bool) []*signalv1.Signal
 	RarityBaselineSnapshot() rarity.Baseline
 	RarityBaselineSnapshotForTenant(string) rarity.Baseline
+	RarityBaselineSnapshotForTenantWithError(string) (rarity.Baseline, error)
 }
 
 type operationalStore interface {
@@ -108,6 +109,7 @@ type operationalStore interface {
 	Info() store.Info
 	MetricsSnapshot() store.Metrics
 	MetricsSnapshotForTenant(string) store.Metrics
+	MetricsSnapshotForTenantWithError(string) (store.Metrics, error)
 	ResetMetrics() error
 	Save() error
 }

@@ -217,7 +217,12 @@ func (s *Server) resumeCursor(tenantID, agentID string) (DataResume, error) {
 }
 
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.store.MetricsSnapshotForTenant(requestTenantID(r)))
+	metrics, err := s.store.MetricsSnapshotForTenantWithError(requestTenantID(r))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read tenant metrics: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, metrics)
 }
 
 func (s *Server) storeStatus(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +239,11 @@ func (s *Server) rarityBaseline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	baseline := s.store.RarityBaselineSnapshotForTenant(requestTenantID(r))
+	baseline, err := s.store.RarityBaselineSnapshotForTenantWithError(requestTenantID(r))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read tenant rarity baseline: %v", err), http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, map[string]any{
 		"baseline": baseline,
 		"count":    baseline.Count(q.Get("workload"), q.Get("signal")),

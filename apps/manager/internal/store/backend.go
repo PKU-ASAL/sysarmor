@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
@@ -68,4 +69,13 @@ type MetricsBackend interface {
 	LoadMetrics(ctx context.Context) (Metrics, error)
 	SaveMetrics(ctx context.Context, metrics Metrics) error
 	ResetMetrics(ctx context.Context) error
+}
+
+type TenantMetricsBackend interface {
+	LoadMetricsForTenant(ctx context.Context, tenantID string) (Metrics, error)
+	SaveMetricsForTenant(ctx context.Context, tenantID string, metrics Metrics) error
+}
+
+type TenantRarityBackend interface {
+	LoadRarityForTenant(ctx context.Context, tenantID string) (rarity.Baseline, error)
 }

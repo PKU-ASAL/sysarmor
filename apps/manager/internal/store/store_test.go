@@ -151,6 +151,19 @@ func TestTelemetryIdentityIsTenantScoped(t *testing.T) {
 	}
 }
 
+func TestGetSignalForTenantDoesNotCollideOnSharedID(t *testing.T) {
+	st := &Store{}
+	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "shared-signal", Name: "signal-a"})
+	st.AddSignalForTenant("tenant-b", &signalv1.Signal{Id: "shared-signal", Name: "signal-b"})
+
+	for tenantID, wantName := range map[string]string{"tenant-a": "signal-a", "tenant-b": "signal-b"} {
+		got, ok := st.GetSignalForTenant(tenantID, "shared-signal")
+		if !ok || got.GetName() != wantName {
+			t.Fatalf("GetSignalForTenant(%q) = (%v, %v), want name %q", tenantID, got, ok, wantName)
+		}
+	}
+}
+
 func TestTenantTelemetryStateRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	st, err := Open(path)

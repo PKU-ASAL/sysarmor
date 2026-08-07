@@ -58,7 +58,11 @@ func (s *Server) uiOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("query incident reports: %v", err), http.StatusBadGateway)
 		return
 	}
-	metrics := s.store.MetricsSnapshotForTenant(tenantID)
+	metrics, err := s.store.MetricsSnapshotForTenantWithError(tenantID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read tenant metrics: %v", err), http.StatusInternalServerError)
+		return
+	}
 	info := s.store.Info()
 	agents, err := s.overviewAgents(tenantID)
 	if err != nil {
@@ -131,6 +135,7 @@ func (s *Server) overviewIncidents(ctx context.Context, tenantID string) (overvi
 	if err != nil {
 		return summary, err
 	}
+	raw = filterRawTelemetry(raw, nil, rawStringEquals("tenant_id", tenantID))
 	for _, document := range raw {
 		incident := &incidentv1.Incident{}
 		if err := protojson.Unmarshal(document, incident); err != nil {

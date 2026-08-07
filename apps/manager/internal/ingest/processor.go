@@ -89,9 +89,11 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		}
 	}
 	start := time.Now()
-	if p.local {
-		p.engine.SetRarityBaseline(p.store.RarityBaselineSnapshotForTenant(tenantID))
+	baseline, err := p.store.RarityBaselineSnapshotForTenantWithError(tenantID)
+	if err != nil {
+		return Result{}, fmt.Errorf("load tenant rarity baseline: %w", err)
 	}
+	p.engine.SetRarityBaseline(baseline)
 	upper := batchUpperTime(batch, start)
 	cloudSignals, incidents, derivedDocs, err := p.recomputeTouchedScopes(ctx, touchedScopes, currentEvents, currentSignals, upper)
 	if err != nil {
@@ -107,9 +109,7 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 	}
 	convergenceLatency := time.Since(start)
 	p.store.RecordDataBatchIngestForTenant(tenantID, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
-	if p.local {
-		p.store.ObserveRaritySignalsForTenant(tenantID, currentSignals)
-	}
+	p.store.ObserveRaritySignalsForTenant(tenantID, currentSignals)
 	if err := p.store.Save(); err != nil {
 		return Result{}, err
 	}

@@ -41,11 +41,11 @@ func (h *OpenSearchHistory) Read(ctx context.Context, tenantID string, labels ma
 	if err != nil {
 		return nil, nil, fmt.Errorf("read signal history: %w", err)
 	}
-	events, err := decodeEvents(eventDocs)
+	events, err := decodeEvents(filterTenantDocuments(eventDocs, tenantID))
 	if err != nil {
 		return nil, nil, err
 	}
-	signals, err := decodeSignals(signalDocs)
+	signals, err := decodeSignals(filterTenantDocuments(signalDocs, tenantID))
 	return events, signals, err
 }
 
@@ -53,6 +53,19 @@ type storeHistory struct{ store *store.Store }
 
 func (h storeHistory) Read(_ context.Context, tenantID string, labels map[string]string, _, _ time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
 	return h.store.ListEventsForTenant(tenantID, store.LabelSelector(labels), ""), h.store.ListSignalsForTenant(tenantID, store.LabelSelector(labels), "endpoint", false), nil
+}
+
+func filterTenantDocuments(raw []json.RawMessage, tenantID string) []json.RawMessage {
+	out := make([]json.RawMessage, 0, len(raw))
+	for _, document := range raw {
+		var envelope struct {
+			TenantID string `json:"tenant_id"`
+		}
+		if json.Unmarshal(document, &envelope) == nil && envelope.TenantID == tenantID {
+			out = append(out, document)
+		}
+	}
+	return out
 }
 
 func decodeEvents(raw []json.RawMessage) ([]*eventv1.CanonicalEvent, error) {

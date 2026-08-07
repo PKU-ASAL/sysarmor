@@ -11,7 +11,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
-func projectMetrics(ctx context.Context, db sqlExecutor, metrics store.Metrics) error {
+func projectMetricsForTenant(ctx context.Context, db sqlExecutor, tenantID string, metrics store.Metrics) error {
 	data, err := json.Marshal(metrics)
 	if err != nil {
 		return fmt.Errorf("encode metrics projection: %w", err)
@@ -22,11 +22,15 @@ VALUES ($1, $2, $3)
 ON CONFLICT (tenant_id, metric_key) DO UPDATE SET
   updated_at = now(),
   data = EXCLUDED.data
-`, "default", "manager", data)
+`, tenantID, "manager", data)
 	if err != nil {
 		return fmt.Errorf("project metrics: %w", err)
 	}
 	return nil
+}
+
+func projectMetrics(ctx context.Context, db sqlExecutor, metrics store.Metrics) error {
+	return projectMetricsForTenant(ctx, db, "default", metrics)
 }
 
 func (b *tableBackend) LoadMetrics(ctx context.Context) (store.Metrics, error) {
@@ -41,6 +45,18 @@ func (b *tableBackend) SaveMetrics(ctx context.Context, metrics store.Metrics) e
 	return projectMetrics(ctx, b.db, metrics)
 }
 
+func (b *tableBackend) LoadMetricsForTenant(ctx context.Context, tenantID string) (store.Metrics, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return queryMetricsForTenant(ctx, b.db, tenantID)
+}
+
+func (b *tableBackend) SaveMetricsForTenant(ctx context.Context, tenantID string, metrics store.Metrics) error {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	return projectMetricsForTenant(ctx, b.db, tenantID, metrics)
+}
+
 func (b *tableBackend) ResetMetrics(ctx context.Context) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -48,10 +64,14 @@ func (b *tableBackend) ResetMetrics(ctx context.Context) error {
 }
 
 func queryMetrics(ctx context.Context, db sqlExecutor) (store.Metrics, error) {
+	return queryMetricsForTenant(ctx, db, "default")
+}
+
+func queryMetricsForTenant(ctx context.Context, db sqlExecutor, tenantID string) (store.Metrics, error) {
 	row := db.QueryRowContext(ctx, `
 SELECT data FROM metrics
 WHERE tenant_id = $1 AND metric_key = $2
-`, "default", "manager")
+`, tenantID, "manager")
 	var raw []byte
 	if err := row.Scan(&raw); err != nil {
 		if err == sql.ErrNoRows {
@@ -66,7 +86,7 @@ WHERE tenant_id = $1 AND metric_key = $2
 	return metrics, nil
 }
 
-func projectRarityBaseline(ctx context.Context, db sqlExecutor, baseline rarity.Baseline) error {
+func projectRarityBaselineForTenant(ctx context.Context, db sqlExecutor, tenantID string, baseline rarity.Baseline) error {
 	for workload, signals := range baseline.WorkloadCounts {
 		workload = strings.TrimSpace(workload)
 		if workload == "" {
@@ -93,11 +113,47 @@ ON CONFLICT (tenant_id, workload_key, signal_name) DO UPDATE SET
   signal_count = EXCLUDED.signal_count,
   updated_at = now(),
   data = EXCLUDED.data
-`, "default", workload, signalName, count, data)
+`, tenantID, workload, signalName, count, data)
 			if err != nil {
 				return fmt.Errorf("project rarity baseline: %w", err)
 			}
 		}
 	}
 	return nil
+}
+
+func projectRarityBaseline(ctx context.Context, db sqlExecutor, baseline rarity.Baseline) error {
+	return projectRarityBaselineForTenant(ctx, db, "default", baseline)
+}
+
+func (b *tableBackend) LoadRarityForTenant(ctx context.Context, tenantID string) (rarity.Baseline, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	rows, err := b.db.QueryContext(ctx, `
+SELECT workload_key, signal_name, signal_count FROM rarity_baseline
+WHERE tenant_id = $1
+`, tenantID)
+	if err != nil {
+		return rarity.Baseline{}, fmt.Errorf("query rarity baseline: %w", err)
+	}
+	defer rows.Close()
+	baseline := rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{}}
+	for rows.Next() {
+		var workload, signalName string
+		var count uint64
+		if err := rows.Scan(&workload, &signalName, &count); err != nil {
+			return rarity.Baseline{}, fmt.Errorf("scan rarity baseline: %w", err)
+		}
+		if workload == "global" {
+			workload = ""
+		}
+		if baseline.WorkloadCounts[workload] == nil {
+			baseline.WorkloadCounts[workload] = map[string]uint64{}
+		}
+		baseline.WorkloadCounts[workload][signalName] = count
+	}
+	if err := rows.Err(); err != nil {
+		return rarity.Baseline{}, fmt.Errorf("iterate rarity baseline: %w", err)
+	}
+	return baseline, nil
 }

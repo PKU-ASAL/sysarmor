@@ -13,7 +13,6 @@ func (s *Store) AddSignalForTenant(tenantID string, signal *signalv1.Signal) boo
 	if strings.TrimSpace(tenantID) == "" || signal == nil {
 		return false
 	}
-	inserted := s.AddSignal(signal)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.TenantSignals == nil {
@@ -23,11 +22,32 @@ func (s *Store) AddSignalForTenant(tenantID string, signal *signalv1.Signal) boo
 	for i, existing := range s.TenantSignals[tenantID] {
 		if key != "" && signalKey(existing) == key {
 			s.TenantSignals[tenantID][i] = signal
+			for globalIndex, globalSignal := range s.Signals {
+				if globalSignal == existing {
+					s.Signals[globalIndex] = signal
+					break
+				}
+			}
 			return false
 		}
 	}
 	s.TenantSignals[tenantID] = append(s.TenantSignals[tenantID], signal)
-	return inserted
+	s.Signals = append(s.Signals, signal)
+	return true
+}
+
+func (s *Store) GetSignalForTenant(tenantID, id string) (*signalv1.Signal, bool) {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(id) == "" {
+		return nil, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, signal := range s.TenantSignals[tenantID] {
+		if signal.GetId() == id {
+			return signal, true
+		}
+	}
+	return nil, false
 }
 
 func (s *Store) ReplaceDerivedForLabels(tenantID string, labels LabelSelector, cloudSignals []*signalv1.Signal, incidents []*incidentv1.Incident) {
@@ -137,7 +157,18 @@ func (s *Store) ListIncidentsForTenant(tenantID string, labels LabelSelector) []
 }
 
 func (s *Store) MetricsSnapshotForTenant(tenantID string) Metrics {
+	metrics, _ := s.MetricsSnapshotForTenantWithError(tenantID)
+	return metrics
+}
+
+func (s *Store) MetricsSnapshotForTenantWithError(tenantID string) (Metrics, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.MetricsByTenant[tenantID]
+	backend := s.backend
+	ctx := ctxOrBackground(s.baseCtx)
+	metrics := s.MetricsByTenant[tenantID]
+	s.mu.RUnlock()
+	if tenantBackend, ok := backend.(TenantMetricsBackend); ok {
+		return tenantBackend.LoadMetricsForTenant(ctx, tenantID)
+	}
+	return metrics, nil
 }

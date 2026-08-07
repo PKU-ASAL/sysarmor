@@ -25,8 +25,8 @@ func (s *recordingSearcher) Search(_ context.Context, request platformopensearch
 
 func TestOpenSearchHistoryReadsTenantScopeAndWindow(t *testing.T) {
 	searcher := &recordingSearcher{docs: map[string][]json.RawMessage{
-		platformopensearch.EventsReadAlias:  {json.RawMessage(`{"id":"ev-history","labels":{"scenario":"a"},"@timestamp":"2026-07-12T00:05:00Z"}`)},
-		platformopensearch.SignalsReadAlias: {json.RawMessage(`{"id":"sig-history","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","labels":{"scenario":"a"},"@timestamp":"2026-07-12T00:05:00Z"}`)},
+		platformopensearch.EventsReadAlias:  {json.RawMessage(`{"id":"ev-history","tenant_id":"tenant-a","labels":{"scenario":"a"},"@timestamp":"2026-07-12T00:05:00Z"}`)},
+		platformopensearch.SignalsReadAlias: {json.RawMessage(`{"id":"sig-history","tenant_id":"tenant-a","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","labels":{"scenario":"a"},"@timestamp":"2026-07-12T00:05:00Z"}`)},
 	}}
 	upper := time.Date(2026, 7, 12, 0, 10, 0, 0, time.UTC)
 	events, signals, err := NewOpenSearchHistory(searcher).Read(context.Background(), "tenant-a", map[string]string{"scenario": "a"}, upper.Add(-15*time.Minute), upper)
@@ -46,6 +46,32 @@ func TestOpenSearchHistoryReadsTenantScopeAndWindow(t *testing.T) {
 	}
 }
 
+func TestOpenSearchHistoryRejectsDocumentsFromAnotherTenant(t *testing.T) {
+	searcher := &recordingSearcher{docs: map[string][]json.RawMessage{
+		platformopensearch.EventsReadAlias: {
+			json.RawMessage(`{"id":"event-a","tenant_id":"tenant-a"}`),
+			json.RawMessage(`{"id":"event-b","tenant_id":"tenant-b"}`),
+			json.RawMessage(`{"id":"event-missing"}`),
+		},
+		platformopensearch.SignalsReadAlias: {
+			json.RawMessage(`{"id":"signal-a","tenant_id":"tenant-a","where":"SIGNAL_WHERE_ENDPOINT"}`),
+			json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-b","where":"SIGNAL_WHERE_ENDPOINT"}`),
+			json.RawMessage(`{"id":"signal-missing","where":"SIGNAL_WHERE_ENDPOINT"}`),
+		},
+	}}
+
+	events, signals, err := NewOpenSearchHistory(searcher).Read(context.Background(), "tenant-a", nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].GetId() != "event-a" {
+		t.Fatalf("events = %+v, want only tenant-a", events)
+	}
+	if len(signals) != 1 || signals[0].GetId() != "signal-a" {
+		t.Fatalf("signals = %+v, want only tenant-a", signals)
+	}
+}
+
 func TestProcessorCorrelatesStagedSignalsAcrossOpenSearchHistory(t *testing.T) {
 	labels := map[string]string{"scenario": "staged-history"}
 	searcher := &recordingSearcher{docs: map[string][]json.RawMessage{}}
@@ -56,7 +82,7 @@ func TestProcessorCorrelatesStagedSignalsAcrossOpenSearchHistory(t *testing.T) {
 		workerSignal("sig-drop", "payload_dropped", "lin-drop", labels, workerFile("/var/lib/app/plugins/helper")),
 	}))
 	searcher.docs[platformopensearch.SignalsReadAlias] = []json.RawMessage{json.RawMessage(
-		`{"id":"sig-drop","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","labels":{"scenario":"staged-history"},"lineageId":"lin-drop","entities":[{"kind":"file","key":"/var/lib/app/plugins/helper","role":"object"}]}`,
+		`{"id":"sig-drop","tenant_id":"default","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","labels":{"scenario":"staged-history"},"lineageId":"lin-drop","entities":[{"kind":"file","key":"/var/lib/app/plugins/helper","role":"object"}]}`,
 	)}
 
 	mustProcess(t, processor, dataBatch("batch-connect", nil, []*signalv1.Signal{

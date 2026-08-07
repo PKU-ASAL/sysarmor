@@ -201,9 +201,20 @@ func (s *Store) ObserveRaritySignalsForTenant(tenantID string, signals []*signal
 }
 
 func (s *Store) RarityBaselineSnapshotForTenant(tenantID string) rarity.Baseline {
+	baseline, _ := s.RarityBaselineSnapshotForTenantWithError(tenantID)
+	return baseline
+}
+
+func (s *Store) RarityBaselineSnapshotForTenantWithError(tenantID string) (rarity.Baseline, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.RarityByTenant[tenantID].Snapshot()
+	backend := s.backend
+	ctx := ctxOrBackground(s.baseCtx)
+	baseline := s.RarityByTenant[tenantID].Snapshot()
+	s.mu.RUnlock()
+	if tenantBackend, ok := backend.(TenantRarityBackend); ok {
+		return tenantBackend.LoadRarityForTenant(ctx, tenantID)
+	}
+	return baseline, nil
 }
 
 func (s *Store) exportStateLocked() (State, error) {

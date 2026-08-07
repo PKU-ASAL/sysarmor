@@ -65,7 +65,8 @@ func (s *Server) responseDecisions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "agent_id is required", http.StatusBadRequest)
 		return
 	}
-	sig, ok := s.store.GetSignal(req.SignalID)
+	tenantID := requestTenantID(r)
+	sig, ok := s.store.GetSignalForTenant(tenantID, req.SignalID)
 	if !ok {
 		http.Error(w, "signal not found", http.StatusNotFound)
 		return
@@ -89,7 +90,7 @@ func (s *Server) responseDecisions(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd := responsemodel.Command{
 		ResponseID: "resp-" + sig.GetId(),
-		TenantID:   req.TenantID,
+		TenantID:   tenantID,
 		AgentID:    req.AgentID,
 		SignalID:   sig.GetId(),
 		Labels:     cloneStringMap(sig.GetLabels()),

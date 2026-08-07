@@ -225,11 +225,24 @@ func (s *Store) MetricsSnapshot() Metrics {
 func (s *Store) SaveMetrics() error {
 	s.mu.RLock()
 	metrics := s.Metrics
+	metricsByTenant := make(map[string]Metrics, len(s.MetricsByTenant))
+	for tenantID, tenantMetrics := range s.MetricsByTenant {
+		metricsByTenant[tenantID] = tenantMetrics
+	}
 	backend := s.backend
 	ctx := ctxOrBackground(s.baseCtx)
 	s.mu.RUnlock()
 	if metricsBackend, ok := backend.(MetricsBackend); ok {
-		return metricsBackend.SaveMetrics(ctx, metrics)
+		if err := metricsBackend.SaveMetrics(ctx, metrics); err != nil {
+			return err
+		}
+	}
+	if tenantBackend, ok := backend.(TenantMetricsBackend); ok {
+		for tenantID, tenantMetrics := range metricsByTenant {
+			if err := tenantBackend.SaveMetricsForTenant(ctx, tenantID, tenantMetrics); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

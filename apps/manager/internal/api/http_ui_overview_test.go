@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
@@ -102,5 +103,29 @@ func TestUIOverviewIsScopedToPrincipalTenant(t *testing.T) {
 	}
 	if got.Incidents.Open != 1 || got.Incidents.Critical != 1 || got.Incidents.High != 0 {
 		t.Fatalf("incident summary = %+v", got.Incidents)
+	}
+}
+
+func TestUIOverviewRejectsSearchDocumentsFromAnotherTenant(t *testing.T) {
+	searcher := &recordingSearcher{docs: map[string][]json.RawMessage{
+		platformopensearch.IncidentsReadAlias: {
+			json.RawMessage(`{"id":"incident-a","tenant_id":"tenant-a","severity":95}`),
+			json.RawMessage(`{"id":"incident-b","tenant_id":"tenant-b","severity":75}`),
+			json.RawMessage(`{"id":"incident-missing","severity":45}`),
+		},
+	}}
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	server.localTelemetry = false
+	handler := tenantTestHandler(server, "tenant-a")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var got overviewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode overview: %v body=%s", err, rec.Body.String())
+	}
+	if got.Incidents.Open != 1 || got.Incidents.Critical != 1 || got.Incidents.High != 0 || got.Incidents.Medium != 0 {
+		t.Fatalf("incident summary = %+v, want only tenant-a", got.Incidents)
 	}
 }
