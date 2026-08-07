@@ -136,6 +136,15 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 		r.reportStartupFailure(reporter, startedAt, stage, err)
 		return err
 	}
+	if r.localStore != nil {
+		enrollment, err := r.localStore.Enrollment(ctx)
+		if err != nil {
+			return failStartup("enrollment", err)
+		}
+		if err := r.reconcileManagementContext(enrollment); err != nil {
+			return failStartup("management_context", err)
+		}
+	}
 	rt := sensorruntime.New(r.Sensor)
 	capability, err := rt.Probe(ctx)
 	if err != nil {
@@ -198,8 +207,9 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	defer localRuntime.Close()
 	dataPlaneCtx, cancelDataPlane := context.WithCancel(ctx)
 	defer cancelDataPlane()
-	norm := normalize.NewWithOptions(r.Config.Agent.ID, r.Config.Agent.HostID, nil, normalize.Options{
-		TenantID:        r.Config.Agent.TenantID,
+	identity := r.currentIdentity()
+	norm := normalize.NewWithOptions(identity.AgentID, identity.HostID, nil, normalize.Options{
+		TenantID:        identity.TenantID,
 		ScopeType:       scopeType,
 		ScopeSelector:   scopeSelector,
 		Labels:          r.runtimeLabels(scopeType, scopeSelector, capability.Backend),
@@ -240,8 +250,9 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	}
 	r.applyRuntimePolicy(effectivePolicy)
 	if r.Out != nil {
+		identity = r.currentIdentity()
 		fmt.Fprintf(r.Out, "agent daemon started: agent=%s host=%s tenant=%s sensor=%s version=%s behaviors=%d policy=%s version=%d mode=%s\n",
-			r.Config.Agent.ID, r.Config.Agent.HostID, r.Config.Agent.TenantID, capability.Backend, capability.Version, len(intent.Behaviors), effectivePolicy.PolicyID, effectivePolicy.Version, effectivePolicy.Mode)
+			identity.AgentID, identity.HostID, identity.TenantID, capability.Backend, capability.Version, len(intent.Behaviors), effectivePolicy.PolicyID, effectivePolicy.Version, effectivePolicy.Mode)
 	}
 
 	ticker := time.NewTicker(r.Config.Health.Interval)

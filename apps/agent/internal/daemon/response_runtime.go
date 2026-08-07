@@ -16,9 +16,10 @@ func newResponseRuntime(runner *AgentRuntime) *responseRuntime {
 }
 
 func (r *responseRuntime) ResponseIdentity() agentcontrol.ResponseIdentity {
+	identity := r.runner.currentIdentity()
 	return agentcontrol.ResponseIdentity{
-		TenantID: r.runner.Config.Agent.TenantID,
-		AgentID:  r.runner.Config.Agent.ID,
+		TenantID: identity.TenantID,
+		AgentID:  identity.AgentID,
 	}
 }
 

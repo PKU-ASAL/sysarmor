@@ -17,9 +17,10 @@ func newContentRuntime(runner *AgentRuntime) *contentRuntime {
 }
 
 func (r *contentRuntime) ContentIdentity() agentcontrol.ContentIdentity {
+	identity := r.runner.currentIdentity()
 	return agentcontrol.ContentIdentity{
-		TenantID: r.runner.Config.Agent.TenantID,
-		AgentID:  r.runner.Config.Agent.ID,
+		TenantID: identity.TenantID,
+		AgentID:  identity.AgentID,
 	}
 }
 

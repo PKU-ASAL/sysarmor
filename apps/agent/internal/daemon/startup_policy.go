@@ -36,7 +36,7 @@ func (r *AgentRuntime) loadStartupPolicy(ctx context.Context) (contract.Collecti
 	if err != nil {
 		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
 	}
-	policy := policymodel.DefaultPolicy(r.Config.Agent.TenantID)
+	policy := policymodel.DefaultPolicy(r.currentIdentity().TenantID)
 	policy.PolicyID = endpoint.PolicyID
 	policy.Version = endpoint.Version
 	policy.Detection = &endpoint.Detection

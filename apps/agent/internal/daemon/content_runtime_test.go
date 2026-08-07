@@ -11,12 +11,12 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 )
 
-func TestContentRuntimeSeparatesResultAndAuthorityIdentities(t *testing.T) {
+func TestContentRuntimeUsesProjectedManagementIdentity(t *testing.T) {
 	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
 	runtime := newContentRuntime(runner)
 
-	if identity := runtime.ContentIdentity(); identity.TenantID != "local" || identity.AgentID != "device-a" {
+	if identity := runtime.ContentIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 		t.Fatalf("result identity=%+v", identity)
 	}
 	if err := runtime.ValidateContentContext(agentcontrol.RequestContext{TenantID: "tenant-a", AgentID: "agent-a"}); err != nil {

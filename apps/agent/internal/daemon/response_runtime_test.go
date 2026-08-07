@@ -9,9 +9,10 @@ import (
 
 func TestResponseRuntimeExposesIdentityAndDelegatesEnforcement(t *testing.T) {
 	runner := &AgentRuntime{
-		Config: config.Config{Agent: config.AgentConfig{TenantID: "tenant-a", ID: "agent-a"}},
+		Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}
+	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
 	runtime := newResponseRuntime(runner)
 	if identity := runtime.ResponseIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 		t.Fatalf("identity=%+v", identity)

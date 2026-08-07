@@ -15,11 +15,12 @@ import (
 
 func (r *AgentRuntime) activePolicy() policymodel.Policy {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.policy.PolicyID != "" {
-		return r.policy
+	policy := r.policy
+	r.mu.RUnlock()
+	if policy.PolicyID != "" {
+		return policy
 	}
-	return policymodel.DefaultPolicy(r.Config.Agent.TenantID)
+	return policymodel.DefaultPolicy(r.currentIdentity().TenantID)
 }
 
 func (r *AgentRuntime) setPolicy(policy policymodel.Policy) {

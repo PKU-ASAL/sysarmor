@@ -25,7 +25,8 @@ func newEndpointPolicyRuntime(runner *AgentRuntime, runtime sensorruntime.Runtim
 }
 
 func (r *endpointPolicyRuntime) PolicyIdentity() agentcontrol.PolicyIdentity {
-	return agentcontrol.PolicyIdentity{TenantID: r.runner.Config.Agent.TenantID, AgentID: r.runner.Config.Agent.ID}
+	identity := r.runner.currentIdentity()
+	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (r *endpointPolicyRuntime) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {
@@ -47,8 +48,9 @@ func (r *endpointPolicyRuntime) WithManagedPolicyTransition(run func()) {
 }
 
 func (r *endpointPolicyRuntime) EndpointPolicySettings() agentcontrol.EndpointPolicySettings {
+	identity := r.runner.currentIdentity()
 	return agentcontrol.EndpointPolicySettings{
-		TenantID: r.runner.Config.Agent.TenantID, Telemetry: r.runner.Config.Telemetry,
+		TenantID: identity.TenantID, Telemetry: r.runner.Config.Telemetry,
 		Capabilities: append([]contract.CollectionBehaviorCapability(nil), r.runner.capability.Collection...),
 		Limits:       r.runner.detectionLimits(),
 	}

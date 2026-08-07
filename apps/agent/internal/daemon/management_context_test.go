@@ -5,9 +5,64 @@ import (
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
+	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
+
+func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
+	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
+
+	policyRuntimes := []interface {
+		PolicyIdentity() agentcontrol.PolicyIdentity
+	}{
+		newEndpointPolicyRuntime(runner, nil, nil),
+		newCollectionPolicyRuntime(runner, nil),
+		newDetectionPolicyRuntime(runner),
+		newTelemetryPolicyRuntime(runner, nil),
+		newPolicyProjectionRuntime(runner),
+	}
+	for _, runtime := range policyRuntimes {
+		if identity := runtime.PolicyIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
+			t.Fatalf("policy identity=%+v", identity)
+		}
+	}
+	settings := newEndpointPolicyRuntime(runner, nil, nil).EndpointPolicySettings()
+	if settings.TenantID != "tenant-a" {
+		t.Fatalf("endpoint policy tenant=%q", settings.TenantID)
+	}
+
+	status := &localStatusService{runner: runner}
+	capability, err := status.Capability(t.Context(), &controlplanev1.CapabilityRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capability.GetTenantId() != "tenant-a" || capability.GetAgentId() != "agent-a" || capability.GetHostId() != "host-a" {
+		t.Fatalf("capability identity=%+v", capability)
+	}
+}
+
+func TestManagedRestartLoadsPolicyWithProjectedIdentity(t *testing.T) {
+	store := coordinatorManagedStore(t)
+	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{})
+	enrollment, err := store.Enrollment(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.reconcileManagementContext(enrollment); err != nil {
+		t.Fatal(err)
+	}
+
+	_, policy, _, err := runner.loadStartupPolicy(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.TenantID != "tenant-a" {
+		t.Fatalf("startup policy tenant=%q", policy.TenantID)
+	}
+}
 
 func TestReconcileManagementContextUsesEnrollmentIdentityWhileEnrolling(t *testing.T) {
 	runner := managementContextTestRuntime()

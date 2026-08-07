@@ -20,7 +20,8 @@ func newTelemetryPolicyRuntime(runner *AgentRuntime, batcher *telemetry.Batcher)
 }
 
 func (r *telemetryPolicyRuntime) PolicyIdentity() agentcontrol.PolicyIdentity {
-	return agentcontrol.PolicyIdentity{TenantID: r.runner.Config.Agent.TenantID, AgentID: r.runner.Config.Agent.ID}
+	identity := r.runner.currentIdentity()
+	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (r *telemetryPolicyRuntime) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {

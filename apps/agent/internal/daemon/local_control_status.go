@@ -31,11 +31,11 @@ func (s *localStatusService) Health(ctx context.Context, req *controlplanev1.Hea
 }
 
 func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1.CapabilityRequest) (*controlplanev1.CapabilityResponse, error) {
-	cfg := s.runner.Config
+	identity := s.runner.currentIdentity()
 	return &controlplanev1.CapabilityResponse{
-		AgentId:  cfg.Agent.ID,
-		HostId:   cfg.Agent.HostID,
-		TenantId: cfg.Agent.TenantID,
+		AgentId:  identity.AgentID,
+		HostId:   identity.HostID,
+		TenantId: identity.TenantID,
 		Scope:    scopeMessage(s.runner.runtimeScope()),
 		Sensor:   capabilityMessage(s.runner.runtimeCapability()),
 		SupportedPolicySections: []string{
