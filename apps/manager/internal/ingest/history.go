@@ -51,8 +51,8 @@ func (h *OpenSearchHistory) Read(ctx context.Context, tenantID string, labels ma
 
 type storeHistory struct{ store *store.Store }
 
-func (h storeHistory) Read(_ context.Context, _ string, labels map[string]string, _, _ time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
-	return h.store.ListEvents(store.LabelSelector(labels), ""), h.store.ListSignals(store.LabelSelector(labels), "endpoint", false), nil
+func (h storeHistory) Read(_ context.Context, tenantID string, labels map[string]string, _, _ time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
+	return h.store.ListEventsForTenant(tenantID, store.LabelSelector(labels), ""), h.store.ListSignalsForTenant(tenantID, store.LabelSelector(labels), "endpoint", false), nil
 }
 
 func decodeEvents(raw []json.RawMessage) ([]*eventv1.CanonicalEvent, error) {

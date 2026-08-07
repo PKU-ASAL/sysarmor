@@ -110,7 +110,7 @@ func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		agentID := q.Get("agent_id")
 		if agentID == "" {
-			health, err := s.store.ListAgentHealthWithError()
+			health, err := s.store.ListAgentHealthWithError(requestTenantID(r))
 			if err != nil {
 				http.Error(w, fmt.Sprintf("read agent health: %v", err), http.StatusInternalServerError)
 				return
@@ -216,8 +216,8 @@ func (s *Server) resumeCursor(tenantID, agentID string) (DataResume, error) {
 	return resume, nil
 }
 
-func (s *Server) metrics(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, s.store.MetricsSnapshot())
+func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.store.MetricsSnapshotForTenant(requestTenantID(r)))
 }
 
 func (s *Server) storeStatus(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +234,7 @@ func (s *Server) rarityBaseline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	baseline := s.store.RarityBaselineSnapshot()
+	baseline := s.store.RarityBaselineSnapshotForTenant(requestTenantID(r))
 	writeJSON(w, map[string]any{
 		"baseline": baseline,
 		"count":    baseline.Count(q.Get("workload"), q.Get("signal")),

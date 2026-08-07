@@ -50,6 +50,13 @@ func bindPrincipalTenant(next http.Handler) http.Handler {
 	})
 }
 
+func requestTenantID(r *http.Request) string {
+	if principal, ok := managerauth.PrincipalFromContext(r.Context()); ok {
+		return strings.TrimSpace(principal.TenantID)
+	}
+	return strings.TrimSpace(r.URL.Query().Get("tenant_id"))
+}
+
 func limitRequestBody(next http.Handler, maxBytes int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if maxBytes > 0 && r.Body != nil {

@@ -48,7 +48,7 @@ func (s *Server) uiOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	tenantID := r.URL.Query().Get("tenant_id")
+	tenantID := requestTenantID(r)
 	if tenantID == "" && !s.localTelemetry {
 		http.Error(w, "tenant_id is required", http.StatusBadRequest)
 		return
@@ -58,9 +58,9 @@ func (s *Server) uiOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("query incident reports: %v", err), http.StatusBadGateway)
 		return
 	}
-	metrics := s.store.MetricsSnapshot()
+	metrics := s.store.MetricsSnapshotForTenant(tenantID)
 	info := s.store.Info()
-	agents, err := s.overviewAgents()
+	agents, err := s.overviewAgents(tenantID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("read agent overview: %v", err), http.StatusInternalServerError)
 		return
@@ -80,14 +80,18 @@ func (s *Server) uiOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) overviewAgents() (overviewAgentsSummary, error) {
+func (s *Server) overviewAgents(tenantID string) (overviewAgentsSummary, error) {
 	agents, err := s.store.ListAgentsWithError()
 	if err != nil {
 		return overviewAgentsSummary{}, err
 	}
-	summary := overviewAgentsSummary{Total: len(agents)}
+	summary := overviewAgentsSummary{}
 
 	for _, agent := range agents {
+		if agent.TenantID != tenantID {
+			continue
+		}
+		summary.Total++
 		health, ok, err := s.store.GetAgentHealthWithError(agent.TenantID, agent.AgentID)
 		if err != nil {
 			return overviewAgentsSummary{}, err
@@ -113,6 +117,9 @@ func (s *Server) overviewIncidents(ctx context.Context, tenantID string) (overvi
 	summary := overviewIncidents{}
 	if s.localTelemetry {
 		for _, incident := range s.store.ListIncidents(nil) {
+			if incident.GetTenantId() != tenantID {
+				continue
+			}
 			addOverviewIncident(&summary, incident)
 		}
 		return summary, nil
@@ -120,7 +127,7 @@ func (s *Server) overviewIncidents(ctx context.Context, tenantID string) (overvi
 	if s.searcher == nil {
 		return summary, nil
 	}
-	raw, err := s.searchTelemetry(ctx, platformopensearch.SearchRequest{Index: platformopensearch.IncidentsReadAlias, Size: 1000, Labels: map[string]string{"tenant_id": tenantID}})
+	raw, err := s.searchTelemetry(ctx, platformopensearch.SearchRequest{Index: platformopensearch.IncidentsReadAlias, Size: 1000, Exact: map[string]string{"tenant_id": tenantID}})
 	if err != nil {
 		return summary, err
 	}

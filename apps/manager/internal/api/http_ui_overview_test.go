@@ -2,6 +2,8 @@ package managerapi
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -27,14 +29,11 @@ func TestUIOverviewReturnsManagerSummary(t *testing.T) {
 		Status:     "degraded",
 		ObservedAt: time.Now().UTC(),
 	})
-	st.Metrics = store.Metrics{
-		EventsIngested: 12,
-		SignalsEmitted: 5,
-	}
+	st.RecordDataBatchIngestForTenant("default", 12, 5, 0, 0, 0)
 	st.Incidents = []*incidentv1.Incident{
-		{Id: "inc-critical", Severity: 95},
-		{Id: "inc-high", Severity: 75},
-		{Id: "inc-medium", Severity: 45},
+		{Id: "inc-critical", TenantId: "default", Severity: 95},
+		{Id: "inc-high", TenantId: "default", Severity: 75},
+		{Id: "inc-medium", TenantId: "default", Severity: 45},
 	}
 
 	rec := get(t, NewServer(st).Handler(), "/api/v1/ui/overview")
@@ -73,5 +72,35 @@ func TestUIOverviewReturnsManagerSummary(t *testing.T) {
 	}
 	if got.Store.Backend != "memory" {
 		t.Fatalf("store backend = %q", got.Store.Backend)
+	}
+}
+
+func TestUIOverviewIsScopedToPrincipalTenant(t *testing.T) {
+	st := &store.Store{}
+	st.AddAgent(store.AgentIdentity{AgentID: "agent-a", TenantID: "tenant-a"})
+	st.AddAgent(store.AgentIdentity{AgentID: "agent-b", TenantID: "tenant-b"})
+	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-a", TenantID: "tenant-a", Status: "ok"})
+	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-b", TenantID: "tenant-b", Status: "degraded"})
+	st.AddIncident(&incidentv1.Incident{Id: "incident-a", TenantId: "tenant-a", Summary: "incident a", Severity: 95})
+	st.AddIncident(&incidentv1.Incident{Id: "incident-b", TenantId: "tenant-b", Summary: "incident b", Severity: 75})
+	st.RecordDataBatchIngestForTenant("tenant-a", 2, 1, 0, 1, 0)
+	st.RecordDataBatchIngestForTenant("tenant-b", 20, 10, 0, 1, 0)
+	handler := tenantTestHandler(NewServer(st), "tenant-a")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var got overviewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode overview: %v body=%s", err, rec.Body.String())
+	}
+	if got.Agents.Total != 1 || got.Agents.Online != 1 || got.Agents.Degraded != 0 {
+		t.Fatalf("agents summary = %+v", got.Agents)
+	}
+	if got.Telemetry.Events24h != 2 || got.Telemetry.Signals24h != 1 {
+		t.Fatalf("telemetry summary = %+v", got.Telemetry)
+	}
+	if got.Incidents.Open != 1 || got.Incidents.Critical != 1 || got.Incidents.High != 0 {
+		t.Fatalf("incident summary = %+v", got.Incidents)
 	}
 }

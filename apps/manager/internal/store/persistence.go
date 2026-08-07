@@ -79,6 +79,21 @@ func (s *Store) ImportState(state State) error {
 	s.Unenrollments = state.Unenrollments
 	s.Metrics = state.Metrics
 	s.RarityBaseline = state.RarityBaseline.Snapshot()
+	s.MetricsByTenant = state.MetricsByTenant
+	s.RarityByTenant = make(map[string]rarity.Baseline, len(state.RarityByTenant))
+	for tenantID, baseline := range state.RarityByTenant {
+		s.RarityByTenant[tenantID] = baseline.Snapshot()
+	}
+	s.TenantSignals = map[string][]*signalv1.Signal{}
+	for tenantID, messages := range state.TenantSignals {
+		for _, raw := range messages {
+			message := &signalv1.Signal{}
+			if err := protojson.Unmarshal(raw, message); err != nil {
+				return err
+			}
+			s.TenantSignals[tenantID] = append(s.TenantSignals[tenantID], message)
+		}
+	}
 	return nil
 }
 
@@ -172,10 +187,37 @@ func (s *Store) ObserveRaritySignals(signals []*signalv1.Signal) rarity.Baseline
 	return s.RarityBaseline.Snapshot()
 }
 
+func (s *Store) ObserveRaritySignalsForTenant(tenantID string, signals []*signalv1.Signal) rarity.Baseline {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.RarityByTenant == nil {
+		s.RarityByTenant = map[string]rarity.Baseline{}
+	}
+	baseline := s.RarityByTenant[tenantID]
+	baseline.Observe(signals)
+	s.RarityByTenant[tenantID] = baseline
+	s.RarityBaseline.Observe(signals)
+	return baseline.Snapshot()
+}
+
+func (s *Store) RarityBaselineSnapshotForTenant(tenantID string) rarity.Baseline {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.RarityByTenant[tenantID].Snapshot()
+}
+
 func (s *Store) exportStateLocked() (State, error) {
 	var state State
 	state.Metrics = s.Metrics
 	state.RarityBaseline = s.RarityBaseline.Snapshot()
+	state.MetricsByTenant = make(map[string]Metrics, len(s.MetricsByTenant))
+	for tenantID, metrics := range s.MetricsByTenant {
+		state.MetricsByTenant[tenantID] = metrics
+	}
+	state.RarityByTenant = make(map[string]rarity.Baseline, len(s.RarityByTenant))
+	for tenantID, baseline := range s.RarityByTenant {
+		state.RarityByTenant[tenantID] = baseline.Snapshot()
+	}
 	for _, enrollment := range s.Enrollments {
 		state.Enrollments = append(state.Enrollments, cloneEnrollment(enrollment))
 	}
@@ -193,6 +235,16 @@ func (s *Store) exportStateLocked() (State, error) {
 		state.Agents = append(state.Agents, raw)
 	}
 	mo := protojson.MarshalOptions{UseProtoNames: true}
+	state.TenantSignals = make(map[string][]json.RawMessage, len(s.TenantSignals))
+	for tenantID, signals := range s.TenantSignals {
+		for _, signal := range signals {
+			raw, err := mo.Marshal(signal)
+			if err != nil {
+				return State{}, err
+			}
+			state.TenantSignals[tenantID] = append(state.TenantSignals[tenantID], raw)
+		}
+	}
 	for _, ev := range s.Events {
 		raw, err := mo.Marshal(ev)
 		if err != nil {

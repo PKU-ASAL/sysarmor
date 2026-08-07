@@ -26,7 +26,7 @@ type ManagerStore interface {
 type identityStore interface {
 	AddAgent(store.AgentIdentity)
 	GetAgentHealthWithError(string, string) (agenthealth.AgentHealth, bool, error)
-	ListAgentHealthWithError() ([]agenthealth.AgentHealth, error)
+	ListAgentHealthWithError(string) ([]agenthealth.AgentHealth, error)
 	ListAgentsWithError() ([]store.AgentIdentity, error)
 	ListAgentSessionsWithError(string, string) ([]store.AgentSession, error)
 	CloseAgentSession(string, string, time.Time) store.AgentSession
@@ -91,17 +91,23 @@ type artifactStore interface {
 type telemetryStore interface {
 	AddEvent(*eventv1.CanonicalEvent) bool
 	AddSignal(*signalv1.Signal) bool
+	AddSignalForTenant(string, *signalv1.Signal) bool
 	GetSignal(string) (*signalv1.Signal, bool)
 	ListEvents(store.LabelSelector, string) []*eventv1.CanonicalEvent
+	ListEventsForTenant(string, store.LabelSelector, string) []*eventv1.CanonicalEvent
 	ListIncidents(store.LabelSelector) []*incidentv1.Incident
+	ListIncidentsForTenant(string, store.LabelSelector) []*incidentv1.Incident
 	ListSignals(store.LabelSelector, string, bool) []*signalv1.Signal
+	ListSignalsForTenant(string, store.LabelSelector, string, bool) []*signalv1.Signal
 	RarityBaselineSnapshot() rarity.Baseline
+	RarityBaselineSnapshotForTenant(string) rarity.Baseline
 }
 
 type operationalStore interface {
 	DeleteByLabels(store.LabelSelector)
 	Info() store.Info
 	MetricsSnapshot() store.Metrics
+	MetricsSnapshotForTenant(string) store.Metrics
 	ResetMetrics() error
 	Save() error
 }

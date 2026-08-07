@@ -301,7 +301,7 @@ func (s *Store) ListAgentSessionsWithError(tenantID, agentID string) ([]AgentSes
 
 func (s *Store) ListAgentHealth() []agenthealth.AgentHealth {
 	if backend, ctx := s.backendCtx(); backend != nil {
-		if health, err := backend.ListAgentHealth(ctx); err == nil {
+		if health, err := backend.ListAgentHealth(ctx, ""); err == nil {
 			return health
 		}
 	}
@@ -320,15 +320,25 @@ func (s *Store) ListAgentHealth() []agenthealth.AgentHealth {
 	return out
 }
 
-func (s *Store) ListAgentHealthWithError() ([]agenthealth.AgentHealth, error) {
+func (s *Store) ListAgentHealthWithError(tenantID string) ([]agenthealth.AgentHealth, error) {
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant_id is required")
+	}
 	if backend, ctx := s.backendCtx(); backend != nil {
-		health, err := backend.ListAgentHealth(ctx)
+		health, err := backend.ListAgentHealth(ctx, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("list agent health: %w", err)
 		}
 		return health, nil
 	}
-	return s.ListAgentHealth(), nil
+	health := s.ListAgentHealth()
+	out := health[:0]
+	for _, item := range health {
+		if item.TenantID == tenantID {
+			out = append(out, item)
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) GetAgentHealth(tenantID, agentID string) (agenthealth.AgentHealth, bool) {

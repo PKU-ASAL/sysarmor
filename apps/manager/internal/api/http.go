@@ -260,7 +260,6 @@ func parseCARequired(certPEM, keyPEM []byte) (*x509.Certificate, *rsa.PrivateKey
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
-	mux.HandleFunc("/api/v1/reset", s.reset)
 	mux.HandleFunc("/api/v1/recompute", s.recompute)
 	mux.HandleFunc("/api/v1/rules", s.rules)
 	mux.HandleFunc("/api/v1/policies", s.policies)

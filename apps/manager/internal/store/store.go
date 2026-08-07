@@ -46,6 +46,9 @@ type Store struct {
 	Unenrollments   []UnenrollmentRecord
 	Metrics         Metrics
 	RarityBaseline  rarity.Baseline
+	TenantSignals   map[string][]*signalv1.Signal
+	MetricsByTenant map[string]Metrics
+	RarityByTenant  map[string]rarity.Baseline
 }
 
 func Open(path string) (*Store, error) {

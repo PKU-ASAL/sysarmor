@@ -13,6 +13,7 @@ import (
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	tenantID := requestTenantID(r)
 	labels := parseLabelSelector(q["label"])
 	limit := parseUint(q.Get("limit"))
 	offset := parseUint(q.Get("offset"))
@@ -22,21 +23,22 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			Size:   searchLimit(limit),
 			Offset: int(offset),
 			Labels: labels,
-			Exact:  stringExactFilter("behavior", q.Get("behavior")),
+			Exact:  withTenantExact(stringExactFilter("behavior", q.Get("behavior")), tenantID),
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf("query events: %v", err), http.StatusBadGateway)
 			return
 		}
-		raw = filterRawTelemetry(raw, labels, rawStringEquals("behavior", q.Get("behavior")))
+		raw = filterRawTelemetry(raw, labels, rawAll(rawStringEquals("tenant_id", tenantID), rawStringEquals("behavior", q.Get("behavior"))))
 		writeRawList(w, raw)
 		return
 	}
-	writeEventList(w, pageSlice(s.store.ListEvents(labels, q.Get("behavior")), limit, offset))
+	writeEventList(w, pageSlice(s.store.ListEventsForTenant(tenantID, labels, q.Get("behavior")), limit, offset))
 }
 
 func (s *Server) signals(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	tenantID := requestTenantID(r)
 	labels := parseLabelSelector(q["label"])
 	limit := parseUint(q.Get("limit"))
 	offset := parseUint(q.Get("offset"))
@@ -46,19 +48,38 @@ func (s *Server) signals(w http.ResponseWriter, r *http.Request) {
 			Size:   searchLimit(limit),
 			Offset: int(offset),
 			Labels: labels,
-			Exact:  signalExactFilter(q.Get("layer")),
+			Exact:  withTenantExact(signalExactFilter(q.Get("layer")), tenantID),
 			Bool:   boolFilter("terminal", q.Get("terminal")),
 		})
 		if err != nil {
 			http.Error(w, fmt.Sprintf("query signals: %v", err), http.StatusBadGateway)
 			return
 		}
-		raw = filterRawTelemetry(raw, labels, rawSignalMatches(q.Get("layer"), q.Get("terminal")))
+		raw = filterRawTelemetry(raw, labels, rawAll(rawStringEquals("tenant_id", tenantID), rawSignalMatches(q.Get("layer"), q.Get("terminal"))))
 		writeRawList(w, raw)
 		return
 	}
-	signals := s.store.ListSignals(labels, q.Get("layer"), q.Get("terminal") == "true")
+	signals := s.store.ListSignalsForTenant(tenantID, labels, q.Get("layer"), q.Get("terminal") == "true")
 	writeSignalList(w, pageSlice(signals, limit, offset))
+}
+
+func withTenantExact(exact map[string]string, tenantID string) map[string]string {
+	if exact == nil {
+		exact = map[string]string{}
+	}
+	exact["tenant_id"] = tenantID
+	return exact
+}
+
+func rawAll(filters ...func(map[string]any) bool) func(map[string]any) bool {
+	return func(doc map[string]any) bool {
+		for _, filter := range filters {
+			if filter != nil && !filter(doc) {
+				return false
+			}
+		}
+		return true
+	}
 }
 
 func (s *Server) searchTelemetry(ctx context.Context, req platformopensearch.SearchRequest) ([]json.RawMessage, error) {

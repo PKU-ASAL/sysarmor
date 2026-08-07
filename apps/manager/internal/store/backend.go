@@ -22,7 +22,7 @@ type Backend interface {
 	SaveState(ctx context.Context, state State) error
 
 	ListAgents(ctx context.Context) ([]AgentIdentity, error)
-	ListAgentHealth(ctx context.Context) ([]agenthealth.AgentHealth, error)
+	ListAgentHealth(ctx context.Context, tenantID string) ([]agenthealth.AgentHealth, error)
 	GetAgentHealth(ctx context.Context, tenantID, agentID string) (agenthealth.AgentHealth, bool, error)
 	ListAgentSessions(ctx context.Context, tenantID, agentID string) ([]AgentSession, error)
 	ListResponses(ctx context.Context, tenantID, agentID string) ([]responsemodel.AuditRecord, error)

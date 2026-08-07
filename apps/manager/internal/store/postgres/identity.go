@@ -15,10 +15,10 @@ func (b *tableBackend) ListAgents(ctx context.Context) ([]store.AgentIdentity, e
 	return queryAgents(ctx, b.db)
 }
 
-func (b *tableBackend) ListAgentHealth(ctx context.Context) ([]agenthealth.AgentHealth, error) {
+func (b *tableBackend) ListAgentHealth(ctx context.Context, tenantID string) ([]agenthealth.AgentHealth, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
-	return queryAgentHealth(ctx, b.db, "", "")
+	return queryAgentHealth(ctx, b.db, tenantID, "")
 }
 
 func (b *tableBackend) GetAgentHealth(ctx context.Context, tenantID, agentID string) (agenthealth.AgentHealth, bool, error) {

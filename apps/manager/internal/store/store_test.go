@@ -132,6 +132,53 @@ func TestMetricsSnapshotAndReset(t *testing.T) {
 	}
 }
 
+func TestTelemetryIdentityIsTenantScoped(t *testing.T) {
+	st := &Store{}
+	if !st.AddEvent(&eventv1.CanonicalEvent{Id: "shared-event", TenantId: "tenant-a"}) {
+		t.Fatal("tenant-a event was not inserted")
+	}
+	if !st.AddEvent(&eventv1.CanonicalEvent{Id: "shared-event", TenantId: "tenant-b"}) {
+		t.Fatal("tenant-b event collided with tenant-a")
+	}
+	if !st.AddIncident(&incidentv1.Incident{TenantId: "tenant-a", Summary: "shared incident"}) {
+		t.Fatal("tenant-a incident was not inserted")
+	}
+	if !st.AddIncident(&incidentv1.Incident{TenantId: "tenant-b", Summary: "shared incident"}) {
+		t.Fatal("tenant-b incident collided with tenant-a")
+	}
+	if len(st.ListEvents(nil, "")) != 2 || len(st.ListIncidents(nil)) != 2 {
+		t.Fatalf("events=%d incidents=%d", len(st.ListEvents(nil, "")), len(st.ListIncidents(nil)))
+	}
+}
+
+func TestTenantTelemetryStateRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "signal-a"})
+	st.RecordDataBatchIngestForTenant("tenant-a", 2, 1, 0, 0, time.Millisecond)
+	st.ObserveRaritySignalsForTenant("tenant-a", []*signalv1.Signal{{Name: "signal-a"}})
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.ListSignalsForTenant("tenant-a", nil, "", false)) != 1 {
+		t.Fatal("tenant signals were not restored")
+	}
+	if reloaded.MetricsSnapshotForTenant("tenant-a").EventsIngested != 2 {
+		t.Fatal("tenant metrics were not restored")
+	}
+	if reloaded.RarityBaselineSnapshotForTenant("tenant-a").Count("", "signal-a") != 1 {
+		t.Fatal("tenant rarity baseline was not restored")
+	}
+}
+
 func TestEvidencePullbacksPersistAcrossStateExport(t *testing.T) {
 	st := &Store{}
 	st.CreateEvidencePullback(controlmodel.EvidencePullbackRequest{

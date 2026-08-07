@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
@@ -121,5 +122,24 @@ func TestPrincipalGuardsHealthWrites(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("health with admin principal status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAgentHealthListIsScopedToPrincipalTenant(t *testing.T) {
+	st := &store.Store{}
+	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-a", TenantID: "tenant-a", Status: "ok"})
+	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-b", TenantID: "tenant-b", Status: "ok"})
+	handler := (&authenticatedTestServer{
+		Server: NewServer(st),
+		principal: managerauth.Principal{
+			Subject: "viewer-a", TenantID: "tenant-a", Roles: []string{"viewer"},
+		},
+	}).Handler()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent-health", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "agent-a") || strings.Contains(rec.Body.String(), "agent-b") {
+		t.Fatalf("agent health response = %s", rec.Body.String())
 	}
 }

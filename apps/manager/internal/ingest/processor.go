@@ -60,12 +60,20 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, fmt.Errorf("data batch header identity is required")
 	}
 	agent := store.AgentIdentityFromDataBatch(batch)
+	tenantID := agent.Normalized().TenantID
 	p.store.AddAgent(agent)
 	touchedScopes := map[string]touchedScope{}
 	currentEvents := make([]*eventv1.CanonicalEvent, 0, len(batch.GetEvents()))
 	currentSignals := make([]*signalv1.Signal, 0, len(batch.GetSignals()))
 	for _, frame := range batch.GetEvents() {
 		ev := frame.GetEvent()
+		if ev == nil {
+			continue
+		}
+		if ev.GetTenantId() != "" && ev.GetTenantId() != tenantID {
+			return Result{}, fmt.Errorf("event tenant_id does not match batch identity")
+		}
+		ev.TenantId = tenantID
 		currentEvents = append(currentEvents, ev)
 		rememberTouchedScope(touchedScopes, ev.GetLabels(), agent)
 		if p.local {
@@ -77,12 +85,12 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		currentSignals = append(currentSignals, sig)
 		rememberTouchedScope(touchedScopes, sig.GetLabels(), agent)
 		if p.local {
-			p.store.AddSignal(sig)
+			p.store.AddSignalForTenant(tenantID, sig)
 		}
 	}
 	start := time.Now()
 	if p.local {
-		p.engine.SetRarityBaseline(p.store.RarityBaselineSnapshot())
+		p.engine.SetRarityBaseline(p.store.RarityBaselineSnapshotForTenant(tenantID))
 	}
 	upper := batchUpperTime(batch, start)
 	cloudSignals, incidents, derivedDocs, err := p.recomputeTouchedScopes(ctx, touchedScopes, currentEvents, currentSignals, upper)
@@ -98,9 +106,9 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, err
 	}
 	convergenceLatency := time.Since(start)
-	p.store.RecordDataBatchIngest(len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
+	p.store.RecordDataBatchIngestForTenant(tenantID, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
 	if p.local {
-		p.store.ObserveRaritySignals(currentSignals)
+		p.store.ObserveRaritySignalsForTenant(tenantID, currentSignals)
 	}
 	if err := p.store.Save(); err != nil {
 		return Result{}, err
@@ -173,7 +181,7 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 			for _, incident := range analysis.Incidents {
 				localIncidents = append(localIncidents, proto.Clone(incident).(*incidentv1.Incident))
 			}
-			p.store.ReplaceDerivedForLabels(scope.labels, analysis.CloudSignals, localIncidents)
+			p.store.ReplaceDerivedForLabels(scope.agent.Normalized().TenantID, scope.labels, analysis.CloudSignals, localIncidents)
 		}
 		for _, sig := range analysis.CloudSignals {
 			doc, err := signalDocument(sig)

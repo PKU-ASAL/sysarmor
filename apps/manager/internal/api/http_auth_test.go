@@ -113,6 +113,16 @@ func TestForgedIdentityHeadersDoNotCreatePrincipal(t *testing.T) {
 	}
 }
 
+func TestProductionRouterDoesNotExposeReset(t *testing.T) {
+	handler := newAdminTestServer(&store.Store{}).Handler()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/reset", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("reset status = %d, want %d body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
 func TestBindPrincipalTenantRejectsMismatch(t *testing.T) {
 	handler := bindPrincipalTenant(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("next handler called")

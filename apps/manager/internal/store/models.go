@@ -151,6 +151,9 @@ type State struct {
 	Unenrollments   []UnenrollmentRecord                   `json:"unenrollments,omitempty"`
 	Metrics         Metrics                                `json:"metrics"`
 	RarityBaseline  rarity.Baseline                        `json:"rarity_baseline,omitempty"`
+	TenantSignals   map[string][]json.RawMessage           `json:"tenant_signals,omitempty"`
+	MetricsByTenant map[string]Metrics                     `json:"metrics_by_tenant,omitempty"`
+	RarityByTenant  map[string]rarity.Baseline             `json:"rarity_by_tenant,omitempty"`
 }
 
 func cloneStringMap(in map[string]string) map[string]string {

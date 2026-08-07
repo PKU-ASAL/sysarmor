@@ -173,6 +173,7 @@ func (s *Server) searchTelemetryDocuments(r *http.Request, req telemetrySearchRe
 	if err != nil {
 		return nil, err
 	}
+	exact["tenant_id"] = requestTenantID(r)
 	docs := make([]telemetryDocument, 0)
 	for _, index := range indexes {
 		raw, err := s.searchTelemetry(r.Context(), platformopensearch.SearchRequest{
@@ -235,7 +236,7 @@ func addIndex(indexes *[]string, seen map[string]bool, index string) {
 func opensearchExactFields(exact map[string]string) map[string]string {
 	out := make(map[string]string, len(exact))
 	for field, value := range exact {
-		if field != "@timestamp" {
+		if field != "@timestamp" && field != "tenant_id" {
 			field += ".keyword"
 		}
 		out[field] = value

@@ -15,7 +15,7 @@ func (s *Server) incidents(w http.ResponseWriter, r *http.Request) {
 	if s.searcher == nil {
 		if s.localTelemetry {
 			q := r.URL.Query()
-			writeIncidentList(w, pageSlice(s.store.ListIncidents(parseLabelSelector(q["label"])), parseUint(q.Get("limit")), parseUint(q.Get("offset"))))
+			writeIncidentList(w, pageSlice(s.store.ListIncidentsForTenant(requestTenantID(r), parseLabelSelector(q["label"])), parseUint(q.Get("limit")), parseUint(q.Get("offset"))))
 			return
 		}
 		http.Error(w, "incident report search is unavailable", http.StatusServiceUnavailable)
@@ -46,7 +46,7 @@ func (s *Server) incidents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("query incidents: %v", err), http.StatusBadGateway)
 		return
 	}
-	raw = filterRawTelemetry(raw, labels, nil)
+	raw = filterRawTelemetry(raw, labels, rawStringEquals("tenant_id", tenantID))
 	if q.Get("incident_id") != "" {
 		if len(raw) == 0 {
 			http.Error(w, "incident report not found", http.StatusNotFound)

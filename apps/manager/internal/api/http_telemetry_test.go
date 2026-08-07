@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
@@ -21,15 +22,15 @@ func TestSearchBackedTelemetryQueries(t *testing.T) {
 	st := &store.Store{}
 	searcher := fakeSearcher{docs: map[string][]json.RawMessage{
 		"sysarmor-events-read": {
-			json.RawMessage(`{"id":"ev-a","behavior":"process.exec","labels":{"scenario":"managed"}}`),
-			json.RawMessage(`{"id":"ev-b","behavior":"file.write","labels":{"scenario":"other"}}`),
+			json.RawMessage(`{"id":"ev-a","tenant_id":"default","behavior":"process.exec","labels":{"scenario":"managed"}}`),
+			json.RawMessage(`{"id":"ev-b","tenant_id":"default","behavior":"file.write","labels":{"scenario":"other"}}`),
 		},
 		"sysarmor-signals-read": {
-			json.RawMessage(`{"id":"sig-a","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","terminal":false,"labels":{"scenario":"managed"}}`),
-			json.RawMessage(`{"id":"sig-b","name":"web_shell_chain","where":"SIGNAL_WHERE_CLOUD","terminal":true,"labels":{"scenario":"managed"}}`),
+			json.RawMessage(`{"id":"sig-a","tenant_id":"default","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","terminal":false,"labels":{"scenario":"managed"}}`),
+			json.RawMessage(`{"id":"sig-b","tenant_id":"default","name":"web_shell_chain","where":"SIGNAL_WHERE_CLOUD","terminal":true,"labels":{"scenario":"managed"}}`),
 		},
 		"sysarmor-incidents-read": {
-			json.RawMessage(`{"id":"inc-a","summary":"incident","labels":{"scenario":"managed","tenant_id":"default"}}`),
+			json.RawMessage(`{"id":"inc-a","tenant_id":"default","summary":"incident","labels":{"scenario":"managed"}}`),
 		},
 	}}
 	handler := adminTestHandler(NewServerWithSearch(st, searcher))
@@ -45,6 +46,74 @@ func TestSearchBackedTelemetryQueries(t *testing.T) {
 	rec = get(t, handler, "/api/v1/incidents?tenant_id=default&label=scenario=managed")
 	if !strings.Contains(rec.Body.String(), `"id":"inc-a"`) {
 		t.Fatalf("search-backed incidents mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestEventsAndSignalsScopeSearchToPrincipalTenant(t *testing.T) {
+	searcher := &recordingSearcher{docs: map[string][]json.RawMessage{
+		platformopensearch.EventsReadAlias: {
+			json.RawMessage(`{"id":"event-a","tenant_id":"tenant-a"}`),
+			json.RawMessage(`{"id":"event-b","tenant_id":"tenant-b"}`),
+		},
+		platformopensearch.SignalsReadAlias: {
+			json.RawMessage(`{"id":"signal-a","tenant_id":"tenant-a"}`),
+			json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-b"}`),
+		},
+	}}
+	handler := (&authenticatedTestServer{
+		Server: NewServerWithSearch(&store.Store{}, searcher),
+		principal: managerauth.Principal{
+			Subject: "viewer-a", TenantID: "tenant-a", Roles: []string{"viewer"},
+		},
+	}).Handler()
+	for _, path := range []string{"/api/v1/events", "/api/v1/signals"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if strings.Contains(rec.Body.String(), "tenant-b") {
+			t.Fatalf("GET %s leaked tenant-b: %s", path, rec.Body.String())
+		}
+	}
+	for _, request := range searcher.requests {
+		if request.Exact["tenant_id"] != "tenant-a" {
+			t.Fatalf("telemetry tenant filter = %#v", request.Exact)
+		}
+	}
+}
+
+func TestLocalTelemetryAndMetricsAreScopedToPrincipalTenant(t *testing.T) {
+	st := &store.Store{}
+	st.AddEvent(&eventv1.CanonicalEvent{Id: "event-a", TenantId: "tenant-a"})
+	st.AddEvent(&eventv1.CanonicalEvent{Id: "event-b", TenantId: "tenant-b"})
+	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "signal-a"})
+	st.AddSignalForTenant("tenant-b", &signalv1.Signal{Id: "signal-b"})
+	st.RecordDataBatchIngestForTenant("tenant-a", 1, 1, 0, 0, 0)
+	st.RecordDataBatchIngestForTenant("tenant-b", 20, 30, 0, 0, 0)
+	handler := tenantTestHandler(NewServer(st), "tenant-a")
+
+	for _, path := range []string{"/api/v1/events", "/api/v1/signals", "/api/v1/metrics"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if strings.Contains(rec.Body.String(), "event-b") || strings.Contains(rec.Body.String(), "signal-b") || strings.Contains(rec.Body.String(), `"events_ingested":21`) {
+			t.Fatalf("GET %s leaked tenant-b: %s", path, rec.Body.String())
+		}
+	}
+}
+
+func TestRarityBaselineIsScopedToPrincipalTenant(t *testing.T) {
+	st := &store.Store{}
+	signalA := &signalv1.Signal{Name: "download_by_lolbin", Labels: map[string]string{"workload": "container:checkout-api"}}
+	signalB := &signalv1.Signal{Name: "other_tenant_signal", Labels: map[string]string{"workload": "container:billing"}}
+	st.ObserveRaritySignalsForTenant("tenant-a", []*signalv1.Signal{signalA})
+	st.ObserveRaritySignalsForTenant("tenant-b", []*signalv1.Signal{signalB})
+	handler := tenantTestHandler(NewServer(st), "tenant-a")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rarity-baseline?workload=container:checkout-api&signal=download_by_lolbin", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `"count":1`) || strings.Contains(rec.Body.String(), "other_tenant_signal") {
+		t.Fatalf("rarity response = %s", rec.Body.String())
 	}
 }
 
@@ -119,13 +188,13 @@ func TestDataBatchAppendRecordsSessionCursor(t *testing.T) {
 
 func TestQueryPagination(t *testing.T) {
 	st := &store.Store{}
-	st.AddEvent(&eventv1.CanonicalEvent{Id: "ev-1", Labels: labelsForScenario("page"), Behavior: "process.exec"})
-	st.AddEvent(&eventv1.CanonicalEvent{Id: "ev-2", Labels: labelsForScenario("page"), Behavior: "file.open"})
-	st.AddEvent(&eventv1.CanonicalEvent{Id: "ev-3", Labels: labelsForScenario("page"), Behavior: "network.connect"})
-	st.AddSignal(endpointSignalForScenario("page", "sig-1", "lin-1", false, processEntity("p1")))
-	st.AddSignal(endpointSignalForScenario("page", "sig-2", "lin-2", false, processEntity("p2")))
-	st.AddIncident(&incidentv1.Incident{Id: "inc-1", Labels: labelsForScenario("page"), Summary: "one"})
-	st.AddIncident(&incidentv1.Incident{Id: "inc-2", Labels: labelsForScenario("page"), Summary: "two"})
+	st.AddEvent(&eventv1.CanonicalEvent{Id: "ev-1", TenantId: "default", Labels: labelsForScenario("page"), Behavior: "process.exec"})
+	st.AddEvent(&eventv1.CanonicalEvent{Id: "ev-2", TenantId: "default", Labels: labelsForScenario("page"), Behavior: "file.open"})
+	st.AddEvent(&eventv1.CanonicalEvent{Id: "ev-3", TenantId: "default", Labels: labelsForScenario("page"), Behavior: "network.connect"})
+	st.AddSignalForTenant("default", endpointSignalForScenario("page", "sig-1", "lin-1", false, processEntity("p1")))
+	st.AddSignalForTenant("default", endpointSignalForScenario("page", "sig-2", "lin-2", false, processEntity("p2")))
+	st.AddIncident(&incidentv1.Incident{Id: "inc-1", TenantId: "default", Labels: labelsForScenario("page"), Summary: "one"})
+	st.AddIncident(&incidentv1.Incident{Id: "inc-2", TenantId: "default", Labels: labelsForScenario("page"), Summary: "two"})
 	handler := newAdminTestServer(st).Handler()
 
 	rec := get(t, handler, "/api/v1/events?label=scenario=page&limit=1&offset=1")
@@ -287,11 +356,9 @@ func TestAgentsEventsResetAndRecompute(t *testing.T) {
 		t.Fatalf("disabled cross-lineage recompute should not incident: %s", rec.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/reset?label=scenario=apt-staged-drop", nil)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("reset status = %d body=%s", rec.Code, rec.Body.String())
+	st.DeleteByLabels(store.LabelSelector{"scenario": "apt-staged-drop"})
+	if err := st.Save(); err != nil {
+		t.Fatalf("save reset fixture: %v", err)
 	}
 	rec = get(t, handler, "/api/v1/events?label=scenario=apt-staged-drop")
 	if rec.Body.String() != "[]\n" {

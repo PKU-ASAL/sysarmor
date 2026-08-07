@@ -21,7 +21,7 @@ func (s *Store) AddEvent(ev *eventv1.CanonicalEvent) bool {
 	defer s.mu.Unlock()
 	if ev.GetId() != "" {
 		for i, existing := range s.Events {
-			if existing.GetId() == ev.GetId() {
+			if existing.GetTenantId() == ev.GetTenantId() && existing.GetId() == ev.GetId() {
 				s.Events[i] = ev
 				return false
 			}
@@ -66,45 +66,10 @@ func (s *Store) AddIncident(inc *incidentv1.Incident) bool {
 	return true
 }
 
-func (s *Store) ReplaceDerivedForLabels(labels LabelSelector, cloudSignals []*signalv1.Signal, incidents []*incidentv1.Incident) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	signals := s.Signals[:0]
-	for _, sig := range s.Signals {
-		if labelSelectorMatches(sig.GetLabels(), labels) && layerName(sig.GetWhere()) == "cloud" {
-			continue
-		}
-		signals = append(signals, sig)
-	}
-	s.Signals = signals
-	keptIncidents := s.Incidents[:0]
-	for _, inc := range s.Incidents {
-		if labelSelectorMatches(inc.GetLabels(), labels) {
-			continue
-		}
-		keptIncidents = append(keptIncidents, inc)
-	}
-	s.Incidents = keptIncidents
-	s.Signals = append(s.Signals, cloudSignals...)
-	s.Incidents = append(s.Incidents, incidents...)
-}
-
 func (s *Store) RecordDataBatchIngest(events, endpointSignals, cloudSignals, incidents int, convergenceLatency time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	latencyMs := uint64(convergenceLatency.Milliseconds())
-	s.Metrics.DataBatchesAppended++
-	s.Metrics.EventsIngested += uint64(events)
-	s.Metrics.EndpointSignalsIngested += uint64(endpointSignals)
-	s.Metrics.CloudSignalsEmitted += uint64(cloudSignals)
-	s.Metrics.SignalsEmitted += uint64(endpointSignals + cloudSignals)
-	s.Metrics.IncidentsCreated += uint64(incidents)
-	s.Metrics.LastConvergenceLatencyMs = latencyMs
-	s.Metrics.TotalConvergenceLatencyMs += latencyMs
-	if latencyMs > s.Metrics.MaxConvergenceLatencyMs {
-		s.Metrics.MaxConvergenceLatencyMs = latencyMs
-	}
-	s.Metrics.AverageConvergenceLatency = float64(s.Metrics.TotalConvergenceLatencyMs) / float64(s.Metrics.DataBatchesAppended)
+	recordMetrics(&s.Metrics, events, endpointSignals, cloudSignals, incidents, convergenceLatency)
 }
 
 // ListEvents reads from the in-process working set only. Telemetry is not
@@ -360,6 +325,7 @@ func incidentKey(inc *incidentv1.Incident) string {
 		return ""
 	}
 	parts := []string{
+		inc.GetTenantId(),
 		labelKey(inc.GetLabels()),
 		inc.GetSummary(),
 		inc.GetConverge().GetMethod(),
