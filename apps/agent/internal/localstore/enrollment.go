@@ -7,16 +7,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 )
 
-type EnrollmentState string
+type EnrollmentState = management.State
 
 const (
-	StateStandalone  EnrollmentState = "standalone"
-	StateEnrolling   EnrollmentState = "enrolling"
-	StateManaged     EnrollmentState = "managed"
-	StateUnenrolling EnrollmentState = "unenrolling"
+	StateStandalone  = management.StateStandalone
+	StateEnrolling   = management.StateEnrolling
+	StateManaged     = management.StateManaged
+	StateUnenrolling = management.StateUnenrolling
 )
 
 const (
