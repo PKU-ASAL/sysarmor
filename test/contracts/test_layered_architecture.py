@@ -1,6 +1,9 @@
 import unittest
 from pathlib import Path
 import re
+import json
+import os
+import subprocess
 
 
 LAYERS = ("domain", "application", "ports", "adapters", "bootstrap")
@@ -20,11 +23,33 @@ ALLOWED = {
     },
 }
 LEGACY_ROOTS = {
-    "apps/agent/internal/daemon",
-    "apps/manager/internal/store",
-    "apps/manager/internal/api",
-    "apps/manager/internal/gateway",
+	"apps/agent/internal/config",
+	"apps/agent/internal/content",
+	"apps/agent/internal/control",
+	"apps/agent/internal/detection",
+	"apps/agent/internal/daemon",
+	"apps/agent/internal/event",
+	"apps/agent/internal/localapi",
+	"apps/agent/internal/localstore",
+	"apps/agent/internal/management",
+	"apps/agent/internal/policy",
+	"apps/agent/internal/remoteapi",
+	"apps/agent/internal/sensors",
+	"apps/agent/internal/tamper",
+	"apps/agent/internal/telemetry",
+	"apps/manager/internal/analytics",
+	"apps/manager/internal/auth",
+	"apps/manager/internal/distribution",
+	"apps/manager/internal/platform",
+	"apps/manager/internal/store",
+	"apps/manager/internal/api",
+	"apps/manager/internal/gateway",
     "apps/manager/internal/ingest",
+}
+STANDARD_LIBRARY = {
+    "domain": {"errors", "strings", "time"},
+    "application": {"context", "errors", "fmt", "sort", "strings", "sync", "time"},
+    "ports": {"context", "errors", "io", "time"},
 }
 IMPORT_PATTERN = re.compile(r'^\s*(?:[._\w]+\s+)?"([^"]+)"', re.MULTILINE)
 
@@ -48,8 +73,30 @@ def import_allowed(owner, imported, product):
     if "." in imported.split("/", 1)[0]:
         return owner in {"adapters", "bootstrap"}
     if owner in {"domain", "application", "ports"}:
-        return imported not in {"database/sql", "net/http", "os", "os/exec", "syscall"}
+        return imported in STANDARD_LIBRARY[owner]
     return True
+
+
+def go_layered_packages(repo):
+    result = subprocess.run(
+        ["go", "list", "-mod=readonly", "-json", "./apps/agent/...", "./apps/manager/..."],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GOCACHE": "/tmp/sysarmor-layered-go-cache"},
+    )
+    decoder = json.JSONDecoder()
+    packages = []
+    offset = 0
+    while offset < len(result.stdout):
+        while offset < len(result.stdout) and result.stdout[offset].isspace():
+            offset += 1
+        if offset == len(result.stdout):
+            break
+        package, offset = decoder.raw_decode(result.stdout, offset)
+        packages.append(package)
+    return packages
 
 
 class LayeredArchitectureContractTest(unittest.TestCase):
@@ -71,12 +118,23 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             with self.subTest(relative=relative):
                 self.assertTrue((self.repo / relative).is_dir())
 
+    def test_all_unlayered_roots_are_explicit_legacy(self):
+        ungoverned = []
+        for product in ("agent", "manager"):
+            internal = self.repo / "apps" / product / "internal"
+            for path in internal.iterdir():
+                relative = str(path.relative_to(self.repo))
+                if path.is_dir() and path.name not in LAYERS and relative not in LEGACY_ROOTS:
+                    ungoverned.append(relative)
+        self.assertEqual([], ungoverned, f"ungoverned internal roots: {ungoverned}")
+
     def test_inner_layers_reject_infrastructure_imports(self):
         forbidden = (
             f"{MODULE}apps/manager/internal/store",
             f"{MODULE}packages/policy",
             "github.com/segmentio/kafka-go",
             "net/http",
+            "flag",
         )
         for imported in forbidden:
             with self.subTest(imported=imported):
@@ -106,14 +164,17 @@ import (
 
     def test_layered_packages_obey_dependency_matrix(self):
         violations = []
-        for product in ("agent", "manager"):
-            internal = self.repo / "apps" / product / "internal"
-            for owner in LAYERS:
-                for source in (internal / owner).rglob("*.go"):
-                    for imported in IMPORT_PATTERN.findall(source.read_text()):
-                        if not import_allowed(owner, imported, product):
-                            relative = source.relative_to(self.repo)
-                            violations.append(f"{relative}: {owner} imports {imported}")
+        for package in go_layered_packages(self.repo):
+            relative = Path(package["Dir"]).relative_to(self.repo)
+            parts = relative.parts
+            if len(parts) < 5 or parts[0] != "apps" or parts[2] != "internal":
+                continue
+            product, owner = parts[1], parts[3]
+            if owner not in LAYERS:
+                continue
+            for imported in package.get("Imports", []):
+                if not import_allowed(owner, imported, product):
+                    violations.append(f"{relative}: {owner} imports {imported}")
         self.assertEqual([], violations, "forbidden layered imports:\n" + "\n".join(violations))
 
     def test_products_do_not_import_each_others_internals(self):
