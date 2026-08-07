@@ -9,6 +9,8 @@ ENVDIR="$(cd "$ROOT/environments/$VM_ENV" && pwd)"
 RESULTS="$ROOT/.results"
 RUN_ID="${SYSARMOR_BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 OUT_DIR="$RESULTS/performance-endpoint/$RUN_ID"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/policy_runtime.sh"
 BENCH_PROFILE="${SYSARMOR_BENCH_PROFILE:-quick}"
 AGENT_SOCK="${SYSARMOR_AGENT_SOCK:-/run/sysarmor/agent/control.sock}"
 AGENT_ID=""
@@ -514,7 +516,6 @@ set_runtime_feature_flags "$MATCHER_STRATEGY"
 
 echo "[performance-endpoint] uploading content packs and policies"
 vagrant upload "$REPO/$CONTENT_DIR" /tmp/sysarmor-bench-content node-a >/dev/null
-vagrant upload "$REPO/deployments/agent/policy.json" /tmp/sysarmor-bench-baseline.policy node-a >/dev/null
 if [[ "$APPLY_DETECTION" == "1" && ! -f "$REPO/$DETECTION_POLICY" ]]; then
   echo "[performance-endpoint][ERROR] detection policy not found: $DETECTION_POLICY" >&2
   exit 1
@@ -536,36 +537,6 @@ apply_content() {
         exit 1
       }
   done
-}
-
-reset_endpoint_policy() {
-  local policy_out="$1"
-  echo "[performance-endpoint] restoring baseline endpoint policy"
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply --file /tmp/sysarmor-bench-baseline.policy --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
-    > "$policy_out/baseline-apply.json" \
-    2>"$policy_out/baseline-apply.err" || {
-      echo "[performance-endpoint][ERROR] baseline endpoint policy apply failed" >&2
-      cat "$policy_out/baseline-apply.err" >&2 2>/dev/null || true
-      exit 1
-    }
-  if ! jq -e '.status == "applied" or .status == "degraded"' "$policy_out/baseline-apply.json" >/dev/null; then
-    echo "[performance-endpoint][ERROR] baseline endpoint policy was rejected" >&2
-    cat "$policy_out/baseline-apply.json" >&2 2>/dev/null || true
-    exit 1
-  fi
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy current" \
-    > "$policy_out/baseline-current.json" \
-    2>"$policy_out/baseline-current.err" || {
-      echo "[performance-endpoint][ERROR] failed to read current baseline endpoint policy" >&2
-      cat "$policy_out/baseline-current.err" >&2 2>/dev/null || true
-      exit 1
-    }
-  if ! jq -e '.policyId == "standalone-default" and (.version | tostring) == "1"' "$policy_out/baseline-current.json" >/dev/null; then
-    echo "[performance-endpoint][ERROR] current endpoint policy does not match the baseline" >&2
-    cat "$policy_out/baseline-current.json" >&2 2>/dev/null || true
-    exit 1
-  fi
-  sleep "$POLICY_SETTLE_SECONDS"
 }
 
 apply_detection() {

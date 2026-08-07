@@ -40,8 +40,7 @@ class PerformanceEndpointPolicyFlowTest(unittest.TestCase):
         recorder = self.script.index('recorder "$rec_run_id" "$rec_labels" start', loop)
 
         self.assertLess(reset, recorder)
-        self.assertIn("--json policy current", self.script)
-        self.assertIn('.policyId == "standalone-default" and (.version | tostring) == "1"', self.script)
+        self.assertIn('source "$ROOT/shared/agent/policy_runtime.sh"', self.script)
 
     def test_stops_active_recorder_when_the_script_exits_early(self):
         self.assertIn("trap cleanup_active_recorder EXIT", self.script)

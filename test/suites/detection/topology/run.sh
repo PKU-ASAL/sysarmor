@@ -3,11 +3,15 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
+REPO="$(cd "$ROOT/.." && pwd)"
 RESULTS="$ROOT/.results"
 VM_ENV="${SYSARMOR_VM_ENV:-${ENV:-vm-topology}}"
 ENVDIR="$ROOT/environments/$VM_ENV"
+PKI_DIR="${SYSARMOR_VM_MTLS_DIR:-$RESULTS/pki/$VM_ENV}"
 RUN_ID="${SYSARMOR_BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 OUT_DIR="$RESULTS/detection-topology/$RUN_ID"
+# shellcheck source=/dev/null
+source "$ROOT/shared/detection/runtime.sh"
 
 POLICIES="${POLICIES-test/data/policies/collection-balanced.json test/data/policies/collection-deep.json}"
 WORKLOADS="${WORKLOADS-business-normal}"
@@ -83,7 +87,9 @@ capture_manager_case() {
   local workload="$2"
   local scenario="$3"
   local bench_root="$RESULTS/performance-endpoint/$bench_run_id"
+  local manager_jwt
   [[ -d "$bench_root" ]] || return 0
+  manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
   for policy_out in "$bench_root"/*; do
     [[ -d "$policy_out" && -f "$policy_out/summary.json" ]] || continue
     local policy
@@ -91,9 +97,9 @@ capture_manager_case() {
     local labels
     labels="$(manager_label_args "$policy" "$workload" "$scenario" "$bench_run_id")"
     echo "[detection-topology] capturing manager telemetry policy=$policy workload=${workload:-none} scenario=${scenario:-none}"
-    (cd "$ENVDIR" && vagrant ssh mgr -c "/tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager events list $labels --limit 1000") >"$policy_out/manager.events.json"
-    (cd "$ENVDIR" && vagrant ssh mgr -c "/tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager signals list $labels --limit 1000") >"$policy_out/manager.signals.json"
-    (cd "$ENVDIR" && vagrant ssh mgr -c "/tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager incidents list $labels --limit 1000") >"$policy_out/manager.incidents.json"
+    capture_manager_resource "$manager_jwt" "$ENVDIR" events "$labels" >"$policy_out/manager.events.json"
+    capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" >"$policy_out/manager.signals.json"
+    capture_manager_resource "$manager_jwt" "$ENVDIR" incidents "$labels" >"$policy_out/manager.incidents.json"
     json_to_ndjson "$policy_out/manager.events.json" "$policy_out/manager.events.ndjson"
     json_to_ndjson "$policy_out/manager.signals.json" "$policy_out/manager.signals.ndjson"
     json_to_ndjson "$policy_out/manager.incidents.json" "$policy_out/manager.incidents.ndjson"
@@ -117,14 +123,10 @@ run_case() {
   mkdir -p "$case_dir"
 
   echo "[detection-topology] variant=$variant_label matcher_strategy=${matcher_strategy:-config-default} workload=$workload_label scenario=$scenario_label"
-  if SYSARMOR_BENCH_RUN_ID="$case_run_id" \
-      POLICIES="$POLICIES" \
-      SYSARMOR_BENCH_VARIANT="$variant" \
-      SYSARMOR_BENCH_MATCHER_STRATEGY="$matcher_strategy" \
-      SYSARMOR_BENCH_WORKLOAD="$workload" \
-      SYSARMOR_BENCH_SCENARIO="$scenario" \
-      SYSARMOR_VM_ENV="$VM_ENV" \
-      bash "$ROOT/suites/performance/endpoint/run.sh" >"$case_dir/run.out" 2>"$case_dir/run.err"; then
+  if run_endpoint_benchmark "$ROOT/suites/performance/endpoint/run.sh" \
+      "$case_run_id" "$POLICIES" "$variant" "$matcher_strategy" \
+      "$workload" "$scenario" "$VM_ENV" \
+      >"$case_dir/run.out" 2>"$case_dir/run.err"; then
     capture_manager_case "$case_run_id" "$workload" "$scenario"
     printf '{"name":"%s","variant":"%s","matcher_strategy":"%s","workload":"%s","scenario":"%s","status":"ok","bench_run_id":"%s"}\n' \
       "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$case_run_id" >"$case_dir/status.json"
