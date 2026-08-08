@@ -12,13 +12,14 @@ type Version uint64
 const DefaultPolicyID ID = "default-edr-policy"
 
 type Policy struct {
-	TenantID  tenant.ID
-	ID        ID
-	Version   Version
-	Published bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Document  []byte
+	TenantID         tenant.ID
+	ID               ID
+	Version          Version
+	Published        bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Document         []byte
+	DownlinkDocument []byte
 }
 
 type Target struct {
@@ -43,4 +44,8 @@ type Filter struct {
 
 type AssignmentFilter struct {
 	AgentID string
+}
+
+func ManagerDefault(tenantID tenant.ID) Policy {
+	return Policy{TenantID: tenantID, ID: DefaultPolicyID, Version: 1, Published: true}
 }

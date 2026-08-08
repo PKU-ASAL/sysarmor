@@ -13,6 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 )
@@ -79,6 +80,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "configure production manager: %v\n", err)
 		os.Exit(1)
 	}
+	policyRoutes, err := bootstrap.NewManagerPolicyHTTP(storeResult.DB, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure policy application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetPolicyRoutes(policyRoutes)
 	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}

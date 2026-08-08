@@ -41,8 +41,8 @@ func validateTarget(target Target) error {
 	if !hasAgent && !hasScopeType && !hasScopeSelector {
 		return failure.New(failure.InvalidArgument, "policy assignment target is required")
 	}
-	if hasScopeType != hasScopeSelector {
-		return failure.New(failure.InvalidArgument, "policy assignment scope type and selector are both required")
+	if hasScopeSelector && !hasScopeType {
+		return failure.New(failure.InvalidArgument, "policy assignment scope type is required")
 	}
 	return nil
 }

@@ -12,12 +12,13 @@ import (
 )
 
 type AssignPolicyCommand struct {
-	PolicyID  domainpolicy.ID
-	Version   domainpolicy.Version
-	Target    domainpolicy.Target
-	Downlink  bool
-	CommandID string
-	Reason    string
+	AssignmentID string
+	PolicyID     domainpolicy.ID
+	Version      domainpolicy.Version
+	Target       domainpolicy.Target
+	Downlink     bool
+	CommandID    string
+	Reason       string
 }
 
 type AssignPolicyResult struct {
@@ -46,7 +47,10 @@ func (service *AssignService) Execute(ctx context.Context, request managerapp.Re
 		if err != nil {
 			return err
 		}
-		assignment.ID = service.ids.New()
+		assignment.ID = command.AssignmentID
+		if assignment.ID == "" {
+			assignment.ID = service.ids.New()
+		}
 		if err := tx.Assignments().Put(txCtx, assignment); err != nil {
 			return fmt.Errorf("put policy assignment: %w", err)
 		}
@@ -77,7 +81,7 @@ func (service *AssignService) putControl(ctx context.Context, repo ports.PolicyC
 	}
 	control := ports.PolicyControlCommand{
 		ID: commandID, TenantID: assignment.TenantID, AgentID: assignment.Target.AgentID,
-		PolicyID: value.ID, PolicyVersion: value.Version, Payload: append([]byte(nil), value.Document...),
+		PolicyID: value.ID, PolicyVersion: value.Version, Payload: append([]byte(nil), value.DownlinkDocument...),
 		Actor: request.Actor.Subject, Reason: command.Reason, CreatedAt: service.clock.Now(),
 	}
 	if err := repo.Put(ctx, control); err != nil {

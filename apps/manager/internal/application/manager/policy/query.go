@@ -18,8 +18,26 @@ func NewQueryService(uow ports.PolicyUnitOfWork) *QueryService { return &QuerySe
 
 type ListPoliciesQuery struct{ Filter domainpolicy.Filter }
 type ListPoliciesResult struct{ Policies []domainpolicy.Policy }
+type GetPolicyQuery struct {
+	PolicyID domainpolicy.ID
+	Version  domainpolicy.Version
+}
+type GetPolicyResult struct{ Policy domainpolicy.Policy }
 type EffectivePolicyQuery struct{ Target domainpolicy.Target }
 type EffectivePolicyResult struct{ Policy domainpolicy.Policy }
+
+func (service *QueryService) GetPolicy(ctx context.Context, request managerapp.RequestContext, query GetPolicyQuery) (GetPolicyResult, error) {
+	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
+		return GetPolicyResult{}, err
+	}
+	var result GetPolicyResult
+	err := service.uow.Execute(ctx, func(txCtx context.Context, tx ports.PolicyTransaction) error {
+		value, err := tx.Policies().Get(txCtx, request.Actor.TenantID, query.PolicyID, query.Version)
+		result.Policy = value
+		return err
+	})
+	return result, err
+}
 
 func (service *QueryService) ListPolicies(ctx context.Context, request managerapp.RequestContext, query ListPoliciesQuery) (ListPoliciesResult, error) {
 	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
@@ -41,17 +59,26 @@ func (service *QueryService) EffectivePolicy(ctx context.Context, request manage
 	var result EffectivePolicyResult
 	err := service.uow.Execute(ctx, func(txCtx context.Context, tx ports.PolicyTransaction) error {
 		assignment, err := tx.Assignments().Effective(txCtx, request.Actor.TenantID, query.Target)
-		if err != nil {
-			if failure.KindOf(err) == failure.NotFound {
-				value, currentErr := tx.Policies().Current(txCtx, request.Actor.TenantID, domainpolicy.DefaultPolicyID)
-				result.Policy = value
-				return currentErr
-			}
+		if err != nil && failure.KindOf(err) != failure.NotFound {
 			return fmt.Errorf("get effective policy assignment: %w", err)
 		}
-		value, err := tx.Policies().Get(txCtx, request.Actor.TenantID, assignment.PolicyID, assignment.PolicyVersion)
+		if err == nil {
+			value, publishedErr := tx.Policies().Published(txCtx, request.Actor.TenantID, assignment.PolicyID, assignment.PolicyVersion)
+			if publishedErr == nil {
+				result.Policy = value
+				return nil
+			}
+			if failure.KindOf(publishedErr) != failure.NotFound {
+				return publishedErr
+			}
+		}
+		value, defaultErr := tx.Policies().Published(txCtx, request.Actor.TenantID, domainpolicy.DefaultPolicyID, 0)
+		if failure.KindOf(defaultErr) == failure.NotFound {
+			result.Policy = domainpolicy.ManagerDefault(request.Actor.TenantID)
+			return nil
+		}
 		result.Policy = value
-		return err
+		return defaultErr
 	})
 	return result, err
 }

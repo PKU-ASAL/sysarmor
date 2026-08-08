@@ -18,10 +18,11 @@ func Save(current, candidate Policy, actor tenant.Actor, now time.Time) (Policy,
 	if candidate.ID == "" || candidate.Version == 0 || current.ID != "" && current.ID != candidate.ID {
 		return Policy{}, audit.Record{}, failure.New(failure.InvalidArgument, "policy identity is invalid")
 	}
-	if current.Version > candidate.Version {
-		return Policy{}, audit.Record{}, failure.New(failure.Conflict, "policy version is stale")
+	if current.Version != 0 && current.Version >= candidate.Version {
+		return Policy{}, audit.Record{}, failure.New(failure.Conflict, "policy version already exists or is stale")
 	}
 	saved := clonePolicy(candidate)
+	saved.Published = false
 	if saved.CreatedAt.IsZero() {
 		saved.CreatedAt = current.CreatedAt
 		if saved.CreatedAt.IsZero() {

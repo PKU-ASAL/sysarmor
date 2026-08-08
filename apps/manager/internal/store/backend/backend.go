@@ -29,6 +29,7 @@ type Options struct {
 
 type Result struct {
 	Store     *store.Store
+	DB        *sql.DB
 	Migration postgres.MigrationResult
 	close     func() error
 }
@@ -79,7 +80,7 @@ func Open(ctx context.Context, opts Options) (Result, error) {
 			_ = db.Close()
 			return Result{}, err
 		}
-		return Result{Store: st, Migration: migration, close: db.Close}, nil
+		return Result{Store: st, DB: db, Migration: migration, close: db.Close}, nil
 	default:
 		return Result{}, fmt.Errorf("unknown store backend %q", opts.Kind)
 	}

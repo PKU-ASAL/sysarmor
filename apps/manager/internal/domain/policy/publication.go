@@ -42,5 +42,6 @@ func (id ID) String() string { return string(id) }
 
 func clonePolicy(value Policy) Policy {
 	value.Document = append([]byte(nil), value.Document...)
+	value.DownlinkDocument = append([]byte(nil), value.DownlinkDocument...)
 	return value
 }

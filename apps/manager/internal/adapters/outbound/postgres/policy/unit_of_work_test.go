@@ -57,6 +57,37 @@ func TestPolicyRepositoryCanonicalizesDocumentIdentity(t *testing.T) {
 	}
 }
 
+func TestPolicyRepositoryBuildsEndpointDownlinkDocument(t *testing.T) {
+	db := newPolicyTestDB(t)
+	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{
+		"tenant_id":"tenant-a","policy_id":"policy-a","version":2,
+		"collection":{"behaviors":["process.exec"]},
+		"detection":{"policy_id":"detect-a","version":1},
+		"telemetry":{"max_batch_items":64},
+		"response_policy":{"allowed_actions":["collect"]}
+	}`)
+	uow := NewUnitOfWork(db)
+	tenantA := mustAdapterTenantID(t, "tenant-a")
+
+	var got domainpolicy.Policy
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		var err error
+		got, err = tx.Policies().Get(ctx, tenantA, "policy-a", 2)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"policy_id":"policy-a"`, `"collection":`, `"detection":`, `"telemetry":`, `"response":`} {
+		if !strings.Contains(string(got.DownlinkDocument), want) {
+			t.Fatalf("downlink document %s missing %s", got.DownlinkDocument, want)
+		}
+	}
+	if strings.Contains(string(got.DownlinkDocument), "tenant_id") || strings.Contains(string(got.DownlinkDocument), "published") {
+		t.Fatalf("downlink document leaks Manager metadata: %s", got.DownlinkDocument)
+	}
+}
+
 func TestPolicyUnitOfWorkRollsBackAllWrites(t *testing.T) {
 	db := newPolicyTestDB(t)
 	uow := NewUnitOfWork(db)
@@ -83,6 +114,50 @@ func TestPolicyUnitOfWorkRollsBackAllWrites(t *testing.T) {
 	assertRowCount(t, db, "policy_audit", 0)
 }
 
+func TestEffectiveAssignmentUsesSpecificityOrder(t *testing.T) {
+	db := newPolicyTestDB(t)
+	tenantID := mustAdapterTenantID(t, "tenant-a")
+	for _, value := range []domainpolicy.Assignment{
+		{ID: "scope-type", TenantID: tenantID, Target: domainpolicy.Target{ScopeType: "host"}, PolicyID: "policy-type", PolicyVersion: 1},
+		{ID: "scope-exact", TenantID: tenantID, Target: domainpolicy.Target{ScopeType: "host", ScopeSelector: "prod"}, PolicyID: "policy-scope", PolicyVersion: 1},
+		{ID: "agent", TenantID: tenantID, Target: domainpolicy.Target{AgentID: "agent-a"}, PolicyID: "policy-agent", PolicyVersion: 1},
+	} {
+		insertAssignment(t, db, value)
+	}
+	uow := NewUnitOfWork(db)
+
+	var got domainpolicy.Assignment
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		var err error
+		got, err = tx.Assignments().Effective(ctx, tenantID, domainpolicy.Target{
+			AgentID: "agent-a", ScopeType: "host", ScopeSelector: "prod",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PolicyID != "policy-agent" {
+		t.Fatalf("Effective() policy = %q, want policy-agent", got.PolicyID)
+	}
+	if _, err := db.Exec(`DELETE FROM policy_assignments WHERE assignment_id = ?`, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	err = uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		var err error
+		got, err = tx.Assignments().Effective(ctx, tenantID, domainpolicy.Target{
+			AgentID: "agent-a", ScopeType: "host", ScopeSelector: "prod",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PolicyID != "policy-scope" {
+		t.Fatalf("Effective() policy = %q, want policy-scope", got.PolicyID)
+	}
+}
+
 func newPolicyTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
@@ -107,6 +182,19 @@ func newPolicyTestDB(t *testing.T) *sql.DB {
 func insertPolicyDocument(t *testing.T, db *sql.DB, tenantID, policyID string, version uint64, document string) {
 	t.Helper()
 	if _, err := db.Exec(`INSERT INTO policies (tenant_id, policy_id, version, data) VALUES (?, ?, ?, ?)`, tenantID, policyID, version, []byte(document)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertAssignment(t *testing.T, db *sql.DB, value domainpolicy.Assignment) {
+	t.Helper()
+	document, err := encodeAssignment(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO policy_assignments (tenant_id, assignment_id, agent_id, scope_type, scope_selector, policy_id, policy_version, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		value.TenantID.String(), value.ID, value.Target.AgentID, value.Target.ScopeType, value.Target.ScopeSelector,
+		value.PolicyID.String(), uint64(value.PolicyVersion), document); err != nil {
 		t.Fatal(err)
 	}
 }

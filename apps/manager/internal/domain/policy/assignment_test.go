@@ -60,3 +60,16 @@ func TestAssignUsesSuppliedTime(t *testing.T) {
 		t.Fatalf("Assign() timestamps = %s / %s, want %s", assignment.CreatedAt, assignment.UpdatedAt, now)
 	}
 }
+
+func TestAssignAllowsScopeTypeWithoutSelector(t *testing.T) {
+	tenantID := mustTenantID(t, "tenant-a")
+	actor := tenant.Actor{Subject: "operator-a", TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleOperator)}
+
+	_, err := Assign(
+		Policy{TenantID: tenantID, ID: "policy-a", Version: 1, Published: true},
+		Target{ScopeType: "host"}, actor, time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("Assign() rejected scope type target: %v", err)
+	}
+}

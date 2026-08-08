@@ -8,6 +8,7 @@ import (
 
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	policyports "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
@@ -123,6 +124,7 @@ type fakePolicyUnitOfWork struct {
 	failControl    error
 	lastTenant     tenant.ID
 	effectiveError error
+	defaultPolicy  domainpolicy.Policy
 }
 
 func newFakePolicyUnitOfWork(seed domainpolicy.Policy) *fakePolicyUnitOfWork {
@@ -133,7 +135,7 @@ func (uow *fakePolicyUnitOfWork) Execute(ctx context.Context, fn func(context.Co
 	staged := uow.committed
 	tx := &fakePolicyTransaction{
 		state: &staged, failAudit: uow.failAudit, failControl: uow.failControl,
-		observedTenant: &uow.lastTenant, effectiveError: uow.effectiveError,
+		observedTenant: &uow.lastTenant, effectiveError: uow.effectiveError, defaultPolicy: uow.defaultPolicy,
 	}
 	if err := fn(ctx, tx); err != nil {
 		return err
@@ -148,10 +150,11 @@ type fakePolicyTransaction struct {
 	failControl    error
 	observedTenant *tenant.ID
 	effectiveError error
+	defaultPolicy  domainpolicy.Policy
 }
 
 func (tx *fakePolicyTransaction) Policies() policyports.PolicyRepository {
-	return fakePolicies{state: tx.state, observedTenant: tx.observedTenant}
+	return fakePolicies{state: tx.state, observedTenant: tx.observedTenant, defaultPolicy: tx.defaultPolicy}
 }
 func (tx *fakePolicyTransaction) Assignments() policyports.AssignmentRepository {
 	return fakeAssignments{state: tx.state, observedTenant: tx.observedTenant, effectiveError: tx.effectiveError}
@@ -166,6 +169,7 @@ func (tx *fakePolicyTransaction) Audits() policyports.AuditRepository {
 type fakePolicies struct {
 	state          *fakePolicyState
 	observedTenant *tenant.ID
+	defaultPolicy  domainpolicy.Policy
 }
 
 func (repo fakePolicies) Get(_ context.Context, tenantID tenant.ID, _ domainpolicy.ID, _ domainpolicy.Version) (domainpolicy.Policy, error) {
@@ -174,6 +178,19 @@ func (repo fakePolicies) Get(_ context.Context, tenantID tenant.ID, _ domainpoli
 }
 func (repo fakePolicies) Current(_ context.Context, tenantID tenant.ID, _ domainpolicy.ID) (domainpolicy.Policy, error) {
 	*repo.observedTenant = tenantID
+	return repo.state.seed, nil
+}
+func (repo fakePolicies) Published(_ context.Context, tenantID tenant.ID, id domainpolicy.ID, _ domainpolicy.Version) (domainpolicy.Policy, error) {
+	*repo.observedTenant = tenantID
+	if id == domainpolicy.DefaultPolicyID {
+		if repo.defaultPolicy.ID == "" {
+			return domainpolicy.Policy{}, failure.New(failure.NotFound, "published policy not found")
+		}
+		return repo.defaultPolicy, nil
+	}
+	if !repo.state.seed.Published {
+		return domainpolicy.Policy{}, failure.New(failure.NotFound, "published policy not found")
+	}
 	return repo.state.seed, nil
 }
 func (repo fakePolicies) List(_ context.Context, tenantID tenant.ID, _ domainpolicy.Filter) ([]domainpolicy.Policy, error) {

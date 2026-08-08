@@ -41,9 +41,14 @@ func decodePolicy(tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.V
 	if err != nil {
 		return domainpolicy.Policy{}, err
 	}
+	downlink, err := endpointPolicyDocument(canonical, id, version)
+	if err != nil {
+		return domainpolicy.Policy{}, err
+	}
 	return domainpolicy.Policy{
 		TenantID: tenantID, ID: id, Version: version, Published: envelope.Published,
-		CreatedAt: envelope.CreatedAt, UpdatedAt: envelope.UpdatedAt, Document: canonical,
+		CreatedAt: envelope.CreatedAt, UpdatedAt: envelope.UpdatedAt,
+		Document: canonical, DownlinkDocument: downlink,
 	}, nil
 }
 
@@ -60,6 +65,32 @@ func canonicalPolicyDocument(document []byte, tenantID tenant.ID, id domainpolic
 		return nil, fmt.Errorf("encode canonical policy identity: %w", err)
 	}
 	return canonical, nil
+}
+
+func endpointPolicyDocument(document []byte, id domainpolicy.ID, version domainpolicy.Version) ([]byte, error) {
+	var source map[string]json.RawMessage
+	if err := json.Unmarshal(document, &source); err != nil {
+		return nil, fmt.Errorf("decode endpoint policy source: %w", err)
+	}
+	endpoint := map[string]json.RawMessage{}
+	setJSONField(endpoint, "policy_id", id.String())
+	setJSONField(endpoint, "version", uint64(version))
+	endpoint["collection"] = rawOrDefault(source["collection"], `{"behaviors":["process.exec","process.exit","process.fork","file.read","file.write","file.chmod","network.connect"],"observe_only":true}`)
+	endpoint["detection"] = rawOrDefault(source["detection"], `{"policy_id":"default-endpoint-detection","version":1,"mode":"observe"}`)
+	endpoint["telemetry"] = rawOrDefault(source["telemetry"], `{"max_batch_items":256,"max_batch_bytes":262144,"flush_interval":"1s"}`)
+	endpoint["response"] = rawOrDefault(source["response_policy"], `{"allowed_actions":["collect","noop"],"allowed_modes":["observe"]}`)
+	encoded, err := json.Marshal(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("encode endpoint policy: %w", err)
+	}
+	return encoded, nil
+}
+
+func rawOrDefault(value json.RawMessage, fallback string) json.RawMessage {
+	if len(value) > 0 && string(value) != "null" {
+		return append(json.RawMessage(nil), value...)
+	}
+	return json.RawMessage(fallback)
 }
 
 func encodePolicy(value domainpolicy.Policy) ([]byte, policyColumns, error) {

@@ -22,6 +22,20 @@ func TestQueryPoliciesUsesActorTenant(t *testing.T) {
 	}
 }
 
+func TestQueryPolicyGetsRequestedVersion(t *testing.T) {
+	tenantID, requestContext := policyRequestContext(t)
+	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{TenantID: tenantID, ID: "policy-a", Version: 3})
+	service := NewQueryService(uow)
+
+	result, err := service.GetPolicy(context.Background(), requestContext, GetPolicyQuery{PolicyID: "policy-a", Version: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Policy.ID != "policy-a" || result.Policy.Version != 3 || uow.lastTenant != tenantID {
+		t.Fatalf("GetPolicy() = %+v, queried tenant = %q", result, uow.lastTenant)
+	}
+}
+
 func TestQueryEffectivePolicyFallsBackToDefault(t *testing.T) {
 	tenantID, requestContext := policyRequestContext(t)
 	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{
@@ -35,6 +49,29 @@ func TestQueryEffectivePolicyFallsBackToDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Policy.ID != domainpolicy.DefaultPolicyID {
+		t.Fatalf("EffectivePolicy() = %+v", result.Policy)
+	}
+}
+
+func TestQueryEffectivePolicySkipsUnpublishedAssignmentPolicy(t *testing.T) {
+	tenantID, requestContext := policyRequestContext(t)
+	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{
+		TenantID: tenantID, ID: "policy-a", Version: 2, Published: false,
+	})
+	uow.committed.assignments = []domainpolicy.Assignment{{
+		ID: "assignment-a", TenantID: tenantID, Target: domainpolicy.Target{AgentID: "agent-a"},
+		PolicyID: "policy-a", PolicyVersion: 2,
+	}}
+	uow.defaultPolicy = domainpolicy.Policy{
+		TenantID: tenantID, ID: domainpolicy.DefaultPolicyID, Version: 1, Published: true,
+	}
+	service := NewQueryService(uow)
+
+	result, err := service.EffectivePolicy(context.Background(), requestContext, EffectivePolicyQuery{Target: domainpolicy.Target{AgentID: "agent-a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Policy.ID != domainpolicy.DefaultPolicyID || !result.Policy.Published {
 		t.Fatalf("EffectivePolicy() = %+v", result.Policy)
 	}
 }

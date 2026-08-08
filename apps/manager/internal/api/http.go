@@ -33,7 +33,18 @@ type Server struct {
 	caCertPEM      []byte
 	caKey          *rsa.PrivateKey
 	localTelemetry bool
+	policyRoutes   policyRoutes
 }
+
+type policyRoutes interface {
+	Policies(http.ResponseWriter, *http.Request)
+	Publish(http.ResponseWriter, *http.Request)
+	Audits(http.ResponseWriter, *http.Request)
+	Assignments(http.ResponseWriter, *http.Request)
+	Effective(http.ResponseWriter, *http.Request)
+}
+
+func (s *Server) SetPolicyRoutes(routes policyRoutes) { s.policyRoutes = routes }
 
 type responseDecisionRequest struct {
 	SignalID string              `json:"signal_id"`
@@ -262,9 +273,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", s.health)
 	mux.HandleFunc("/api/v1/recompute", s.recompute)
 	mux.HandleFunc("/api/v1/rules", s.rules)
-	mux.HandleFunc("/api/v1/policies", s.policies)
-	mux.HandleFunc("/api/v1/policy-publish", s.policyPublish)
-	mux.HandleFunc("/api/v1/policy-audit", s.policyAudit)
+	if s.policyRoutes == nil {
+		mux.HandleFunc("/api/v1/policies", s.policies)
+		mux.HandleFunc("/api/v1/policy-publish", s.policyPublish)
+		mux.HandleFunc("/api/v1/policy-audit", s.policyAudit)
+		mux.HandleFunc("/api/v1/policy-assignments", s.policyAssignments)
+		mux.HandleFunc("/api/v1/effective-policy", s.effectivePolicy)
+	} else {
+		mux.HandleFunc("/api/v1/policies", s.policyRoutes.Policies)
+		mux.HandleFunc("/api/v1/policy-publish", s.policyRoutes.Publish)
+		mux.HandleFunc("/api/v1/policy-audit", s.policyRoutes.Audits)
+		mux.HandleFunc("/api/v1/policy-assignments", s.policyRoutes.Assignments)
+		mux.HandleFunc("/api/v1/effective-policy", s.policyRoutes.Effective)
+	}
 	mux.HandleFunc("/api/v1/artifacts", s.artifacts)
 	mux.HandleFunc("/api/v1/artifacts/", s.artifactByID)
 	mux.HandleFunc("/api/v1/channels", s.channels)
@@ -273,9 +294,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentCertificate)
 	mux.HandleFunc("/api/v1/unenrollment-completions", s.unenrollmentCompletion)
 	mux.HandleFunc("/api/v1/agent-install.sh", s.agentInstallScript)
-	mux.HandleFunc("/api/v1/policy-assignments", s.policyAssignments)
 	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRollouts)
-	mux.HandleFunc("/api/v1/effective-policy", s.effectivePolicy)
 	mux.HandleFunc("/api/v1/responses", s.responses)
 	mux.HandleFunc("/api/v1/response-decisions", s.responseDecisions)
 	mux.HandleFunc("/api/v1/response-approvals", s.responseApprovals)

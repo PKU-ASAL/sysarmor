@@ -12,6 +12,7 @@ import (
 type PolicyRepository interface {
 	Get(context.Context, tenant.ID, domainpolicy.ID, domainpolicy.Version) (domainpolicy.Policy, error)
 	Current(context.Context, tenant.ID, domainpolicy.ID) (domainpolicy.Policy, error)
+	Published(context.Context, tenant.ID, domainpolicy.ID, domainpolicy.Version) (domainpolicy.Policy, error)
 	List(context.Context, tenant.ID, domainpolicy.Filter) ([]domainpolicy.Policy, error)
 	Put(context.Context, domainpolicy.Policy) error
 }

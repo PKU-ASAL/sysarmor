@@ -1,0 +1,35 @@
+package managerapi
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
+)
+
+func TestPolicyEndpointsDelegateToInjectedRoutes(t *testing.T) {
+	routes := &recordingPolicyRoutes{}
+	server := NewServer(&store.Store{})
+	server.SetPolicyRoutes(routes)
+	handler := adminTestHandler(server)
+
+	for _, path := range []string{
+		"/api/v1/policies", "/api/v1/policy-publish", "/api/v1/policy-audit",
+		"/api/v1/policy-assignments", "/api/v1/effective-policy",
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	if routes.calls != 5 {
+		t.Fatalf("delegated calls = %d, want 5", routes.calls)
+	}
+}
+
+type recordingPolicyRoutes struct{ calls int }
+
+func (routes *recordingPolicyRoutes) Policies(http.ResponseWriter, *http.Request)    { routes.calls++ }
+func (routes *recordingPolicyRoutes) Publish(http.ResponseWriter, *http.Request)     { routes.calls++ }
+func (routes *recordingPolicyRoutes) Audits(http.ResponseWriter, *http.Request)      { routes.calls++ }
+func (routes *recordingPolicyRoutes) Assignments(http.ResponseWriter, *http.Request) { routes.calls++ }
+func (routes *recordingPolicyRoutes) Effective(http.ResponseWriter, *http.Request)   { routes.calls++ }

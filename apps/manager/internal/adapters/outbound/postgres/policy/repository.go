@@ -38,6 +38,39 @@ ORDER BY version DESC LIMIT 1
 `, tenantID.String(), id.String()), tenantID, id)
 }
 
+func (repo repository) Published(ctx context.Context, tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.Version) (domainpolicy.Policy, error) {
+	if err := validatePolicyIdentity(tenantID, id); err != nil {
+		return domainpolicy.Policy{}, err
+	}
+	rows, err := repo.db.QueryContext(ctx, `
+SELECT version, data FROM policies
+WHERE tenant_id = $1 AND policy_id = $2 AND ($3 = 0 OR version = $3)
+ORDER BY version DESC
+`, tenantID.String(), id.String(), uint64(version))
+	if err != nil {
+		return domainpolicy.Policy{}, fmt.Errorf("query published policy: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rowVersion uint64
+		var document []byte
+		if err := rows.Scan(&rowVersion, &document); err != nil {
+			return domainpolicy.Policy{}, fmt.Errorf("scan published policy: %w", err)
+		}
+		value, err := decodePolicy(tenantID, id, domainpolicy.Version(rowVersion), document)
+		if err != nil {
+			return domainpolicy.Policy{}, err
+		}
+		if value.Published {
+			return value, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return domainpolicy.Policy{}, fmt.Errorf("iterate published policies: %w", err)
+	}
+	return domainpolicy.Policy{}, failure.New(failure.NotFound, "published policy not found")
+}
+
 func (repo repository) List(ctx context.Context, tenantID tenant.ID, filter domainpolicy.Filter) ([]domainpolicy.Policy, error) {
 	if tenantID.IsZero() {
 		return nil, failure.New(failure.InvalidArgument, "tenant is required")
@@ -104,9 +137,13 @@ func (repo assignmentRepository) Effective(ctx context.Context, tenantID tenant.
 SELECT data FROM policy_assignments
 WHERE tenant_id = $1 AND (
   ($2 <> '' AND agent_id = $2) OR
-  ($2 = '' AND agent_id = '' AND scope_type = $3 AND scope_selector = $4)
+  (agent_id = '' AND scope_type = $3 AND (scope_selector = $4 OR scope_selector = ''))
 )
-ORDER BY updated_at DESC, assignment_id ASC LIMIT 1
+ORDER BY CASE
+  WHEN $2 <> '' AND agent_id = $2 THEN 30
+  WHEN scope_selector <> '' THEN 20
+  ELSE 10
+END DESC, updated_at DESC, assignment_id ASC LIMIT 1
 `, tenantID.String(), target.AgentID, target.ScopeType, target.ScopeSelector)
 	var document []byte
 	if err := row.Scan(&document); err != nil {
