@@ -84,6 +84,10 @@ func (s *Store) ImportState(state State) error {
 	for tenantID, baseline := range state.RarityByTenant {
 		s.RarityByTenant[tenantID] = baseline.Snapshot()
 	}
+	s.TelemetryBatches = make(map[string]TelemetryBatchRecord, len(state.TelemetryBatches))
+	for key, batch := range state.TelemetryBatches {
+		s.TelemetryBatches[key] = batch
+	}
 	s.TenantSignals = map[string][]*signalv1.Signal{}
 	for tenantID, messages := range state.TenantSignals {
 		for _, raw := range messages {
@@ -228,6 +232,10 @@ func (s *Store) exportStateLocked() (State, error) {
 	state.RarityByTenant = make(map[string]rarity.Baseline, len(s.RarityByTenant))
 	for tenantID, baseline := range s.RarityByTenant {
 		state.RarityByTenant[tenantID] = baseline.Snapshot()
+	}
+	state.TelemetryBatches = make(map[string]TelemetryBatchRecord, len(s.TelemetryBatches))
+	for key, batch := range s.TelemetryBatches {
+		state.TelemetryBatches[key] = batch
 	}
 	for _, enrollment := range s.Enrollments {
 		state.Enrollments = append(state.Enrollments, cloneEnrollment(enrollment))

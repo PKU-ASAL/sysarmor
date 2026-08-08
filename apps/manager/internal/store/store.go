@@ -19,36 +19,37 @@ import (
 )
 
 type Store struct {
-	mu              sync.RWMutex
-	durableMu       sync.Mutex
-	path            string
-	backendInfo     *Info
-	backend         Backend
-	baseCtx         context.Context
-	Agents          []AgentIdentity
-	Events          []*eventv1.CanonicalEvent
-	Signals         []*signalv1.Signal
-	Incidents       []*incidentv1.Incident
-	Health          map[string]agenthealth.AgentHealth
-	Rules           []policymodel.RuleContent
-	Policies        []policymodel.Policy
-	Assignments     []policymodel.Assignment
-	PolicyAudits    []policymodel.AuditRecord
-	Responses       []responsemodel.Command
-	ResponseAcks    []responsemodel.Ack
-	Pullbacks       []controlmodel.EvidencePullbackRequest
-	ControlCommands []controlmodel.ControlCommand
-	AgentSessions   []AgentSession
-	Enrollments     []Enrollment
-	Artifacts       []Artifact
-	Channels        []ArtifactChannel
-	Certificates    []AgentCertificate
-	Unenrollments   []UnenrollmentRecord
-	Metrics         Metrics
-	RarityBaseline  rarity.Baseline
-	TenantSignals   map[string][]*signalv1.Signal
-	MetricsByTenant map[string]Metrics
-	RarityByTenant  map[string]rarity.Baseline
+	mu               sync.RWMutex
+	durableMu        sync.Mutex
+	path             string
+	backendInfo      *Info
+	backend          Backend
+	baseCtx          context.Context
+	Agents           []AgentIdentity
+	Events           []*eventv1.CanonicalEvent
+	Signals          []*signalv1.Signal
+	Incidents        []*incidentv1.Incident
+	Health           map[string]agenthealth.AgentHealth
+	Rules            []policymodel.RuleContent
+	Policies         []policymodel.Policy
+	Assignments      []policymodel.Assignment
+	PolicyAudits     []policymodel.AuditRecord
+	Responses        []responsemodel.Command
+	ResponseAcks     []responsemodel.Ack
+	Pullbacks        []controlmodel.EvidencePullbackRequest
+	ControlCommands  []controlmodel.ControlCommand
+	AgentSessions    []AgentSession
+	Enrollments      []Enrollment
+	Artifacts        []Artifact
+	Channels         []ArtifactChannel
+	Certificates     []AgentCertificate
+	Unenrollments    []UnenrollmentRecord
+	Metrics          Metrics
+	RarityBaseline   rarity.Baseline
+	TenantSignals    map[string][]*signalv1.Signal
+	MetricsByTenant  map[string]Metrics
+	RarityByTenant   map[string]rarity.Baseline
+	TelemetryBatches map[string]TelemetryBatchRecord
 }
 
 func Open(path string) (*Store, error) {

@@ -41,6 +41,14 @@ type Metrics struct {
 	AverageConvergenceLatency float64 `json:"average_convergence_latency_ms"`
 }
 
+type TelemetryBatchRecord struct {
+	TenantID    string    `json:"tenant_id"`
+	BatchID     string    `json:"batch_id"`
+	Status      string    `json:"status"`
+	LeaseUntil  time.Time `json:"lease_until"`
+	CompletedAt time.Time `json:"completed_at,omitempty"`
+}
+
 type AgentSession struct {
 	SessionID         string    `json:"session_id"`
 	TenantID          string    `json:"tenant_id"`
@@ -130,30 +138,31 @@ type AgentCertificate struct {
 }
 
 type State struct {
-	Agents          []json.RawMessage                      `json:"agents"`
-	Events          []json.RawMessage                      `json:"events"`
-	Signals         []json.RawMessage                      `json:"signals"`
-	Incidents       []json.RawMessage                      `json:"incidents"`
-	Health          []json.RawMessage                      `json:"health"`
-	Rules           []policymodel.RuleContent              `json:"rules"`
-	Policies        []policymodel.Policy                   `json:"policies"`
-	Assignments     []policymodel.Assignment               `json:"assignments"`
-	PolicyAudits    []policymodel.AuditRecord              `json:"policy_audits"`
-	Responses       []responsemodel.Command                `json:"responses"`
-	ResponseAcks    []responsemodel.Ack                    `json:"response_acks"`
-	Pullbacks       []controlmodel.EvidencePullbackRequest `json:"evidence_pullbacks"`
-	ControlCommands []controlmodel.ControlCommand          `json:"control_commands,omitempty"`
-	AgentSessions   []AgentSession                         `json:"agent_sessions"`
-	Enrollments     []Enrollment                           `json:"enrollments,omitempty"`
-	Artifacts       []Artifact                             `json:"artifacts,omitempty"`
-	Channels        []ArtifactChannel                      `json:"channels,omitempty"`
-	Certificates    []AgentCertificate                     `json:"certificates,omitempty"`
-	Unenrollments   []UnenrollmentRecord                   `json:"unenrollments,omitempty"`
-	Metrics         Metrics                                `json:"metrics"`
-	RarityBaseline  rarity.Baseline                        `json:"rarity_baseline,omitempty"`
-	TenantSignals   map[string][]json.RawMessage           `json:"tenant_signals,omitempty"`
-	MetricsByTenant map[string]Metrics                     `json:"metrics_by_tenant,omitempty"`
-	RarityByTenant  map[string]rarity.Baseline             `json:"rarity_by_tenant,omitempty"`
+	Agents           []json.RawMessage                      `json:"agents"`
+	Events           []json.RawMessage                      `json:"events"`
+	Signals          []json.RawMessage                      `json:"signals"`
+	Incidents        []json.RawMessage                      `json:"incidents"`
+	Health           []json.RawMessage                      `json:"health"`
+	Rules            []policymodel.RuleContent              `json:"rules"`
+	Policies         []policymodel.Policy                   `json:"policies"`
+	Assignments      []policymodel.Assignment               `json:"assignments"`
+	PolicyAudits     []policymodel.AuditRecord              `json:"policy_audits"`
+	Responses        []responsemodel.Command                `json:"responses"`
+	ResponseAcks     []responsemodel.Ack                    `json:"response_acks"`
+	Pullbacks        []controlmodel.EvidencePullbackRequest `json:"evidence_pullbacks"`
+	ControlCommands  []controlmodel.ControlCommand          `json:"control_commands,omitempty"`
+	AgentSessions    []AgentSession                         `json:"agent_sessions"`
+	Enrollments      []Enrollment                           `json:"enrollments,omitempty"`
+	Artifacts        []Artifact                             `json:"artifacts,omitempty"`
+	Channels         []ArtifactChannel                      `json:"channels,omitempty"`
+	Certificates     []AgentCertificate                     `json:"certificates,omitempty"`
+	Unenrollments    []UnenrollmentRecord                   `json:"unenrollments,omitempty"`
+	Metrics          Metrics                                `json:"metrics"`
+	RarityBaseline   rarity.Baseline                        `json:"rarity_baseline,omitempty"`
+	TenantSignals    map[string][]json.RawMessage           `json:"tenant_signals,omitempty"`
+	MetricsByTenant  map[string]Metrics                     `json:"metrics_by_tenant,omitempty"`
+	RarityByTenant   map[string]rarity.Baseline             `json:"rarity_by_tenant,omitempty"`
+	TelemetryBatches map[string]TelemetryBatchRecord        `json:"telemetry_batches,omitempty"`
 }
 
 func cloneStringMap(in map[string]string) map[string]string {
