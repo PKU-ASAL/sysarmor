@@ -14,17 +14,10 @@ func healthDocuments(values []domainidentity.Health) []json.RawMessage {
 	return result
 }
 
-func agentItems(agents []domainidentity.Agent, health []domainidentity.Health, filter domainidentity.AgentFilter) []map[string]any {
-	byAgent := make(map[domainidentity.AgentID]domainidentity.Health, len(health))
-	for _, value := range health {
-		byAgent[value.AgentID] = value
-	}
-	result := make([]map[string]any, 0, len(agents))
-	for _, agent := range agents {
-		value := byAgent[agent.ID]
-		if !domainidentity.MatchesAgentFilter(agent, value, filter) {
-			continue
-		}
+func agentItems(values []domainidentity.AgentView) []map[string]any {
+	result := make([]map[string]any, 0, len(values))
+	for _, view := range values {
+		agent, value := view.Agent, view.Health
 		item := map[string]any{"agent_id": string(agent.ID), "host_id": agent.HostID, "tenant_id": agent.TenantID.String()}
 		setOptional(item, "version", agent.Version)
 		setOptional(item, "auth_type", agent.AuthType)

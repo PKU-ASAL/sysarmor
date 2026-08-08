@@ -40,6 +40,21 @@ func TestListHealthUsesActorTenant(t *testing.T) {
 	}
 }
 
+func TestListAgentsFiltersJoinedHealthInApplication(t *testing.T) {
+	tenantID, request := identityRequest(t, "tenant-a")
+	repositories := &fakeIdentityRepositories{
+		agents: []domainidentity.Agent{{TenantID: tenantID, ID: "agent-a"}, {TenantID: tenantID, ID: "agent-b"}},
+		health: []domainidentity.Health{{TenantID: tenantID, AgentID: "agent-a", Status: "ok", Scope: domainidentity.Scope{Type: "host"}}},
+	}
+	result, err := NewQueryService(repositories).ListAgents(context.Background(), request, ListAgentsQuery{Filter: domainidentity.AgentFilter{ScopeType: "host", HealthStatus: "ok"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Agents) != 1 || result.Agents[0].Agent.ID != "agent-a" {
+		t.Fatalf("agents = %+v", result.Agents)
+	}
+}
+
 func TestAgentOverviewCountsMissingHealthAsOffline(t *testing.T) {
 	tenantID, request := identityRequest(t, "tenant-a")
 	repositories := &fakeIdentityRepositories{agents: []domainidentity.Agent{{TenantID: tenantID, ID: "agent-a"}, {TenantID: tenantID, ID: "agent-b"}}, health: []domainidentity.Health{{TenantID: tenantID, AgentID: "agent-a", Status: "ok"}}}

@@ -45,12 +45,7 @@ func (handler *Handler) Agents(w http.ResponseWriter, r *http.Request) {
 		writeFailure(w, err)
 		return
 	}
-	health, err := handler.options.Query.ListHealth(r.Context(), request, identityapp.ListHealthQuery{})
-	if err != nil {
-		writeFailure(w, err)
-		return
-	}
-	writeJSON(w, agentItems(agents.Agents, health.Health, filter))
+	writeJSON(w, agentItems(agents.Agents))
 }
 
 func (handler *Handler) Health(w http.ResponseWriter, r *http.Request) {

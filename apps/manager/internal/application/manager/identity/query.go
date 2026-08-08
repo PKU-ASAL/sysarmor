@@ -17,7 +17,7 @@ func NewQueryService(repositories ports.IdentityRepositories) *QueryService {
 }
 
 type ListAgentsQuery struct{ Filter domainidentity.AgentFilter }
-type ListAgentsResult struct{ Agents []domainidentity.Agent }
+type ListAgentsResult struct{ Agents []domainidentity.AgentView }
 
 type ListHealthQuery struct{ Filter domainidentity.HealthFilter }
 type ListHealthResult struct{ Health []domainidentity.Health }
@@ -31,11 +31,27 @@ func (service *QueryService) ListAgents(ctx context.Context, request managerapp.
 	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
 		return ListAgentsResult{}, err
 	}
-	agents, err := service.repositories.Agents().List(ctx, request.Actor.TenantID, query.Filter)
+	agents, err := service.repositories.Agents().List(ctx, request.Actor.TenantID, domainidentity.AgentFilter{})
 	if err != nil {
 		return ListAgentsResult{}, err
 	}
-	return ListAgentsResult{Agents: agents}, nil
+	health, err := service.repositories.Health().List(ctx, request.Actor.TenantID, domainidentity.HealthFilter{})
+	if err != nil {
+		return ListAgentsResult{}, err
+	}
+	byAgent := make(map[domainidentity.AgentID]domainidentity.Health, len(health))
+	for _, value := range health {
+		byAgent[value.AgentID] = value
+	}
+	result := make([]domainidentity.AgentView, 0, len(agents))
+	for _, agent := range agents {
+		value, ok := byAgent[agent.ID]
+		if !domainidentity.MatchesAgentFilter(agent, value, query.Filter) {
+			continue
+		}
+		result = append(result, domainidentity.AgentView{Agent: agent, Health: value, HasHealth: ok})
+	}
+	return ListAgentsResult{Agents: result}, nil
 }
 
 func (service *QueryService) ListHealth(ctx context.Context, request managerapp.RequestContext, query ListHealthQuery) (ListHealthResult, error) {

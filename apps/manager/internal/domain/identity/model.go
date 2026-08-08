@@ -22,6 +22,12 @@ type AgentFilter struct {
 	ScopeType, ScopeSelector, HealthStatus string
 }
 
+type AgentView struct {
+	Agent     Agent
+	Health    Health
+	HasHealth bool
+}
+
 type Scope struct{ Type, Selector string }
 
 type Health struct {
