@@ -6,6 +6,11 @@ import (
 )
 
 func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
+	ordered := Ordered()
+	allSchema := ""
+	for _, migration := range ordered {
+		allSchema += migration.SQL
+	}
 	for _, table := range []string{
 		"schema_migrations",
 		"agents",
@@ -25,8 +30,9 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 		"agent_sessions",
 		"rarity_baseline",
 		"metrics",
+		"telemetry_batches",
 	} {
-		if !strings.Contains(PostgresSchema, "CREATE TABLE IF NOT EXISTS "+table) {
+		if !strings.Contains(allSchema, "CREATE TABLE IF NOT EXISTS "+table) {
 			t.Fatalf("postgres schema missing table %s", table)
 		}
 	}
@@ -56,8 +62,12 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 			t.Fatalf("postgres schema still creates incident report table %s", removed)
 		}
 	}
-	ordered := Ordered()
-	if len(ordered) != 2 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[1].Name != "agent_unenrollment_lifecycle" {
+	if len(ordered) != 3 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" {
 		t.Fatalf("ordered migrations = %+v", ordered)
+	}
+	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "lease_until"} {
+		if !strings.Contains(ordered[2].SQL, want) {
+			t.Fatalf("telemetry batch migration missing %q", want)
+		}
 	}
 }

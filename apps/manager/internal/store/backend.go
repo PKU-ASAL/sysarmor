@@ -79,3 +79,23 @@ type TenantMetricsBackend interface {
 type TenantRarityBackend interface {
 	LoadRarityForTenant(ctx context.Context, tenantID string) (rarity.Baseline, error)
 }
+
+type BatchClaim int
+
+const (
+	BatchClaimed BatchClaim = iota
+	BatchDuplicate
+	BatchBusy
+)
+
+type TelemetryBatchDelta struct {
+	TenantID string
+	BatchID  string
+	Metrics  Metrics
+	Rarity   rarity.Baseline
+}
+
+type TelemetryBatchBackend interface {
+	ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) (BatchClaim, error)
+	CommitTelemetryBatch(ctx context.Context, delta TelemetryBatchDelta) error
+}
