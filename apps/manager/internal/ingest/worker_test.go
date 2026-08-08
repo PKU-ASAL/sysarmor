@@ -147,6 +147,16 @@ func TestEndpointSignalDocumentIDIsStableAndAgentScoped(t *testing.T) {
 	}
 }
 
+func TestEventDocumentIDIsStableAndTenantScoped(t *testing.T) {
+	first := EventDocumentID("tenant-a", "agent-a", "event-1")
+	if first == "" || first != EventDocumentID("tenant-a", "agent-a", "event-1") {
+		t.Fatalf("event ID is not stable: %q", first)
+	}
+	if first == EventDocumentID("tenant-b", "agent-a", "event-1") {
+		t.Fatal("event ID collided across tenants")
+	}
+}
+
 func TestCloudSignalDocumentIDIsStableAndTenantScoped(t *testing.T) {
 	signal := &signalv1.Signal{Name: "cloud-signal", Where: signalv1.SignalWhere_SIGNAL_WHERE_CLOUD, Labels: map[string]string{"scenario": "shared"}}
 	first := CloudSignalDocumentID("tenant-a", signal)

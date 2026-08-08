@@ -50,14 +50,13 @@ func newTestServer(st *store.Store) *Server {
 
 func seedTenantTelemetry(t *testing.T, st *store.Store, tenantID, batchID string, metrics store.Metrics, signals []*signalv1.Signal) {
 	t.Helper()
-	lease := time.Now().Add(time.Minute)
-	claim, err := st.ClaimTelemetryBatch(context.Background(), tenantID, batchID, lease)
+	claim, token, err := st.ClaimTelemetryBatch(context.Background(), tenantID, batchID, time.Minute)
 	if err != nil || claim != store.BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
 	baseline := rarity.Baseline{}
 	baseline.Observe(signals)
-	if err := st.CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, LeaseUntil: lease, Metrics: metrics, Rarity: baseline}); err != nil {
+	if err := st.CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, ClaimToken: token, Metrics: metrics, Rarity: baseline}); err != nil {
 		t.Fatal(err)
 	}
 }

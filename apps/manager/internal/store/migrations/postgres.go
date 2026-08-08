@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS telemetry_batches (
   tenant_id TEXT NOT NULL,
   batch_id TEXT NOT NULL,
   status TEXT NOT NULL,
+  claim_token TEXT NOT NULL,
   lease_until TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ,

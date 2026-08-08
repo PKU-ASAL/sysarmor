@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -9,16 +11,21 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 )
 
-func (s *Store) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) (BatchClaim, error) {
-	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" {
-		return BatchBusy, fmt.Errorf("tenant_id and batch_id are required")
+func (s *Store) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseDuration time.Duration) (BatchClaim, string, error) {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" || leaseDuration <= 0 {
+		return BatchBusy, "", fmt.Errorf("tenant_id, batch_id, and positive lease duration are required")
+	}
+	claimToken, err := newClaimToken()
+	if err != nil {
+		return BatchBusy, "", err
 	}
 	backend, baseCtx := s.backendCtx()
 	if batchBackend, ok := backend.(TelemetryBatchBackend); ok {
 		if ctx == nil {
 			ctx = baseCtx
 		}
-		return batchBackend.ClaimTelemetryBatch(ctx, tenantID, batchID, leaseUntil)
+		claim, err := batchBackend.ClaimTelemetryBatch(ctx, tenantID, batchID, claimToken, leaseDuration)
+		return claim, claimToken, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -28,21 +35,21 @@ func (s *Store) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID strin
 	key := telemetryBatchKey(tenantID, batchID)
 	record, exists := s.TelemetryBatches[key]
 	if exists && record.Status == "completed" {
-		return BatchDuplicate, nil
+		return BatchDuplicate, "", nil
 	}
 	if exists && record.LeaseUntil.After(time.Now().UTC()) {
-		return BatchBusy, nil
+		return BatchBusy, "", nil
 	}
-	s.TelemetryBatches[key] = TelemetryBatchRecord{TenantID: tenantID, BatchID: batchID, Status: "processing", LeaseUntil: leaseUntil}
+	s.TelemetryBatches[key] = TelemetryBatchRecord{TenantID: tenantID, BatchID: batchID, Status: "processing", ClaimToken: claimToken, LeaseUntil: time.Now().UTC().Add(leaseDuration)}
 	if err := s.persistFileLocked(); err != nil {
 		if exists {
 			s.TelemetryBatches[key] = record
 		} else {
 			delete(s.TelemetryBatches, key)
 		}
-		return BatchBusy, fmt.Errorf("persist telemetry batch claim: %w", err)
+		return BatchBusy, "", fmt.Errorf("persist telemetry batch claim: %w", err)
 	}
-	return BatchClaimed, nil
+	return BatchClaimed, claimToken, nil
 }
 
 func (s *Store) CommitTelemetryBatch(ctx context.Context, delta TelemetryBatchDelta) error {
@@ -59,19 +66,19 @@ func (s *Store) CommitTelemetryBatch(ctx context.Context, delta TelemetryBatchDe
 	return s.commitLocalTelemetryBatch(delta)
 }
 
-func (s *Store) AbandonTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) error {
+func (s *Store) AbandonTelemetryBatch(ctx context.Context, tenantID, batchID, claimToken string) error {
 	backend, baseCtx := s.backendCtx()
 	if batchBackend, ok := backend.(TelemetryBatchBackend); ok {
 		if ctx == nil {
 			ctx = baseCtx
 		}
-		return batchBackend.AbandonTelemetryBatch(ctx, tenantID, batchID, leaseUntil)
+		return batchBackend.AbandonTelemetryBatch(ctx, tenantID, batchID, claimToken)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := telemetryBatchKey(tenantID, batchID)
 	record, ok := s.TelemetryBatches[key]
-	if ok && record.Status == "processing" && record.LeaseUntil.Equal(leaseUntil) {
+	if ok && record.Status == "processing" && record.ClaimToken == claimToken {
 		delete(s.TelemetryBatches, key)
 		return s.persistFileLocked()
 	}
@@ -83,7 +90,7 @@ func (s *Store) commitLocalTelemetryBatch(delta TelemetryBatchDelta) error {
 	defer s.mu.Unlock()
 	key := telemetryBatchKey(delta.TenantID, delta.BatchID)
 	record, exists := s.TelemetryBatches[key]
-	if !exists || record.Status != "processing" || !record.LeaseUntil.Equal(delta.LeaseUntil) {
+	if !exists || record.Status != "processing" || record.ClaimToken != delta.ClaimToken {
 		return fmt.Errorf("telemetry batch is not processing")
 	}
 	previousMetrics := s.MetricsByTenant[delta.TenantID]
@@ -106,6 +113,14 @@ func (s *Store) commitLocalTelemetryBatch(delta TelemetryBatchDelta) error {
 		return fmt.Errorf("persist telemetry batch commit: %w", err)
 	}
 	return nil
+}
+
+func newClaimToken() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate telemetry claim token: %w", err)
+	}
+	return hex.EncodeToString(raw[:]), nil
 }
 
 func ensureMetricsMap(input map[string]Metrics) map[string]Metrics {

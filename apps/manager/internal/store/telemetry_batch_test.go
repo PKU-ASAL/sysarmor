@@ -15,13 +15,13 @@ func TestFileTelemetryBatchCommitSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Now().Add(time.Minute))
+	claim, token, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
 	if err != nil || claim != BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
 	err = st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{
 		TenantID: "tenant-a", BatchID: "batch-a",
-		LeaseUntil: st.TelemetryBatches[telemetryBatchKey("tenant-a", "batch-a")].LeaseUntil,
+		ClaimToken: token,
 		Metrics:    Metrics{DataBatchesAppended: 1, EventsIngested: 3},
 		Rarity:     rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 2}}},
 	})
@@ -33,7 +33,7 @@ func TestFileTelemetryBatchCommitSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err = reopened.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Now().Add(time.Minute))
+	claim, _, err = reopened.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
 	if err != nil || claim != BatchDuplicate {
 		t.Fatalf("reopened claim=%v err=%v", claim, err)
 	}
@@ -47,14 +47,40 @@ func TestFileTelemetryBatchCommitSurvivesReopen(t *testing.T) {
 
 func TestTelemetryBatchClaimIsTenantScopedAndReclaimsExpiredLease(t *testing.T) {
 	st := &Store{}
-	now := time.Now()
-	if claim, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "shared", now.Add(-time.Minute)); err != nil || claim != BatchClaimed {
+	if claim, _, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "shared", time.Minute); err != nil || claim != BatchClaimed {
 		t.Fatalf("first claim=%v err=%v", claim, err)
 	}
-	if claim, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "shared", now.Add(time.Minute)); err != nil || claim != BatchClaimed {
+	record := st.TelemetryBatches[telemetryBatchKey("tenant-a", "shared")]
+	record.LeaseUntil = time.Now().Add(-time.Minute)
+	st.TelemetryBatches[telemetryBatchKey("tenant-a", "shared")] = record
+	if claim, _, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "shared", time.Minute); err != nil || claim != BatchClaimed {
 		t.Fatalf("expired reclaim=%v err=%v", claim, err)
 	}
-	if claim, err := st.ClaimTelemetryBatch(context.Background(), "tenant-b", "shared", now.Add(time.Minute)); err != nil || claim != BatchClaimed {
+	if claim, _, err := st.ClaimTelemetryBatch(context.Background(), "tenant-b", "shared", time.Minute); err != nil || claim != BatchClaimed {
 		t.Fatalf("other tenant claim=%v err=%v", claim, err)
+	}
+}
+
+func TestReclaimedTelemetryBatchRejectsStaleClaimToken(t *testing.T) {
+	st := &Store{}
+	_, staleToken, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := st.TelemetryBatches[telemetryBatchKey("tenant-a", "batch-a")]
+	record.LeaseUntil = time.Now().Add(-time.Minute)
+	st.TelemetryBatches[telemetryBatchKey("tenant-a", "batch-a")] = record
+	claim, currentToken, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
+	if err != nil || claim != BatchClaimed {
+		t.Fatalf("reclaim=%v err=%v", claim, err)
+	}
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "batch-a", ClaimToken: staleToken}); err == nil {
+		t.Fatal("stale token committed reclaimed batch")
+	}
+	if err := st.AbandonTelemetryBatch(context.Background(), "tenant-a", "batch-a", staleToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "batch-a", ClaimToken: currentToken}); err != nil {
+		t.Fatal(err)
 	}
 }

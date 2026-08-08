@@ -45,6 +45,7 @@ type TelemetryBatchRecord struct {
 	TenantID    string    `json:"tenant_id"`
 	BatchID     string    `json:"batch_id"`
 	Status      string    `json:"status"`
+	ClaimToken  string    `json:"claim_token"`
 	LeaseUntil  time.Time `json:"lease_until"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`
 }

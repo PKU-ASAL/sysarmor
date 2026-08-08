@@ -84,13 +84,13 @@ const (
 type TelemetryBatchDelta struct {
 	TenantID   string
 	BatchID    string
-	LeaseUntil time.Time
+	ClaimToken string
 	Metrics    Metrics
 	Rarity     rarity.Baseline
 }
 
 type TelemetryBatchBackend interface {
-	ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) (BatchClaim, error)
+	ClaimTelemetryBatch(ctx context.Context, tenantID, batchID, claimToken string, leaseDuration time.Duration) (BatchClaim, error)
 	CommitTelemetryBatch(ctx context.Context, delta TelemetryBatchDelta) error
-	AbandonTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) error
+	AbandonTelemetryBatch(ctx context.Context, tenantID, batchID, claimToken string) error
 }

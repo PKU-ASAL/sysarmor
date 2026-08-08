@@ -12,9 +12,9 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
-func (b *tableBackend) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) (store.BatchClaim, error) {
-	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" {
-		return store.BatchBusy, fmt.Errorf("tenant_id and batch_id are required")
+func (b *tableBackend) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID, claimToken string, leaseDuration time.Duration) (store.BatchClaim, error) {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" || strings.TrimSpace(claimToken) == "" || leaseDuration <= 0 {
+		return store.BatchBusy, fmt.Errorf("tenant_id, batch_id, claim token, and positive lease duration are required")
 	}
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -23,7 +23,7 @@ func (b *tableBackend) ClaimTelemetryBatch(ctx context.Context, tenantID, batchI
 		return store.BatchBusy, fmt.Errorf("begin telemetry batch claim: %w", err)
 	}
 	defer tx.Rollback()
-	claim, err := claimTelemetryBatch(ctx, tx, tenantID, batchID, leaseUntil)
+	claim, err := claimTelemetryBatch(ctx, tx, tenantID, batchID, claimToken, leaseDuration)
 	if err != nil {
 		return store.BatchBusy, err
 	}
@@ -33,14 +33,14 @@ func (b *tableBackend) ClaimTelemetryBatch(ctx context.Context, tenantID, batchI
 	return claim, nil
 }
 
-func claimTelemetryBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID string, leaseUntil time.Time) (store.BatchClaim, error) {
+func claimTelemetryBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID, claimToken string, leaseDuration time.Duration) (store.BatchClaim, error) {
 	var status string
-	var currentLease time.Time
-	err := tx.QueryRowContext(ctx, `SELECT status, lease_until FROM telemetry_batches
-WHERE tenant_id=$1 AND batch_id=$2 FOR UPDATE`, tenantID, batchID).Scan(&status, &currentLease)
+	var expired bool
+	err := tx.QueryRowContext(ctx, `SELECT status, lease_until <= now() AS expired FROM telemetry_batches
+WHERE tenant_id=$1 AND batch_id=$2 FOR UPDATE`, tenantID, batchID).Scan(&status, &expired)
 	if err == sql.ErrNoRows {
-		result, insertErr := tx.ExecContext(ctx, `INSERT INTO telemetry_batches (tenant_id, batch_id, status, lease_until)
-VALUES ($1,$2,'processing',$3) ON CONFLICT (tenant_id, batch_id) DO NOTHING`, tenantID, batchID, leaseUntil)
+		result, insertErr := tx.ExecContext(ctx, `INSERT INTO telemetry_batches (tenant_id, batch_id, status, claim_token, lease_until)
+VALUES ($1,$2,'processing',$3,now()+($4 * interval '1 millisecond')) ON CONFLICT (tenant_id, batch_id) DO NOTHING`, tenantID, batchID, claimToken, leaseDuration.Milliseconds())
 		if insertErr != nil {
 			return store.BatchBusy, fmt.Errorf("insert telemetry batch claim: %w", insertErr)
 		}
@@ -51,7 +51,7 @@ VALUES ($1,$2,'processing',$3) ON CONFLICT (tenant_id, batch_id) DO NOTHING`, te
 		if inserted == 1 {
 			return store.BatchClaimed, nil
 		}
-		return claimTelemetryBatch(ctx, tx, tenantID, batchID, leaseUntil)
+		return claimTelemetryBatch(ctx, tx, tenantID, batchID, claimToken, leaseDuration)
 	}
 	if err != nil {
 		return store.BatchBusy, fmt.Errorf("read telemetry batch claim: %w", err)
@@ -59,11 +59,11 @@ VALUES ($1,$2,'processing',$3) ON CONFLICT (tenant_id, batch_id) DO NOTHING`, te
 	if status == "completed" {
 		return store.BatchDuplicate, nil
 	}
-	if currentLease.After(time.Now().UTC()) {
+	if !expired {
 		return store.BatchBusy, nil
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE telemetry_batches SET lease_until=$3
-WHERE tenant_id=$1 AND batch_id=$2 AND status='processing'`, tenantID, batchID, leaseUntil)
+	_, err = tx.ExecContext(ctx, `UPDATE telemetry_batches SET claim_token=$3, lease_until=now()+($4 * interval '1 millisecond')
+WHERE tenant_id=$1 AND batch_id=$2 AND status='processing'`, tenantID, batchID, claimToken, leaseDuration.Milliseconds())
 	return store.BatchClaimed, wrapTelemetryError("renew telemetry batch claim", err)
 }
 
@@ -74,7 +74,7 @@ func (b *tableBackend) CommitTelemetryBatch(ctx context.Context, delta store.Tel
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	return b.withTransaction(ctx, func(tx *sql.Tx) error {
-		if err := lockProcessingBatch(ctx, tx, delta.TenantID, delta.BatchID, delta.LeaseUntil); err != nil {
+		if err := lockProcessingBatch(ctx, tx, delta.TenantID, delta.BatchID, delta.ClaimToken); err != nil {
 			return err
 		}
 		if err := mergeTenantMetrics(ctx, tx, delta.TenantID, delta.Metrics); err != nil {
@@ -89,10 +89,10 @@ WHERE tenant_id=$1 AND batch_id=$2 AND status='processing'`, delta.TenantID, del
 	})
 }
 
-func lockProcessingBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID string, leaseUntil time.Time) error {
+func lockProcessingBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID, claimToken string) error {
 	var status string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM telemetry_batches
-WHERE tenant_id=$1 AND batch_id=$2 AND lease_until=$3 FOR UPDATE`, tenantID, batchID, leaseUntil).Scan(&status); err != nil {
+WHERE tenant_id=$1 AND batch_id=$2 AND claim_token=$3 FOR UPDATE`, tenantID, batchID, claimToken).Scan(&status); err != nil {
 		return fmt.Errorf("lock telemetry batch: %w", err)
 	}
 	if status != "processing" {
@@ -101,11 +101,11 @@ WHERE tenant_id=$1 AND batch_id=$2 AND lease_until=$3 FOR UPDATE`, tenantID, bat
 	return nil
 }
 
-func (b *tableBackend) AbandonTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) error {
+func (b *tableBackend) AbandonTelemetryBatch(ctx context.Context, tenantID, batchID, claimToken string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	_, err := b.db.ExecContext(ctx, `DELETE FROM telemetry_batches
-WHERE tenant_id=$1 AND batch_id=$2 AND status='processing' AND lease_until=$3`, tenantID, batchID, leaseUntil)
+WHERE tenant_id=$1 AND batch_id=$2 AND status='processing' AND claim_token=$3`, tenantID, batchID, claimToken)
 	return wrapTelemetryError("abandon telemetry batch", err)
 }
 

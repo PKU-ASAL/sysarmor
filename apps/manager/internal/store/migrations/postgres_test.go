@@ -65,7 +65,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 	if len(ordered) != 3 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" {
 		t.Fatalf("ordered migrations = %+v", ordered)
 	}
-	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "lease_until"} {
+	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "claim_token", "lease_until"} {
 		if !strings.Contains(ordered[2].SQL, want) {
 			t.Fatalf("telemetry batch migration missing %q", want)
 		}

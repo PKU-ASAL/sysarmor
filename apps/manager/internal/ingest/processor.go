@@ -62,8 +62,7 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, fmt.Errorf("data batch header identity is required")
 	}
 	header := batch.GetHeader()
-	leaseUntil := time.Now().UTC().Add(30 * time.Second)
-	claim, err := p.store.ClaimTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), leaseUntil)
+	claim, claimToken, err := p.store.ClaimTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), 30*time.Second)
 	if err != nil {
 		return Result{}, fmt.Errorf("claim telemetry batch: %w", err)
 	}
@@ -76,7 +75,7 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 	committed := false
 	defer func() {
 		if !committed {
-			_ = p.store.AbandonTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), leaseUntil)
+			_ = p.store.AbandonTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), claimToken)
 		}
 	}()
 	agent := store.AgentIdentityFromDataBatch(batch)
@@ -131,7 +130,7 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 	if err := p.store.Save(); err != nil {
 		return Result{}, err
 	}
-	delta := telemetryBatchDelta(batch, leaseUntil, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
+	delta := telemetryBatchDelta(batch, claimToken, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
 	if err := p.store.CommitTelemetryBatch(ctx, delta); err != nil {
 		return Result{}, err
 	}
@@ -139,7 +138,7 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 	return Result{AcceptedEvents: len(currentEvents), AcceptedSignals: len(currentSignals), CloudSignals: cloudSignals, Incidents: incidents}, nil
 }
 
-func telemetryBatchDelta(batch *dataplanev1.DataBatch, leaseUntil time.Time, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) store.TelemetryBatchDelta {
+func telemetryBatchDelta(batch *dataplanev1.DataBatch, claimToken string, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) store.TelemetryBatchDelta {
 	latencyMs := uint64(latency.Milliseconds())
 	metrics := store.Metrics{
 		DataBatchesAppended: 1, EventsIngested: uint64(events), EndpointSignalsIngested: uint64(endpointSignals),
@@ -155,7 +154,7 @@ func telemetryBatchDelta(batch *dataplanev1.DataBatch, leaseUntil time.Time, eve
 		}
 	}
 	baseline.Observe(currentSignals)
-	return store.TelemetryBatchDelta{TenantID: batch.GetHeader().GetTenantId(), BatchID: batch.GetHeader().GetBatchId(), LeaseUntil: leaseUntil, Metrics: metrics, Rarity: baseline}
+	return store.TelemetryBatchDelta{TenantID: batch.GetHeader().GetTenantId(), BatchID: batch.GetHeader().GetBatchId(), ClaimToken: claimToken, Metrics: metrics, Rarity: baseline}
 }
 
 type touchedScope struct {
@@ -344,7 +343,8 @@ func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]platfor
 		if err != nil {
 			return nil, fmt.Errorf("marshal event %q: %w", ev.GetId(), err)
 		}
-		documents = append(documents, decorateDocument(platformopensearch.Document{Index: platformopensearch.EventsWriteAlias, ID: ev.GetId(), Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
+		documentID := EventDocumentID(batch.GetHeader().GetTenantId(), batch.GetHeader().GetAgentId(), ev.GetId())
+		documents = append(documents, decorateDocument(platformopensearch.Document{Index: platformopensearch.EventsWriteAlias, ID: documentID, Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
 	}
 	for _, frame := range batch.GetSignals() {
 		sig := frame.GetSignal()
@@ -410,6 +410,14 @@ func EndpointSignalDocumentID(tenantID, agentID, signalID string) string {
 	}
 	sum := sha256.Sum256([]byte(tenantID + "\x00" + agentID + "\x00" + signalID))
 	return "endpoint-signal:" + hex.EncodeToString(sum[:16])
+}
+
+func EventDocumentID(tenantID, agentID, eventID string) string {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(eventID) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(tenantID + "\x00" + agentID + "\x00" + eventID))
+	return "event:" + hex.EncodeToString(sum[:16])
 }
 
 func CloudSignalDocumentID(tenantID string, signal *signalv1.Signal) string {

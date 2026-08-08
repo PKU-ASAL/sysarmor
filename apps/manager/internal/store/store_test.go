@@ -130,11 +130,11 @@ func TestTenantMetricsAccumulateByCommittedBatch(t *testing.T) {
 
 func commitTestTelemetry(t *testing.T, st *Store, tenantID, batchID string, metrics Metrics) {
 	t.Helper()
-	lease := time.Now().Add(time.Minute)
-	if claim, err := st.ClaimTelemetryBatch(context.Background(), tenantID, batchID, lease); err != nil || claim != BatchClaimed {
+	claim, token, err := st.ClaimTelemetryBatch(context.Background(), tenantID, batchID, time.Minute)
+	if err != nil || claim != BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
-	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, LeaseUntil: lease, Metrics: metrics}); err != nil {
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, ClaimToken: token, Metrics: metrics}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -190,11 +190,11 @@ func TestTenantTelemetryStateRoundTrip(t *testing.T) {
 	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "signal-a"})
 	baseline := rarity.Baseline{}
 	baseline.Observe([]*signalv1.Signal{{Name: "signal-a"}})
-	lease := time.Now().Add(time.Minute)
-	if claim, claimErr := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", lease); claimErr != nil || claim != BatchClaimed {
+	claim, token, claimErr := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
+	if claimErr != nil || claim != BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, claimErr)
 	}
-	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "batch-a", LeaseUntil: lease, Metrics: Metrics{DataBatchesAppended: 1, EventsIngested: 2}, Rarity: baseline}); err != nil {
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "batch-a", ClaimToken: token, Metrics: Metrics{DataBatchesAppended: 1, EventsIngested: 2}, Rarity: baseline}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Save(); err != nil {
@@ -708,11 +708,11 @@ func TestExportImportStateRoundTrip(t *testing.T) {
 			Key:  "checkout-api",
 		}},
 	}})
-	lease := time.Now().Add(time.Minute)
-	if claim, err := st.ClaimTelemetryBatch(context.Background(), "default", "telemetry-batch", lease); err != nil || claim != BatchClaimed {
+	claim, token, err := st.ClaimTelemetryBatch(context.Background(), "default", "telemetry-batch", time.Minute)
+	if err != nil || claim != BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
-	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "default", BatchID: "telemetry-batch", LeaseUntil: lease, Metrics: Metrics{DataBatchesAppended: 1, SignalsEmitted: 2}, Rarity: baseline}); err != nil {
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "default", BatchID: "telemetry-batch", ClaimToken: token, Metrics: Metrics{DataBatchesAppended: 1, SignalsEmitted: 2}, Rarity: baseline}); err != nil {
 		t.Fatal(err)
 	}
 

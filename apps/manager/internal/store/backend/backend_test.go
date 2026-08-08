@@ -35,11 +35,11 @@ import (
 
 func commitBackendTelemetry(t *testing.T, st *store.Store, delta store.TelemetryBatchDelta) {
 	t.Helper()
-	delta.LeaseUntil = time.Now().Add(time.Minute)
-	claim, err := st.ClaimTelemetryBatch(context.Background(), delta.TenantID, delta.BatchID, delta.LeaseUntil)
+	claim, token, err := st.ClaimTelemetryBatch(context.Background(), delta.TenantID, delta.BatchID, time.Minute)
 	if err != nil || claim != store.BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
+	delta.ClaimToken = token
 	if err := st.CommitTelemetryBatch(context.Background(), delta); err != nil {
 		t.Fatal(err)
 	}
@@ -1587,8 +1587,8 @@ var fakeState struct {
 }
 
 type fakeTelemetryBatch struct {
-	status string
-	lease  time.Time
+	status  string
+	expired bool
 }
 
 func fakeSetExecError(err error) {
@@ -1881,8 +1881,7 @@ func (s fakeStmt) ExecContext(_ context.Context, args []driver.NamedValue) (driv
 	}
 	if strings.Contains(s.query, "INSERT INTO telemetry_batches") && len(args) >= 3 {
 		key := fmt.Sprint(args[0].Value) + "\x00" + fmt.Sprint(args[1].Value)
-		lease, _ := args[2].Value.(time.Time)
-		fakeState.telemetryBatches[key] = fakeTelemetryBatch{status: "processing", lease: lease}
+		fakeState.telemetryBatches[key] = fakeTelemetryBatch{status: "processing"}
 	}
 	if strings.Contains(s.query, "UPDATE telemetry_batches SET status = 'completed'") && len(args) >= 2 {
 		key := fmt.Sprint(args[0].Value) + "\x00" + fmt.Sprint(args[1].Value)
@@ -2061,7 +2060,7 @@ func (s fakeStmt) QueryContext(_ context.Context, args []driver.NamedValue) (dri
 		key := fmt.Sprint(args[0].Value) + "\x00" + fmt.Sprint(args[1].Value)
 		if record, ok := fakeState.telemetryBatches[key]; ok {
 			if strings.Contains(s.query, "SELECT status, lease_until") {
-				return &fakeRows{cols: []string{"status", "lease_until"}, rows: [][]driver.Value{{record.status, record.lease}}}, nil
+				return &fakeRows{cols: []string{"status", "expired"}, rows: [][]driver.Value{{record.status, record.expired}}}, nil
 			}
 			return &fakeRows{cols: []string{"status"}, rows: [][]driver.Value{{record.status}}}, nil
 		}

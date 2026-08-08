@@ -14,8 +14,8 @@ import (
 
 func TestClaimTelemetryBatchReturnsDuplicateForCompleted(t *testing.T) {
 	db := openFakeDB(t, nil)
-	FakeSetQueryValues([][]driver.Value{{"completed", time.Now().Add(time.Hour)}}, nil)
-	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Now().Add(time.Minute))
+	FakeSetQueryValues([][]driver.Value{{"completed", false}}, nil)
+	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", "token-a", time.Minute)
 	if err != nil || claim != store.BatchDuplicate {
 		t.Fatalf("claim = %v, err = %v", claim, err)
 	}
@@ -23,8 +23,8 @@ func TestClaimTelemetryBatchReturnsDuplicateForCompleted(t *testing.T) {
 
 func TestClaimTelemetryBatchReturnsBusyForLiveLease(t *testing.T) {
 	db := openFakeDB(t, nil)
-	FakeSetQueryValues([][]driver.Value{{"processing", time.Now().Add(time.Hour)}}, nil)
-	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Now().Add(time.Minute))
+	FakeSetQueryValues([][]driver.Value{{"processing", false}}, nil)
+	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", "token-a", time.Minute)
 	if err != nil || claim != store.BatchBusy {
 		t.Fatalf("claim = %v, err = %v", claim, err)
 	}
@@ -33,12 +33,16 @@ func TestClaimTelemetryBatchReturnsBusyForLiveLease(t *testing.T) {
 func TestClaimTelemetryBatchUsesConflictSafeInsert(t *testing.T) {
 	db := openFakeDB(t, nil)
 	FakeSetQueryValues(nil, nil)
-	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-new", time.Now().Add(time.Minute))
+	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-new", "token-a", time.Minute)
 	if err != nil || claim != store.BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
 	if queries := FakeAllQueries(); !strings.Contains(queries, "ON CONFLICT (tenant_id, batch_id) DO NOTHING") {
 		t.Fatalf("claim insert is not conflict safe:\n%s", queries)
+	}
+	queries := FakeAllQueries()
+	if !strings.Contains(queries, "lease_until <= now()") || !strings.Contains(queries, "now()+($4 * interval '1 millisecond')") {
+		t.Fatalf("claim lease does not use database clock:\n%s", queries)
 	}
 }
 
@@ -50,7 +54,7 @@ func TestCommitTelemetryBatchCommitsMetricsRarityAndCompletion(t *testing.T) {
 	})
 	err := (&tableBackend{db: db}).CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{
 		TenantID: "tenant-a", BatchID: "batch-a",
-		LeaseUntil: time.Now().Add(time.Minute),
+		ClaimToken: "token-a",
 		Metrics:    store.Metrics{DataBatchesAppended: 1, EventsIngested: 3},
 		Rarity:     rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 2}}},
 	})
@@ -75,7 +79,7 @@ func TestCommitTelemetryBatchRollsBackOnRarityFailure(t *testing.T) {
 	FakeSetExecErrorForQuery("INSERT INTO rarity_baseline", errors.New("rarity failed"))
 	err := (&tableBackend{db: db}).CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{
 		TenantID: "tenant-a", BatchID: "batch-a",
-		LeaseUntil: time.Now().Add(time.Minute),
+		ClaimToken: "token-a",
 		Rarity:     rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 1}}},
 	})
 	if err == nil {
