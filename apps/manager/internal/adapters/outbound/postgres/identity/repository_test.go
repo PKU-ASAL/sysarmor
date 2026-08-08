@@ -49,6 +49,45 @@ func TestHealthRepositoryCanonicalizesIdentity(t *testing.T) {
 	}
 }
 
+func TestSessionRepositoryReadsNullableProjection(t *testing.T) {
+	db := newIdentityTestDB(t)
+	if _, err := db.Exec(`INSERT INTO agent_sessions (tenant_id, session_id, agent_id, data) VALUES (?, ?, ?, ?)`,
+		"tenant-a", "session-a", "agent-a", []byte(`{"tenant_id":"wrong","session_id":"wrong","agent_id":"wrong","last_ack_cursor":"batch-7"}`)); err != nil {
+		t.Fatal(err)
+	}
+	tenantA := mustIdentityTenant(t, "tenant-a")
+	sessions, err := NewRepositories(db).Sessions().List(context.Background(), tenantA, domainidentity.SessionFilter{AgentID: "agent-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "session-a" || sessions[0].AgentID != "agent-a" || sessions[0].LastAckCursor != "batch-7" {
+		t.Fatalf("sessions = %+v", sessions)
+	}
+}
+
+func TestSnapshotRepositoryReadsProductionMetricsAndRarityTables(t *testing.T) {
+	db := newIdentityTestDB(t)
+	if _, err := db.Exec(`INSERT INTO metrics (tenant_id, metric_key, data) VALUES (?, 'manager', ?)`, "tenant-a", []byte(`{"events_ingested":7}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO rarity_baseline (tenant_id, workload_key, signal_name, signal_count, data) VALUES (?, ?, ?, ?, '{}')`, "tenant-a", "host:a", "signal-a", 3); err != nil {
+		t.Fatal(err)
+	}
+	tenantA := mustIdentityTenant(t, "tenant-a")
+	snapshots := NewRepositories(db).Snapshots()
+	metrics, err := snapshots.Metrics(context.Background(), tenantA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := snapshots.Rarity(context.Background(), tenantA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metrics.EventsIngested != 7 || baseline.Count("host:a", "signal-a") != 3 {
+		t.Fatalf("metrics=%+v baseline=%+v", metrics, baseline)
+	}
+}
+
 func newIdentityTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
@@ -60,9 +99,9 @@ func newIdentityTestDB(t *testing.T) *sql.DB {
 	for _, statement := range []string{
 		`CREATE TABLE agents (tenant_id TEXT, agent_id TEXT, host_id TEXT, version TEXT, data BLOB)`,
 		`CREATE TABLE agent_health (tenant_id TEXT, agent_id TEXT, host_id TEXT, scope_type TEXT, scope_selector TEXT, observed_at TIMESTAMP, data BLOB)`,
-		`CREATE TABLE agent_sessions (tenant_id TEXT, session_id TEXT, agent_id TEXT, status TEXT, data_transport TEXT, control_transport TEXT, last_ack_cursor TEXT, last_data_seen_at TIMESTAMP, last_control_seen_at TIMESTAMP, data BLOB)`,
-		`CREATE TABLE tenant_metrics (tenant_id TEXT PRIMARY KEY, data BLOB)`,
-		`CREATE TABLE rarity_baseline (tenant_id TEXT PRIMARY KEY, data BLOB)`,
+		`CREATE TABLE agent_sessions (tenant_id TEXT, session_id TEXT, agent_id TEXT, status TEXT, data_transport TEXT, control_transport TEXT, last_ack_cursor TEXT, started_at TIMESTAMP, last_seen_at TIMESTAMP, last_data_seen_at TIMESTAMP, last_control_seen_at TIMESTAMP, closed_at TIMESTAMP, data BLOB)`,
+		`CREATE TABLE metrics (tenant_id TEXT, metric_key TEXT, data BLOB, PRIMARY KEY (tenant_id, metric_key))`,
+		`CREATE TABLE rarity_baseline (tenant_id TEXT, workload_key TEXT, signal_name TEXT, signal_count INTEGER, data BLOB, PRIMARY KEY (tenant_id, workload_key, signal_name))`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)

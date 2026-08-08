@@ -109,20 +109,22 @@ func (repo sessionRepository) List(ctx context.Context, tenantID tenant.ID, filt
 	if err := requireTenant(tenantID); err != nil {
 		return nil, err
 	}
-	rows, err := repo.db.QueryContext(ctx, `SELECT session_id, agent_id, started_at, last_seen_at, last_data_seen_at, last_control_seen_at, closed_at, last_ack_cursor, data_transport, control_transport, status FROM agent_sessions WHERE tenant_id = $1 AND ($2 = '' OR agent_id = $2) ORDER BY last_seen_at DESC, session_id ASC`, tenantID.String(), filter.AgentID)
+	rows, err := repo.db.QueryContext(ctx, `SELECT session_id, agent_id, data FROM agent_sessions WHERE tenant_id = $1 AND ($2 = '' OR agent_id = $2) ORDER BY last_seen_at DESC, session_id ASC`, tenantID.String(), filter.AgentID)
 	if err != nil {
 		return nil, fmt.Errorf("query agent sessions: %w", err)
 	}
 	defer rows.Close()
 	result := []domainidentity.Session{}
 	for rows.Next() {
-		var value domainidentity.Session
-		var tenantRaw string
-		if err := rows.Scan(&value.ID, &value.AgentID, &value.StartedAt, &value.LastSeenAt, &value.LastDataSeenAt, &value.LastControlSeenAt, &value.ClosedAt, &value.LastAckCursor, &value.DataTransport, &value.ControlTransport, &value.Status); err != nil {
+		var id, agentID string
+		var document []byte
+		if err := rows.Scan(&id, &agentID, &document); err != nil {
 			return nil, fmt.Errorf("scan agent session: %w", err)
 		}
-		_ = tenantRaw
-		value.TenantID = tenantID
+		value, err := decodeSession(tenantID, id, agentID, document)
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, value)
 	}
 	if err := rows.Err(); err != nil {
@@ -134,10 +136,49 @@ func (repo sessionRepository) List(ctx context.Context, tenantID tenant.ID, filt
 type snapshotRepository struct{ db *sql.DB }
 
 func (repo snapshotRepository) Metrics(ctx context.Context, tenantID tenant.ID) (domainidentity.Metrics, error) {
-	return readSnapshot(ctx, repo.db, "tenant_metrics", tenantID, decodeMetrics)
+	if err := requireTenant(tenantID); err != nil {
+		return domainidentity.Metrics{}, err
+	}
+	var document []byte
+	err := repo.db.QueryRowContext(ctx, `SELECT data FROM metrics WHERE tenant_id = $1 AND metric_key = 'manager'`, tenantID.String()).Scan(&document)
+	if err == sql.ErrNoRows {
+		return domainidentity.Metrics{}, nil
+	}
+	if err != nil {
+		return domainidentity.Metrics{}, fmt.Errorf("read metrics: %w", err)
+	}
+	return decodeMetrics(tenantID, document)
 }
 func (repo snapshotRepository) Rarity(ctx context.Context, tenantID tenant.ID) (domainidentity.RarityBaseline, error) {
-	return readSnapshot(ctx, repo.db, "rarity_baseline", tenantID, decodeRarity)
+	if err := requireTenant(tenantID); err != nil {
+		return domainidentity.RarityBaseline{}, err
+	}
+	rows, err := repo.db.QueryContext(ctx, `SELECT workload_key, signal_name, signal_count FROM rarity_baseline WHERE tenant_id = $1`, tenantID.String())
+	if err != nil {
+		return domainidentity.RarityBaseline{}, fmt.Errorf("query rarity baseline: %w", err)
+	}
+	defer rows.Close()
+	value := domainidentity.RarityBaseline{WorkloadCounts: map[string]map[string]uint64{}}
+	for rows.Next() {
+		var workload, signal string
+		var count uint64
+		if err := rows.Scan(&workload, &signal, &count); err != nil {
+			return domainidentity.RarityBaseline{}, fmt.Errorf("scan rarity baseline: %w", err)
+		}
+		if value.WorkloadCounts[workload] == nil {
+			value.WorkloadCounts[workload] = map[string]uint64{}
+		}
+		value.WorkloadCounts[workload][signal] = count
+	}
+	if err := rows.Err(); err != nil {
+		return domainidentity.RarityBaseline{}, fmt.Errorf("iterate rarity baseline: %w", err)
+	}
+	document, err := json.Marshal(struct{ WorkloadCounts map[string]map[string]uint64 }{value.WorkloadCounts})
+	if err != nil {
+		return domainidentity.RarityBaseline{}, fmt.Errorf("encode rarity baseline: %w", err)
+	}
+	value.Document = document
+	return value, nil
 }
 
 func requireTenant(id tenant.ID) error {
@@ -158,28 +199,8 @@ func observedTime(value sql.NullTime) time.Time {
 	return time.Time{}
 }
 
-func readSnapshot[T any](ctx context.Context, db *sql.DB, table string, tenantID tenant.ID, decode func(tenant.ID, []byte) (T, error)) (T, error) {
-	var zero T
-	if err := requireTenant(tenantID); err != nil {
-		return zero, err
-	}
-	var document []byte
-	if err := db.QueryRowContext(ctx, "SELECT data FROM "+table+" WHERE tenant_id = $1", tenantID.String()).Scan(&document); err != nil {
-		if err == sql.ErrNoRows {
-			return zero, nil
-		}
-		return zero, fmt.Errorf("read %s: %w", table, err)
-	}
-	return decode(tenantID, document)
-}
-
 func decodeMetrics(_ tenant.ID, document []byte) (domainidentity.Metrics, error) {
 	var value domainidentity.Metrics
-	err := json.Unmarshal(document, &value)
-	return value, err
-}
-func decodeRarity(_ tenant.ID, document []byte) (domainidentity.RarityBaseline, error) {
-	var value domainidentity.RarityBaseline
 	err := json.Unmarshal(document, &value)
 	return value, err
 }

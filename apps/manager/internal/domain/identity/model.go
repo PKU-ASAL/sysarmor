@@ -55,12 +55,18 @@ type Session struct {
 type SessionFilter struct{ AgentID string }
 
 type Metrics struct {
-	DataBatchesAppended, EventsIngested, EndpointSignalsIngested uint64
-	CloudSignalsEmitted, SignalsEmitted, IncidentsCreated        uint64
-	DroppedEvents, DuplicateEvents                               uint64
-	LastConvergenceLatencyMs, MaxConvergenceLatencyMs            uint64
-	TotalConvergenceLatencyMs                                    uint64
-	AverageConvergenceLatency                                    float64
+	DataBatchesAppended       uint64  `json:"data_batches_appended"`
+	EventsIngested            uint64  `json:"events_ingested"`
+	EndpointSignalsIngested   uint64  `json:"endpoint_signals_ingested"`
+	CloudSignalsEmitted       uint64  `json:"cloud_signals_emitted"`
+	SignalsEmitted            uint64  `json:"signals_emitted"`
+	IncidentsCreated          uint64  `json:"incidents_created"`
+	DroppedEvents             uint64  `json:"dropped_events"`
+	DuplicateEvents           uint64  `json:"duplicate_events"`
+	LastConvergenceLatencyMs  uint64  `json:"last_convergence_latency_ms"`
+	MaxConvergenceLatencyMs   uint64  `json:"max_convergence_latency_ms"`
+	TotalConvergenceLatencyMs uint64  `json:"total_convergence_latency_ms"`
+	AverageConvergenceLatency float64 `json:"average_convergence_latency_ms"`
 }
 
 type RarityBaseline struct {
