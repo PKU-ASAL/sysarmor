@@ -1,6 +1,6 @@
 package migrations
 
-const PostgresVersion = 3
+const PostgresVersion = 4
 
 type Migration struct {
 	Version int
@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS telemetry_batches (
   tenant_id TEXT NOT NULL,
   batch_id TEXT NOT NULL,
   status TEXT NOT NULL,
-  claim_token TEXT NOT NULL,
   lease_until TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at TIMESTAMPTZ,
@@ -40,6 +39,16 @@ CREATE TABLE IF NOT EXISTS telemetry_batches (
 );
 CREATE INDEX IF NOT EXISTS idx_telemetry_batches_lease
   ON telemetry_batches (status, lease_until);
+`
+
+const TelemetryBatchClaimFencingSchema = `
+ALTER TABLE telemetry_batches
+  ADD COLUMN IF NOT EXISTS claim_token TEXT;
+UPDATE telemetry_batches
+  SET claim_token = ''
+  WHERE claim_token IS NULL;
+ALTER TABLE telemetry_batches
+  ALTER COLUMN claim_token SET NOT NULL;
 `
 
 const PostgresSchema = `
@@ -322,5 +331,6 @@ func Ordered() []Migration {
 		{Version: 1, Name: "current_control_plane_baseline", SQL: PostgresSchema},
 		{Version: 2, Name: "agent_unenrollment_lifecycle", SQL: AgentUnenrollmentsSchema},
 		{Version: 3, Name: "tenant_telemetry_batches", SQL: TenantTelemetryBatchesSchema},
+		{Version: 4, Name: "telemetry_batch_claim_fencing", SQL: TelemetryBatchClaimFencingSchema},
 	}
 }

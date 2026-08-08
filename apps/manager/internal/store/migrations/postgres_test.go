@@ -62,12 +62,20 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 			t.Fatalf("postgres schema still creates incident report table %s", removed)
 		}
 	}
-	if len(ordered) != 3 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" {
+	if len(ordered) != 4 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" {
 		t.Fatalf("ordered migrations = %+v", ordered)
 	}
-	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "claim_token", "lease_until"} {
+	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "lease_until"} {
 		if !strings.Contains(ordered[2].SQL, want) {
 			t.Fatalf("telemetry batch migration missing %q", want)
+		}
+	}
+	if strings.Contains(ordered[2].SQL, "claim_token") {
+		t.Fatal("published v3 migration was modified with claim_token")
+	}
+	for _, want := range []string{"ADD COLUMN IF NOT EXISTS claim_token", "UPDATE telemetry_batches", "SET NOT NULL"} {
+		if !strings.Contains(ordered[3].SQL, want) {
+			t.Fatalf("claim fencing migration missing %q", want)
 		}
 	}
 }

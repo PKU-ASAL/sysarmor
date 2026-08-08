@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Store) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseDuration time.Duration) (BatchClaim, string, error) {
-	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" || leaseDuration <= 0 {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" || leaseDuration.Milliseconds() <= 0 {
 		return BatchBusy, "", fmt.Errorf("tenant_id, batch_id, and positive lease duration are required")
 	}
 	claimToken, err := newClaimToken()

@@ -61,6 +61,13 @@ func TestTelemetryBatchClaimIsTenantScopedAndReclaimsExpiredLease(t *testing.T) 
 	}
 }
 
+func TestTelemetryBatchRejectsSubMillisecondLease(t *testing.T) {
+	st := &Store{}
+	if _, _, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Nanosecond); err == nil {
+		t.Fatal("sub-millisecond lease was accepted")
+	}
+}
+
 func TestReclaimedTelemetryBatchRejectsStaleClaimToken(t *testing.T) {
 	st := &Store{}
 	_, staleToken, err := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
