@@ -144,7 +144,13 @@ func incrementTenantRarity(ctx context.Context, tx *sql.Tx, tenantID string, del
 			data, _ := json.Marshal(map[string]any{"workload_key": workload, "signal_name": signalName, "signal_count": count})
 			_, err := tx.ExecContext(ctx, `INSERT INTO rarity_baseline (tenant_id, workload_key, signal_name, signal_count, data)
 VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id, workload_key, signal_name) DO UPDATE SET
-signal_count = rarity_baseline.signal_count + EXCLUDED.signal_count, updated_at=now(), data=EXCLUDED.data`, tenantID, workload, signalName, count, data)
+signal_count = rarity_baseline.signal_count + EXCLUDED.signal_count,
+updated_at=now(),
+data=jsonb_build_object(
+  'workload_key', EXCLUDED.workload_key,
+  'signal_name', EXCLUDED.signal_name,
+  'signal_count', rarity_baseline.signal_count + EXCLUDED.signal_count
+)`, tenantID, workload, signalName, count, data)
 			if err != nil {
 				return fmt.Errorf("increment tenant rarity: %w", err)
 			}
