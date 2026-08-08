@@ -125,6 +125,7 @@ type fakePolicyUnitOfWork struct {
 	lastTenant     tenant.ID
 	effectiveError error
 	defaultPolicy  domainpolicy.Policy
+	policyByID     map[domainpolicy.ID]domainpolicy.Policy
 }
 
 func newFakePolicyUnitOfWork(seed domainpolicy.Policy) *fakePolicyUnitOfWork {
@@ -135,7 +136,8 @@ func (uow *fakePolicyUnitOfWork) Execute(ctx context.Context, fn func(context.Co
 	staged := uow.committed
 	tx := &fakePolicyTransaction{
 		state: &staged, failAudit: uow.failAudit, failControl: uow.failControl,
-		observedTenant: &uow.lastTenant, effectiveError: uow.effectiveError, defaultPolicy: uow.defaultPolicy,
+		observedTenant: &uow.lastTenant, effectiveError: uow.effectiveError,
+		defaultPolicy: uow.defaultPolicy, policyByID: uow.policyByID,
 	}
 	if err := fn(ctx, tx); err != nil {
 		return err
@@ -151,10 +153,14 @@ type fakePolicyTransaction struct {
 	observedTenant *tenant.ID
 	effectiveError error
 	defaultPolicy  domainpolicy.Policy
+	policyByID     map[domainpolicy.ID]domainpolicy.Policy
 }
 
 func (tx *fakePolicyTransaction) Policies() policyports.PolicyRepository {
-	return fakePolicies{state: tx.state, observedTenant: tx.observedTenant, defaultPolicy: tx.defaultPolicy}
+	return fakePolicies{
+		state: tx.state, observedTenant: tx.observedTenant,
+		defaultPolicy: tx.defaultPolicy, policyByID: tx.policyByID,
+	}
 }
 func (tx *fakePolicyTransaction) Assignments() policyports.AssignmentRepository {
 	return fakeAssignments{state: tx.state, observedTenant: tx.observedTenant, effectiveError: tx.effectiveError}
@@ -170,6 +176,7 @@ type fakePolicies struct {
 	state          *fakePolicyState
 	observedTenant *tenant.ID
 	defaultPolicy  domainpolicy.Policy
+	policyByID     map[domainpolicy.ID]domainpolicy.Policy
 }
 
 func (repo fakePolicies) Get(_ context.Context, tenantID tenant.ID, _ domainpolicy.ID, _ domainpolicy.Version) (domainpolicy.Policy, error) {
@@ -187,6 +194,12 @@ func (repo fakePolicies) Published(_ context.Context, tenantID tenant.ID, id dom
 			return domainpolicy.Policy{}, failure.New(failure.NotFound, "published policy not found")
 		}
 		return repo.defaultPolicy, nil
+	}
+	if value, ok := repo.policyByID[id]; ok {
+		if !value.Published {
+			return domainpolicy.Policy{}, failure.New(failure.NotFound, "published policy not found")
+		}
+		return value, nil
 	}
 	if !repo.state.seed.Published {
 		return domainpolicy.Policy{}, failure.New(failure.NotFound, "published policy not found")
@@ -208,12 +221,12 @@ type fakeAssignments struct {
 	effectiveError error
 }
 
-func (repo fakeAssignments) Effective(_ context.Context, tenantID tenant.ID, _ domainpolicy.Target) (domainpolicy.Assignment, error) {
+func (repo fakeAssignments) Candidates(_ context.Context, tenantID tenant.ID, _ domainpolicy.Target) ([]domainpolicy.Assignment, error) {
 	*repo.observedTenant = tenantID
 	if repo.effectiveError != nil {
-		return domainpolicy.Assignment{}, repo.effectiveError
+		return nil, repo.effectiveError
 	}
-	return repo.state.assignments[0], nil
+	return append([]domainpolicy.Assignment(nil), repo.state.assignments...), nil
 }
 func (repo fakeAssignments) List(_ context.Context, tenantID tenant.ID, _ domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error) {
 	*repo.observedTenant = tenantID

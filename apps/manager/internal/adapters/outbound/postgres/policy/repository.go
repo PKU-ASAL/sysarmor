@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -129,11 +130,11 @@ ON CONFLICT (tenant_id, policy_id, version) DO UPDATE SET
 
 type assignmentRepository struct{ db sqlExecutor }
 
-func (repo assignmentRepository) Effective(ctx context.Context, tenantID tenant.ID, target domainpolicy.Target) (domainpolicy.Assignment, error) {
+func (repo assignmentRepository) Candidates(ctx context.Context, tenantID tenant.ID, target domainpolicy.Target) ([]domainpolicy.Assignment, error) {
 	if tenantID.IsZero() {
-		return domainpolicy.Assignment{}, failure.New(failure.InvalidArgument, "tenant is required")
+		return nil, failure.New(failure.InvalidArgument, "tenant is required")
 	}
-	row := repo.db.QueryRowContext(ctx, `
+	rows, err := repo.db.QueryContext(ctx, `
 SELECT data FROM policy_assignments
 WHERE tenant_id = $1 AND (
   ($2 <> '' AND agent_id = $2) OR
@@ -141,18 +142,30 @@ WHERE tenant_id = $1 AND (
 )
 ORDER BY CASE
   WHEN $2 <> '' AND agent_id = $2 THEN 30
-  WHEN scope_selector <> '' THEN 20
-  ELSE 10
-END DESC, updated_at DESC, assignment_id ASC LIMIT 1
-`, tenantID.String(), target.AgentID, target.ScopeType, target.ScopeSelector)
-	var document []byte
-	if err := row.Scan(&document); err != nil {
-		if err == sql.ErrNoRows {
-			return domainpolicy.Assignment{}, failure.New(failure.NotFound, "effective policy assignment not found")
-		}
-		return domainpolicy.Assignment{}, fmt.Errorf("read effective policy assignment: %w", err)
+	  WHEN scope_selector <> '' THEN 20
+	  ELSE 10
+	END DESC, updated_at DESC, assignment_id ASC
+	`, tenantID.String(), target.AgentID, target.ScopeType, target.ScopeSelector)
+	if err != nil {
+		return nil, fmt.Errorf("query effective policy candidates: %w", err)
 	}
-	return decodeAssignment(tenantID, document)
+	defer rows.Close()
+	var result []domainpolicy.Assignment
+	for rows.Next() {
+		var document []byte
+		if err := rows.Scan(&document); err != nil {
+			return nil, fmt.Errorf("scan effective policy candidate: %w", err)
+		}
+		value, err := decodeAssignment(tenantID, document)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate effective policy candidates: %w", err)
+	}
+	return result, nil
 }
 
 func (repo assignmentRepository) List(ctx context.Context, tenantID tenant.ID, filter domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error) {
@@ -285,7 +298,28 @@ ON CONFLICT (tenant_id, command_id) DO NOTHING
 	if err != nil {
 		return fmt.Errorf("put policy control command: %w", err)
 	}
-	return requireInserted(result, "policy control command already exists")
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read policy control insert result: %w", err)
+	}
+	if rows > 0 {
+		return nil
+	}
+	return repo.requireSameCommand(ctx, command, document)
+}
+
+func (repo controlRepository) requireSameCommand(ctx context.Context, command ports.PolicyControlCommand, document []byte) error {
+	var existing []byte
+	err := repo.db.QueryRowContext(ctx, `
+SELECT data FROM control_commands WHERE tenant_id = $1 AND command_id = $2
+`, command.TenantID.String(), command.ID).Scan(&existing)
+	if err != nil {
+		return fmt.Errorf("read existing policy control command: %w", err)
+	}
+	if !bytes.Equal(existing, document) {
+		return failure.New(failure.Conflict, "policy control command ID belongs to a different request")
+	}
+	return nil
 }
 
 func requireInserted(result sql.Result, message string) error {

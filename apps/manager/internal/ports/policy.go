@@ -18,7 +18,7 @@ type PolicyRepository interface {
 }
 
 type AssignmentRepository interface {
-	Effective(context.Context, tenant.ID, domainpolicy.Target) (domainpolicy.Assignment, error)
+	Candidates(context.Context, tenant.ID, domainpolicy.Target) ([]domainpolicy.Assignment, error)
 	List(context.Context, tenant.ID, domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error)
 	Put(context.Context, domainpolicy.Assignment) error
 }

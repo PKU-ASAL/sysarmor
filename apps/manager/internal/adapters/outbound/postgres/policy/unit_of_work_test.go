@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
@@ -126,10 +127,10 @@ func TestEffectiveAssignmentUsesSpecificityOrder(t *testing.T) {
 	}
 	uow := NewUnitOfWork(db)
 
-	var got domainpolicy.Assignment
+	var got []domainpolicy.Assignment
 	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
 		var err error
-		got, err = tx.Assignments().Effective(ctx, tenantID, domainpolicy.Target{
+		got, err = tx.Assignments().Candidates(ctx, tenantID, domainpolicy.Target{
 			AgentID: "agent-a", ScopeType: "host", ScopeSelector: "prod",
 		})
 		return err
@@ -137,15 +138,15 @@ func TestEffectiveAssignmentUsesSpecificityOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.PolicyID != "policy-agent" {
-		t.Fatalf("Effective() policy = %q, want policy-agent", got.PolicyID)
+	if len(got) != 3 || got[0].PolicyID != "policy-agent" || got[1].PolicyID != "policy-scope" || got[2].PolicyID != "policy-type" {
+		t.Fatalf("Candidates() = %+v", got)
 	}
 	if _, err := db.Exec(`DELETE FROM policy_assignments WHERE assignment_id = ?`, "agent"); err != nil {
 		t.Fatal(err)
 	}
 	err = uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
 		var err error
-		got, err = tx.Assignments().Effective(ctx, tenantID, domainpolicy.Target{
+		got, err = tx.Assignments().Candidates(ctx, tenantID, domainpolicy.Target{
 			AgentID: "agent-a", ScopeType: "host", ScopeSelector: "prod",
 		})
 		return err
@@ -153,8 +154,45 @@ func TestEffectiveAssignmentUsesSpecificityOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.PolicyID != "policy-scope" {
-		t.Fatalf("Effective() policy = %q, want policy-scope", got.PolicyID)
+	if len(got) != 2 || got[0].PolicyID != "policy-scope" {
+		t.Fatalf("Candidates() = %+v", got)
+	}
+}
+
+func TestControlRepositoryIsIdempotentForSameRequest(t *testing.T) {
+	db := newPolicyTestDB(t)
+	uow := NewUnitOfWork(db)
+	tenantID := mustAdapterTenantID(t, "tenant-a")
+	command := ports.PolicyControlCommand{
+		ID: "command-a", TenantID: tenantID, AgentID: "agent-a", PolicyID: "policy-a", PolicyVersion: 1,
+		Payload: []byte(`{"policy_id":"policy-a","version":1}`), Actor: "admin-a", Reason: "deploy",
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+			return tx.Controls().Put(ctx, command)
+		}); err != nil {
+			t.Fatalf("attempt %d: Put() error = %v", attempt+1, err)
+		}
+	}
+	assertRowCount(t, db, "control_commands", 1)
+}
+
+func TestControlRepositoryRejectsDifferentRequestWithSameID(t *testing.T) {
+	db := newPolicyTestDB(t)
+	uow := NewUnitOfWork(db)
+	tenantID := mustAdapterTenantID(t, "tenant-a")
+	command := ports.PolicyControlCommand{ID: "command-a", TenantID: tenantID, AgentID: "agent-a", PolicyID: "policy-a", PolicyVersion: 1}
+	if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		return tx.Controls().Put(ctx, command)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	command.PolicyVersion = 2
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		return tx.Controls().Put(ctx, command)
+	})
+	if failure.KindOf(err) != failure.Conflict {
+		t.Fatalf("Put() error kind = %q, want %q", failure.KindOf(err), failure.Conflict)
 	}
 }
 

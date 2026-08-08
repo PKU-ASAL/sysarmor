@@ -76,6 +76,32 @@ func TestQueryEffectivePolicySkipsUnpublishedAssignmentPolicy(t *testing.T) {
 	}
 }
 
+func TestQueryEffectivePolicyFallsThroughUnpublishedHigherPriorityAssignment(t *testing.T) {
+	tenantID, requestContext := policyRequestContext(t)
+	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{
+		TenantID: tenantID, ID: "agent-policy", Version: 2, Published: false,
+	})
+	uow.policyByID = map[domainpolicy.ID]domainpolicy.Policy{
+		"agent-policy": {TenantID: tenantID, ID: "agent-policy", Version: 2, Published: false},
+		"scope-policy": {TenantID: tenantID, ID: "scope-policy", Version: 1, Published: true},
+	}
+	uow.committed.assignments = []domainpolicy.Assignment{
+		{ID: "agent", TenantID: tenantID, Target: domainpolicy.Target{AgentID: "agent-a"}, PolicyID: "agent-policy", PolicyVersion: 2},
+		{ID: "scope", TenantID: tenantID, Target: domainpolicy.Target{ScopeType: "host", ScopeSelector: "prod"}, PolicyID: "scope-policy", PolicyVersion: 1},
+	}
+	service := NewQueryService(uow)
+
+	result, err := service.EffectivePolicy(context.Background(), requestContext, EffectivePolicyQuery{Target: domainpolicy.Target{
+		AgentID: "agent-a", ScopeType: "host", ScopeSelector: "prod",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Policy.ID != "scope-policy" {
+		t.Fatalf("EffectivePolicy() = %+v", result.Policy)
+	}
+}
+
 func TestQueryEffectivePolicyResolvesAssignmentVersion(t *testing.T) {
 	tenantID, requestContext := policyRequestContext(t)
 	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{TenantID: tenantID, ID: "policy-a", Version: 4, Published: true})

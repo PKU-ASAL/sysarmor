@@ -58,19 +58,17 @@ func (service *QueryService) EffectivePolicy(ctx context.Context, request manage
 	}
 	var result EffectivePolicyResult
 	err := service.uow.Execute(ctx, func(txCtx context.Context, tx ports.PolicyTransaction) error {
-		assignment, err := tx.Assignments().Effective(txCtx, request.Actor.TenantID, query.Target)
+		assignments, err := tx.Assignments().Candidates(txCtx, request.Actor.TenantID, query.Target)
 		if err != nil && failure.KindOf(err) != failure.NotFound {
-			return fmt.Errorf("get effective policy assignment: %w", err)
+			return fmt.Errorf("get effective policy candidates: %w", err)
 		}
-		if err == nil {
-			value, publishedErr := tx.Policies().Published(txCtx, request.Actor.TenantID, assignment.PolicyID, assignment.PolicyVersion)
-			if publishedErr == nil {
-				result.Policy = value
-				return nil
-			}
-			if failure.KindOf(publishedErr) != failure.NotFound {
-				return publishedErr
-			}
+		value, found, err := firstPublishedPolicy(txCtx, tx.Policies(), request.Actor.TenantID, assignments)
+		if err != nil {
+			return err
+		}
+		if found {
+			result.Policy = value
+			return nil
 		}
 		value, defaultErr := tx.Policies().Published(txCtx, request.Actor.TenantID, domainpolicy.DefaultPolicyID, 0)
 		if failure.KindOf(defaultErr) == failure.NotFound {
@@ -81,6 +79,19 @@ func (service *QueryService) EffectivePolicy(ctx context.Context, request manage
 		return defaultErr
 	})
 	return result, err
+}
+
+func firstPublishedPolicy(ctx context.Context, policies ports.PolicyRepository, tenantID tenant.ID, assignments []domainpolicy.Assignment) (domainpolicy.Policy, bool, error) {
+	for _, assignment := range assignments {
+		value, err := policies.Published(ctx, tenantID, assignment.PolicyID, assignment.PolicyVersion)
+		if err == nil {
+			return value, true, nil
+		}
+		if failure.KindOf(err) != failure.NotFound {
+			return domainpolicy.Policy{}, false, err
+		}
+	}
+	return domainpolicy.Policy{}, false, nil
 }
 
 func (service *QueryService) ListAssignments(ctx context.Context, request managerapp.RequestContext, filter domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error) {
