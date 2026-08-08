@@ -147,6 +147,17 @@ func TestEndpointSignalDocumentIDIsStableAndAgentScoped(t *testing.T) {
 	}
 }
 
+func TestCloudSignalDocumentIDIsStableAndTenantScoped(t *testing.T) {
+	signal := &signalv1.Signal{Name: "cloud-signal", Where: signalv1.SignalWhere_SIGNAL_WHERE_CLOUD, Labels: map[string]string{"scenario": "shared"}}
+	first := CloudSignalDocumentID("tenant-a", signal)
+	if first == "" || first != CloudSignalDocumentID("tenant-a", signal) {
+		t.Fatalf("cloud signal ID is not stable: %q", first)
+	}
+	if first == CloudSignalDocumentID("tenant-b", signal) {
+		t.Fatal("cloud signal ID collided across tenants")
+	}
+}
+
 func TestBatchDocumentsUsesScopedSignalID(t *testing.T) {
 	batch := dataBatch("batch-signal-projection", nil, []*signalv1.Signal{
 		workerSignal("sig-1", "payload_dropped", "lin-a", map[string]string{"scenario": "upgrade"}, workerFile("/tmp/payload")),

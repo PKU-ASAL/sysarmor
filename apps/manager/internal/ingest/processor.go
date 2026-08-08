@@ -223,7 +223,7 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 			p.store.ReplaceDerivedForLabels(scope.agent.Normalized().TenantID, scope.labels, analysis.CloudSignals, localIncidents)
 		}
 		for _, sig := range analysis.CloudSignals {
-			doc, err := signalDocument(sig)
+			doc, err := signalDocumentWithID(sig, CloudSignalDocumentID(scope.agent.Normalized().TenantID, sig))
 			if err != nil {
 				return 0, 0, nil, err
 			}
@@ -410,6 +410,15 @@ func EndpointSignalDocumentID(tenantID, agentID, signalID string) string {
 	}
 	sum := sha256.Sum256([]byte(tenantID + "\x00" + agentID + "\x00" + signalID))
 	return "endpoint-signal:" + hex.EncodeToString(sum[:16])
+}
+
+func CloudSignalDocumentID(tenantID string, signal *signalv1.Signal) string {
+	key := store.SignalProjectionKey(signal)
+	if strings.TrimSpace(tenantID) == "" || key == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(tenantID + "\x00" + key))
+	return "cloud-signal:" + hex.EncodeToString(sum[:16])
 }
 
 func SignalDocumentID(sig *signalv1.Signal) string {
