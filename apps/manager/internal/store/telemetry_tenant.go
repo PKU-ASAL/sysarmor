@@ -119,6 +119,26 @@ func recordMetrics(metrics *Metrics, events, endpointSignals, cloudSignals, inci
 	metrics.AverageConvergenceLatency = float64(metrics.TotalConvergenceLatencyMs) / float64(metrics.DataBatchesAppended)
 }
 
+func MergeMetrics(current, delta Metrics) Metrics {
+	current.DataBatchesAppended += delta.DataBatchesAppended
+	current.EventsIngested += delta.EventsIngested
+	current.EndpointSignalsIngested += delta.EndpointSignalsIngested
+	current.CloudSignalsEmitted += delta.CloudSignalsEmitted
+	current.SignalsEmitted += delta.SignalsEmitted
+	current.IncidentsCreated += delta.IncidentsCreated
+	current.DroppedEvents += delta.DroppedEvents
+	current.DuplicateEvents += delta.DuplicateEvents
+	current.LastConvergenceLatencyMs = delta.LastConvergenceLatencyMs
+	current.TotalConvergenceLatencyMs += delta.TotalConvergenceLatencyMs
+	if delta.MaxConvergenceLatencyMs > current.MaxConvergenceLatencyMs {
+		current.MaxConvergenceLatencyMs = delta.MaxConvergenceLatencyMs
+	}
+	if current.DataBatchesAppended > 0 {
+		current.AverageConvergenceLatency = float64(current.TotalConvergenceLatencyMs) / float64(current.DataBatchesAppended)
+	}
+	return current
+}
+
 func (s *Store) ListEventsForTenant(tenantID string, labels LabelSelector, behavior string) []*eventv1.CanonicalEvent {
 	events := s.ListEvents(labels, behavior)
 	out := events[:0]

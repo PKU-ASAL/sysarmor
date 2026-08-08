@@ -144,9 +144,6 @@ WHERE tenant_id = $1
 		if err := rows.Scan(&workload, &signalName, &count); err != nil {
 			return rarity.Baseline{}, fmt.Errorf("scan rarity baseline: %w", err)
 		}
-		if workload == "global" {
-			workload = ""
-		}
 		if baseline.WorkloadCounts[workload] == nil {
 			baseline.WorkloadCounts[workload] = map[string]uint64{}
 		}

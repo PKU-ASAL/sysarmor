@@ -132,6 +132,16 @@ func TestMetricsSnapshotAndReset(t *testing.T) {
 	}
 }
 
+func TestMergeMetricsAddsCountersAndRecomputesLatency(t *testing.T) {
+	got := MergeMetrics(
+		Metrics{DataBatchesAppended: 2, EventsIngested: 4, TotalConvergenceLatencyMs: 10, MaxConvergenceLatencyMs: 6},
+		Metrics{DataBatchesAppended: 1, EventsIngested: 3, TotalConvergenceLatencyMs: 8, LastConvergenceLatencyMs: 8, MaxConvergenceLatencyMs: 8},
+	)
+	if got.DataBatchesAppended != 3 || got.EventsIngested != 7 || got.TotalConvergenceLatencyMs != 18 || got.MaxConvergenceLatencyMs != 8 || got.LastConvergenceLatencyMs != 8 || got.AverageConvergenceLatency != 6 {
+		t.Fatalf("merged metrics = %+v", got)
+	}
+}
+
 func TestTelemetryIdentityIsTenantScoped(t *testing.T) {
 	st := &Store{}
 	if !st.AddEvent(&eventv1.CanonicalEvent{Id: "shared-event", TenantId: "tenant-a"}) {

@@ -19,10 +19,12 @@ var fakeSQLState struct {
 	lastQuery string
 	queries   []string
 	execErr   error
+	execQuery string
 	execErrAt int
 	execCalls int
 	queryErr  error
 	queryRows [][]driver.Value
+	querySets [][][]driver.Value
 	commits   int
 	rollbacks int
 }
@@ -33,10 +35,12 @@ func FakeSetExecError(err error) {
 	fakeSQLState.lastQuery = ""
 	fakeSQLState.queries = nil
 	fakeSQLState.execErr = err
+	fakeSQLState.execQuery = ""
 	fakeSQLState.execErrAt = 0
 	fakeSQLState.execCalls = 0
 	fakeSQLState.queryErr = nil
 	fakeSQLState.queryRows = nil
+	fakeSQLState.querySets = nil
 	fakeSQLState.commits = 0
 	fakeSQLState.rollbacks = 0
 }
@@ -75,6 +79,20 @@ func FakeSetQueryValues(rows [][]driver.Value, err error) {
 	fakeSQLState.Lock()
 	defer fakeSQLState.Unlock()
 	fakeSQLState.queryRows = rows
+}
+
+func FakeSetQueryResultSets(sets [][][]driver.Value) {
+	FakeSetQueryResult(nil, nil)
+	fakeSQLState.Lock()
+	defer fakeSQLState.Unlock()
+	fakeSQLState.querySets = sets
+}
+
+func FakeSetExecErrorForQuery(query string, err error) {
+	fakeSQLState.Lock()
+	defer fakeSQLState.Unlock()
+	fakeSQLState.execQuery = query
+	fakeSQLState.execErr = err
 }
 
 func FakeTransactionCounts() (int, int) {
@@ -135,7 +153,7 @@ func (s fakeSQLStmt) Exec([]driver.Value) (driver.Result, error) {
 	if !strings.Contains(s.query, "pg_advisory") {
 		fakeSQLState.execCalls++
 	}
-	if fakeSQLState.execErr != nil && !strings.Contains(s.query, "pg_advisory") &&
+	if fakeSQLState.execErr != nil && (fakeSQLState.execQuery == "" || strings.Contains(s.query, fakeSQLState.execQuery)) && !strings.Contains(s.query, "pg_advisory") &&
 		(fakeSQLState.execErrAt == 0 || fakeSQLState.execCalls == fakeSQLState.execErrAt) {
 		return nil, fakeSQLState.execErr
 	}
@@ -150,9 +168,14 @@ func (s fakeSQLStmt) Query([]driver.Value) (driver.Rows, error) {
 	if fakeSQLState.queryErr != nil {
 		return nil, fakeSQLState.queryErr
 	}
-	rows := make([][]driver.Value, len(fakeSQLState.queryRows))
-	for i := range fakeSQLState.queryRows {
-		rows[i] = append([]driver.Value(nil), fakeSQLState.queryRows[i]...)
+	source := fakeSQLState.queryRows
+	if len(fakeSQLState.querySets) > 0 {
+		source = fakeSQLState.querySets[0]
+		fakeSQLState.querySets = fakeSQLState.querySets[1:]
+	}
+	rows := make([][]driver.Value, len(source))
+	for i := range source {
+		rows[i] = append([]driver.Value(nil), source[i]...)
 	}
 	return &fakeSQLRows{rows: rows}, nil
 }
