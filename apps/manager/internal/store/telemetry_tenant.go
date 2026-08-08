@@ -2,7 +2,6 @@ package store
 
 import (
 	"strings"
-	"time"
 
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
@@ -22,17 +21,10 @@ func (s *Store) AddSignalForTenant(tenantID string, signal *signalv1.Signal) boo
 	for i, existing := range s.TenantSignals[tenantID] {
 		if key != "" && signalKey(existing) == key {
 			s.TenantSignals[tenantID][i] = signal
-			for globalIndex, globalSignal := range s.Signals {
-				if globalSignal == existing {
-					s.Signals[globalIndex] = signal
-					break
-				}
-			}
 			return false
 		}
 	}
 	s.TenantSignals[tenantID] = append(s.TenantSignals[tenantID], signal)
-	s.Signals = append(s.Signals, signal)
 	return true
 }
 
@@ -56,10 +48,6 @@ func (s *Store) ReplaceDerivedForLabels(tenantID string, labels LabelSelector, c
 	if s.TenantSignals == nil {
 		s.TenantSignals = map[string][]*signalv1.Signal{}
 	}
-	ownedSignals := make(map[*signalv1.Signal]struct{}, len(s.TenantSignals[tenantID]))
-	for _, signal := range s.TenantSignals[tenantID] {
-		ownedSignals[signal] = struct{}{}
-	}
 	tenantSignals := s.TenantSignals[tenantID][:0]
 	for _, signal := range s.TenantSignals[tenantID] {
 		if labelSelectorMatches(signal.GetLabels(), labels) && layerName(signal.GetWhere()) == "cloud" {
@@ -68,19 +56,10 @@ func (s *Store) ReplaceDerivedForLabels(tenantID string, labels LabelSelector, c
 		tenantSignals = append(tenantSignals, signal)
 	}
 	s.TenantSignals[tenantID] = append(tenantSignals, cloudSignals...)
-	s.replaceGlobalDerived(tenantID, labels, ownedSignals, cloudSignals, incidents)
+	s.replaceDerivedIncidents(tenantID, labels, incidents)
 }
 
-func (s *Store) replaceGlobalDerived(tenantID string, labels LabelSelector, owned map[*signalv1.Signal]struct{}, cloudSignals []*signalv1.Signal, incidents []*incidentv1.Incident) {
-	signals := s.Signals[:0]
-	for _, signal := range s.Signals {
-		_, belongsToTenant := owned[signal]
-		if belongsToTenant && labelSelectorMatches(signal.GetLabels(), labels) && layerName(signal.GetWhere()) == "cloud" {
-			continue
-		}
-		signals = append(signals, signal)
-	}
-	s.Signals = append(signals, cloudSignals...)
+func (s *Store) replaceDerivedIncidents(tenantID string, labels LabelSelector, incidents []*incidentv1.Incident) {
 	keptIncidents := s.Incidents[:0]
 	for _, incident := range s.Incidents {
 		if incident.GetTenantId() == tenantID && labelSelectorMatches(incident.GetLabels(), labels) {
@@ -89,34 +68,6 @@ func (s *Store) replaceGlobalDerived(tenantID string, labels LabelSelector, owne
 		keptIncidents = append(keptIncidents, incident)
 	}
 	s.Incidents = append(keptIncidents, incidents...)
-}
-
-func (s *Store) RecordDataBatchIngestForTenant(tenantID string, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.MetricsByTenant == nil {
-		s.MetricsByTenant = map[string]Metrics{}
-	}
-	metrics := s.MetricsByTenant[tenantID]
-	recordMetrics(&metrics, events, endpointSignals, cloudSignals, incidents, latency)
-	s.MetricsByTenant[tenantID] = metrics
-	recordMetrics(&s.Metrics, events, endpointSignals, cloudSignals, incidents, latency)
-}
-
-func recordMetrics(metrics *Metrics, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) {
-	latencyMs := uint64(latency.Milliseconds())
-	metrics.DataBatchesAppended++
-	metrics.EventsIngested += uint64(events)
-	metrics.EndpointSignalsIngested += uint64(endpointSignals)
-	metrics.CloudSignalsEmitted += uint64(cloudSignals)
-	metrics.SignalsEmitted += uint64(endpointSignals + cloudSignals)
-	metrics.IncidentsCreated += uint64(incidents)
-	metrics.LastConvergenceLatencyMs = latencyMs
-	metrics.TotalConvergenceLatencyMs += latencyMs
-	if latencyMs > metrics.MaxConvergenceLatencyMs {
-		metrics.MaxConvergenceLatencyMs = latencyMs
-	}
-	metrics.AverageConvergenceLatency = float64(metrics.TotalConvergenceLatencyMs) / float64(metrics.DataBatchesAppended)
 }
 
 func MergeMetrics(current, delta Metrics) Metrics {

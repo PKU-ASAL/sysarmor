@@ -30,7 +30,7 @@ func TestUIOverviewReturnsManagerSummary(t *testing.T) {
 		Status:     "degraded",
 		ObservedAt: time.Now().UTC(),
 	})
-	st.RecordDataBatchIngestForTenant("default", 12, 5, 0, 0, 0)
+	seedTenantTelemetry(t, st, "default", "overview-default", store.Metrics{DataBatchesAppended: 1, EventsIngested: 12, SignalsEmitted: 5}, nil)
 	st.Incidents = []*incidentv1.Incident{
 		{Id: "inc-critical", TenantId: "default", Severity: 95},
 		{Id: "inc-high", TenantId: "default", Severity: 75},
@@ -84,8 +84,8 @@ func TestUIOverviewIsScopedToPrincipalTenant(t *testing.T) {
 	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-b", TenantID: "tenant-b", Status: "degraded"})
 	st.AddIncident(&incidentv1.Incident{Id: "incident-a", TenantId: "tenant-a", Summary: "incident a", Severity: 95})
 	st.AddIncident(&incidentv1.Incident{Id: "incident-b", TenantId: "tenant-b", Summary: "incident b", Severity: 75})
-	st.RecordDataBatchIngestForTenant("tenant-a", 2, 1, 0, 1, 0)
-	st.RecordDataBatchIngestForTenant("tenant-b", 20, 10, 0, 1, 0)
+	seedTenantTelemetry(t, st, "tenant-a", "overview-a", store.Metrics{DataBatchesAppended: 1, EventsIngested: 2, SignalsEmitted: 1, IncidentsCreated: 1}, nil)
+	seedTenantTelemetry(t, st, "tenant-b", "overview-b", store.Metrics{DataBatchesAppended: 1, EventsIngested: 20, SignalsEmitted: 10, IncidentsCreated: 1}, nil)
 	handler := tenantTestHandler(NewServer(st), "tenant-a")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil)
 	rec := httptest.NewRecorder()

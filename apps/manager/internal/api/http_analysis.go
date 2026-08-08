@@ -43,7 +43,13 @@ func (s *Server) recompute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	engine := ingest.NewEngine()
-	engine.SetRarityBaseline(s.store.RarityBaselineSnapshot())
-	result := engine.AnalyzeWithPolicy(nil, s.store.ListSignals(parseLabelSelector(q["label"]), "endpoint", false), policy)
+	tenantID := requestTenantID(r)
+	baseline, err := s.store.RarityBaselineSnapshotForTenantWithError(tenantID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("read tenant rarity baseline: %v", err), http.StatusInternalServerError)
+		return
+	}
+	engine.SetRarityBaseline(baseline)
+	result := engine.AnalyzeWithPolicy(nil, s.store.ListSignalsForTenant(tenantID, parseLabelSelector(q["label"]), "endpoint", false), policy)
 	writeAnalysisResult(w, result)
 }

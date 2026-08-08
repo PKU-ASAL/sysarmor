@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -104,12 +105,12 @@ func TestListSignalsFiltersLabelsLayerAndTerminal(t *testing.T) {
 	}
 }
 
-func TestMetricsSnapshotAndReset(t *testing.T) {
+func TestTenantMetricsAccumulateByCommittedBatch(t *testing.T) {
 	st := &Store{}
-	st.RecordDataBatchIngest(2, 3, 1, 1, 12*time.Millisecond)
-	st.RecordDataBatchIngest(1, 1, 0, 0, 4*time.Millisecond)
+	commitTestTelemetry(t, st, "default", "batch-1", Metrics{DataBatchesAppended: 1, EventsIngested: 2, SignalsEmitted: 4, TotalConvergenceLatencyMs: 12, LastConvergenceLatencyMs: 12, MaxConvergenceLatencyMs: 12})
+	commitTestTelemetry(t, st, "default", "batch-2", Metrics{DataBatchesAppended: 1, EventsIngested: 1, SignalsEmitted: 1, TotalConvergenceLatencyMs: 4, LastConvergenceLatencyMs: 4, MaxConvergenceLatencyMs: 4})
 
-	got := st.MetricsSnapshot()
+	got := st.MetricsSnapshotForTenant("default")
 	if got.DataBatchesAppended != 2 {
 		t.Fatalf("data batches appended = %d, want 2", got.DataBatchesAppended)
 	}
@@ -125,10 +126,16 @@ func TestMetricsSnapshotAndReset(t *testing.T) {
 	if got.AverageConvergenceLatency != 8 {
 		t.Fatalf("average latency = %f, want 8", got.AverageConvergenceLatency)
 	}
+}
 
-	st.DeleteByLabels(nil)
-	if got := st.MetricsSnapshot(); got.DataBatchesAppended != 0 {
-		t.Fatalf("metrics after full reset = %#v, want zero", got)
+func commitTestTelemetry(t *testing.T, st *Store, tenantID, batchID string, metrics Metrics) {
+	t.Helper()
+	lease := time.Now().Add(time.Minute)
+	if claim, err := st.ClaimTelemetryBatch(context.Background(), tenantID, batchID, lease); err != nil || claim != BatchClaimed {
+		t.Fatalf("claim=%v err=%v", claim, err)
+	}
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, LeaseUntil: lease, Metrics: metrics}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -181,8 +188,15 @@ func TestTenantTelemetryStateRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "signal-a"})
-	st.RecordDataBatchIngestForTenant("tenant-a", 2, 1, 0, 0, time.Millisecond)
-	st.ObserveRaritySignalsForTenant("tenant-a", []*signalv1.Signal{{Name: "signal-a"}})
+	baseline := rarity.Baseline{}
+	baseline.Observe([]*signalv1.Signal{{Name: "signal-a"}})
+	lease := time.Now().Add(time.Minute)
+	if claim, claimErr := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", lease); claimErr != nil || claim != BatchClaimed {
+		t.Fatalf("claim=%v err=%v", claim, claimErr)
+	}
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "batch-a", LeaseUntil: lease, Metrics: Metrics{DataBatchesAppended: 1, EventsIngested: 2}, Rarity: baseline}); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -686,14 +700,21 @@ func TestExportImportStateRoundTrip(t *testing.T) {
 	st.AddIncident(&incidentv1.Incident{Id: "inc-a", Labels: scenarioMap("scenario-a"), Summary: "incident-a"})
 	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-a", HostID: "host-a", TenantID: "default", Status: "ok"})
 	st.RecordDataBatchAppend(AgentIdentity{AgentID: "agent-a", TenantID: "default"}, "batch-a", "http", time.Unix(10, 0).UTC())
-	st.RecordDataBatchIngest(1, 1, 1, 1, time.Millisecond)
-	st.ObserveRaritySignals([]*signalv1.Signal{{
+	baseline := rarity.Baseline{}
+	baseline.Observe([]*signalv1.Signal{{
 		Name: "download_by_lolbin",
 		Entities: []*signalv1.EntityRef{{
 			Kind: "container",
 			Key:  "checkout-api",
 		}},
 	}})
+	lease := time.Now().Add(time.Minute)
+	if claim, err := st.ClaimTelemetryBatch(context.Background(), "default", "telemetry-batch", lease); err != nil || claim != BatchClaimed {
+		t.Fatalf("claim=%v err=%v", claim, err)
+	}
+	if err := st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{TenantID: "default", BatchID: "telemetry-batch", LeaseUntil: lease, Metrics: Metrics{DataBatchesAppended: 1, SignalsEmitted: 2}, Rarity: baseline}); err != nil {
+		t.Fatal(err)
+	}
 
 	state, err := st.ExportState()
 	if err != nil {
@@ -721,10 +742,10 @@ func TestExportImportStateRoundTrip(t *testing.T) {
 	if got := reloaded.ListAgentSessions("default", "agent-a"); len(got) != 1 || got[0].LastAckCursor != "batch-a" {
 		t.Fatalf("agent sessions after import = %+v", got)
 	}
-	if got := reloaded.MetricsSnapshot(); got.DataBatchesAppended != 1 || got.SignalsEmitted != 2 {
+	if got := reloaded.MetricsSnapshotForTenant("default"); got.DataBatchesAppended != 1 || got.SignalsEmitted != 2 {
 		t.Fatalf("metrics after import = %+v", got)
 	}
-	if got := reloaded.RarityBaselineSnapshot().Count("container:checkout-api", "download_by_lolbin"); got != 1 {
+	if got := reloaded.RarityBaselineSnapshotForTenant("default").Count("container:checkout-api", "download_by_lolbin"); got != 1 {
 		t.Fatalf("rarity baseline after import = %d, want 1", got)
 	}
 }

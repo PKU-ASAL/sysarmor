@@ -77,8 +77,6 @@ func (s *Store) ImportState(state State) error {
 	s.Channels = state.Channels
 	s.Certificates = state.Certificates
 	s.Unenrollments = state.Unenrollments
-	s.Metrics = state.Metrics
-	s.RarityBaseline = state.RarityBaseline.Snapshot()
 	s.MetricsByTenant = state.MetricsByTenant
 	s.RarityByTenant = make(map[string]rarity.Baseline, len(state.RarityByTenant))
 	for tenantID, baseline := range state.RarityByTenant {
@@ -178,32 +176,6 @@ func (s *Store) ExportState() (State, error) {
 	return s.exportStateLocked()
 }
 
-func (s *Store) RarityBaselineSnapshot() rarity.Baseline {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.RarityBaseline.Snapshot()
-}
-
-func (s *Store) ObserveRaritySignals(signals []*signalv1.Signal) rarity.Baseline {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.RarityBaseline.Observe(signals)
-	return s.RarityBaseline.Snapshot()
-}
-
-func (s *Store) ObserveRaritySignalsForTenant(tenantID string, signals []*signalv1.Signal) rarity.Baseline {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.RarityByTenant == nil {
-		s.RarityByTenant = map[string]rarity.Baseline{}
-	}
-	baseline := s.RarityByTenant[tenantID]
-	baseline.Observe(signals)
-	s.RarityByTenant[tenantID] = baseline
-	s.RarityBaseline.Observe(signals)
-	return baseline.Snapshot()
-}
-
 func (s *Store) RarityBaselineSnapshotForTenant(tenantID string) rarity.Baseline {
 	baseline, _ := s.RarityBaselineSnapshotForTenantWithError(tenantID)
 	return baseline
@@ -223,8 +195,6 @@ func (s *Store) RarityBaselineSnapshotForTenantWithError(tenantID string) (rarit
 
 func (s *Store) exportStateLocked() (State, error) {
 	var state State
-	state.Metrics = s.Metrics
-	state.RarityBaseline = s.RarityBaseline.Snapshot()
 	state.MetricsByTenant = make(map[string]Metrics, len(s.MetricsByTenant))
 	for tenantID, metrics := range s.MetricsByTenant {
 		state.MetricsByTenant[tenantID] = metrics

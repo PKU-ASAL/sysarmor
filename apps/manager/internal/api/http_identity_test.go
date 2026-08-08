@@ -17,13 +17,13 @@ func TestStoreStatusAPI(t *testing.T) {
 	st := &store.Store{}
 	handler := NewServer(st).Handler()
 	rec := get(t, handler, "/healthz")
-	for _, want := range []string{`"ok":true`, `"store"`, `"backend":"memory"`, `"postgres_schema_version":2`} {
+	for _, want := range []string{`"ok":true`, `"store"`, `"backend":"memory"`, `"postgres_schema_version":3`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("healthz missing %s: %s", want, rec.Body.String())
 		}
 	}
 	rec = get(t, handler, "/api/v1/store-status")
-	for _, want := range []string{`"backend":"memory"`, `"state_version":1`, `"migration_version":1`, `"postgres_schema_version":2`} {
+	for _, want := range []string{`"backend":"memory"`, `"state_version":1`, `"migration_version":1`, `"postgres_schema_version":3`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("store status missing %s: %s", want, rec.Body.String())
 		}

@@ -59,12 +59,31 @@ func (s *Store) CommitTelemetryBatch(ctx context.Context, delta TelemetryBatchDe
 	return s.commitLocalTelemetryBatch(delta)
 }
 
+func (s *Store) AbandonTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) error {
+	backend, baseCtx := s.backendCtx()
+	if batchBackend, ok := backend.(TelemetryBatchBackend); ok {
+		if ctx == nil {
+			ctx = baseCtx
+		}
+		return batchBackend.AbandonTelemetryBatch(ctx, tenantID, batchID, leaseUntil)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := telemetryBatchKey(tenantID, batchID)
+	record, ok := s.TelemetryBatches[key]
+	if ok && record.Status == "processing" && record.LeaseUntil.Equal(leaseUntil) {
+		delete(s.TelemetryBatches, key)
+		return s.persistFileLocked()
+	}
+	return nil
+}
+
 func (s *Store) commitLocalTelemetryBatch(delta TelemetryBatchDelta) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := telemetryBatchKey(delta.TenantID, delta.BatchID)
 	record, exists := s.TelemetryBatches[key]
-	if !exists || record.Status != "processing" {
+	if !exists || record.Status != "processing" || !record.LeaseUntil.Equal(delta.LeaseUntil) {
 		return fmt.Errorf("telemetry batch is not processing")
 	}
 	previousMetrics := s.MetricsByTenant[delta.TenantID]

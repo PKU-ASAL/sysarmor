@@ -65,15 +65,8 @@ type Backend interface {
 	CompleteAgentUnenrollment(ctx context.Context, tenantID, agentID, enrollmentID, serial, receipt, tokenHash string, completedAt time.Time) (UnenrollmentRecord, bool, error)
 }
 
-type MetricsBackend interface {
-	LoadMetrics(ctx context.Context) (Metrics, error)
-	SaveMetrics(ctx context.Context, metrics Metrics) error
-	ResetMetrics(ctx context.Context) error
-}
-
 type TenantMetricsBackend interface {
 	LoadMetricsForTenant(ctx context.Context, tenantID string) (Metrics, error)
-	SaveMetricsForTenant(ctx context.Context, tenantID string, metrics Metrics) error
 }
 
 type TenantRarityBackend interface {
@@ -89,13 +82,15 @@ const (
 )
 
 type TelemetryBatchDelta struct {
-	TenantID string
-	BatchID  string
-	Metrics  Metrics
-	Rarity   rarity.Baseline
+	TenantID   string
+	BatchID    string
+	LeaseUntil time.Time
+	Metrics    Metrics
+	Rarity     rarity.Baseline
 }
 
 type TelemetryBatchBackend interface {
 	ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) (BatchClaim, error)
 	CommitTelemetryBatch(ctx context.Context, delta TelemetryBatchDelta) error
+	AbandonTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseUntil time.Time) error
 }

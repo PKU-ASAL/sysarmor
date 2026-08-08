@@ -27,12 +27,6 @@ func (s *Server) reset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("save store: %v", err), http.StatusInternalServerError)
 		return
 	}
-	if len(labels) == 0 {
-		if err := s.store.ResetMetrics(); err != nil {
-			http.Error(w, fmt.Sprintf("reset metrics: %v", err), http.StatusInternalServerError)
-			return
-		}
-	}
 	writeJSON(w, map[string]any{"ok": true, "labels": labels})
 }
 

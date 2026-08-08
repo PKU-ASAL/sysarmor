@@ -30,6 +30,18 @@ func TestClaimTelemetryBatchReturnsBusyForLiveLease(t *testing.T) {
 	}
 }
 
+func TestClaimTelemetryBatchUsesConflictSafeInsert(t *testing.T) {
+	db := openFakeDB(t, nil)
+	FakeSetQueryValues(nil, nil)
+	claim, err := (&tableBackend{db: db}).ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-new", time.Now().Add(time.Minute))
+	if err != nil || claim != store.BatchClaimed {
+		t.Fatalf("claim=%v err=%v", claim, err)
+	}
+	if queries := FakeAllQueries(); !strings.Contains(queries, "ON CONFLICT (tenant_id, batch_id) DO NOTHING") {
+		t.Fatalf("claim insert is not conflict safe:\n%s", queries)
+	}
+}
+
 func TestCommitTelemetryBatchCommitsMetricsRarityAndCompletion(t *testing.T) {
 	db := openFakeDB(t, nil)
 	FakeSetQueryResultSets([][][]driver.Value{
@@ -38,8 +50,9 @@ func TestCommitTelemetryBatchCommitsMetricsRarityAndCompletion(t *testing.T) {
 	})
 	err := (&tableBackend{db: db}).CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{
 		TenantID: "tenant-a", BatchID: "batch-a",
-		Metrics: store.Metrics{DataBatchesAppended: 1, EventsIngested: 3},
-		Rarity:  rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 2}}},
+		LeaseUntil: time.Now().Add(time.Minute),
+		Metrics:    store.Metrics{DataBatchesAppended: 1, EventsIngested: 3},
+		Rarity:     rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 2}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +75,8 @@ func TestCommitTelemetryBatchRollsBackOnRarityFailure(t *testing.T) {
 	FakeSetExecErrorForQuery("INSERT INTO rarity_baseline", errors.New("rarity failed"))
 	err := (&tableBackend{db: db}).CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{
 		TenantID: "tenant-a", BatchID: "batch-a",
-		Rarity: rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 1}}},
+		LeaseUntil: time.Now().Add(time.Minute),
+		Rarity:     rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 1}}},
 	})
 	if err == nil {
 		t.Fatal("commit error = nil")

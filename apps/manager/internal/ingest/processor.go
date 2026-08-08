@@ -11,6 +11,7 @@ import (
 	"time"
 
 	analyticingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -36,6 +37,7 @@ type Result struct {
 	AcceptedSignals int
 	CloudSignals    int
 	Incidents       int
+	Duplicate       bool
 }
 
 func NewProcessor(st *store.Store, projector platformopensearch.Projector) *Processor {
@@ -59,6 +61,24 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 	if batch == nil || batch.GetHeader() == nil {
 		return Result{}, fmt.Errorf("data batch header identity is required")
 	}
+	header := batch.GetHeader()
+	leaseUntil := time.Now().UTC().Add(30 * time.Second)
+	claim, err := p.store.ClaimTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), leaseUntil)
+	if err != nil {
+		return Result{}, fmt.Errorf("claim telemetry batch: %w", err)
+	}
+	if claim == store.BatchDuplicate {
+		return Result{Duplicate: true}, nil
+	}
+	if claim == store.BatchBusy {
+		return Result{}, fmt.Errorf("telemetry batch is already processing")
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = p.store.AbandonTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), leaseUntil)
+		}
+	}()
 	agent := store.AgentIdentityFromDataBatch(batch)
 	tenantID := agent.Normalized().TenantID
 	p.store.AddAgent(agent)
@@ -108,15 +128,34 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, err
 	}
 	convergenceLatency := time.Since(start)
-	p.store.RecordDataBatchIngestForTenant(tenantID, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
-	p.store.ObserveRaritySignalsForTenant(tenantID, currentSignals)
 	if err := p.store.Save(); err != nil {
 		return Result{}, err
 	}
-	if err := p.store.SaveMetrics(); err != nil {
+	delta := telemetryBatchDelta(batch, leaseUntil, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
+	if err := p.store.CommitTelemetryBatch(ctx, delta); err != nil {
 		return Result{}, err
 	}
+	committed = true
 	return Result{AcceptedEvents: len(currentEvents), AcceptedSignals: len(currentSignals), CloudSignals: cloudSignals, Incidents: incidents}, nil
+}
+
+func telemetryBatchDelta(batch *dataplanev1.DataBatch, leaseUntil time.Time, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) store.TelemetryBatchDelta {
+	latencyMs := uint64(latency.Milliseconds())
+	metrics := store.Metrics{
+		DataBatchesAppended: 1, EventsIngested: uint64(events), EndpointSignalsIngested: uint64(endpointSignals),
+		CloudSignalsEmitted: uint64(cloudSignals), SignalsEmitted: uint64(endpointSignals + cloudSignals),
+		IncidentsCreated: uint64(incidents), LastConvergenceLatencyMs: latencyMs,
+		MaxConvergenceLatencyMs: latencyMs, TotalConvergenceLatencyMs: latencyMs, AverageConvergenceLatency: float64(latencyMs),
+	}
+	baseline := rarity.Baseline{}
+	currentSignals := make([]*signalv1.Signal, 0, len(batch.GetSignals()))
+	for _, frame := range batch.GetSignals() {
+		if signal := frame.GetSignal(); signal != nil {
+			currentSignals = append(currentSignals, signal)
+		}
+	}
+	baseline.Observe(currentSignals)
+	return store.TelemetryBatchDelta{TenantID: batch.GetHeader().GetTenantId(), BatchID: batch.GetHeader().GetBatchId(), LeaseUntil: leaseUntil, Metrics: metrics, Rarity: baseline}
 }
 
 type touchedScope struct {

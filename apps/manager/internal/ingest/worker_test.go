@@ -245,7 +245,7 @@ func TestWorkerConsumesKafkaUploadAndProcessesAfterCommit(t *testing.T) {
 	if consumer.committed != 1 {
 		t.Fatalf("committed = %d, want 1", consumer.committed)
 	}
-	if got := st.ListSignals(store.LabelSelector{"scenario": "worker-scenario"}, "endpoint", false); len(got) != 1 {
+	if got := st.ListSignalsForTenant("default", store.LabelSelector{"scenario": "worker-scenario"}, "endpoint", false); len(got) != 1 {
 		t.Fatalf("signals = %d, want 1", len(got))
 	}
 }

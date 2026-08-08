@@ -21,8 +21,9 @@ func TestFileTelemetryBatchCommitSurvivesReopen(t *testing.T) {
 	}
 	err = st.CommitTelemetryBatch(context.Background(), TelemetryBatchDelta{
 		TenantID: "tenant-a", BatchID: "batch-a",
-		Metrics: Metrics{DataBatchesAppended: 1, EventsIngested: 3},
-		Rarity:  rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 2}}},
+		LeaseUntil: st.TelemetryBatches[telemetryBatchKey("tenant-a", "batch-a")].LeaseUntil,
+		Metrics:    Metrics{DataBatchesAppended: 1, EventsIngested: 3},
+		Rarity:     rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{"global": {"signal-a": 2}}},
 	})
 	if err != nil {
 		t.Fatal(err)

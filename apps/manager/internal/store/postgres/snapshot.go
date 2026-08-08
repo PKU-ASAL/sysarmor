@@ -124,19 +124,6 @@ func saveTables(ctx context.Context, db *sql.DB, state store.State) error {
 	if err := projectAgentSessions(ctx, tx, state.AgentSessions); err != nil {
 		return err
 	}
-	if err := projectRarityBaseline(ctx, tx, state.RarityBaseline); err != nil {
-		return err
-	}
-	for tenantID, metrics := range state.MetricsByTenant {
-		if err := projectMetricsForTenant(ctx, tx, tenantID, metrics); err != nil {
-			return err
-		}
-	}
-	for tenantID, baseline := range state.RarityByTenant {
-		if err := projectRarityBaselineForTenant(ctx, tx, tenantID, baseline); err != nil {
-			return err
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit state projection tx: %w", err)
 	}

@@ -72,7 +72,7 @@ func TestDataPlaneStreamBatches(t *testing.T) {
 	if ack.GetPartial() {
 		t.Fatalf("ack partial = true, want false until partial append is explicitly supported")
 	}
-	if got := st.MetricsSnapshot().IncidentsCreated; got != 1 {
+	if got := st.MetricsSnapshotForTenant("default").IncidentsCreated; got != 1 {
 		t.Fatalf("incidents created = %d, want 1", got)
 	}
 }

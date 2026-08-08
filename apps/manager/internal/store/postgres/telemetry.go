@@ -29,42 +29,10 @@ ON CONFLICT (tenant_id, metric_key) DO UPDATE SET
 	return nil
 }
 
-func projectMetrics(ctx context.Context, db sqlExecutor, metrics store.Metrics) error {
-	return projectMetricsForTenant(ctx, db, "default", metrics)
-}
-
-func (b *tableBackend) LoadMetrics(ctx context.Context) (store.Metrics, error) {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	return queryMetrics(ctx, b.db)
-}
-
-func (b *tableBackend) SaveMetrics(ctx context.Context, metrics store.Metrics) error {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	return projectMetrics(ctx, b.db, metrics)
-}
-
 func (b *tableBackend) LoadMetricsForTenant(ctx context.Context, tenantID string) (store.Metrics, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 	return queryMetricsForTenant(ctx, b.db, tenantID)
-}
-
-func (b *tableBackend) SaveMetricsForTenant(ctx context.Context, tenantID string, metrics store.Metrics) error {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	return projectMetricsForTenant(ctx, b.db, tenantID, metrics)
-}
-
-func (b *tableBackend) ResetMetrics(ctx context.Context) error {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-	return projectMetrics(ctx, b.db, store.Metrics{})
-}
-
-func queryMetrics(ctx context.Context, db sqlExecutor) (store.Metrics, error) {
-	return queryMetricsForTenant(ctx, db, "default")
 }
 
 func queryMetricsForTenant(ctx context.Context, db sqlExecutor, tenantID string) (store.Metrics, error) {
@@ -120,10 +88,6 @@ ON CONFLICT (tenant_id, workload_key, signal_name) DO UPDATE SET
 		}
 	}
 	return nil
-}
-
-func projectRarityBaseline(ctx context.Context, db sqlExecutor, baseline rarity.Baseline) error {
-	return projectRarityBaselineForTenant(ctx, db, "default", baseline)
 }
 
 func (b *tableBackend) LoadRarityForTenant(ctx context.Context, tenantID string) (rarity.Baseline, error) {

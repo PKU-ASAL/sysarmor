@@ -99,7 +99,6 @@ type telemetryStore interface {
 	ListIncidentsForTenant(string, store.LabelSelector) []*incidentv1.Incident
 	ListSignals(store.LabelSelector, string, bool) []*signalv1.Signal
 	ListSignalsForTenant(string, store.LabelSelector, string, bool) []*signalv1.Signal
-	RarityBaselineSnapshot() rarity.Baseline
 	RarityBaselineSnapshotForTenant(string) rarity.Baseline
 	RarityBaselineSnapshotForTenantWithError(string) (rarity.Baseline, error)
 }
@@ -107,10 +106,8 @@ type telemetryStore interface {
 type operationalStore interface {
 	DeleteByLabels(store.LabelSelector)
 	Info() store.Info
-	MetricsSnapshot() store.Metrics
 	MetricsSnapshotForTenant(string) store.Metrics
 	MetricsSnapshotForTenantWithError(string) (store.Metrics, error)
-	ResetMetrics() error
 	Save() error
 }
 

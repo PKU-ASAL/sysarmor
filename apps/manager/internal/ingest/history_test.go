@@ -105,3 +105,43 @@ func TestMergeAnalysisInputsDeduplicatesCurrentBatch(t *testing.T) {
 		t.Fatalf("events=%d signals=%d", len(events), len(signals))
 	}
 }
+
+func TestProcessorDuplicateBatchSkipsProjectionAndMetrics(t *testing.T) {
+	st := &store.Store{}
+	indexer := &recordingIndexer{}
+	processor := NewProcessor(st, indexer)
+	batch := dataBatch("duplicate-batch", nil, []*signalv1.Signal{
+		workerSignal("signal-a", "signal-a", "lineage-a", map[string]string{"scenario": "duplicate"}),
+	})
+	if _, err := processor.Process(context.Background(), batch); err != nil {
+		t.Fatal(err)
+	}
+	documentsAfterFirst := len(indexer.docs)
+	result, err := processor.Process(context.Background(), batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Duplicate {
+		t.Fatal("duplicate batch was not reported as duplicate")
+	}
+	if len(indexer.docs) != documentsAfterFirst {
+		t.Fatalf("duplicate projected documents: before=%d after=%d", documentsAfterFirst, len(indexer.docs))
+	}
+	if got := st.MetricsSnapshotForTenant("default").DataBatchesAppended; got != 1 {
+		t.Fatalf("data batches = %d, want 1", got)
+	}
+}
+
+func TestTwoProcessorsAccumulateTenantTelemetry(t *testing.T) {
+	st := &store.Store{}
+	first := NewProcessor(st, &recordingIndexer{})
+	second := NewProcessor(st, &recordingIndexer{})
+	for processor, id := range map[*Processor]string{first: "batch-a", second: "batch-b"} {
+		if _, err := processor.Process(context.Background(), dataBatch(id, nil, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := st.MetricsSnapshotForTenant("default").DataBatchesAppended; got != 2 {
+		t.Fatalf("data batches = %d, want 2", got)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
@@ -31,6 +32,18 @@ import (
 	"testing"
 	"time"
 )
+
+func commitBackendTelemetry(t *testing.T, st *store.Store, delta store.TelemetryBatchDelta) {
+	t.Helper()
+	delta.LeaseUntil = time.Now().Add(time.Minute)
+	claim, err := st.ClaimTelemetryBatch(context.Background(), delta.TenantID, delta.BatchID, delta.LeaseUntil)
+	if err != nil || claim != store.BatchClaimed {
+		t.Fatalf("claim=%v err=%v", claim, err)
+	}
+	if err := st.CommitTelemetryBatch(context.Background(), delta); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestOpenFileAndMemoryBackends(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "store.json")
@@ -1147,13 +1160,7 @@ func TestOpenPostgresProjectsIncidentEventsAndMetricsTables(t *testing.T) {
 			},
 		}},
 	})
-	result.Store.RecordDataBatchIngest(2, 1, 1, 1, 7*time.Millisecond)
-	if err := result.Store.Save(); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-	if err := result.Store.SaveMetrics(); err != nil {
-		t.Fatalf("SaveMetrics() error = %v", err)
-	}
+	commitBackendTelemetry(t, result.Store, store.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "metrics-batch", Metrics: store.Metrics{DataBatchesAppended: 1, EventsIngested: 2, SignalsEmitted: 2}})
 	execLog := fakeExecLog()
 	if strings.Contains(execLog, "INSERT INTO incident_events") {
 		t.Fatalf("postgres exec log contains incident event projection:\n%s", execLog)
@@ -1216,7 +1223,8 @@ func TestOpenPostgresProjectsRarityBaselineTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(postgres) error = %v", err)
 	}
-	result.Store.ObserveRaritySignals([]*signalv1.Signal{{
+	baseline := rarity.Baseline{}
+	baseline.Observe([]*signalv1.Signal{{
 		Name: "download_by_lolbin",
 		Entities: []*signalv1.EntityRef{{
 			Kind: "container",
@@ -1225,9 +1233,7 @@ func TestOpenPostgresProjectsRarityBaselineTable(t *testing.T) {
 	}, {
 		Name: "reverse_shell_pattern",
 	}})
-	if err := result.Store.Save(); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
+	commitBackendTelemetry(t, result.Store, store.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "rarity-batch", Rarity: baseline})
 	execLog := fakeExecLog()
 	for _, want := range []string{
 		"INSERT INTO rarity_baseline",
@@ -1252,11 +1258,9 @@ func TestOpenPostgresProjectsTenantMetricsAndRarity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result.Store.RecordDataBatchIngestForTenant("tenant-a", 3, 2, 0, 0, time.Millisecond)
-	result.Store.ObserveRaritySignalsForTenant("tenant-a", []*signalv1.Signal{{Name: "tenant-signal"}})
-	if err := result.Store.Save(); err != nil {
-		t.Fatal(err)
-	}
+	baseline := rarity.Baseline{}
+	baseline.Observe([]*signalv1.Signal{{Name: "tenant-signal"}})
+	commitBackendTelemetry(t, result.Store, store.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "tenant-batch", Metrics: store.Metrics{DataBatchesAppended: 1, EventsIngested: 3, SignalsEmitted: 2}, Rarity: baseline})
 	execLog := fakeExecLog()
 	for _, want := range []string{"INSERT INTO metrics", "tenant-a", `"events_ingested":3`, "INSERT INTO rarity_baseline", "tenant-signal"} {
 		if !strings.Contains(execLog, want) {
@@ -1575,9 +1579,16 @@ var fakeState struct {
 	assignmentRows     [][]byte
 	policyAuditRows    [][]byte
 	controlCommandRows [][]byte
+	telemetryBatches   map[string]fakeTelemetryBatch
+	metricsRows        map[string][]byte
 	closeN             int
 	commitN            int
 	rollbackN          int
+}
+
+type fakeTelemetryBatch struct {
+	status string
+	lease  time.Time
 }
 
 func fakeSetExecError(err error) {
@@ -1596,6 +1607,8 @@ func fakeSetExecError(err error) {
 	fakeState.assignmentRows = nil
 	fakeState.policyAuditRows = nil
 	fakeState.controlCommandRows = nil
+	fakeState.telemetryBatches = map[string]fakeTelemetryBatch{}
+	fakeState.metricsRows = map[string][]byte{}
 	fakeState.closeN = 0
 	fakeState.commitN = 0
 	fakeState.rollbackN = 0
@@ -1866,6 +1879,22 @@ func (s fakeStmt) ExecContext(_ context.Context, args []driver.NamedValue) (driv
 			upsertFakeControlCommandRow([]byte(data))
 		}
 	}
+	if strings.Contains(s.query, "INSERT INTO telemetry_batches") && len(args) >= 3 {
+		key := fmt.Sprint(args[0].Value) + "\x00" + fmt.Sprint(args[1].Value)
+		lease, _ := args[2].Value.(time.Time)
+		fakeState.telemetryBatches[key] = fakeTelemetryBatch{status: "processing", lease: lease}
+	}
+	if strings.Contains(s.query, "UPDATE telemetry_batches SET status = 'completed'") && len(args) >= 2 {
+		key := fmt.Sprint(args[0].Value) + "\x00" + fmt.Sprint(args[1].Value)
+		record := fakeState.telemetryBatches[key]
+		record.status = "completed"
+		fakeState.telemetryBatches[key] = record
+	}
+	if strings.Contains(s.query, "INSERT INTO metrics") && len(args) >= 2 {
+		tenantID := fmt.Sprint(args[0].Value)
+		dataIndex := len(args) - 1
+		fakeState.metricsRows[tenantID] = append([]byte(nil), cloneDriverBytes(args[dataIndex].Value).([]byte)...)
+	}
 	return driver.RowsAffected(1), nil
 }
 
@@ -2028,6 +2057,22 @@ func (s fakeStmt) Query([]driver.Value) (driver.Rows, error) {
 func (s fakeStmt) QueryContext(_ context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	fakeState.Lock()
 	defer fakeState.Unlock()
+	if strings.Contains(s.query, "FROM telemetry_batches") && len(args) >= 2 {
+		key := fmt.Sprint(args[0].Value) + "\x00" + fmt.Sprint(args[1].Value)
+		if record, ok := fakeState.telemetryBatches[key]; ok {
+			if strings.Contains(s.query, "SELECT status, lease_until") {
+				return &fakeRows{cols: []string{"status", "lease_until"}, rows: [][]driver.Value{{record.status, record.lease}}}, nil
+			}
+			return &fakeRows{cols: []string{"status"}, rows: [][]driver.Value{{record.status}}}, nil
+		}
+		return &fakeRows{}, nil
+	}
+	if strings.Contains(s.query, "SELECT data FROM metrics") && len(args) >= 1 {
+		if data := fakeState.metricsRows[fmt.Sprint(args[0].Value)]; len(data) > 0 {
+			return &fakeRows{cols: []string{"data"}, rows: [][]driver.Value{{append([]byte(nil), data...)}}}, nil
+		}
+		return &fakeRows{}, nil
+	}
 	if strings.Contains(s.query, "SELECT data FROM sysarmor_state") && len(fakeState.snapshot) > 0 {
 		return &fakeRows{cols: []string{"data"}, rows: [][]driver.Value{{append([]byte(nil), fakeState.snapshot...)}}}, nil
 	}

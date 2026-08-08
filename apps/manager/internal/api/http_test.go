@@ -3,6 +3,7 @@ package managerapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
@@ -11,9 +12,14 @@ import (
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 )
+
+var testBatchSequence uint64
 
 type recordingIndexer struct {
 	docs []platformopensearch.Document
@@ -42,6 +48,20 @@ func newTestServer(st *store.Store) *Server {
 	return NewServer(st)
 }
 
+func seedTenantTelemetry(t *testing.T, st *store.Store, tenantID, batchID string, metrics store.Metrics, signals []*signalv1.Signal) {
+	t.Helper()
+	lease := time.Now().Add(time.Minute)
+	claim, err := st.ClaimTelemetryBatch(context.Background(), tenantID, batchID, lease)
+	if err != nil || claim != store.BatchClaimed {
+		t.Fatalf("claim=%v err=%v", claim, err)
+	}
+	baseline := rarity.Baseline{}
+	baseline.Observe(signals)
+	if err := st.CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, LeaseUntil: lease, Metrics: metrics, Rarity: baseline}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func appendBatch(t *testing.T, srv *Server, batch *dataplanev1.DataBatch) {
 	t.Helper()
 	_ = appendBatchAndAck(t, srv, batch)
@@ -51,6 +71,9 @@ func appendBatchAndAck(t *testing.T, srv *Server, batch *dataplanev1.DataBatch) 
 	t.Helper()
 	if batch.Header == nil {
 		batch.Header = &dataplanev1.BatchHeader{AgentId: "agent-a", HostId: "host-a", TenantId: "default"}
+	}
+	if batch.Header.BatchId == "" {
+		batch.Header.BatchId = fmt.Sprintf("test-batch-%d", atomic.AddUint64(&testBatchSequence, 1))
 	}
 	if batch.Header.AgentId == "" {
 		batch.Header.AgentId = "agent-a"

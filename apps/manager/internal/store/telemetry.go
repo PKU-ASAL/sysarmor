@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"sort"
 	"strings"
-	"time"
 
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -64,12 +63,6 @@ func (s *Store) AddIncident(inc *incidentv1.Incident) bool {
 	}
 	s.Incidents = append(s.Incidents, inc)
 	return true
-}
-
-func (s *Store) RecordDataBatchIngest(events, endpointSignals, cloudSignals, incidents int, convergenceLatency time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	recordMetrics(&s.Metrics, events, endpointSignals, cloudSignals, incidents, convergenceLatency)
 }
 
 // ListEvents reads from the in-process working set only. Telemetry is not
@@ -207,58 +200,6 @@ func (s *Store) MergeIncidents(targetID, sourceID string) (*incidentv1.Incident,
 	return target, true
 }
 
-func (s *Store) MetricsSnapshot() Metrics {
-	s.mu.RLock()
-	backend := s.backend
-	ctx := ctxOrBackground(s.baseCtx)
-	s.mu.RUnlock()
-	if metricsBackend, ok := backend.(MetricsBackend); ok {
-		if metrics, err := metricsBackend.LoadMetrics(ctx); err == nil {
-			return metrics
-		}
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.Metrics
-}
-
-func (s *Store) SaveMetrics() error {
-	s.mu.RLock()
-	metrics := s.Metrics
-	metricsByTenant := make(map[string]Metrics, len(s.MetricsByTenant))
-	for tenantID, tenantMetrics := range s.MetricsByTenant {
-		metricsByTenant[tenantID] = tenantMetrics
-	}
-	backend := s.backend
-	ctx := ctxOrBackground(s.baseCtx)
-	s.mu.RUnlock()
-	if metricsBackend, ok := backend.(MetricsBackend); ok {
-		if err := metricsBackend.SaveMetrics(ctx, metrics); err != nil {
-			return err
-		}
-	}
-	if tenantBackend, ok := backend.(TenantMetricsBackend); ok {
-		for tenantID, tenantMetrics := range metricsByTenant {
-			if err := tenantBackend.SaveMetricsForTenant(ctx, tenantID, tenantMetrics); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (s *Store) ResetMetrics() error {
-	s.mu.Lock()
-	s.Metrics = Metrics{}
-	backend := s.backend
-	ctx := ctxOrBackground(s.baseCtx)
-	s.mu.Unlock()
-	if metricsBackend, ok := backend.(MetricsBackend); ok {
-		return metricsBackend.ResetMetrics(ctx)
-	}
-	return nil
-}
-
 func (s *Store) DeleteByLabels(labels LabelSelector) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,7 +210,6 @@ func (s *Store) DeleteByLabels(labels LabelSelector) {
 		s.Incidents = nil
 		s.Health = map[string]agenthealth.AgentHealth{}
 		s.AgentSessions = nil
-		s.Metrics = Metrics{}
 		return
 	}
 	events := s.Events[:0]

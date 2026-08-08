@@ -87,8 +87,8 @@ func TestLocalTelemetryAndMetricsAreScopedToPrincipalTenant(t *testing.T) {
 	st.AddEvent(&eventv1.CanonicalEvent{Id: "event-b", TenantId: "tenant-b"})
 	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "signal-a"})
 	st.AddSignalForTenant("tenant-b", &signalv1.Signal{Id: "signal-b"})
-	st.RecordDataBatchIngestForTenant("tenant-a", 1, 1, 0, 0, 0)
-	st.RecordDataBatchIngestForTenant("tenant-b", 20, 30, 0, 0, 0)
+	seedTenantTelemetry(t, st, "tenant-a", "metrics-a", store.Metrics{DataBatchesAppended: 1, EventsIngested: 1, SignalsEmitted: 1}, nil)
+	seedTenantTelemetry(t, st, "tenant-b", "metrics-b", store.Metrics{DataBatchesAppended: 1, EventsIngested: 20, SignalsEmitted: 30}, nil)
 	handler := tenantTestHandler(NewServer(st), "tenant-a")
 
 	for _, path := range []string{"/api/v1/events", "/api/v1/signals", "/api/v1/metrics"} {
@@ -105,8 +105,8 @@ func TestRarityBaselineIsScopedToPrincipalTenant(t *testing.T) {
 	st := &store.Store{}
 	signalA := &signalv1.Signal{Name: "download_by_lolbin", Labels: map[string]string{"workload": "container:checkout-api"}}
 	signalB := &signalv1.Signal{Name: "other_tenant_signal", Labels: map[string]string{"workload": "container:billing"}}
-	st.ObserveRaritySignalsForTenant("tenant-a", []*signalv1.Signal{signalA})
-	st.ObserveRaritySignalsForTenant("tenant-b", []*signalv1.Signal{signalB})
+	seedTenantTelemetry(t, st, "tenant-a", "rarity-a", store.Metrics{}, []*signalv1.Signal{signalA})
+	seedTenantTelemetry(t, st, "tenant-b", "rarity-b", store.Metrics{}, []*signalv1.Signal{signalB})
 	handler := tenantTestHandler(NewServer(st), "tenant-a")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/rarity-baseline?workload=container:checkout-api&signal=download_by_lolbin", nil)
 	rec := httptest.NewRecorder()
@@ -281,11 +281,11 @@ func TestUploadUpdatesRarityBaselineWithoutDuplicateAmplification(t *testing.T) 
 		}},
 	}})
 	appendBatch(t, srv, batch)
-	if got := st.RarityBaselineSnapshot().Count("container:checkout-api", "download_by_lolbin"); got != 1 {
+	if got := st.RarityBaselineSnapshotForTenant("default").Count("container:checkout-api", "download_by_lolbin"); got != 1 {
 		t.Fatalf("workload baseline count = %d, want 1", got)
 	}
 	appendBatch(t, srv, batch)
-	if got := st.RarityBaselineSnapshot().Count("container:checkout-api", "download_by_lolbin"); got != 1 {
+	if got := st.RarityBaselineSnapshotForTenant("default").Count("container:checkout-api", "download_by_lolbin"); got != 1 {
 		t.Fatalf("workload baseline count after duplicate = %d, want 1", got)
 	}
 	rec := get(t, handler, "/api/v1/rarity-baseline?workload=container:checkout-api&signal=download_by_lolbin")
