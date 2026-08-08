@@ -15,13 +15,13 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
 	platformredis "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/redis"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
-	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 	"google.golang.org/grpc"
 )
 
@@ -33,7 +33,7 @@ func main() {
 	grpcTLSCert := flag.String("tls-cert", envDefault("SYSARMOR_GRPC_TLS_CERT", ""), "gateway gRPC server TLS certificate")
 	grpcTLSKey := flag.String("tls-key", envDefault("SYSARMOR_GRPC_TLS_KEY", ""), "gateway gRPC server TLS private key")
 	grpcClientCA := flag.String("client-ca", envDefault("SYSARMOR_GRPC_CLIENT_CA", ""), "CA bundle used to verify agent client certificates")
-	grpcRequireClientCert := flag.Bool("require-client-cert", envDefault("SYSARMOR_GRPC_REQUIRE_CLIENT_CERT", "") == "true", "require and verify agent client certificates")
+	development := flag.Bool("development", false, "allow insecure gRPC on a loopback listen address")
 	storeBackend := flag.String("store-backend", backend.KindPostgres, "store backend: postgres")
 	postgresDriver := flag.String("postgres-driver", envDefault("SYSARMOR_POSTGRES_DRIVER", "postgres"), "database/sql driver name for postgres backend")
 	postgresDSN := flag.String("postgres-dsn", envDefault("SYSARMOR_POSTGRES_DSN", ""), "Postgres DSN for postgres backend")
@@ -49,6 +49,16 @@ func main() {
 	}
 	if *storeBackend == backend.KindFile {
 		fmt.Fprintln(os.Stderr, "open store: file backend has been removed from the sysarmor-gateway product path; use postgres")
+		os.Exit(1)
+	}
+	prepared, err := prepareGateway(gatewaySecurityConfig{
+		listen:   *listen,
+		tlsCert:  *grpcTLSCert,
+		tlsKey:   *grpcTLSKey,
+		clientCA: *grpcClientCA,
+	}, *development)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "prepare gateway: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -80,21 +90,11 @@ func main() {
 		agentToken:  *devToken,
 	})
 	defer cleanup()
-	mtlsEnabled := *grpcClientCA != "" || *grpcRequireClientCert
 	if *healthListen != "" {
-		startHealthServer(ctx, *healthListen, runtime, mtlsEnabled)
+		startHealthServer(ctx, *healthListen, runtime, prepared.MTLSEnabled())
 	}
 
-	var grpcOptions []grpc.ServerOption
-	grpcTLSOption, err := tlsconfig.ServerOption(*grpcTLSCert, *grpcTLSKey, *grpcClientCA, *grpcRequireClientCert)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gateway grpc tls: %v\n", err)
-		os.Exit(1)
-	}
-	if grpcTLSOption != nil {
-		grpcOptions = append(grpcOptions, grpcTLSOption)
-	}
-	grpcServer := grpc.NewServer(grpcOptions...)
+	grpcServer := grpc.NewServer(prepared.ServerOptions()...)
 	gateway.RegisterAgentServices(grpcServer, runtime)
 
 	lis, err := net.Listen("tcp", *listen)
@@ -107,11 +107,31 @@ func main() {
 		grpcServer.GracefulStop()
 	}()
 
-	log.Printf("sysarmor-gateway listening on %s mtls=%t local_ingest=%t", *listen, mtlsEnabled, *localIngest)
+	log.Printf("sysarmor-gateway listening on %s mtls=%t local_ingest=%t", *listen, prepared.MTLSEnabled(), *localIngest)
 	if err := grpcServer.Serve(lis); err != nil {
 		fmt.Fprintf(os.Stderr, "gateway grpc serve: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+type gatewaySecurityConfig struct {
+	listen   string
+	tlsCert  string
+	tlsKey   string
+	clientCA string
+}
+
+func prepareGateway(cfg gatewaySecurityConfig, development bool) (bootstrap.Gateway, error) {
+	bootstrapConfig := bootstrap.GatewayConfig{
+		Listen:   cfg.listen,
+		TLSCert:  cfg.tlsCert,
+		TLSKey:   cfg.tlsKey,
+		ClientCA: cfg.clientCA,
+	}
+	if development {
+		return bootstrap.NewDevelopmentGateway(bootstrapConfig)
+	}
+	return bootstrap.NewProductionGateway(bootstrapConfig)
 }
 
 func startHealthServer(ctx context.Context, listen string, runtime *gateway.Runtime, mtlsEnabled bool) {

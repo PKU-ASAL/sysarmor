@@ -115,7 +115,7 @@ func TestDataPlaneStreamBatchesDuplicateReturnsCommittedAck(t *testing.T) {
 
 func TestAgentDataPlaneServiceMTLSBindsBatchIdentity(t *testing.T) {
 	certs := writeTestMTLSFiles(t, "default", "grpc-agent")
-	serverOpt, err := tlsconfig.ServerOption(certs.serverCert, certs.serverKey, certs.ca, true)
+	serverOpt, err := tlsconfig.MTLSServerOption(certs.serverCert, certs.serverKey, certs.ca)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestAgentDataPlaneServiceMTLSBindsBatchIdentity(t *testing.T) {
 
 func TestControlPlaneConnectMTLSBindsFrameIdentity(t *testing.T) {
 	certs := writeTestMTLSFiles(t, "default", "control-agent")
-	serverOpt, err := tlsconfig.ServerOption(certs.serverCert, certs.serverKey, certs.ca, true)
+	serverOpt, err := tlsconfig.MTLSServerOption(certs.serverCert, certs.serverKey, certs.ca)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -970,7 +970,7 @@ func (sessionReadFailureBackend) SaveState(context.Context, store.State) error {
 
 func TestRevokeEnrollmentMTLSIdentityAndIdempotencyMatrix(t *testing.T) {
 	certs := writeTestMTLSFiles(t, "tenant-a", "agent-a")
-	serverOpt, err := tlsconfig.ServerOption(certs.serverCert, certs.serverKey, certs.ca, true)
+	serverOpt, err := tlsconfig.MTLSServerOption(certs.serverCert, certs.serverKey, certs.ca)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -92,7 +92,6 @@ services:
       SYSARMOR_GRPC_TLS_CERT: /etc/sysarmor/pki/gateway.pem
       SYSARMOR_GRPC_TLS_KEY: /etc/sysarmor/pki/gateway-key.pem
       SYSARMOR_GRPC_CLIENT_CA: /etc/sysarmor/pki/ca.pem
-      SYSARMOR_GRPC_REQUIRE_CLIENT_CERT: true
     volumes:
       - ../../../bin:/opt/sysarmor/bin:ro
       - ../../.results/container-runtime/pki:/etc/sysarmor/pki:ro

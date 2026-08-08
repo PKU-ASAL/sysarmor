@@ -55,28 +55,24 @@ func ClientCredentials(cfg ClientConfig) (credentials.TransportCredentials, erro
 	return credentials.NewTLS(tlsCfg), nil
 }
 
-func ServerOption(certFile, keyFile, clientCAFile string, requireClientCert bool) (grpc.ServerOption, error) {
-	if certFile == "" && keyFile == "" && clientCAFile == "" && !requireClientCert {
-		return nil, nil
-	}
+func MTLSServerOption(certFile, keyFile, clientCAFile string) (grpc.ServerOption, error) {
 	if certFile == "" || keyFile == "" {
-		return nil, fmt.Errorf("grpc TLS cert and key are required")
+		return nil, fmt.Errorf("grpc mTLS cert and key are required")
+	}
+	if clientCAFile == "" {
+		return nil, fmt.Errorf("grpc mTLS requires a client CA")
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("load server certificate: %w", err)
 	}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
-	if clientCAFile != "" {
-		pool, err := loadCertPool(clientCAFile)
-		if err != nil {
-			return nil, err
-		}
-		tlsCfg.ClientCAs = pool
-		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
-	} else if requireClientCert {
-		return nil, fmt.Errorf("grpc mTLS requires a client CA")
+	pool, err := loadCertPool(clientCAFile)
+	if err != nil {
+		return nil, err
 	}
+	tlsCfg.ClientCAs = pool
+	tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 	return grpc.Creds(credentials.NewTLS(tlsCfg)), nil
 }
 
