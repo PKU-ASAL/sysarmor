@@ -86,6 +86,12 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetPolicyRoutes(policyRoutes)
+	identityRoutes, err := bootstrap.NewManagerIdentityHTTP(storeResult.DB, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure identity application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetIdentityRoutes(identityRoutes)
 	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}

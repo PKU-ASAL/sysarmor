@@ -7,11 +7,46 @@ import (
 	"testing"
 	"time"
 
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 )
+
+func TestUIOverviewUsesIdentityApplicationSummaries(t *testing.T) {
+	server := NewServer(&store.Store{})
+	server.SetIdentityRoutes(fakeIdentityRoutes{
+		overview: domainidentity.AgentOverview{Total: 3, Online: 2, Offline: 1},
+		metrics:  domainidentity.Metrics{EventsIngested: 12, SignalsEmitted: 5},
+	})
+	rec := get(t, server.Handler(), "/api/v1/ui/overview")
+	var got overviewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Agents.Total != 3 || got.Agents.Online != 2 || got.Telemetry.Events24h != 12 || got.Telemetry.Signals24h != 5 {
+		t.Fatalf("overview = %+v", got)
+	}
+}
+
+type fakeIdentityRoutes struct {
+	overview domainidentity.AgentOverview
+	metrics  domainidentity.Metrics
+}
+
+func (fakeIdentityRoutes) Agents(http.ResponseWriter, *http.Request)   {}
+func (fakeIdentityRoutes) Health(http.ResponseWriter, *http.Request)   {}
+func (fakeIdentityRoutes) Sessions(http.ResponseWriter, *http.Request) {}
+func (fakeIdentityRoutes) Resume(http.ResponseWriter, *http.Request)   {}
+func (fakeIdentityRoutes) Metrics(http.ResponseWriter, *http.Request)  {}
+func (fakeIdentityRoutes) Rarity(http.ResponseWriter, *http.Request)   {}
+func (fake fakeIdentityRoutes) AgentOverview(*http.Request) (domainidentity.AgentOverview, error) {
+	return fake.overview, nil
+}
+func (fake fakeIdentityRoutes) MetricsQuery(*http.Request) (domainidentity.Metrics, error) {
+	return fake.metrics, nil
+}
 
 func TestUIOverviewReturnsManagerSummary(t *testing.T) {
 	st := &store.Store{}

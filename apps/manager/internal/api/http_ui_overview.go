@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -58,13 +59,8 @@ func (s *Server) uiOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("query incident reports: %v", err), http.StatusBadGateway)
 		return
 	}
-	metrics, err := s.store.MetricsSnapshotForTenantWithError(tenantID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("read tenant metrics: %v", err), http.StatusInternalServerError)
-		return
-	}
 	info := s.store.Info()
-	agents, err := s.overviewAgents(tenantID)
+	agents, metrics, err := s.overviewIdentity(r, tenantID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("read agent overview: %v", err), http.StatusInternalServerError)
 		return
@@ -82,6 +78,23 @@ func (s *Server) uiOverview(w http.ResponseWriter, r *http.Request) {
 			PostgresSchemaVersion: info.PostgresSchema,
 		},
 	})
+}
+
+func (s *Server) overviewIdentity(r *http.Request, tenantID string) (overviewAgentsSummary, domainidentity.Metrics, error) {
+	if s.identityRoutes != nil {
+		agents, err := s.identityRoutes.AgentOverview(r)
+		if err != nil {
+			return overviewAgentsSummary{}, domainidentity.Metrics{}, err
+		}
+		metrics, err := s.identityRoutes.MetricsQuery(r)
+		return overviewAgentsSummary{Total: agents.Total, Online: agents.Online, Degraded: agents.Degraded, Offline: agents.Offline}, metrics, err
+	}
+	agents, err := s.overviewAgents(tenantID)
+	if err != nil {
+		return overviewAgentsSummary{}, domainidentity.Metrics{}, err
+	}
+	metrics, err := s.store.MetricsSnapshotForTenantWithError(tenantID)
+	return agents, domainidentity.Metrics{EventsIngested: metrics.EventsIngested, SignalsEmitted: metrics.SignalsEmitted}, err
 }
 
 func (s *Server) overviewAgents(tenantID string) (overviewAgentsSummary, error) {

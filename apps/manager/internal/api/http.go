@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -34,6 +35,7 @@ type Server struct {
 	caKey          *rsa.PrivateKey
 	localTelemetry bool
 	policyRoutes   policyRoutes
+	identityRoutes identityRoutes
 }
 
 type policyRoutes interface {
@@ -44,7 +46,19 @@ type policyRoutes interface {
 	Effective(http.ResponseWriter, *http.Request)
 }
 
-func (s *Server) SetPolicyRoutes(routes policyRoutes) { s.policyRoutes = routes }
+type identityRoutes interface {
+	Agents(http.ResponseWriter, *http.Request)
+	Health(http.ResponseWriter, *http.Request)
+	Sessions(http.ResponseWriter, *http.Request)
+	Resume(http.ResponseWriter, *http.Request)
+	Metrics(http.ResponseWriter, *http.Request)
+	Rarity(http.ResponseWriter, *http.Request)
+	AgentOverview(*http.Request) (domainidentity.AgentOverview, error)
+	MetricsQuery(*http.Request) (domainidentity.Metrics, error)
+}
+
+func (s *Server) SetPolicyRoutes(routes policyRoutes)     { s.policyRoutes = routes }
+func (s *Server) SetIdentityRoutes(routes identityRoutes) { s.identityRoutes = routes }
 
 type responseDecisionRequest struct {
 	SignalID string              `json:"signal_id"`
@@ -299,7 +313,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/response-decisions", s.responseDecisions)
 	mux.HandleFunc("/api/v1/response-approvals", s.responseApprovals)
 	mux.HandleFunc("/api/v1/response-acks", s.responseAcks)
-	mux.HandleFunc("/api/v1/data-resume", s.dataResume)
+	if s.identityRoutes == nil {
+		mux.HandleFunc("/api/v1/data-resume", s.dataResume)
+	} else {
+		mux.HandleFunc("/api/v1/data-resume", s.identityRoutes.Resume)
+	}
 	mux.HandleFunc("/api/v1/evidence-pullbacks", s.evidencePullbacks)
 	mux.HandleFunc("/api/v1/control-commands", s.controlCommands)
 	mux.HandleFunc("/api/v1/ui/overview", s.uiOverview)
@@ -308,15 +326,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/search/fields", s.searchFields)
 	mux.HandleFunc("/api/v1/search/histogram", s.searchHistogram)
 	mux.HandleFunc("/api/v1/search", s.search)
-	mux.HandleFunc("/api/v1/agents", s.agents)
+	if s.identityRoutes == nil {
+		mux.HandleFunc("/api/v1/agents", s.agents)
+		mux.HandleFunc("/api/v1/agent-sessions", s.agentSessions)
+		mux.HandleFunc("/api/v1/metrics", s.metrics)
+		mux.HandleFunc("/api/v1/rarity-baseline", s.rarityBaseline)
+	} else {
+		mux.HandleFunc("/api/v1/agents", s.identityRoutes.Agents)
+		mux.HandleFunc("/api/v1/agent-sessions", s.identityRoutes.Sessions)
+		mux.HandleFunc("/api/v1/metrics", s.identityRoutes.Metrics)
+		mux.HandleFunc("/api/v1/rarity-baseline", s.identityRoutes.Rarity)
+	}
 	mux.HandleFunc("/api/v1/agent-health", s.agentHealth)
-	mux.HandleFunc("/api/v1/agent-sessions", s.agentSessions)
 	mux.HandleFunc("/api/v1/events", s.events)
 	mux.HandleFunc("/api/v1/signals", s.signals)
 	mux.HandleFunc("/api/v1/incidents", s.incidents)
-	mux.HandleFunc("/api/v1/metrics", s.metrics)
 	mux.HandleFunc("/api/v1/store-status", s.storeStatus)
-	mux.HandleFunc("/api/v1/rarity-baseline", s.rarityBaseline)
 	return limitRequestBody(normalizeAPIErrors(requireProductionPrincipal(mux)), maxManagerRequestBody)
 }
 

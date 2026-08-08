@@ -80,6 +80,10 @@ func (s *Server) agents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && s.identityRoutes != nil {
+		s.identityRoutes.Health(w, r)
+		return
+	}
 	switch r.Method {
 	case http.MethodPost:
 		if !s.requireOperator(w, r, "admin") {

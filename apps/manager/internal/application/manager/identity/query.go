@@ -49,6 +49,13 @@ func (service *QueryService) ListHealth(ctx context.Context, request managerapp.
 	return ListHealthResult{Health: values}, nil
 }
 
+func (service *QueryService) GetHealth(ctx context.Context, request managerapp.RequestContext, agentID domainidentity.AgentID) (domainidentity.Health, error) {
+	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
+		return domainidentity.Health{}, err
+	}
+	return service.repositories.Health().Get(ctx, request.Actor.TenantID, agentID)
+}
+
 func (service *QueryService) AgentOverview(ctx context.Context, request managerapp.RequestContext) (domainidentity.AgentOverview, error) {
 	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
 		return domainidentity.AgentOverview{}, err
