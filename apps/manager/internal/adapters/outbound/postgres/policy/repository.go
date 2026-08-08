@@ -38,6 +38,39 @@ ORDER BY version DESC LIMIT 1
 `, tenantID.String(), id.String()), tenantID, id)
 }
 
+func (repo repository) List(ctx context.Context, tenantID tenant.ID, filter domainpolicy.Filter) ([]domainpolicy.Policy, error) {
+	if tenantID.IsZero() {
+		return nil, failure.New(failure.InvalidArgument, "tenant is required")
+	}
+	rows, err := repo.db.QueryContext(ctx, `
+SELECT policy_id, version, data FROM policies
+WHERE tenant_id = $1 AND ($2 = '' OR policy_id = $2)
+ORDER BY policy_id ASC, version ASC
+`, tenantID.String(), filter.PolicyID.String())
+	if err != nil {
+		return nil, fmt.Errorf("list policies: %w", err)
+	}
+	defer rows.Close()
+	var result []domainpolicy.Policy
+	for rows.Next() {
+		var id string
+		var version uint64
+		var document []byte
+		if err := rows.Scan(&id, &version, &document); err != nil {
+			return nil, fmt.Errorf("scan policy: %w", err)
+		}
+		value, err := decodePolicy(tenantID, domainpolicy.ID(id), domainpolicy.Version(version), document)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate policies: %w", err)
+	}
+	return result, nil
+}
+
 func (repo repository) Put(ctx context.Context, value domainpolicy.Policy) error {
 	if err := validatePolicyIdentity(value.TenantID, value.ID); err != nil {
 		return err
@@ -62,6 +95,59 @@ ON CONFLICT (tenant_id, policy_id, version) DO UPDATE SET
 }
 
 type assignmentRepository struct{ db sqlExecutor }
+
+func (repo assignmentRepository) Effective(ctx context.Context, tenantID tenant.ID, target domainpolicy.Target) (domainpolicy.Assignment, error) {
+	if tenantID.IsZero() {
+		return domainpolicy.Assignment{}, failure.New(failure.InvalidArgument, "tenant is required")
+	}
+	row := repo.db.QueryRowContext(ctx, `
+SELECT data FROM policy_assignments
+WHERE tenant_id = $1 AND (
+  ($2 <> '' AND agent_id = $2) OR
+  ($2 = '' AND agent_id = '' AND scope_type = $3 AND scope_selector = $4)
+)
+ORDER BY updated_at DESC, assignment_id ASC LIMIT 1
+`, tenantID.String(), target.AgentID, target.ScopeType, target.ScopeSelector)
+	var document []byte
+	if err := row.Scan(&document); err != nil {
+		if err == sql.ErrNoRows {
+			return domainpolicy.Assignment{}, failure.New(failure.NotFound, "effective policy assignment not found")
+		}
+		return domainpolicy.Assignment{}, fmt.Errorf("read effective policy assignment: %w", err)
+	}
+	return decodeAssignment(tenantID, document)
+}
+
+func (repo assignmentRepository) List(ctx context.Context, tenantID tenant.ID, filter domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error) {
+	if tenantID.IsZero() {
+		return nil, failure.New(failure.InvalidArgument, "tenant is required")
+	}
+	rows, err := repo.db.QueryContext(ctx, `
+SELECT data FROM policy_assignments
+WHERE tenant_id = $1 AND ($2 = '' OR agent_id = $2)
+ORDER BY assignment_id ASC
+`, tenantID.String(), filter.AgentID)
+	if err != nil {
+		return nil, fmt.Errorf("list policy assignments: %w", err)
+	}
+	defer rows.Close()
+	var result []domainpolicy.Assignment
+	for rows.Next() {
+		var document []byte
+		if err := rows.Scan(&document); err != nil {
+			return nil, fmt.Errorf("scan policy assignment: %w", err)
+		}
+		value, err := decodeAssignment(tenantID, document)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate policy assignments: %w", err)
+	}
+	return result, nil
+}
 
 func (repo assignmentRepository) Put(ctx context.Context, value domainpolicy.Assignment) error {
 	if value.TenantID.IsZero() || value.ID == "" || value.PolicyID == "" || value.PolicyVersion == 0 {
@@ -110,6 +196,37 @@ ON CONFLICT (tenant_id, audit_id) DO NOTHING
 		return fmt.Errorf("append policy audit: %w", err)
 	}
 	return requireInserted(result, "policy audit already exists")
+}
+
+func (repo auditRepository) List(ctx context.Context, tenantID tenant.ID, policyID domainpolicy.ID) ([]audit.Record, error) {
+	if tenantID.IsZero() {
+		return nil, failure.New(failure.InvalidArgument, "tenant is required")
+	}
+	rows, err := repo.db.QueryContext(ctx, `
+SELECT data FROM policy_audit
+WHERE tenant_id = $1 AND ($2 = '' OR policy_id = $2)
+ORDER BY created_at ASC, audit_id ASC
+`, tenantID.String(), policyID.String())
+	if err != nil {
+		return nil, fmt.Errorf("list policy audits: %w", err)
+	}
+	defer rows.Close()
+	var result []audit.Record
+	for rows.Next() {
+		var document []byte
+		if err := rows.Scan(&document); err != nil {
+			return nil, fmt.Errorf("scan policy audit: %w", err)
+		}
+		value, err := decodeAudit(tenantID, document)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate policy audits: %w", err)
+	}
+	return result, nil
 }
 
 type controlRepository struct{ db sqlExecutor }

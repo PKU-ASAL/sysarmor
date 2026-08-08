@@ -37,10 +37,29 @@ func decodePolicy(tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.V
 	if err := json.Unmarshal(document, &envelope); err != nil {
 		return domainpolicy.Policy{}, fmt.Errorf("decode policy document: %w", err)
 	}
+	canonical, err := canonicalPolicyDocument(document, tenantID, id, version)
+	if err != nil {
+		return domainpolicy.Policy{}, err
+	}
 	return domainpolicy.Policy{
 		TenantID: tenantID, ID: id, Version: version, Published: envelope.Published,
-		CreatedAt: envelope.CreatedAt, UpdatedAt: envelope.UpdatedAt, Document: append([]byte(nil), document...),
+		CreatedAt: envelope.CreatedAt, UpdatedAt: envelope.UpdatedAt, Document: canonical,
 	}, nil
+}
+
+func canonicalPolicyDocument(document []byte, tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.Version) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(document, &fields); err != nil {
+		return nil, fmt.Errorf("decode policy document: %w", err)
+	}
+	setJSONField(fields, "tenant_id", tenantID.String())
+	setJSONField(fields, "policy_id", id.String())
+	setJSONField(fields, "version", uint64(version))
+	canonical, err := json.Marshal(fields)
+	if err != nil {
+		return nil, fmt.Errorf("encode canonical policy identity: %w", err)
+	}
+	return canonical, nil
 }
 
 func encodePolicy(value domainpolicy.Policy) ([]byte, policyColumns, error) {
@@ -93,6 +112,27 @@ func encodeAssignment(value domainpolicy.Assignment) ([]byte, error) {
 	return json.Marshal(wire)
 }
 
+func decodeAssignment(tenantID tenant.ID, document []byte) (domainpolicy.Assignment, error) {
+	var wire struct {
+		AssignmentID  string    `json:"assignment_id"`
+		AgentID       string    `json:"agent_id"`
+		Scope         scopeWire `json:"scope"`
+		PolicyID      string    `json:"policy_id"`
+		PolicyVersion uint64    `json:"policy_version"`
+		CreatedAt     time.Time `json:"created_at"`
+		UpdatedAt     time.Time `json:"updated_at"`
+	}
+	if err := json.Unmarshal(document, &wire); err != nil {
+		return domainpolicy.Assignment{}, fmt.Errorf("decode policy assignment: %w", err)
+	}
+	return domainpolicy.Assignment{
+		ID: wire.AssignmentID, TenantID: tenantID,
+		Target:   domainpolicy.Target{AgentID: wire.AgentID, ScopeType: wire.Scope.Type, ScopeSelector: wire.Scope.Selector},
+		PolicyID: domainpolicy.ID(wire.PolicyID), PolicyVersion: domainpolicy.Version(wire.PolicyVersion),
+		CreatedAt: wire.CreatedAt, UpdatedAt: wire.UpdatedAt,
+	}, nil
+}
+
 type scopeWire struct {
 	Type     string `json:"type,omitempty"`
 	Selector string `json:"selector,omitempty"`
@@ -113,6 +153,28 @@ func encodeAudit(record audit.Record) ([]byte, error) {
 	}{record.ID, record.TenantID.String(), record.Action, record.PolicyID, record.PolicyVersion,
 		record.AssignmentID, record.Actor, record.Status, record.Reason, record.OccurredAt}
 	return json.Marshal(wire)
+}
+
+func decodeAudit(tenantID tenant.ID, document []byte) (audit.Record, error) {
+	var wire struct {
+		AuditID       string    `json:"audit_id"`
+		Action        string    `json:"action"`
+		PolicyID      string    `json:"policy_id"`
+		PolicyVersion uint64    `json:"policy_version"`
+		AssignmentID  string    `json:"assignment_id"`
+		Actor         string    `json:"actor"`
+		Status        string    `json:"status"`
+		Reason        string    `json:"reason"`
+		CreatedAt     time.Time `json:"created_at"`
+	}
+	if err := json.Unmarshal(document, &wire); err != nil {
+		return audit.Record{}, fmt.Errorf("decode policy audit: %w", err)
+	}
+	return audit.Record{
+		ID: wire.AuditID, TenantID: tenantID, Action: wire.Action, PolicyID: wire.PolicyID,
+		PolicyVersion: wire.PolicyVersion, AssignmentID: wire.AssignmentID, Actor: wire.Actor,
+		Status: wire.Status, Reason: wire.Reason, OccurredAt: wire.CreatedAt,
+	}, nil
 }
 
 func encodeControl(command ports.PolicyControlCommand) ([]byte, error) {

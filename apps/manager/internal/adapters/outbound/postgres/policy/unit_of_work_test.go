@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
@@ -31,6 +32,28 @@ func TestPolicyRepositoryIsTenantScoped(t *testing.T) {
 	}
 	if got.TenantID != tenantA || string(got.Document) == "" {
 		t.Fatalf("Get() = %+v", got)
+	}
+}
+
+func TestPolicyRepositoryCanonicalizesDocumentIdentity(t *testing.T) {
+	db := newPolicyTestDB(t)
+	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{"tenant_id":"tenant-b","policy_id":"other","version":99}`)
+	uow := NewUnitOfWork(db)
+	tenantA := mustAdapterTenantID(t, "tenant-a")
+
+	var got domainpolicy.Policy
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		var err error
+		got, err = tx.Policies().Get(ctx, tenantA, "policy-a", 2)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"tenant_id":"tenant-a"`, `"policy_id":"policy-a"`, `"version":2`} {
+		if !strings.Contains(string(got.Document), want) {
+			t.Fatalf("canonical document %s missing %s", got.Document, want)
+		}
 	}
 }
 

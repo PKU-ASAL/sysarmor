@@ -9,6 +9,8 @@ import (
 type ID string
 type Version uint64
 
+const DefaultPolicyID ID = "default-edr-policy"
+
 type Policy struct {
 	TenantID  tenant.ID
 	ID        ID

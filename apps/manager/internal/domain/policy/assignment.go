@@ -35,6 +35,9 @@ func validateTarget(target Target) error {
 	hasAgent := strings.TrimSpace(target.AgentID) != ""
 	hasScopeType := strings.TrimSpace(target.ScopeType) != ""
 	hasScopeSelector := strings.TrimSpace(target.ScopeSelector) != ""
+	if hasAgent && (hasScopeType || hasScopeSelector) {
+		return failure.New(failure.InvalidArgument, "policy assignment must target either an agent or a scope")
+	}
 	if !hasAgent && !hasScopeType && !hasScopeSelector {
 		return failure.New(failure.InvalidArgument, "policy assignment target is required")
 	}

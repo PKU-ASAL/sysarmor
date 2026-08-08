@@ -28,6 +28,19 @@ func TestAssignRejectsUnpublishedPolicy(t *testing.T) {
 	}
 }
 
+func TestAssignRejectsAgentAndScopeTarget(t *testing.T) {
+	tenantID := mustTenantID(t, "tenant-a")
+	actor := tenant.Actor{Subject: "operator-a", TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleOperator)}
+
+	_, err := Assign(
+		Policy{TenantID: tenantID, ID: "policy-a", Version: 1, Published: true},
+		Target{AgentID: "agent-a", ScopeType: "label", ScopeSelector: "env=prod"}, actor, time.Now(),
+	)
+	if failure.KindOf(err) != failure.InvalidArgument {
+		t.Fatalf("Assign() error kind = %q, want %q", failure.KindOf(err), failure.InvalidArgument)
+	}
+}
+
 func TestAssignUsesSuppliedTime(t *testing.T) {
 	tenantID := mustTenantID(t, "tenant-a")
 	actor := tenant.Actor{Subject: "operator-a", TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleOperator)}

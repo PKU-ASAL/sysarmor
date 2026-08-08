@@ -105,7 +105,7 @@ func policyRequestContext(t *testing.T) (tenant.ID, managerapp.RequestContext) {
 		t.Fatal(err)
 	}
 	return tenantID, managerapp.RequestContext{Actor: tenant.Actor{
-		Subject: "operator-a", TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleOperator),
+		Subject: "operator-a", TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleAdmin),
 	}}
 }
 
@@ -118,9 +118,11 @@ type fakePolicyState struct {
 }
 
 type fakePolicyUnitOfWork struct {
-	committed   fakePolicyState
-	failAudit   error
-	failControl error
+	committed      fakePolicyState
+	failAudit      error
+	failControl    error
+	lastTenant     tenant.ID
+	effectiveError error
 }
 
 func newFakePolicyUnitOfWork(seed domainpolicy.Policy) *fakePolicyUnitOfWork {
@@ -129,7 +131,10 @@ func newFakePolicyUnitOfWork(seed domainpolicy.Policy) *fakePolicyUnitOfWork {
 
 func (uow *fakePolicyUnitOfWork) Execute(ctx context.Context, fn func(context.Context, policyports.PolicyTransaction) error) error {
 	staged := uow.committed
-	tx := &fakePolicyTransaction{state: &staged, failAudit: uow.failAudit, failControl: uow.failControl}
+	tx := &fakePolicyTransaction{
+		state: &staged, failAudit: uow.failAudit, failControl: uow.failControl,
+		observedTenant: &uow.lastTenant, effectiveError: uow.effectiveError,
+	}
 	if err := fn(ctx, tx); err != nil {
 		return err
 	}
@@ -138,38 +143,65 @@ func (uow *fakePolicyUnitOfWork) Execute(ctx context.Context, fn func(context.Co
 }
 
 type fakePolicyTransaction struct {
-	state       *fakePolicyState
-	failAudit   error
-	failControl error
+	state          *fakePolicyState
+	failAudit      error
+	failControl    error
+	observedTenant *tenant.ID
+	effectiveError error
 }
 
 func (tx *fakePolicyTransaction) Policies() policyports.PolicyRepository {
-	return fakePolicies{tx.state}
+	return fakePolicies{state: tx.state, observedTenant: tx.observedTenant}
 }
 func (tx *fakePolicyTransaction) Assignments() policyports.AssignmentRepository {
-	return fakeAssignments{tx.state}
+	return fakeAssignments{state: tx.state, observedTenant: tx.observedTenant, effectiveError: tx.effectiveError}
 }
 func (tx *fakePolicyTransaction) Controls() policyports.PolicyControlRepository {
 	return fakeControls{state: tx.state, err: tx.failControl}
 }
 func (tx *fakePolicyTransaction) Audits() policyports.AuditRepository {
-	return fakeAudits{state: tx.state, err: tx.failAudit}
+	return fakeAudits{state: tx.state, err: tx.failAudit, observedTenant: tx.observedTenant}
 }
 
-type fakePolicies struct{ state *fakePolicyState }
+type fakePolicies struct {
+	state          *fakePolicyState
+	observedTenant *tenant.ID
+}
 
-func (repo fakePolicies) Get(context.Context, tenant.ID, domainpolicy.ID, domainpolicy.Version) (domainpolicy.Policy, error) {
+func (repo fakePolicies) Get(_ context.Context, tenantID tenant.ID, _ domainpolicy.ID, _ domainpolicy.Version) (domainpolicy.Policy, error) {
+	*repo.observedTenant = tenantID
 	return repo.state.seed, nil
 }
-func (repo fakePolicies) Current(context.Context, tenant.ID, domainpolicy.ID) (domainpolicy.Policy, error) {
+func (repo fakePolicies) Current(_ context.Context, tenantID tenant.ID, _ domainpolicy.ID) (domainpolicy.Policy, error) {
+	*repo.observedTenant = tenantID
 	return repo.state.seed, nil
+}
+func (repo fakePolicies) List(_ context.Context, tenantID tenant.ID, _ domainpolicy.Filter) ([]domainpolicy.Policy, error) {
+	*repo.observedTenant = tenantID
+	return []domainpolicy.Policy{repo.state.seed}, nil
 }
 func (repo fakePolicies) Put(_ context.Context, value domainpolicy.Policy) error {
 	repo.state.policies = append(repo.state.policies, value)
 	return nil
 }
 
-type fakeAssignments struct{ state *fakePolicyState }
+type fakeAssignments struct {
+	state          *fakePolicyState
+	observedTenant *tenant.ID
+	effectiveError error
+}
+
+func (repo fakeAssignments) Effective(_ context.Context, tenantID tenant.ID, _ domainpolicy.Target) (domainpolicy.Assignment, error) {
+	*repo.observedTenant = tenantID
+	if repo.effectiveError != nil {
+		return domainpolicy.Assignment{}, repo.effectiveError
+	}
+	return repo.state.assignments[0], nil
+}
+func (repo fakeAssignments) List(_ context.Context, tenantID tenant.ID, _ domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error) {
+	*repo.observedTenant = tenantID
+	return append([]domainpolicy.Assignment(nil), repo.state.assignments...), nil
+}
 
 func (repo fakeAssignments) Put(_ context.Context, value domainpolicy.Assignment) error {
 	repo.state.assignments = append(repo.state.assignments, value)
@@ -190,8 +222,14 @@ func (repo fakeControls) Put(_ context.Context, value policyports.PolicyControlC
 }
 
 type fakeAudits struct {
-	state *fakePolicyState
-	err   error
+	state          *fakePolicyState
+	err            error
+	observedTenant *tenant.ID
+}
+
+func (repo fakeAudits) List(_ context.Context, tenantID tenant.ID, _ domainpolicy.ID) ([]audit.Record, error) {
+	*repo.observedTenant = tenantID
+	return append([]audit.Record(nil), repo.state.audits...), nil
 }
 
 func (repo fakeAudits) Append(_ context.Context, _ tenant.ID, value audit.Record) error {
