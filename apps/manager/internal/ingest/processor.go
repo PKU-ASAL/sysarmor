@@ -51,14 +51,14 @@ func NewProcessor(st *store.Store, projector platformopensearch.Projector) *Proc
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: st}, local: true}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, local: true}
 }
 
 func NewProcessorWithHistory(st *store.Store, projector platformopensearch.Projector, history HistoryReader) *Processor {
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: st}}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}}
 }
 
 func (p *Processor) SetRarityReader(reader RarityReader) { p.rarity = reader }

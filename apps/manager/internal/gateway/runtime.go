@@ -50,7 +50,7 @@ type RuntimeOptions struct {
 func NewRuntime(opts RuntimeOptions) *Runtime {
 	if opts.SessionApplication == nil {
 		if memoryStore, ok := opts.Store.(*store.Store); ok {
-			opts.SessionApplication = sessionapp.NewQueryService(storeSessionRepository{store: memoryStore})
+			opts.SessionApplication = sessionapp.NewQueryService(store.NewSessionRepository(memoryStore))
 		}
 	}
 	producer := opts.Producer

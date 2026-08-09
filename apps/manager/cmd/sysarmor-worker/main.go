@@ -17,6 +17,7 @@ import (
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	managerstore "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 )
 
@@ -98,6 +99,8 @@ func main() {
 	processor := ingestworker.NewProcessorWithHistory(storeResult.Store, indexer, ingestworker.NewOpenSearchHistory(indexer))
 	if storeResult.DB != nil {
 		processor.SetRarityReader(identitypostgres.NewRepositories(storeResult.DB).Snapshots())
+	} else {
+		processor.SetRarityReader(managerstore.NewRarityReader(storeResult.Store))
 	}
 	err = ingestworker.NewWorkerWithDLQ(consumer, processor, dlqProducer).Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
