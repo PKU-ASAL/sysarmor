@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	policyv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/policy/v1"
 )
 
@@ -44,12 +45,17 @@ func (s *Server) recompute(w http.ResponseWriter, r *http.Request) {
 	}
 	engine := ingest.NewEngine()
 	tenantID := requestTenantID(r)
-	baseline, err := s.store.RarityBaselineSnapshotForTenantWithError(tenantID)
+	request, err := s.identityRequest(r)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("resolve identity request: %v", err), http.StatusInternalServerError)
+		return
+	}
+	baseline, err := s.identityQuery.Rarity(r.Context(), request)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("read tenant rarity baseline: %v", err), http.StatusInternalServerError)
 		return
 	}
-	engine.SetRarityBaseline(baseline)
+	engine.SetRarityBaseline(rarity.Baseline{WorkloadCounts: baseline.WorkloadCounts})
 	result := engine.AnalyzeWithPolicy(nil, s.store.ListSignalsForTenant(tenantID, parseLabelSelector(q["label"]), "endpoint", false), policy)
 	writeAnalysisResult(w, result)
 }

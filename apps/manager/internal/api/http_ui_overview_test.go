@@ -16,10 +16,10 @@ import (
 
 func TestUIOverviewUsesIdentityApplicationSummaries(t *testing.T) {
 	server := NewServer(&store.Store{})
-	server.SetIdentityRoutes(fakeIdentityRoutes{
+	server.SetIdentityApplication(&testIdentityQueries{
 		overview: domainidentity.AgentOverview{Total: 3, Online: 2, Offline: 1},
 		metrics:  domainidentity.Metrics{EventsIngested: 12, SignalsEmitted: 5},
-	})
+	}, PolicyRequestContext)
 	rec := get(t, server.Handler(), "/api/v1/ui/overview")
 	var got overviewResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -28,24 +28,6 @@ func TestUIOverviewUsesIdentityApplicationSummaries(t *testing.T) {
 	if got.Agents.Total != 3 || got.Agents.Online != 2 || got.Telemetry.Events24h != 12 || got.Telemetry.Signals24h != 5 {
 		t.Fatalf("overview = %+v", got)
 	}
-}
-
-type fakeIdentityRoutes struct {
-	overview domainidentity.AgentOverview
-	metrics  domainidentity.Metrics
-}
-
-func (fakeIdentityRoutes) Agents(http.ResponseWriter, *http.Request)   {}
-func (fakeIdentityRoutes) Health(http.ResponseWriter, *http.Request)   {}
-func (fakeIdentityRoutes) Sessions(http.ResponseWriter, *http.Request) {}
-func (fakeIdentityRoutes) Resume(http.ResponseWriter, *http.Request)   {}
-func (fakeIdentityRoutes) Metrics(http.ResponseWriter, *http.Request)  {}
-func (fakeIdentityRoutes) Rarity(http.ResponseWriter, *http.Request)   {}
-func (fake fakeIdentityRoutes) AgentOverview(*http.Request) (domainidentity.AgentOverview, error) {
-	return fake.overview, nil
-}
-func (fake fakeIdentityRoutes) MetricsQuery(*http.Request) (domainidentity.Metrics, error) {
-	return fake.metrics, nil
 }
 
 func TestUIOverviewReturnsManagerSummary(t *testing.T) {
@@ -72,7 +54,7 @@ func TestUIOverviewReturnsManagerSummary(t *testing.T) {
 		{Id: "inc-medium", TenantId: "default", Severity: 45},
 	}
 
-	rec := get(t, NewServer(st).Handler(), "/api/v1/ui/overview")
+	rec := get(t, newTestServer(st).Handler(), "/api/v1/ui/overview")
 	var got struct {
 		Agents struct {
 			Total    int `json:"total"`
@@ -121,7 +103,7 @@ func TestUIOverviewIsScopedToPrincipalTenant(t *testing.T) {
 	st.AddIncident(&incidentv1.Incident{Id: "incident-b", TenantId: "tenant-b", Summary: "incident b", Severity: 75})
 	seedTenantTelemetry(t, st, "tenant-a", "overview-a", store.Metrics{DataBatchesAppended: 1, EventsIngested: 2, SignalsEmitted: 1, IncidentsCreated: 1}, nil)
 	seedTenantTelemetry(t, st, "tenant-b", "overview-b", store.Metrics{DataBatchesAppended: 1, EventsIngested: 20, SignalsEmitted: 10, IncidentsCreated: 1}, nil)
-	handler := tenantTestHandler(NewServer(st), "tenant-a")
+	handler := tenantTestHandler(newTestServer(st), "tenant-a")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -150,6 +132,7 @@ func TestUIOverviewRejectsSearchDocumentsFromAnotherTenant(t *testing.T) {
 		},
 	}}
 	server := NewServerWithSearch(&store.Store{}, searcher)
+	server.SetIdentityApplication(testIdentityQuery(&store.Store{}), PolicyRequestContext)
 	server.localTelemetry = false
 	handler := tenantTestHandler(server, "tenant-a")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil)

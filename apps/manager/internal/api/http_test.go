@@ -56,12 +56,13 @@ func newTestServer(st *store.Store) *Server {
 }
 
 func testIdentityQuery(st *store.Store) *testIdentityQueries {
-	tenantID, _ := tenant.NewID("default")
-	query := &testIdentityQueries{health: map[domainidentity.AgentID]domainidentity.Health{}}
+	query := &testIdentityQueries{store: st, health: map[domainidentity.AgentID]domainidentity.Health{}}
 	for _, agent := range st.Agents {
+		tenantID, _ := tenant.NewID(agent.Normalized().TenantID)
 		query.agents = append(query.agents, domainidentity.AgentView{Agent: domainidentity.Agent{TenantID: tenantID, ID: domainidentity.AgentID(agent.AgentID)}})
 	}
 	for _, health := range st.Health {
+		tenantID, _ := tenant.NewID(health.TenantID)
 		document, _ := json.Marshal(health)
 		query.health[domainidentity.AgentID(health.AgentID)] = domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(health.AgentID), Document: document}
 	}
@@ -69,9 +70,62 @@ func testIdentityQuery(st *store.Store) *testIdentityQueries {
 }
 
 type testIdentityQueries struct {
-	agents []domainidentity.AgentView
-	health map[domainidentity.AgentID]domainidentity.Health
-	err    error
+	store    *store.Store
+	overview domainidentity.AgentOverview
+	metrics  domainidentity.Metrics
+	agents   []domainidentity.AgentView
+	health   map[domainidentity.AgentID]domainidentity.Health
+	err      error
+}
+
+func (q *testIdentityQueries) Rarity(_ context.Context, request managerapp.RequestContext) (domainidentity.RarityBaseline, error) {
+	if q.err != nil || q.store == nil {
+		return domainidentity.RarityBaseline{}, q.err
+	}
+	value := q.store.RarityByTenant[request.Actor.TenantID.String()]
+	return domainidentity.RarityBaseline{WorkloadCounts: value.Snapshot().WorkloadCounts}, nil
+}
+
+func (q *testIdentityQueries) Metrics(_ context.Context, request managerapp.RequestContext) (domainidentity.Metrics, error) {
+	if q.err != nil || q.store == nil {
+		return q.metrics, q.err
+	}
+	value := q.store.MetricsByTenant[request.Actor.TenantID.String()]
+	return domainidentity.Metrics{EventsIngested: value.EventsIngested, SignalsEmitted: value.SignalsEmitted}, nil
+}
+
+func (q *testIdentityQueries) AgentOverview(_ context.Context, request managerapp.RequestContext) (domainidentity.AgentOverview, error) {
+	if q.err != nil {
+		return domainidentity.AgentOverview{}, q.err
+	}
+	if q.store == nil {
+		return q.overview, nil
+	}
+	result := domainidentity.AgentOverview{}
+	for _, agent := range q.agents {
+		if agent.Agent.TenantID != request.Actor.TenantID {
+			continue
+		}
+		result.Total++
+		health, ok := q.health[agent.Agent.ID]
+		if !ok {
+			result.Offline++
+			continue
+		}
+		var document struct {
+			Status string `json:"status"`
+		}
+		_ = json.Unmarshal(health.Document, &document)
+		switch document.Status {
+		case "ok", "healthy":
+			result.Online++
+		case "degraded":
+			result.Degraded++
+		default:
+			result.Offline++
+		}
+	}
+	return result, nil
 }
 
 func (q *testIdentityQueries) ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error) {

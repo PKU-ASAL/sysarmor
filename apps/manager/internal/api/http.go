@@ -46,6 +46,9 @@ type Server struct {
 type identityQueries interface {
 	ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error)
 	GetHealth(context.Context, managerapp.RequestContext, domainidentity.AgentID) (domainidentity.Health, error)
+	Rarity(context.Context, managerapp.RequestContext) (domainidentity.RarityBaseline, error)
+	Metrics(context.Context, managerapp.RequestContext) (domainidentity.Metrics, error)
+	AgentOverview(context.Context, managerapp.RequestContext) (domainidentity.AgentOverview, error)
 }
 
 func (s *Server) SetIdentityApplication(query identityQueries, resolve func(*http.Request) (managerapp.RequestContext, error)) {
@@ -74,8 +77,6 @@ type identityRoutes interface {
 	Resume(http.ResponseWriter, *http.Request)
 	Metrics(http.ResponseWriter, *http.Request)
 	Rarity(http.ResponseWriter, *http.Request)
-	AgentOverview(*http.Request) (domainidentity.AgentOverview, error)
-	MetricsQuery(*http.Request) (domainidentity.Metrics, error)
 }
 
 func (s *Server) SetPolicyRoutes(routes policyRoutes)     { s.policyRoutes = routes }

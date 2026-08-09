@@ -105,6 +105,16 @@ type rolloutIdentityQuery struct {
 	err    error
 }
 
+func (query *rolloutIdentityQuery) Rarity(context.Context, managerapp.RequestContext) (domainidentity.RarityBaseline, error) {
+	return domainidentity.RarityBaseline{}, query.err
+}
+func (query *rolloutIdentityQuery) Metrics(context.Context, managerapp.RequestContext) (domainidentity.Metrics, error) {
+	return domainidentity.Metrics{}, query.err
+}
+func (query *rolloutIdentityQuery) AgentOverview(context.Context, managerapp.RequestContext) (domainidentity.AgentOverview, error) {
+	return domainidentity.AgentOverview{}, query.err
+}
+
 func (query *rolloutIdentityQuery) ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error) {
 	return identityapp.ListAgentsResult{Agents: query.agents}, query.err
 }
