@@ -12,6 +12,8 @@ import (
 
 	analyticingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -29,7 +31,12 @@ type Processor struct {
 	engine    *analyticingest.Engine
 	projector platformopensearch.Projector
 	history   HistoryReader
+	rarity    RarityReader
 	local     bool
+}
+
+type RarityReader interface {
+	Rarity(context.Context, tenant.ID) (domainidentity.RarityBaseline, error)
 }
 
 type Result struct {
@@ -44,15 +51,17 @@ func NewProcessor(st *store.Store, projector platformopensearch.Projector) *Proc
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, local: true}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: st}, local: true}
 }
 
 func NewProcessorWithHistory(st *store.Store, projector platformopensearch.Projector, history HistoryReader) *Processor {
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: st}}
 }
+
+func (p *Processor) SetRarityReader(reader RarityReader) { p.rarity = reader }
 
 func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (Result, error) {
 	if p == nil || p.store == nil {
@@ -108,11 +117,15 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		}
 	}
 	start := time.Now()
-	baseline, err := p.store.RarityBaselineSnapshotForTenantWithError(tenantID)
+	parsedTenant, err := tenant.NewID(tenantID)
+	if err != nil {
+		return Result{}, err
+	}
+	baseline, err := p.rarity.Rarity(ctx, parsedTenant)
 	if err != nil {
 		return Result{}, fmt.Errorf("load tenant rarity baseline: %w", err)
 	}
-	p.engine.SetRarityBaseline(baseline)
+	p.engine.SetRarityBaseline(rarity.Baseline{WorkloadCounts: baseline.WorkloadCounts})
 	upper := batchUpperTime(batch, start)
 	cloudSignals, incidents, derivedDocs, err := p.recomputeTouchedScopes(ctx, touchedScopes, currentEvents, currentSignals, upper)
 	if err != nil {
