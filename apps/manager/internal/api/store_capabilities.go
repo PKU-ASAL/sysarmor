@@ -3,7 +3,6 @@ package managerapi
 import (
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -25,10 +24,6 @@ type ManagerStore interface {
 
 type identityStore interface {
 	AddAgent(store.AgentIdentity)
-	GetAgentHealthWithError(string, string) (agenthealth.AgentHealth, bool, error)
-	ListAgentHealthWithError(string) ([]agenthealth.AgentHealth, error)
-	ListAgentsWithError() ([]store.AgentIdentity, error)
-	ListAgentSessionsWithError(string, string) ([]store.AgentSession, error)
 	CloseAgentSession(string, string, time.Time) store.AgentSession
 	RecordDataBatchAppend(store.AgentIdentity, string, string, time.Time) store.AgentSession
 	RecordAgentSessionSeen(string, string, time.Time) store.AgentSession
@@ -99,15 +94,12 @@ type telemetryStore interface {
 	ListIncidentsForTenant(string, store.LabelSelector) []*incidentv1.Incident
 	ListSignals(store.LabelSelector, string, bool) []*signalv1.Signal
 	ListSignalsForTenant(string, store.LabelSelector, string, bool) []*signalv1.Signal
-	RarityBaselineSnapshotForTenant(string) rarity.Baseline
-	RarityBaselineSnapshotForTenantWithError(string) (rarity.Baseline, error)
 }
 
 type operationalStore interface {
 	DeleteByLabels(store.LabelSelector)
 	Info() store.Info
 	MetricsSnapshotForTenant(string) store.Metrics
-	MetricsSnapshotForTenantWithError(string) (store.Metrics, error)
 	Save() error
 }
 

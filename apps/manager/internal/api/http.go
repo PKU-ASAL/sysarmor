@@ -335,9 +335,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/response-decisions", s.responseDecisions)
 	mux.HandleFunc("/api/v1/response-approvals", s.responseApprovals)
 	mux.HandleFunc("/api/v1/response-acks", s.responseAcks)
-	if s.identityRoutes == nil {
-		mux.HandleFunc("/api/v1/data-resume", s.dataResume)
-	} else {
+	if s.identityRoutes != nil {
 		mux.HandleFunc("/api/v1/data-resume", s.identityRoutes.Resume)
 	}
 	mux.HandleFunc("/api/v1/evidence-pullbacks", s.evidencePullbacks)
@@ -348,12 +346,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/search/fields", s.searchFields)
 	mux.HandleFunc("/api/v1/search/histogram", s.searchHistogram)
 	mux.HandleFunc("/api/v1/search", s.search)
-	if s.identityRoutes == nil {
-		mux.HandleFunc("/api/v1/agents", s.agents)
-		mux.HandleFunc("/api/v1/agent-sessions", s.agentSessions)
-		mux.HandleFunc("/api/v1/metrics", s.metrics)
-		mux.HandleFunc("/api/v1/rarity-baseline", s.rarityBaseline)
-	} else {
+	if s.identityRoutes != nil {
 		mux.HandleFunc("/api/v1/agents", s.identityRoutes.Agents)
 		mux.HandleFunc("/api/v1/agent-sessions", s.identityRoutes.Sessions)
 		mux.HandleFunc("/api/v1/metrics", s.identityRoutes.Metrics)
