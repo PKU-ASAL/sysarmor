@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	sessionapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/session"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
 	platformredis "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/redis"
@@ -17,12 +18,17 @@ import (
 type Store interface {
 	ControlStore
 	BindAgentIdentity(store.AgentIdentity) error
-	ListAgentSessionsWithError(string, string) ([]store.AgentSession, error)
 	RecordDataBatchAppend(store.AgentIdentity, string, string, time.Time) store.AgentSession
+}
+
+type SessionApplication interface {
+	Resume(context.Context, string, string) (sessionapp.ResumeResult, error)
+	IsDuplicate(context.Context, string, string, string) (bool, error)
 }
 
 type Runtime struct {
 	store          Store
+	sessions       SessionApplication
 	producer       platformkafka.Producer
 	hotState       platformredis.HotState
 	localProcessor *ingestworker.Processor
@@ -32,15 +38,21 @@ type Runtime struct {
 }
 
 type RuntimeOptions struct {
-	Store          Store
-	Producer       platformkafka.Producer
-	HotState       platformredis.HotState
-	LocalProcessor *ingestworker.Processor
-	AgentToken     string
-	Owner          string
+	Store              Store
+	Producer           platformkafka.Producer
+	HotState           platformredis.HotState
+	LocalProcessor     *ingestworker.Processor
+	AgentToken         string
+	Owner              string
+	SessionApplication SessionApplication
 }
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
+	if opts.SessionApplication == nil {
+		if memoryStore, ok := opts.Store.(*store.Store); ok {
+			opts.SessionApplication = sessionapp.NewQueryService(storeSessionRepository{store: memoryStore})
+		}
+	}
 	producer := opts.Producer
 	if producer == nil {
 		producer = platformkafka.NoopProducer{}
@@ -55,6 +67,7 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 	}
 	return &Runtime{
 		store:          opts.Store,
+		sessions:       opts.SessionApplication,
 		producer:       producer,
 		hotState:       hotState,
 		localProcessor: opts.LocalProcessor,
@@ -70,6 +83,8 @@ func (r *Runtime) AgentToken() string {
 func (r *Runtime) Store() ControlStore {
 	return r.store
 }
+
+func (r *Runtime) SessionApplication() SessionApplication { return r.sessions }
 
 func (r *Runtime) BindAgentIdentity(agent store.AgentIdentity) error {
 	return r.store.BindAgentIdentity(agent)
@@ -94,14 +109,11 @@ func (r *Runtime) TouchHotSession(session store.AgentSession) {
 
 func (r *Runtime) ResumeCursor(tenantID, agentID string) (ResumeCursor, error) {
 	resume := ResumeCursor{TenantID: tenantID, AgentID: agentID}
-	sessions, err := r.store.ListAgentSessionsWithError(tenantID, agentID)
+	resumeValue, err := r.sessions.Resume(context.Background(), tenantID, agentID)
 	if err != nil {
 		return ResumeCursor{}, err
 	}
-	if len(sessions) > 0 {
-		resume.SessionID = sessions[0].SessionID
-		resume.ResumeCursor = sessions[0].LastAckCursor
-	}
+	resume.SessionID, resume.ResumeCursor = resumeValue.SessionID, resumeValue.Cursor
 	return resume, nil
 }
 
@@ -193,16 +205,11 @@ func (r *Runtime) isDuplicateBatch(tenantID, agentID, batchID string) (bool, err
 	if batchID == "" {
 		return false, nil
 	}
-	sessions, err := r.store.ListAgentSessionsWithError(tenantID, agentID)
+	duplicate, err := r.sessions.IsDuplicate(context.Background(), tenantID, agentID, batchID)
 	if err != nil {
 		return false, fmt.Errorf("list agent sessions: %w", err)
 	}
-	for _, session := range sessions {
-		if session.LastAckCursor == batchID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return duplicate, nil
 }
 
 func validateUploadIdentity(batch *dataplanev1.DataBatch) error {

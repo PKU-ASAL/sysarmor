@@ -89,7 +89,7 @@ func TestLocalTelemetryAndMetricsAreScopedToPrincipalTenant(t *testing.T) {
 	st.AddSignalForTenant("tenant-b", &signalv1.Signal{Id: "signal-b"})
 	seedTenantTelemetry(t, st, "tenant-a", "metrics-a", store.Metrics{DataBatchesAppended: 1, EventsIngested: 1, SignalsEmitted: 1}, nil)
 	seedTenantTelemetry(t, st, "tenant-b", "metrics-b", store.Metrics{DataBatchesAppended: 1, EventsIngested: 20, SignalsEmitted: 30}, nil)
-	handler := tenantTestHandler(NewServer(st), "tenant-a")
+	handler := tenantTestHandler(newTestServer(st), "tenant-a")
 
 	for _, path := range []string{"/api/v1/events", "/api/v1/signals", "/api/v1/metrics"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -107,7 +107,7 @@ func TestRarityBaselineIsScopedToPrincipalTenant(t *testing.T) {
 	signalB := &signalv1.Signal{Name: "other_tenant_signal", Labels: map[string]string{"workload": "container:billing"}}
 	seedTenantTelemetry(t, st, "tenant-a", "rarity-a", store.Metrics{}, []*signalv1.Signal{signalA})
 	seedTenantTelemetry(t, st, "tenant-b", "rarity-b", store.Metrics{}, []*signalv1.Signal{signalB})
-	handler := tenantTestHandler(NewServer(st), "tenant-a")
+	handler := tenantTestHandler(newTestServer(st), "tenant-a")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/rarity-baseline?workload=container:checkout-api&signal=download_by_lolbin", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

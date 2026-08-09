@@ -52,7 +52,6 @@ type ControlStore interface {
 	EffectivePolicyWithError(string, string, string, string) (policymodel.Policy, bool, error)
 	GetEvidencePullbackWithError(string, string, string) (controlmodel.EvidencePullbackRequest, bool, error)
 	GetAgentCertificateWithError(string, string) (store.AgentCertificate, bool, error)
-	ListAgentSessionsWithError(string, string) ([]store.AgentSession, error)
 	MarkControlCommandSent(string, string, string, time.Time) (controlmodel.ControlCommand, bool)
 	PendingControlCommandsWithError(string, string) ([]controlmodel.ControlCommand, error)
 	PendingEvidencePullbacksWithError(string, string) ([]controlmodel.EvidencePullbackRequest, error)

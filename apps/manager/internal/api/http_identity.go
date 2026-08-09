@@ -32,6 +32,10 @@ func (s *Server) reset(w http.ResponseWriter, r *http.Request) {
 
 // agentHealth is a write-only compatibility endpoint; reads are owned by Identity HTTP.
 func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && s.identityRoutes != nil {
+		s.identityRoutes.Health(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

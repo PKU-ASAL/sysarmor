@@ -91,9 +91,8 @@ func TestAgentGatewayManagerLocalDataPath(t *testing.T) {
 	if !strings.Contains(body, "platform-local-event-1") {
 		t.Fatalf("manager events missing uploaded event: %s", body)
 	}
-	body = get(t, manager.URL+"/api/v1/agents")
-	if !strings.Contains(body, "platform-local-agent") {
-		t.Fatalf("manager agents missing gateway-bound agent: %s", body)
+	if len(st.Agents) != 1 || st.Agents[0].AgentID != "platform-local-agent" {
+		t.Fatalf("gateway-bound agents = %+v", st.Agents)
 	}
 }
 

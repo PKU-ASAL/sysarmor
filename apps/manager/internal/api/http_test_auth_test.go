@@ -15,7 +15,7 @@ type authenticatedTestServer struct {
 func newAdminTestServer(st ManagerStore) *authenticatedTestServer {
 	server := NewServer(st)
 	if memoryStore, ok := st.(*store.Store); ok {
-		server.SetIdentityApplication(testIdentityQuery(memoryStore), PolicyRequestContext)
+		setTestIdentityApplication(server, memoryStore)
 	}
 	return &authenticatedTestServer{
 		Server: server,

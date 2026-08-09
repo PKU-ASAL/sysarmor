@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
+	sessionapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/session"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
@@ -84,6 +87,7 @@ func main() {
 
 	runtime, cleanup := openGatewayRuntime(ctx, gatewayRuntimeConfig{
 		store:       storeResult.Store,
+		db:          storeResult.DB,
 		kafka:       *kafkaBrokers,
 		redis:       *redisAddr,
 		localIngest: *localIngest,
@@ -166,6 +170,7 @@ func writeJSON(w http.ResponseWriter, value any) {
 
 type gatewayRuntimeConfig struct {
 	store       *store.Store
+	db          *sql.DB
 	kafka       string
 	redis       string
 	localIngest bool
@@ -209,12 +214,17 @@ func openGatewayRuntime(ctx context.Context, cfg gatewayRuntimeConfig) (*gateway
 		processor = ingestworker.NewProcessor(cfg.store, nil)
 	}
 
+	var sessions gateway.SessionApplication
+	if cfg.db != nil {
+		sessions = sessionapp.NewQueryService(identitypostgres.NewRepositories(cfg.db).Sessions())
+	}
 	return gateway.NewRuntime(gateway.RuntimeOptions{
-		Store:          cfg.store,
-		Producer:       producer,
-		HotState:       hotState,
-		LocalProcessor: processor,
-		AgentToken:     cfg.agentToken,
+		Store:              cfg.store,
+		SessionApplication: sessions,
+		Producer:           producer,
+		HotState:           hotState,
+		LocalProcessor:     processor,
+		AgentToken:         cfg.agentToken,
 	}), cleanup
 }
 

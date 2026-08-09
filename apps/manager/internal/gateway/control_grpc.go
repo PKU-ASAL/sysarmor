@@ -303,15 +303,16 @@ func (s *ControlServer) handleFrame(ctx context.Context, frame *controlplanev1.C
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "read pending control commands: %v", err)
 		}
-		sessions, err := st.ListAgentSessionsWithError(tenantID, ctx.GetAgentId())
+		sessionBackend, ok := s.backend.(interface{ SessionApplication() SessionApplication })
+		if !ok || sessionBackend.SessionApplication() == nil {
+			return nil, status.Error(codes.Internal, "session application is not configured")
+		}
+		resumeValue, err := sessionBackend.SessionApplication().Resume(context.Background(), tenantID, ctx.GetAgentId())
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "read resume cursor: %v", err)
 		}
 		resume := ResumeCursor{TenantID: tenantID, AgentID: ctx.GetAgentId()}
-		if len(sessions) > 0 {
-			resume.SessionID = sessions[0].SessionID
-			resume.ResumeCursor = sessions[0].LastAckCursor
-		}
+		resume.SessionID, resume.ResumeCursor = resumeValue.SessionID, resumeValue.Cursor
 		st.AddAgent(store.AgentIdentity{AgentID: ctx.GetAgentId(), TenantID: tenantID})
 		session := st.RecordControlSessionOpen(tenantID, ctx.GetAgentId(), "control", time.Now().UTC())
 		s.backend.TouchHotSession(session)

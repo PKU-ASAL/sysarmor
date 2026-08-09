@@ -47,7 +47,7 @@ func TestHandlerWithAuthAcceptsSignedJWTForProtectedAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewServer(&store.Store{}).HandlerWithAuth(verifier)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/store-status", nil)
 	req.Header.Set("Authorization", "Bearer "+raw)
 	rec := httptest.NewRecorder()
 

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	identityhttp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
@@ -51,8 +52,14 @@ func (s fakeSearcher) Search(_ context.Context, search platformopensearch.Search
 
 func newTestServer(st *store.Store) *Server {
 	server := NewServer(st)
-	server.SetIdentityApplication(testIdentityQuery(st), PolicyRequestContext)
+	setTestIdentityApplication(server, st)
 	return server
+}
+
+func setTestIdentityApplication(server *Server, st *store.Store) {
+	queries := testIdentityQuery(st)
+	server.SetIdentityApplication(queries, PolicyRequestContext)
+	server.SetIdentityRoutes(identityhttp.NewHandler(identityhttp.Options{Query: queries, Resolve: PolicyRequestContext}))
 }
 
 func testIdentityQuery(st *store.Store) *testIdentityQueries {
@@ -64,7 +71,11 @@ func testIdentityQuery(st *store.Store) *testIdentityQueries {
 	for _, health := range st.Health {
 		tenantID, _ := tenant.NewID(health.TenantID)
 		document, _ := json.Marshal(health)
-		query.health[domainidentity.AgentID(health.AgentID)] = domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(health.AgentID), Document: document}
+		query.health[domainidentity.AgentID(health.AgentID)] = domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(health.AgentID), HostID: health.HostID, Status: health.Status, Scope: domainidentity.Scope{Type: health.Scope.Type, Selector: health.Scope.Selector}, ObservedAt: health.ObservedAt, Document: document}
+	}
+	for index := range query.agents {
+		health, ok := query.health[query.agents[index].Agent.ID]
+		query.agents[index].Health, query.agents[index].HasHealth = health, ok
 	}
 	return query
 }
@@ -91,7 +102,7 @@ func (q *testIdentityQueries) Metrics(_ context.Context, request managerapp.Requ
 		return q.metrics, q.err
 	}
 	value := q.store.MetricsByTenant[request.Actor.TenantID.String()]
-	return domainidentity.Metrics{EventsIngested: value.EventsIngested, SignalsEmitted: value.SignalsEmitted}, nil
+	return domainidentity.Metrics{DataBatchesAppended: value.DataBatchesAppended, EventsIngested: value.EventsIngested, EndpointSignalsIngested: value.EndpointSignalsIngested, CloudSignalsEmitted: value.CloudSignalsEmitted, SignalsEmitted: value.SignalsEmitted, IncidentsCreated: value.IncidentsCreated, DuplicateEvents: value.DuplicateEvents}, nil
 }
 
 func (q *testIdentityQueries) AgentOverview(_ context.Context, request managerapp.RequestContext) (domainidentity.AgentOverview, error) {
@@ -128,14 +139,70 @@ func (q *testIdentityQueries) AgentOverview(_ context.Context, request managerap
 	return result, nil
 }
 
-func (q *testIdentityQueries) ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error) {
-	return identityapp.ListAgentsResult{Agents: q.agents}, q.err
+func (q *testIdentityQueries) ListHealth(_ context.Context, request managerapp.RequestContext, query identityapp.ListHealthQuery) (identityapp.ListHealthResult, error) {
+	result := make([]domainidentity.Health, 0)
+	values := q.health
+	if q.store != nil {
+		values = testIdentityQuery(q.store).health
+	}
+	for _, value := range values {
+		if value.TenantID == request.Actor.TenantID && (query.Filter.AgentID == "" || string(value.AgentID) == query.Filter.AgentID) {
+			result = append(result, value)
+		}
+	}
+	return identityapp.ListHealthResult{Health: result}, q.err
+}
+
+func (q *testIdentityQueries) ListSessions(_ context.Context, request managerapp.RequestContext, query identityapp.ListSessionsQuery) (identityapp.ListSessionsResult, error) {
+	result := make([]domainidentity.Session, 0)
+	if q.store != nil {
+		for _, value := range q.store.AgentSessions {
+			if value.TenantID == request.Actor.TenantID.String() && (query.Filter.AgentID == "" || value.AgentID == query.Filter.AgentID) {
+				result = append(result, domainidentity.Session{TenantID: request.Actor.TenantID, ID: value.SessionID, AgentID: domainidentity.AgentID(value.AgentID), StartedAt: value.StartedAt, LastSeenAt: value.LastSeenAt, LastDataSeenAt: value.LastDataSeenAt, LastControlSeenAt: value.LastControlSeenAt, ClosedAt: value.ClosedAt, LastAckCursor: value.LastAckCursor, DataTransport: value.DataTransport, ControlTransport: value.ControlTransport, Status: value.Status})
+			}
+		}
+	}
+	return identityapp.ListSessionsResult{Sessions: result}, q.err
+}
+
+func (q *testIdentityQueries) Resume(ctx context.Context, request managerapp.RequestContext, agentID string) (identityapp.ResumeResult, error) {
+	values, err := q.ListSessions(ctx, request, identityapp.ListSessionsQuery{Filter: domainidentity.SessionFilter{AgentID: agentID}})
+	result := identityapp.ResumeResult{TenantID: request.Actor.TenantID.String(), AgentID: agentID}
+	if len(values.Sessions) > 0 {
+		result.SessionID, result.ResumeCursor = values.Sessions[0].ID, values.Sessions[0].LastAckCursor
+	}
+	return result, err
+}
+
+func (q *testIdentityQueries) ListAgents(_ context.Context, request managerapp.RequestContext, query identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error) {
+	agents := q.agents
+	if q.store != nil {
+		agents = testIdentityQuery(q.store).agents
+	}
+	result := make([]domainidentity.AgentView, 0, len(agents))
+	for _, agent := range agents {
+		if agent.Agent.TenantID != request.Actor.TenantID || query.Filter.ScopeType != "" && agent.Health.Scope.Type != query.Filter.ScopeType || query.Filter.ScopeSelector != "" && agent.Health.Scope.Selector != query.Filter.ScopeSelector || query.Filter.HealthStatus != "" && agent.Health.Status != query.Filter.HealthStatus {
+			continue
+		}
+		result = append(result, agent)
+	}
+	return identityapp.ListAgentsResult{Agents: result}, q.err
 }
 func (q *testIdentityQueries) GetHealth(_ context.Context, _ managerapp.RequestContext, id domainidentity.AgentID) (domainidentity.Health, error) {
 	if q.err != nil {
 		return domainidentity.Health{}, q.err
 	}
 	v, ok := q.health[id]
+	if !ok && q.store != nil {
+		for _, health := range q.store.Health {
+			if health.AgentID == string(id) {
+				tenantID, _ := tenant.NewID(health.TenantID)
+				document, _ := json.Marshal(health)
+				v, ok = domainidentity.Health{TenantID: tenantID, AgentID: id, Document: document}, true
+				break
+			}
+		}
+	}
 	if !ok {
 		return domainidentity.Health{}, failure.New(failure.NotFound, "health not found")
 	}

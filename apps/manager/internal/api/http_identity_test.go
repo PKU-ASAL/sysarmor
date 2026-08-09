@@ -15,7 +15,7 @@ import (
 
 func TestStoreStatusAPI(t *testing.T) {
 	st := &store.Store{}
-	handler := NewServer(st).Handler()
+	handler := newTestServer(st).Handler()
 	rec := get(t, handler, "/healthz")
 	for _, want := range []string{`"ok":true`, `"store"`, `"backend":"memory"`, `"postgres_schema_version":4`} {
 		if !strings.Contains(rec.Body.String(), want) {
@@ -78,7 +78,7 @@ func TestAgentHealthIngestAndQuery(t *testing.T) {
 		Sensor:     agenthealth.SensorHealth{Backend: "fake", Running: false},
 	})
 	rec = get(t, handler, "/api/v1/agents")
-	for _, want := range []string{`"agent_id":"agent-a"`, `"health_status":"ok"`, `"scope":{"type":"container","selector":"abc123"}`, `"sensor_capability":{"backend":"fake","version":"dev","supports_exec":true,"supports_health":true,"kernel_release":"test-kernel","btf_available":true,"bpffs_available":true}`} {
+	for _, want := range []string{`"agent_id":"agent-a"`, `"health_status":"ok"`, `"scope":{"selector":"abc123","type":"container"}`, `"sensor_capability":{"backend":"fake","version":"dev","supports_exec":true,"supports_health":true,"kernel_release":"test-kernel","btf_available":true,"bpffs_available":true}`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("agents response missing %s: %s", want, rec.Body.String())
 		}
@@ -96,14 +96,14 @@ func TestAgentHealthIngestAndQuery(t *testing.T) {
 		t.Fatalf("filtered missing selector response = %s", rec.Body.String())
 	}
 	rec = get(t, handler, "/api/v1/agents?tenant_id=other&scope_type=host&health_status=degraded")
-	if !strings.Contains(rec.Body.String(), `"agent_id":"agent-b"`) || strings.Contains(rec.Body.String(), `"agent_id":"agent-a"`) {
+	if rec.Body.String() != "[]\n" {
 		t.Fatalf("filtered other agents response = %s", rec.Body.String())
 	}
 }
 
 func TestPrincipalGuardsHealthWrites(t *testing.T) {
 	st := &store.Store{}
-	handler := NewServer(st).Handler()
+	handler := newTestServer(st).Handler()
 
 	health := agenthealth.AgentHealth{AgentID: "agent-a", HostID: "host-a", TenantID: "default", Status: "ok"}
 	healthData, err := json.Marshal(health)
@@ -130,7 +130,7 @@ func TestAgentHealthListIsScopedToPrincipalTenant(t *testing.T) {
 	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-a", TenantID: "tenant-a", Status: "ok"})
 	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-b", TenantID: "tenant-b", Status: "ok"})
 	handler := (&authenticatedTestServer{
-		Server: NewServer(st),
+		Server: newTestServer(st),
 		principal: managerauth.Principal{
 			Subject: "viewer-a", TenantID: "tenant-a", Roles: []string{"viewer"},
 		},
