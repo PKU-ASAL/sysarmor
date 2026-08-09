@@ -1,12 +1,15 @@
 package managerapi
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
+	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
+	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
@@ -26,16 +29,34 @@ import (
 )
 
 type Server struct {
-	store          ManagerStore
-	searcher       platformopensearch.Searcher
-	artifactDir    string
-	artifactPub    []byte
-	caCert         *x509.Certificate
-	caCertPEM      []byte
-	caKey          *rsa.PrivateKey
-	localTelemetry bool
-	policyRoutes   policyRoutes
-	identityRoutes identityRoutes
+	store           ManagerStore
+	searcher        platformopensearch.Searcher
+	artifactDir     string
+	artifactPub     []byte
+	caCert          *x509.Certificate
+	caCertPEM       []byte
+	caKey           *rsa.PrivateKey
+	localTelemetry  bool
+	policyRoutes    policyRoutes
+	identityRoutes  identityRoutes
+	identityQuery   identityQueries
+	identityResolve func(*http.Request) (managerapp.RequestContext, error)
+}
+
+type identityQueries interface {
+	ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error)
+	GetHealth(context.Context, managerapp.RequestContext, domainidentity.AgentID) (domainidentity.Health, error)
+}
+
+func (s *Server) SetIdentityApplication(query identityQueries, resolve func(*http.Request) (managerapp.RequestContext, error)) {
+	s.identityQuery, s.identityResolve = query, resolve
+}
+
+func (s *Server) identityRequest(r *http.Request) (managerapp.RequestContext, error) {
+	if s.identityResolve == nil {
+		return managerapp.RequestContext{}, fmt.Errorf("identity application is not configured")
+	}
+	return s.identityResolve(r)
 }
 
 type policyRoutes interface {

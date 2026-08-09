@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 )
@@ -38,7 +41,7 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cmd.Actor = s.actorFromRequest(r, cmd.Actor)
-		s.createResponse(w, cmd)
+		s.createResponse(w, r, cmd)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -101,7 +104,7 @@ func (s *Server) responseDecisions(w http.ResponseWriter, r *http.Request) {
 		Reason:     reason,
 		Actor:      s.actorFromRequest(r, req.Actor),
 	}
-	s.createResponse(w, cmd)
+	s.createResponse(w, r, cmd)
 }
 
 func (s *Server) responseApprovals(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +136,7 @@ func (s *Server) responseApprovals(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, responsemodel.AuditRecord{Command: cmd})
 }
 
-func (s *Server) createResponse(w http.ResponseWriter, cmd responsemodel.Command) {
+func (s *Server) createResponse(w http.ResponseWriter, r *http.Request, cmd responsemodel.Command) {
 	if cmd.AgentID == "" {
 		http.Error(w, "agent_id is required", http.StatusBadRequest)
 		return
@@ -141,10 +144,21 @@ func (s *Server) createResponse(w http.ResponseWriter, cmd responsemodel.Command
 	if cmd.TenantID == "" {
 		cmd.TenantID = "default"
 	}
-	if health, ok, err := s.store.GetAgentHealthWithError(cmd.TenantID, cmd.AgentID); err != nil {
-		http.Error(w, fmt.Sprintf("read agent health: %v", err), http.StatusInternalServerError)
+	request, err := s.identityRequest(r)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("resolve identity request: %v", err), http.StatusInternalServerError)
 		return
-	} else if ok {
+	}
+	healthValue, healthErr := s.identityQuery.GetHealth(r.Context(), request, domainidentity.AgentID(cmd.AgentID))
+	if healthErr != nil && failure.KindOf(healthErr) != failure.NotFound {
+		http.Error(w, fmt.Sprintf("read agent health: %v", healthErr), http.StatusInternalServerError)
+		return
+	} else if healthErr == nil {
+		var health agenthealth.AgentHealth
+		if err := json.Unmarshal(healthValue.Document, &health); err != nil {
+			http.Error(w, fmt.Sprintf("decode agent health: %v", err), http.StatusInternalServerError)
+			return
+		}
 		if cmd.Scope.Type == "" && cmd.Scope.Selector == "" {
 			cmd.Scope = responsemodel.Scope{Type: health.Scope.Type, Selector: health.Scope.Selector}
 		}
@@ -189,7 +203,7 @@ func (s *Server) createResponse(w http.ResponseWriter, cmd responsemodel.Command
 		cmd.Status = "pending_approval"
 		cmd.ApprovalStatus = "required"
 	}
-	cmd, err := s.store.CreateResponse(cmd)
+	cmd, err = s.store.CreateResponse(cmd)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("save response: %v", err), http.StatusInternalServerError)
 		return

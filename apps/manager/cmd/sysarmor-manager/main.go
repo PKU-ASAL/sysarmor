@@ -92,6 +92,12 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetIdentityRoutes(identityRoutes)
+	identityQueries, err := bootstrap.NewManagerIdentityQueries(storeResult.DB)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure identity queries: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetIdentityApplication(identityQueries, managerapi.PolicyRequestContext)
 	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}

@@ -1,10 +1,14 @@
 package managerapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"sort"
 	"time"
 
+	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
@@ -41,13 +45,13 @@ func (s *Server) policyRollouts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	tenantID, agentID, status := q.Get("tenant_id"), q.Get("agent_id"), q.Get("status")
 	out := make([]PolicyRollout, 0)
-	targets, err := s.policyRolloutTargets(tenantID, agentID)
+	targets, err := s.policyRolloutTargets(r, tenantID, agentID)
 	if err != nil {
 		http.Error(w, "read policy rollout state", http.StatusInternalServerError)
 		return
 	}
 	for _, target := range targets {
-		rollout, err := s.policyRollout(target.tenantID, target.agentID)
+		rollout, err := s.policyRollout(r, target.tenantID, target.agentID)
 		if err != nil {
 			http.Error(w, "read policy rollout state", http.StatusInternalServerError)
 			return
@@ -59,14 +63,18 @@ func (s *Server) policyRollouts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-func (s *Server) policyRolloutTargets(tenantID, agentID string) ([]rolloutTarget, error) {
+func (s *Server) policyRolloutTargets(r *http.Request, tenantID, agentID string) ([]rolloutTarget, error) {
 	seen := make(map[rolloutTarget]struct{})
-	agents, err := s.store.ListAgentsWithError()
+	request, err := s.identityRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	for _, agent := range agents {
-		addRolloutTarget(seen, rolloutTarget{agent.TenantID, agent.AgentID}, tenantID, agentID)
+	result, err := s.identityQuery.ListAgents(r.Context(), request, identityapp.ListAgentsQuery{})
+	if err != nil {
+		return nil, err
+	}
+	for _, agent := range result.Agents {
+		addRolloutTarget(seen, rolloutTarget{agent.Agent.TenantID.String(), string(agent.Agent.ID)}, tenantID, agentID)
 	}
 	assignments, err := s.store.ListAssignmentsWithError(tenantID, agentID)
 	if err != nil {
@@ -95,7 +103,7 @@ func addRolloutTarget(seen map[rolloutTarget]struct{}, target rolloutTarget, ten
 	seen[target] = struct{}{}
 }
 
-func (s *Server) policyRollout(tenantID, agentID string) (PolicyRollout, error) {
+func (s *Server) policyRollout(r *http.Request, tenantID, agentID string) (PolicyRollout, error) {
 	rollout := PolicyRollout{TenantID: tenantID, AgentID: agentID, Status: "unknown"}
 	desired, ok, err := s.store.EffectivePolicyWithError(tenantID, agentID, "", "")
 	if err != nil {
@@ -104,11 +112,20 @@ func (s *Server) policyRollout(tenantID, agentID string) (PolicyRollout, error) 
 	if ok {
 		rollout.DesiredPolicyID, rollout.DesiredPolicyVer = desired.PolicyID, desired.Version
 	}
-	health, hasHealth, err := s.store.GetAgentHealthWithError(tenantID, agentID)
+	request, err := s.identityRequest(r)
 	if err != nil {
 		return PolicyRollout{}, err
 	}
+	healthValue, healthErr := s.identityQuery.GetHealth(r.Context(), request, domainidentity.AgentID(agentID))
+	hasHealth := healthErr == nil
+	if healthErr != nil && failure.KindOf(healthErr) != failure.NotFound {
+		return PolicyRollout{}, healthErr
+	}
 	if hasHealth {
+		var health agenthealth.AgentHealth
+		if err := json.Unmarshal(healthValue.Document, &health); err != nil {
+			return PolicyRollout{}, err
+		}
 		rollout.AppliedPolicyID, rollout.AppliedPolicyVer = health.PolicyID, health.PolicyVersion
 		rollout.PendingPolicy, rollout.HealthObservedAt = health.PendingPolicy, health.ObservedAt
 	}

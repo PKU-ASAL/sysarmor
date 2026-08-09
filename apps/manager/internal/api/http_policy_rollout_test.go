@@ -8,6 +8,11 @@ import (
 	"testing"
 	"time"
 
+	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
+	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -31,7 +36,7 @@ func TestPolicyRolloutsDeriveAgentControlState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := rolloutStore(t, tt.health, tt.commandStatus)
-			rec := get(t, NewServer(st).Handler(), "/api/v1/policy-rollouts?tenant_id=default&agent_id=rollout-agent")
+			rec := get(t, rolloutServer(t, st, nil).Handler(), "/api/v1/policy-rollouts?tenant_id=default&agent_id=rollout-agent")
 			if rec.Code != http.StatusOK {
 				t.Fatalf("rollout status = %d body=%s", rec.Code, rec.Body.String())
 			}
@@ -62,7 +67,7 @@ func TestPolicyRolloutsDeriveAgentControlState(t *testing.T) {
 
 func TestPolicyRolloutsWithoutHealthOrCommandAreUnknown(t *testing.T) {
 	st := rolloutStore(t, agenthealth.AgentHealth{}, "")
-	rec := get(t, NewServer(st).Handler(), "/api/v1/policy-rollouts?agent_id=rollout-agent")
+	rec := get(t, rolloutServer(t, st, nil).Handler(), "/api/v1/policy-rollouts?agent_id=rollout-agent")
 	var got []PolicyRollout
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode rollout: %v body=%s", err, rec.Body.String())
@@ -74,7 +79,7 @@ func TestPolicyRolloutsWithoutHealthOrCommandAreUnknown(t *testing.T) {
 
 func TestPolicyRolloutsFilterByStatus(t *testing.T) {
 	st := rolloutStore(t, rolloutHealth("old-policy", 1, agenthealth.PendingPolicyStatus{}), controlmodel.ControlCommandStatusSent)
-	rec := get(t, NewServer(st).Handler(), "/api/v1/policy-rollouts?status=applied")
+	rec := get(t, rolloutServer(t, st, nil).Handler(), "/api/v1/policy-rollouts?status=applied")
 	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" {
 		t.Fatalf("filtered rollouts status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -86,10 +91,55 @@ func TestPolicyRolloutsReturnServerErrorWhenFactStoreFails(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/policy-rollouts", nil)
 	rec := httptest.NewRecorder()
-	newAdminTestServer(st).Handler().ServeHTTP(rec, req)
+	server := newAdminTestServer(st)
+	server.SetIdentityApplication(&rolloutIdentityQuery{err: context.Canceled}, PolicyRequestContext)
+	server.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("rollout backend failure status = %d body=%s", rec.Code, rec.Body.String())
 	}
+}
+
+type rolloutIdentityQuery struct {
+	agents []domainidentity.AgentView
+	health map[domainidentity.AgentID]domainidentity.Health
+	err    error
+}
+
+func (query *rolloutIdentityQuery) ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error) {
+	return identityapp.ListAgentsResult{Agents: query.agents}, query.err
+}
+
+func (query *rolloutIdentityQuery) GetHealth(_ context.Context, _ managerapp.RequestContext, agentID domainidentity.AgentID) (domainidentity.Health, error) {
+	if query.err != nil {
+		return domainidentity.Health{}, query.err
+	}
+	value, ok := query.health[agentID]
+	if !ok {
+		return domainidentity.Health{}, failure.New(failure.NotFound, "health not found")
+	}
+	return value, nil
+}
+
+func rolloutServer(t *testing.T, st *store.Store, queryErr error) *Server {
+	t.Helper()
+	tenantID, err := tenant.NewID("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := &rolloutIdentityQuery{err: queryErr, health: map[domainidentity.AgentID]domainidentity.Health{}}
+	for _, agent := range st.Agents {
+		query.agents = append(query.agents, domainidentity.AgentView{Agent: domainidentity.Agent{TenantID: tenantID, ID: domainidentity.AgentID(agent.AgentID)}})
+	}
+	for _, health := range st.Health {
+		document, err := json.Marshal(health)
+		if err != nil {
+			t.Fatal(err)
+		}
+		query.health[domainidentity.AgentID(health.AgentID)] = domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(health.AgentID), Document: document}
+	}
+	server := NewServer(st)
+	server.SetIdentityApplication(query, PolicyRequestContext)
+	return server
 }
 
 func rolloutStore(t *testing.T, health agenthealth.AgentHealth, commandStatus string) *store.Store {
