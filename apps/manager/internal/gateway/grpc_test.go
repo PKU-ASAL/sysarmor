@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	sessionapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/session"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
@@ -951,8 +952,7 @@ func (evidenceReadFailureBackend) SaveState(context.Context, store.State) error 
 
 func TestDataBatchFailsClosedWhenSessionReadFails(t *testing.T) {
 	st := &store.Store{}
-	st.AttachBackend(t.Context(), sessionReadFailureBackend{}, store.Info{Backend: "test"})
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{Store: st})
+	runtime := gateway.NewRuntime(gateway.RuntimeOptions{Store: st, SessionApplication: failingSessionApplication{}})
 
 	_, err := runtime.AppendDataBatchWithTransport(grpcDataBatch("batch-a", "agent-a", "host-a", nil), "grpc_stream")
 	if err == nil || !strings.Contains(err.Error(), "list agent sessions") {
@@ -960,13 +960,14 @@ func TestDataBatchFailsClosedWhenSessionReadFails(t *testing.T) {
 	}
 }
 
-type sessionReadFailureBackend struct{ store.Backend }
+type failingSessionApplication struct{}
 
-func (sessionReadFailureBackend) ListAgentSessions(context.Context, string, string) ([]store.AgentSession, error) {
-	return nil, errors.New("backend down")
+func (failingSessionApplication) Resume(context.Context, string, string) (sessionapp.ResumeResult, error) {
+	return sessionapp.ResumeResult{}, errors.New("backend down")
 }
-
-func (sessionReadFailureBackend) SaveState(context.Context, store.State) error { return nil }
+func (failingSessionApplication) IsDuplicate(context.Context, string, string, string) (bool, error) {
+	return false, errors.New("backend down")
+}
 
 func TestRevokeEnrollmentMTLSIdentityAndIdempotencyMatrix(t *testing.T) {
 	certs := writeTestMTLSFiles(t, "tenant-a", "agent-a")

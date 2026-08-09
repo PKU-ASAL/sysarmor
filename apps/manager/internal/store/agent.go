@@ -250,17 +250,6 @@ func (s *Store) ListAgents() []AgentIdentity {
 	return out
 }
 
-func (s *Store) ListAgentsWithError() ([]AgentIdentity, error) {
-	if backend, ctx := s.backendCtx(); backend != nil {
-		agents, err := backend.ListAgents(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("list agents: %w", err)
-		}
-		return agents, nil
-	}
-	return s.ListAgents(), nil
-}
-
 func (s *Store) ListAgentSessions(tenantID, agentID string) []AgentSession {
 	if backend, ctx := s.backendCtx(); backend != nil {
 		if sessions, err := backend.ListAgentSessions(ctx, tenantID, agentID); err == nil {
@@ -288,17 +277,6 @@ func (s *Store) ListAgentSessions(tenantID, agentID string) []AgentSession {
 	return out
 }
 
-func (s *Store) ListAgentSessionsWithError(tenantID, agentID string) ([]AgentSession, error) {
-	if backend, ctx := s.backendCtx(); backend != nil {
-		sessions, err := backend.ListAgentSessions(ctx, tenantID, agentID)
-		if err != nil {
-			return nil, fmt.Errorf("list agent sessions: %w", err)
-		}
-		return sessions, nil
-	}
-	return s.ListAgentSessions(tenantID, agentID), nil
-}
-
 func (s *Store) ListAgentHealth() []agenthealth.AgentHealth {
 	if backend, ctx := s.backendCtx(); backend != nil {
 		if health, err := backend.ListAgentHealth(ctx, ""); err == nil {
@@ -318,27 +296,6 @@ func (s *Store) ListAgentHealth() []agenthealth.AgentHealth {
 		return out[i].TenantID < out[j].TenantID
 	})
 	return out
-}
-
-func (s *Store) ListAgentHealthWithError(tenantID string) ([]agenthealth.AgentHealth, error) {
-	if tenantID == "" {
-		return nil, fmt.Errorf("tenant_id is required")
-	}
-	if backend, ctx := s.backendCtx(); backend != nil {
-		health, err := backend.ListAgentHealth(ctx, tenantID)
-		if err != nil {
-			return nil, fmt.Errorf("list agent health: %w", err)
-		}
-		return health, nil
-	}
-	health := s.ListAgentHealth()
-	out := health[:0]
-	for _, item := range health {
-		if item.TenantID == tenantID {
-			out = append(out, item)
-		}
-	}
-	return out, nil
 }
 
 func (s *Store) GetAgentHealth(tenantID, agentID string) (agenthealth.AgentHealth, bool) {
@@ -368,18 +325,6 @@ func (s *Store) GetAgentHealth(tenantID, agentID string) (agenthealth.AgentHealt
 		}
 	}
 	return found, ok
-}
-
-func (s *Store) GetAgentHealthWithError(tenantID, agentID string) (agenthealth.AgentHealth, bool, error) {
-	if backend, ctx := s.backendCtx(); backend != nil {
-		health, ok, err := backend.GetAgentHealth(ctx, tenantID, agentID)
-		if err != nil {
-			return agenthealth.AgentHealth{}, false, fmt.Errorf("get agent health: %w", err)
-		}
-		return health, ok, nil
-	}
-	health, ok := s.GetAgentHealth(tenantID, agentID)
-	return health, ok, nil
 }
 
 func agentHealthKey(tenantID, agentID string) string {

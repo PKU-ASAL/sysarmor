@@ -128,18 +128,15 @@ func (s *Store) ListIncidentsForTenant(tenantID string, labels LabelSelector) []
 }
 
 func (s *Store) MetricsSnapshotForTenant(tenantID string) Metrics {
-	metrics, _ := s.MetricsSnapshotForTenantWithError(tenantID)
-	return metrics
-}
-
-func (s *Store) MetricsSnapshotForTenantWithError(tenantID string) (Metrics, error) {
 	s.mu.RLock()
 	backend := s.backend
 	ctx := ctxOrBackground(s.baseCtx)
 	metrics := s.MetricsByTenant[tenantID]
 	s.mu.RUnlock()
 	if tenantBackend, ok := backend.(TenantMetricsBackend); ok {
-		return tenantBackend.LoadMetricsForTenant(ctx, tenantID)
+		if value, err := tenantBackend.LoadMetricsForTenant(ctx, tenantID); err == nil {
+			return value
+		}
 	}
-	return metrics, nil
+	return metrics
 }
