@@ -17,6 +17,11 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
+	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
 var testBatchSequence uint64
@@ -45,7 +50,42 @@ func (s fakeSearcher) Search(_ context.Context, search platformopensearch.Search
 }
 
 func newTestServer(st *store.Store) *Server {
-	return NewServer(st)
+	server := NewServer(st)
+	server.SetIdentityApplication(testIdentityQuery(st), PolicyRequestContext)
+	return server
+}
+
+func testIdentityQuery(st *store.Store) *testIdentityQueries {
+	tenantID, _ := tenant.NewID("default")
+	query := &testIdentityQueries{health: map[domainidentity.AgentID]domainidentity.Health{}}
+	for _, agent := range st.Agents {
+		query.agents = append(query.agents, domainidentity.AgentView{Agent: domainidentity.Agent{TenantID: tenantID, ID: domainidentity.AgentID(agent.AgentID)}})
+	}
+	for _, health := range st.Health {
+		document, _ := json.Marshal(health)
+		query.health[domainidentity.AgentID(health.AgentID)] = domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(health.AgentID), Document: document}
+	}
+	return query
+}
+
+type testIdentityQueries struct {
+	agents []domainidentity.AgentView
+	health map[domainidentity.AgentID]domainidentity.Health
+	err    error
+}
+
+func (q *testIdentityQueries) ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error) {
+	return identityapp.ListAgentsResult{Agents: q.agents}, q.err
+}
+func (q *testIdentityQueries) GetHealth(_ context.Context, _ managerapp.RequestContext, id domainidentity.AgentID) (domainidentity.Health, error) {
+	if q.err != nil {
+		return domainidentity.Health{}, q.err
+	}
+	v, ok := q.health[id]
+	if !ok {
+		return domainidentity.Health{}, failure.New(failure.NotFound, "health not found")
+	}
+	return v, nil
 }
 
 func seedTenantTelemetry(t *testing.T, st *store.Store, tenantID, batchID string, metrics store.Metrics, signals []*signalv1.Signal) {

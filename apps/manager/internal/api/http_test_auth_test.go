@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 type authenticatedTestServer struct {
@@ -12,8 +13,12 @@ type authenticatedTestServer struct {
 }
 
 func newAdminTestServer(st ManagerStore) *authenticatedTestServer {
+	server := NewServer(st)
+	if memoryStore, ok := st.(*store.Store); ok {
+		server.SetIdentityApplication(testIdentityQuery(memoryStore), PolicyRequestContext)
+	}
 	return &authenticatedTestServer{
-		Server: NewServer(st),
+		Server: server,
 		principal: managerauth.Principal{
 			Subject: "test-admin", TenantID: "default", Roles: []string{"admin"},
 		},
