@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,14 +15,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
-	sessionapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/session"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
-	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
-	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
-	platformredis "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/redis"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -44,7 +36,6 @@ func main() {
 	postgresDSN := flag.String("postgres-dsn", envDefault("SYSARMOR_POSTGRES_DSN", ""), "Postgres DSN for postgres backend")
 	kafkaBrokers := flag.String("kafka-brokers", envDefault("SYSARMOR_KAFKA_BROKERS", ""), "comma-separated Kafka brokers for raw telemetry ingest")
 	redisAddr := flag.String("redis-addr", envDefault("SYSARMOR_REDIS_ADDR", ""), "Redis address for agent session hot state")
-	localIngest := flag.Bool("local-ingest", false, "development/test mode: process accepted DataBatch payloads in-process")
 	devToken := flag.String("dev-token", "", "static development agent token; empty disables token checks")
 	flag.Parse()
 
@@ -87,36 +78,26 @@ func main() {
 		}
 	}()
 
-	runtime, cleanup := openGatewayRuntime(ctx, gatewayRuntimeConfig{
-		store:       storeResult.Store,
-		db:          storeResult.DB,
-		kafka:       *kafkaBrokers,
-		redis:       *redisAddr,
-		localIngest: *localIngest,
-		agentToken:  *devToken,
-	})
-	defer cleanup()
 	if *healthListen != "" {
-		startHealthServer(ctx, *healthListen, runtime, prepared.MTLSEnabled())
+		startHealthServer(ctx, *healthListen, prepared.MTLSEnabled())
 	}
 
-	grpcServer := grpc.NewServer(prepared.ServerOptions()...)
-	if *localIngest {
-		gateway.RegisterAgentServices(grpcServer, runtime)
-	} else {
-		dataServer, closeData, err := bootstrap.NewGatewayDataPlane(bootstrap.DataPlaneConfig{DB: storeResult.DB, KafkaBrokers: splitCSV(*kafkaBrokers), RedisAddress: *redisAddr, AgentToken: *devToken})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "configure gateway data plane: %v\n", err)
-			os.Exit(1)
-		}
-		defer func() {
-			if err := closeData(); err != nil {
-				log.Printf("close gateway data plane: %v", err)
-			}
-		}()
-		dataplanev1.RegisterAgentDataPlaneServiceServer(grpcServer, dataServer)
-		controlplanev1.RegisterAgentControlPlaneServiceServer(grpcServer, gateway.NewControlServer(runtime))
+	dataServer, closeData, err := bootstrap.NewGatewayDataPlane(bootstrap.DataPlaneConfig{
+		DB: storeResult.DB, KafkaBrokers: splitCSV(*kafkaBrokers), RedisAddress: *redisAddr, AgentToken: *devToken,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure gateway data plane: %v\n", err)
+		os.Exit(1)
 	}
+	defer func() {
+		if err := closeData(); err != nil {
+			log.Printf("close gateway data plane: %v", err)
+		}
+	}()
+	controlServer := bootstrap.NewGatewayControlPlane(bootstrap.ControlPlaneConfig{DB: storeResult.DB, AgentToken: *devToken})
+	grpcServer := grpc.NewServer(prepared.ServerOptions()...)
+	dataplanev1.RegisterAgentDataPlaneServiceServer(grpcServer, dataServer)
+	controlplanev1.RegisterAgentControlPlaneServiceServer(grpcServer, controlServer)
 
 	lis, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -128,7 +109,7 @@ func main() {
 		grpcServer.GracefulStop()
 	}()
 
-	log.Printf("sysarmor-gateway listening on %s mtls=%t local_ingest=%t", *listen, prepared.MTLSEnabled(), *localIngest)
+	log.Printf("sysarmor-gateway listening on %s mtls=%t", *listen, prepared.MTLSEnabled())
 	if err := grpcServer.Serve(lis); err != nil {
 		fmt.Fprintf(os.Stderr, "gateway grpc serve: %v\n", err)
 		os.Exit(1)
@@ -155,13 +136,13 @@ func prepareGateway(cfg gatewaySecurityConfig, development bool) (bootstrap.Gate
 	return bootstrap.NewProductionGateway(bootstrapConfig)
 }
 
-func startHealthServer(ctx context.Context, listen string, runtime *gateway.Runtime, mtlsEnabled bool) {
+func startHealthServer(ctx context.Context, listen string, mtlsEnabled bool) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "service": "sysarmor-gateway", "mtls": mtlsEnabled})
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, runtime.MetricsSnapshot())
+		writeJSON(w, map[string]any{"service": "sysarmor-gateway", "ok": true})
 	})
 	server := &http.Server{Addr: listen, Handler: mux}
 	go func() {
@@ -182,73 +163,6 @@ func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-type gatewayRuntimeConfig struct {
-	store       *store.Store
-	db          *sql.DB
-	kafka       string
-	redis       string
-	localIngest bool
-	agentToken  string
-}
-
-func openGatewayRuntime(ctx context.Context, cfg gatewayRuntimeConfig) (*gateway.Runtime, func()) {
-	cleanup := func() {}
-	var producer platformkafka.Producer = platformkafka.NoopProducer{}
-	if cfg.kafka != "" {
-		next, err := platformkafka.NewWriterProducer(splitCSV(cfg.kafka))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open kafka producer: %v\n", err)
-			os.Exit(1)
-		}
-		producer = next
-		cleanup = appendCleanup(cleanup, func() {
-			if err := next.Close(); err != nil {
-				log.Printf("close kafka producer: %v", err)
-			}
-		})
-	}
-
-	var hotState platformredis.HotState = platformredis.NoopHotState{}
-	if cfg.redis != "" {
-		next, err := platformredis.NewClientHotState(cfg.redis, 2*time.Minute)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open redis hot state: %v\n", err)
-			os.Exit(1)
-		}
-		hotState = next
-		cleanup = appendCleanup(cleanup, func() {
-			if err := next.Close(); err != nil {
-				log.Printf("close redis hot state: %v", err)
-			}
-		})
-	}
-
-	var processor *ingestworker.Processor
-	if cfg.localIngest {
-		processor = ingestworker.NewProcessor(cfg.store, nil)
-	}
-
-	var sessions gateway.SessionApplication
-	if cfg.db != nil {
-		sessions = sessionapp.NewQueryService(identitypostgres.NewRepositories(cfg.db).Sessions())
-	}
-	return gateway.NewRuntime(gateway.RuntimeOptions{
-		Store:              cfg.store,
-		SessionApplication: sessions,
-		Producer:           producer,
-		HotState:           hotState,
-		LocalProcessor:     processor,
-		AgentToken:         cfg.agentToken,
-	}), cleanup
-}
-
-func appendCleanup(first, next func()) func() {
-	return func() {
-		next()
-		first()
 	}
 }
 

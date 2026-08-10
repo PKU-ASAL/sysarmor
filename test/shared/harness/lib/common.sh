@@ -161,12 +161,6 @@ sa_manager_curl() {
   command curl -H "Authorization: Bearer ${SYSARMOR_MANAGER_JWT:?manager JWT not initialized}" "$@"
 }
 
-sa_start_memory_agent_stack() {
-  local token="${1:-}"
-  sa_start_memory_manager
-  sa_start_memory_gateway --local-ingest --dev-token "$token"
-}
-
 sa_manager_ctl() {
   "$BIN/sysarmorctl" --manager-url "$MGR_URL" --json manager "$@"
 }

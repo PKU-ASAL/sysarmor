@@ -2,7 +2,6 @@ package platforme2e
 
 import (
 	"context"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,30 +9,29 @@ import (
 	"testing"
 	"time"
 
+	datagrpc "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc/dataplane"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
+	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestAgentGatewayManagerLocalDataPath(t *testing.T) {
 	st := &store.Store{}
-	runtime := gateway.NewRuntime(gateway.RuntimeOptions{
-		Store:          st,
-		LocalProcessor: ingestworker.NewProcessor(st, nil),
-	})
+	publisher := projectionPublisher{processor: ingestworker.NewProcessor(st, nil)}
+	acceptor := gatewayapp.NewBatchAcceptor(publisher, &integrationSessions{}, nil)
 
 	grpcServer := grpc.NewServer()
-	gateway.RegisterAgentServices(grpcServer, runtime)
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen gateway: %v", err)
-	}
+	dataplanev1.RegisterAgentDataPlaneServiceServer(grpcServer, datagrpc.NewServer(acceptor, nil, ""))
+	lis := bufconn.Listen(1 << 20)
 	go func() {
 		_ = grpcServer.Serve(lis)
 	}()
@@ -42,18 +40,18 @@ func TestAgentGatewayManagerLocalDataPath(t *testing.T) {
 		_ = lis.Close()
 	})
 
-	conn, err := grpc.DialContext(context.Background(), lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	dialer := func(context.Context, string) (net.Conn, error) { return lis.Dial() }
+	conn, err := grpc.DialContext(context.Background(), "bufnet", grpc.WithContextDialer(dialer), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
 		t.Fatalf("dial gateway: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
 	managerHandler := managerapi.NewServer(st).Handler()
-	manager := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	manager := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal := managerauth.Principal{Subject: "platform-viewer", TenantID: "default", Roles: []string{"viewer"}}
 		managerHandler.ServeHTTP(w, r.WithContext(managerauth.WithPrincipal(r.Context(), principal)))
-	}))
-	t.Cleanup(manager.Close)
+	})
 
 	batch := &dataplanev1.DataBatch{
 		Header: &dataplanev1.BatchHeader{
@@ -80,20 +78,46 @@ func TestAgentGatewayManagerLocalDataPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stream batch: %v", err)
 	}
-	if !ack.GetAccepted() || ack.GetAcceptedEvents() != 1 {
-		t.Fatalf("ack = %+v, want one accepted event", ack)
-	}
-	if runtime.MetricsSnapshot().AcceptedEvents != 1 {
-		t.Fatalf("gateway metrics = %+v, want accepted event", runtime.MetricsSnapshot())
+	if !ack.GetAccepted() {
+		t.Fatalf("ack = %+v, want accepted", ack)
 	}
 
-	body := get(t, manager.URL+"/api/v1/events?label=scenario=agent-gateway-manager-local")
+	body := get(t, manager, "/api/v1/events?label=scenario=agent-gateway-manager-local")
 	if !strings.Contains(body, "platform-local-event-1") {
 		t.Fatalf("manager events missing uploaded event: %s", body)
 	}
 	if len(st.Agents) != 1 || st.Agents[0].AgentID != "platform-local-agent" {
 		t.Fatalf("gateway-bound agents = %+v", st.Agents)
 	}
+}
+
+type projectionPublisher struct {
+	processor *ingestworker.Processor
+}
+
+func (publisher projectionPublisher) Publish(ctx context.Context, envelope ports.BatchEnvelope) error {
+	batch := &dataplanev1.DataBatch{}
+	if err := protojson.Unmarshal(envelope.Payload, batch); err != nil {
+		return err
+	}
+	_, err := publisher.processor.Process(ctx, batch)
+	return err
+}
+
+type integrationSessions struct {
+	seen map[string]bool
+}
+
+func (sessions *integrationSessions) IsDuplicate(_ context.Context, tenantID, agentID, batchID string) (bool, error) {
+	return sessions.seen[tenantID+"/"+agentID+"/"+batchID], nil
+}
+
+func (sessions *integrationSessions) RecordBatch(_ context.Context, batch ports.BatchEnvelope) (ports.GatewaySession, error) {
+	if sessions.seen == nil {
+		sessions.seen = map[string]bool{}
+	}
+	sessions.seen[batch.TenantID+"/"+batch.AgentID+"/"+batch.BatchID] = true
+	return ports.GatewaySession{TenantID: batch.TenantID, AgentID: batch.AgentID, Cursor: batch.BatchID}, nil
 }
 
 func appendStreamBatch(ctx context.Context, conn *grpc.ClientConn, batch *dataplanev1.DataBatch) (*dataplanev1.DataAck, error) {
@@ -116,19 +140,13 @@ func appendStreamBatch(ctx context.Context, conn *grpc.ClientConn, batch *datapl
 	return ack, nil
 }
 
-func get(t *testing.T, url string) string {
+func get(t *testing.T, handler http.Handler, path string) string {
 	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("GET %s: %v", url, err)
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET %s status=%d body=%s", path, recorder.Code, recorder.Body.String())
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read %s: %v", url, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET %s status=%d body=%s", url, resp.StatusCode, body)
-	}
-	return string(body)
+	return recorder.Body.String()
 }

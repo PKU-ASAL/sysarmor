@@ -24,3 +24,11 @@ type ControlStateWriter interface {
 	AckCommand(context.Context, domaingateway.Ack) error
 	CompleteEvidence(context.Context, domaingateway.EvidenceResult) error
 }
+type ControlSessionRepository interface {
+	Open(context.Context, string, string, string, string) (domaingateway.OpenSession, error)
+}
+
+type EnrollmentRevocationRepository interface {
+	Certificate(context.Context, string, string) (domaingateway.Certificate, bool, error)
+	Revoke(context.Context, domaingateway.RevokeEnrollment) (domaingateway.Revocation, error)
+}

@@ -5,17 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"strings"
 	"time"
 
+	grpcauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc/auth"
 	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -49,7 +46,7 @@ func (server *Server) StreamBatches(stream dataplanev1.AgentDataPlaneService_Str
 	}
 }
 func (server *Server) accept(ctx context.Context, batch *dataplanev1.DataBatch) (*dataplanev1.DataAck, error) {
-	if !authorized(ctx, server.token) {
+	if !grpcauth.TokenAuthorized(ctx, server.token) {
 		return nil, status.Error(codes.Unauthenticated, "unauthorized")
 	}
 	if err := server.authorizePeer(ctx, batch.GetHeader()); err != nil {
@@ -70,7 +67,7 @@ func (server *Server) accept(ctx context.Context, batch *dataplanev1.DataBatch) 
 	return acceptedAck(batch, statusValue, message), nil
 }
 func (server *Server) authorizePeer(ctx context.Context, header *dataplanev1.BatchHeader) error {
-	peer, ok := peerIdentity(ctx)
+	peer, ok := grpcauth.PeerIdentity(ctx)
 	if !ok {
 		return nil
 	}
@@ -78,48 +75,13 @@ func (server *Server) authorizePeer(ctx context.Context, header *dataplanev1.Bat
 	if tenantID == "" {
 		tenantID = "default"
 	}
-	if peer.tenantID != tenantID || peer.agentID != header.GetAgentId() {
+	if peer.TenantID != tenantID || peer.AgentID != header.GetAgentId() {
 		return fmt.Errorf("mTLS identity mismatch")
 	}
 	if server.certificates == nil {
 		return fmt.Errorf("certificate authorizer is required")
 	}
-	return server.certificates.Authorize(ctx, tenantID, peer.agentID, peer.serial)
-}
-
-type identity struct{ tenantID, agentID, serial string }
-
-func peerIdentity(ctx context.Context) (identity, bool) {
-	value, ok := peer.FromContext(ctx)
-	if !ok {
-		return identity{}, false
-	}
-	info, ok := value.AuthInfo.(credentials.TLSInfo)
-	if !ok || len(info.State.PeerCertificates) == 0 {
-		return identity{}, false
-	}
-	cert := info.State.PeerCertificates[0]
-	for _, uri := range cert.URIs {
-		if result, ok := identityURI(uri); ok {
-			result.serial = cert.SerialNumber.String()
-			return result, true
-		}
-	}
-	parts := strings.SplitN(strings.TrimSpace(cert.Subject.CommonName), "/", 2)
-	if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-		return identity{tenantID: parts[0], agentID: parts[1], serial: cert.SerialNumber.String()}, true
-	}
-	return identity{}, false
-}
-
-func identityURI(uri *url.URL) (identity, bool) {
-	parts := strings.Split(strings.Trim(uri.Path, "/"), "/")
-	for index := 0; index+3 < len(parts); index++ {
-		if parts[index] == "tenant" && parts[index+2] == "agent" && parts[index+1] != "" && parts[index+3] != "" {
-			return identity{tenantID: parts[index+1], agentID: parts[index+3]}, true
-		}
-	}
-	return identity{}, false
+	return server.certificates.Authorize(ctx, tenantID, peer.AgentID, peer.Serial)
 }
 func mapBatch(batch *dataplanev1.DataBatch) (ports.BatchEnvelope, error) {
 	if batch == nil || batch.GetHeader() == nil {
@@ -138,21 +100,6 @@ func mapBatch(batch *dataplanev1.DataBatch) (ports.BatchEnvelope, error) {
 		}
 	}
 	return ports.BatchEnvelope{TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), HostID: header.GetHostId(), BatchID: header.GetBatchId(), Transport: "grpc_stream", Topic: "sysarmor.agent.databatch.raw", Key: header.GetTenantId() + ":" + key, Payload: raw}, nil
-}
-func authorized(ctx context.Context, token string) bool {
-	if token == "" {
-		return true
-	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return false
-	}
-	for _, value := range append(md.Get("x-sysarmor-agent-token"), md.Get("authorization")...) {
-		if value == token || value == "Bearer "+token {
-			return true
-		}
-	}
-	return false
 }
 func acceptedAck(batch *dataplanev1.DataBatch, value dataplanev1.DataAck_Status, message string) *dataplanev1.DataAck {
 	return &dataplanev1.DataAck{BatchId: batch.GetHeader().GetBatchId(), Accepted: true, Status: value, Message: message, ReasonCode: message, CommittedCursor: batch.GetHeader().GetBatchId(), ServerTime: time.Now().UTC().Format(time.RFC3339Nano), ContractVersion: "dataplane.v1"}

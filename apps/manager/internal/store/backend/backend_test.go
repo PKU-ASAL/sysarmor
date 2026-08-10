@@ -10,7 +10,6 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/gateway"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
@@ -1478,12 +1477,9 @@ func backendDataBatch(batchID, agentID, hostID string, events []*eventv1.Canonic
 
 func acceptDataBatch(t *testing.T, st *store.Store, batch *dataplanev1.DataBatch) {
 	t.Helper()
-	result, err := gateway.NewRuntime(gateway.RuntimeOptions{
-		Store:          st,
-		LocalProcessor: ingestworker.NewProcessor(st, nil),
-	}).AppendDataBatchWithTransport(batch, "grpc")
+	result, err := ingestworker.NewProcessor(st, nil).Process(context.Background(), batch)
 	if err != nil {
-		t.Fatalf("AppendDataBatchWithTransport() error = %v", err)
+		t.Fatalf("Process() error = %v", err)
 	}
 	if result.Duplicate {
 		t.Fatalf("data batch rejected: %+v", result)

@@ -156,7 +156,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         expected = (
             "apps/manager/internal/api",
             "apps/manager/internal/auth",
-            "apps/manager/internal/gateway",
             "apps/manager/internal/store",
             "apps/manager/internal/analytics",
             "apps/manager/internal/ingest",

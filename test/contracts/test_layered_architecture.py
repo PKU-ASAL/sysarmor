@@ -43,7 +43,6 @@ LEGACY_ROOTS = {
 	"apps/manager/internal/platform",
 	"apps/manager/internal/store",
 	"apps/manager/internal/api",
-	"apps/manager/internal/gateway",
     "apps/manager/internal/ingest",
 }
 STANDARD_LIBRARY = {

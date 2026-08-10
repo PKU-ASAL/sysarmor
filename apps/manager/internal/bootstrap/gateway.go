@@ -3,15 +3,19 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"time"
+
 	grpcadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc"
+	controlgrpc "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc/control"
 	datagrpc "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc/dataplane"
 	kafkaadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/kafka"
+	controlpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/control"
 	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
 	redisadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/redis"
 	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/handlers"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"google.golang.org/grpc"
-	"time"
 )
 
 type GatewayConfig struct {
@@ -25,6 +29,11 @@ type DataPlaneConfig struct {
 	DB                       *sql.DB
 	KafkaBrokers             []string
 	RedisAddress, AgentToken string
+}
+
+type ControlPlaneConfig struct {
+	DB         *sql.DB
+	AgentToken string
 }
 
 func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, func() error, error) {
@@ -54,6 +63,22 @@ func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, func() error, e
 		}
 		return nil
 	}, nil
+}
+
+func NewGatewayControlPlane(cfg ControlPlaneConfig) *controlgrpc.Server {
+	sessions := controlpostgres.NewSessionRepository(cfg.DB)
+	state := controlpostgres.NewStateWriter(cfg.DB)
+	dispatcher := gatewayapp.NewDispatcher(map[string]ports.ControlHandler{
+		"hello":                    handlers.NewHelloHandler(gatewayapp.NewOpenSessionService(sessions)),
+		"health_report":            handlers.NewStateHandler("health_report", state),
+		"capability_report":        handlers.NewStateHandler("capability_report", state),
+		"response_ack":             handlers.NewStateHandler("response_ack", state),
+		"ack":                      handlers.NewStateHandler("ack", state),
+		"evidence_pullback_result": handlers.NewStateHandler("evidence_pullback_result", state),
+	})
+	certificates := identitypostgres.NewCertificateAuthorizer(cfg.DB)
+	revocations := gatewayapp.NewRevokeEnrollmentService(controlpostgres.NewRevocationRepository(cfg.DB))
+	return controlgrpc.NewServer(dispatcher, certificates, cfg.AgentToken, revocations)
 }
 
 type gatewayHotSession interface {
