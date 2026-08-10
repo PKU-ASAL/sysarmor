@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -44,7 +45,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "configure production manager: %v\n", err)
 		os.Exit(1)
 	}
-	defer closer.Close()
+	defer func() {
+		if err := closer.Close(); err != nil {
+			log.Printf("close postgres: %v", err)
+		}
+	}()
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "manager serve: %v\n", err)
 		os.Exit(1)

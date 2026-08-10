@@ -7,16 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestBatchProcessorClassifiesMalformedPayload(t *testing.T) {
-	err := (batchProcessor{processor: ingestworker.NewProcessor(&store.Store{}, nil)}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: []byte("{")})
+	err := (batchProcessor{processor: nil}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: []byte("{")})
 	assertPermanentEnvelope(t, err, "invalid_data_batch")
 }
 
@@ -24,7 +22,7 @@ func TestBatchProcessorClassifiesUnsupportedSchema(t *testing.T) {
 	batch := validWorkerBatch()
 	batch.SchemaVersion = "sysarmor.dataplane/v9"
 	raw, _ := protojson.Marshal(batch)
-	err := (batchProcessor{processor: ingestworker.NewProcessor(&store.Store{}, nil)}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: raw})
+	err := (batchProcessor{processor: nil}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: raw})
 	assertPermanentEnvelope(t, err, "unsupported_schema_version")
 }
 
@@ -32,7 +30,7 @@ func TestBatchProcessorRejectsMissingIdentity(t *testing.T) {
 	batch := validWorkerBatch()
 	batch.Header.AgentId = ""
 	raw, _ := protojson.Marshal(batch)
-	err := (batchProcessor{processor: ingestworker.NewProcessor(&store.Store{}, nil)}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: raw})
+	err := (batchProcessor{processor: nil}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: raw})
 	assertPermanentEnvelope(t, err, "invalid_data_batch")
 }
 

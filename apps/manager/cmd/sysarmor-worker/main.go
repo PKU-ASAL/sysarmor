@@ -62,7 +62,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "open postgres: %v\n", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("close postgres: %v", err)
+		}
+	}()
 
 	consumer, err := kafkain.WaitForConsumer(ctx, func() (*kafkain.RawConsumer, error) {
 		return kafkain.NewRawConsumer(splitCSV(*kafkaBrokers), *kafkaTopic, *kafkaGroupID)

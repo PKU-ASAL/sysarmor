@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -167,7 +168,7 @@ func setManagerCommandRoutes(ctx context.Context, server *managerapi.Server, db 
 		return fmt.Errorf("configure artifact application: %w", err)
 	}
 	if err := artifact.Feed.SeedFromEnv(ctx); err != nil {
-		return fmt.Errorf("seed package index: %w", err)
+		log.Printf("seed package index: %v", err)
 	}
 	server.SetEnrollmentRoutes(enrollment)
 	server.SetControlRoutes(control)

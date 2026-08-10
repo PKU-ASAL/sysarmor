@@ -62,7 +62,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "open postgres: %v\n", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("close postgres: %v", err)
+		}
+	}()
 
 	if *healthListen != "" {
 		startHealthServer(ctx, *healthListen, prepared.MTLSEnabled())
