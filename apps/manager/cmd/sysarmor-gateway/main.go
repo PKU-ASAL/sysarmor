@@ -94,7 +94,11 @@ func main() {
 			log.Printf("close gateway data plane: %v", err)
 		}
 	}()
-	controlServer := bootstrap.NewGatewayControlPlane(bootstrap.ControlPlaneConfig{DB: storeResult.DB, AgentToken: *devToken})
+	controlServer, err := bootstrap.NewGatewayControlPlane(bootstrap.ControlPlaneConfig{DB: storeResult.DB, AgentToken: *devToken})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure gateway control plane: %v\n", err)
+		os.Exit(1)
+	}
 	grpcServer := grpc.NewServer(prepared.ServerOptions()...)
 	dataplanev1.RegisterAgentDataPlaneServiceServer(grpcServer, dataServer)
 	controlplanev1.RegisterAgentControlPlaneServiceServer(grpcServer, controlServer)

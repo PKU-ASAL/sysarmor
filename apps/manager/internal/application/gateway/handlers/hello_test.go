@@ -15,7 +15,7 @@ func TestHelloReturnsPolicyResumeAndPendingMessages(t *testing.T) {
 		PolicyDocument: []byte(`{"policy_id":"policy-a"}`),
 		Messages:       []domaingateway.Message{{Type: "response_command", ID: "response-a", Document: []byte(`{"response_id":"response-a"}`)}},
 	}}
-	handler := NewHelloHandler(gatewayapp.NewOpenSessionService(repository))
+	handler := NewHelloHandler(gatewayapp.NewOpenSessionService(repository, helloDeliveryStub{}))
 	frame := ports.ControlFrame{TenantID: "tenant-a", AgentID: "agent-a", RequestID: "hello-a", Payload: domaingateway.Hello{ScopeType: "host", ScopeSelector: "host-a"}}
 	result, err := handler.Handle(context.Background(), frame)
 	if err != nil {
@@ -28,6 +28,10 @@ func TestHelloReturnsPolicyResumeAndPendingMessages(t *testing.T) {
 		t.Fatalf("Open() args = %v", got)
 	}
 }
+
+type helloDeliveryStub struct{}
+
+func (helloDeliveryStub) MarkSent(context.Context, string, string, string) error { return nil }
 
 type helloRepositoryStub struct {
 	result domaingateway.OpenSession

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	grpcadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc"
@@ -14,6 +15,7 @@ import (
 	redisadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/redis"
 	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/handlers"
+	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"google.golang.org/grpc"
 )
@@ -65,11 +67,17 @@ func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, func() error, e
 	}, nil
 }
 
-func NewGatewayControlPlane(cfg ControlPlaneConfig) *controlgrpc.Server {
+func NewGatewayControlPlane(cfg ControlPlaneConfig) (*controlgrpc.Server, error) {
+	if cfg.DB == nil {
+		return nil, fmt.Errorf("gateway control database is required")
+	}
 	sessions := controlpostgres.NewSessionRepository(cfg.DB)
-	state := controlpostgres.NewStateWriter(cfg.DB)
+	legacyState := controlpostgres.NewStateWriter(cfg.DB)
+	state := gatewayControlStateWriter{legacy: legacyState,
+		results: controlapp.NewResultService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})}
+	delivery := controlapp.NewDeliveryService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})
 	dispatcher := gatewayapp.NewDispatcher(map[string]ports.ControlHandler{
-		"hello":                    handlers.NewHelloHandler(gatewayapp.NewOpenSessionService(sessions)),
+		"hello":                    handlers.NewHelloHandler(gatewayapp.NewOpenSessionService(sessions, delivery)),
 		"health_report":            handlers.NewStateHandler("health_report", state),
 		"capability_report":        handlers.NewStateHandler("capability_report", state),
 		"response_ack":             handlers.NewStateHandler("response_ack", state),
@@ -78,7 +86,7 @@ func NewGatewayControlPlane(cfg ControlPlaneConfig) *controlgrpc.Server {
 	})
 	certificates := identitypostgres.NewCertificateAuthorizer(cfg.DB)
 	revocations := gatewayapp.NewRevokeEnrollmentService(controlpostgres.NewRevocationRepository(cfg.DB))
-	return controlgrpc.NewServer(dispatcher, certificates, cfg.AgentToken, revocations)
+	return controlgrpc.NewServer(dispatcher, certificates, cfg.AgentToken, revocations), nil
 }
 
 type gatewayHotSession interface {

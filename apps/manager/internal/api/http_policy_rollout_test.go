@@ -9,7 +9,9 @@ import (
 	"time"
 
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
+	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	domaincontrol "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
@@ -149,7 +151,24 @@ func rolloutServer(t *testing.T, st *store.Store, queryErr error) *Server {
 	}
 	server := NewServer(st)
 	server.SetIdentityApplication(query, PolicyRequestContext)
+	commands := make([]domaincontrol.Command, 0, len(st.ControlCommands))
+	for _, value := range st.ControlCommands {
+		commands = append(commands, domaincontrol.Command{
+			ID: value.CommandID, TenantID: tenantID, AgentID: value.AgentID,
+			Type: domaincontrol.CommandType(value.Type), Status: domaincontrol.CommandStatus(value.Status),
+			PolicyID: value.PolicyID, PolicyVersion: value.PolicyVersion, CreatedAt: value.CreatedAt,
+			UpdatedAt: value.UpdatedAt, LastSentAt: value.LastSentAt, AckedAt: value.AckedAt,
+			AttemptCount: value.AttemptCount, Error: value.Error, AckMessage: value.AckMessage,
+		})
+	}
+	server.SetControlApplication(rolloutControlQuery{commands: commands})
 	return server
+}
+
+type rolloutControlQuery struct{ commands []domaincontrol.Command }
+
+func (query rolloutControlQuery) Commands(context.Context, managerapp.RequestContext, controlapp.CommandQuery) ([]domaincontrol.Command, error) {
+	return query.commands, nil
 }
 
 func rolloutStore(t *testing.T, health agenthealth.AgentHealth, commandStatus string) *store.Store {

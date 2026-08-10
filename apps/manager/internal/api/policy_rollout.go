@@ -6,10 +6,11 @@ import (
 	"sort"
 	"time"
 
+	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	domaincontrol "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
-	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
@@ -129,7 +130,12 @@ func (s *Server) policyRollout(r *http.Request, tenantID, agentID string) (Polic
 		rollout.AppliedPolicyID, rollout.AppliedPolicyVer = health.PolicyID, health.PolicyVersion
 		rollout.PendingPolicy, rollout.HealthObservedAt = health.PendingPolicy, health.ObservedAt
 	}
-	commands, err := s.store.ListControlCommandsWithError(tenantID, agentID, controlmodel.ControlCommandTypePolicyUpdate)
+	if s.controlQuery == nil {
+		return PolicyRollout{}, failure.New(failure.Internal, "control query application is not configured")
+	}
+	commands, err := s.controlQuery.Commands(r.Context(), request, controlapp.CommandQuery{
+		AgentID: agentID, Type: domaincontrol.CommandTypePolicyUpdate,
+	})
 	if err != nil {
 		return PolicyRollout{}, err
 	}
@@ -142,8 +148,8 @@ func (s *Server) policyRollout(r *http.Request, tenantID, agentID string) (Polic
 	return rollout, nil
 }
 
-func latestPolicyCommand(commands []controlmodel.ControlCommand, policyID string, version uint64) (controlmodel.ControlCommand, bool) {
-	var latest controlmodel.ControlCommand
+func latestPolicyCommand(commands []domaincontrol.Command, policyID string, version uint64) (domaincontrol.Command, bool) {
+	var latest domaincontrol.Command
 	var found bool
 	for _, command := range commands {
 		if command.PolicyID != policyID || command.PolicyVersion != version {
@@ -156,8 +162,8 @@ func latestPolicyCommand(commands []controlmodel.ControlCommand, policyID string
 	return latest, found
 }
 
-func projectRolloutCommand(rollout *PolicyRollout, command controlmodel.ControlCommand) {
-	rollout.CommandID, rollout.CommandStatus = command.CommandID, command.Status
+func projectRolloutCommand(rollout *PolicyRollout, command domaincontrol.Command) {
+	rollout.CommandID, rollout.CommandStatus = command.ID, string(command.Status)
 	rollout.LastDispatchAt, rollout.LastAckAt = command.LastSentAt, command.AckedAt
 	rollout.AttemptCount = command.AttemptCount
 	rollout.Error = command.Error
@@ -187,9 +193,9 @@ func samePolicy(leftID string, leftVersion uint64, rightID string, rightVersion 
 }
 
 func failedRolloutCommand(status string) bool {
-	return status == controlmodel.ControlCommandStatusRejected || status == controlmodel.ControlCommandStatusFailed || status == controlmodel.ControlCommandStatusExpired
+	return status == string(domaincontrol.CommandRejected) || status == string(domaincontrol.CommandFailed) || status == string(domaincontrol.CommandExpired)
 }
 
 func inFlightRolloutCommand(status string) bool {
-	return status == controlmodel.ControlCommandStatusPending || status == controlmodel.ControlCommandStatusSent
+	return status == string(domaincontrol.CommandPending) || status == string(domaincontrol.CommandSent)
 }

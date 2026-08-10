@@ -7,7 +7,9 @@ import (
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
+	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	domaincontrol "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/control"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -34,7 +36,9 @@ type Server struct {
 	policyRoutes     policyRoutes
 	identityRoutes   identityRoutes
 	enrollmentRoutes enrollmentRoutes
+	controlRoutes    controlRoutes
 	identityQuery    identityQueries
+	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
 }
 
@@ -46,9 +50,15 @@ type identityQueries interface {
 	AgentOverview(context.Context, managerapp.RequestContext) (domainidentity.AgentOverview, error)
 }
 
+type controlQueries interface {
+	Commands(context.Context, managerapp.RequestContext, controlapp.CommandQuery) ([]domaincontrol.Command, error)
+}
+
 func (s *Server) SetIdentityApplication(query identityQueries, resolve func(*http.Request) (managerapp.RequestContext, error)) {
 	s.identityQuery, s.identityResolve = query, resolve
 }
+
+func (s *Server) SetControlApplication(query controlQueries) { s.controlQuery = query }
 
 func (s *Server) identityRequest(r *http.Request) (managerapp.RequestContext, error) {
 	if s.identityResolve == nil {
@@ -84,9 +94,15 @@ type enrollmentRoutes interface {
 	Completion(http.ResponseWriter, *http.Request)
 }
 
+type controlRoutes interface {
+	Commands(http.ResponseWriter, *http.Request)
+	Evidence(http.ResponseWriter, *http.Request)
+}
+
 func (s *Server) SetPolicyRoutes(routes policyRoutes)         { s.policyRoutes = routes }
 func (s *Server) SetIdentityRoutes(routes identityRoutes)     { s.identityRoutes = routes }
 func (s *Server) SetEnrollmentRoutes(routes enrollmentRoutes) { s.enrollmentRoutes = routes }
+func (s *Server) SetControlRoutes(routes controlRoutes)       { s.controlRoutes = routes }
 
 type responseDecisionRequest struct {
 	SignalID string              `json:"signal_id"`
@@ -288,8 +304,8 @@ func (s *Server) Handler() http.Handler {
 	if s.identityRoutes != nil {
 		mux.HandleFunc("/api/v1/data-resume", s.identityRoutes.Resume)
 	}
-	mux.HandleFunc("/api/v1/evidence-pullbacks", s.evidencePullbacks)
-	mux.HandleFunc("/api/v1/control-commands", s.controlCommands)
+	mux.HandleFunc("/api/v1/evidence-pullbacks", s.handleEvidencePullbacks)
+	mux.HandleFunc("/api/v1/control-commands", s.handleControlCommands)
 	mux.HandleFunc("/api/v1/ui/overview", s.uiOverview)
 	mux.HandleFunc("/api/v1/ui/deploy/options", func(w http.ResponseWriter, r *http.Request) {
 		s.enrollmentRoutes.DeployOptions(w, r)
@@ -312,6 +328,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/incidents", s.incidents)
 	mux.HandleFunc("/api/v1/store-status", s.storeStatus)
 	return limitRequestBody(normalizeAPIErrors(requireProductionPrincipal(mux)), maxManagerRequestBody)
+}
+
+func (s *Server) handleEvidencePullbacks(w http.ResponseWriter, r *http.Request) {
+	if s.controlRoutes == nil {
+		http.Error(w, "control application is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	s.controlRoutes.Evidence(w, r)
+}
+
+func (s *Server) handleControlCommands(w http.ResponseWriter, r *http.Request) {
+	if s.controlRoutes == nil {
+		http.Error(w, "control application is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	s.controlRoutes.Commands(w, r)
 }
 
 func parseLabelSelector(values []string) store.LabelSelector {

@@ -11,18 +11,30 @@ import (
 
 type OpenSessionService struct {
 	repository ports.ControlSessionRepository
+	delivery   ports.ControlDelivery
 }
 
-func NewOpenSessionService(repository ports.ControlSessionRepository) *OpenSessionService {
-	return &OpenSessionService{repository: repository}
+func NewOpenSessionService(repository ports.ControlSessionRepository, delivery ports.ControlDelivery) *OpenSessionService {
+	return &OpenSessionService{repository: repository, delivery: delivery}
 }
 
 func (service *OpenSessionService) Open(ctx context.Context, tenantID, agentID, scopeType, scopeSelector string) (domaingateway.OpenSession, error) {
 	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(agentID) == "" {
 		return domaingateway.OpenSession{}, fmt.Errorf("control session tenant and agent are required")
 	}
-	if service == nil || service.repository == nil {
-		return domaingateway.OpenSession{}, fmt.Errorf("control session repository is required")
+	if service == nil || service.repository == nil || service.delivery == nil {
+		return domaingateway.OpenSession{}, fmt.Errorf("control session repository and delivery are required")
 	}
-	return service.repository.Open(ctx, tenantID, agentID, scopeType, scopeSelector)
+	result, err := service.repository.Open(ctx, tenantID, agentID, scopeType, scopeSelector)
+	if err != nil {
+		return domaingateway.OpenSession{}, err
+	}
+	for _, message := range result.Messages {
+		if message.Type == "control_command" {
+			if err := service.delivery.MarkSent(ctx, tenantID, agentID, message.ID); err != nil {
+				return domaingateway.OpenSession{}, fmt.Errorf("mark control command sent: %w", err)
+			}
+		}
+	}
+	return result, nil
 }

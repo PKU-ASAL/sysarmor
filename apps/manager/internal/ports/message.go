@@ -28,6 +28,10 @@ type ControlSessionRepository interface {
 	Open(context.Context, string, string, string, string) (domaingateway.OpenSession, error)
 }
 
+type ControlDelivery interface {
+	MarkSent(context.Context, string, string, string) error
+}
+
 type EnrollmentRevocationRepository interface {
 	Certificate(context.Context, string, string) (domaingateway.Certificate, bool, error)
 	Revoke(context.Context, domaingateway.RevokeEnrollment) (domaingateway.Revocation, error)

@@ -105,6 +105,18 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetEnrollmentRoutes(enrollmentRoutes)
+	controlRoutes, err := bootstrap.NewManagerControlHTTP(storeResult.DB, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure control application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetControlRoutes(controlRoutes)
+	controlQueries, err := bootstrap.NewManagerControlQueries(storeResult.DB)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure control queries: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetControlApplication(controlQueries)
 	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}

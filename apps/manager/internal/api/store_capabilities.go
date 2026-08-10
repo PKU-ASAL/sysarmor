@@ -31,23 +31,15 @@ type identityStore interface {
 }
 
 type policyControlStore interface {
-	AckControlCommand(controlmodel.ControlCommandAck) (controlmodel.ControlCommand, bool, error)
 	AckResponse(responsemodel.Ack) (responsemodel.Command, bool, error)
 	ApproveResponse(string, string, string, bool, string, string, string) (responsemodel.Command, bool)
 	AssignPolicyWithAudit(policymodel.Assignment, policymodel.AuditRecord, *controlmodel.ControlCommand) (policymodel.Assignment, *controlmodel.ControlCommand, bool, error)
-	CancelControlCommand(string, string, string, string, string) (controlmodel.ControlCommand, bool)
-	CompleteEvidencePullback(controlmodel.EvidencePullbackResult) (controlmodel.EvidencePullbackRequest, bool)
-	CreateControlCommand(controlmodel.ControlCommand) (controlmodel.ControlCommand, error)
-	CreateEvidencePullback(controlmodel.EvidencePullbackRequest) controlmodel.EvidencePullbackRequest
 	CreateResponse(responsemodel.Command) (responsemodel.Command, error)
 	EffectivePolicyWithError(string, string, string, string) (policymodel.Policy, bool, error)
 	EnsureDefaultPolicy(string)
 	EnsureDefaultPolicyWithError(string) error
-	GetEvidencePullbackWithError(string, string, string) (controlmodel.EvidencePullbackRequest, bool, error)
 	GetPolicyWithError(string, string, uint64) (policymodel.Policy, bool, error)
 	ListAssignmentsWithError(string, string) ([]policymodel.Assignment, error)
-	ListControlCommandsWithError(string, string, string) ([]controlmodel.ControlCommand, error)
-	ListEvidencePullbacksWithError(string, string) ([]controlmodel.EvidencePullbackRequest, error)
 	ListPoliciesWithError(string) ([]policymodel.Policy, error)
 	ListPolicyAuditsWithError(string, string) ([]policymodel.AuditRecord, error)
 	ListResponsesWithError(string, string) ([]responsemodel.AuditRecord, error)
@@ -55,8 +47,6 @@ type policyControlStore interface {
 	PendingResponsesWithError(string, string) ([]responsemodel.Command, error)
 	PublishPolicyWithAudit(string, string, uint64, bool, policymodel.AuditRecord) (policymodel.Policy, bool, error)
 	RecordPolicyAudit(policymodel.AuditRecord) policymodel.AuditRecord
-	RetryControlCommand(string, string, string, string, string) (controlmodel.ControlCommand, bool)
-	ExpireControlCommand(string, string, string, string) (controlmodel.ControlCommand, bool)
 	UpsertPolicyWithError(policymodel.Policy) (policymodel.Policy, error)
 }
 

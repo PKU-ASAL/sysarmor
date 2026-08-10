@@ -43,20 +43,6 @@ func TestResponseAckPersistenceFailureReturnsInternalServerError(t *testing.T) {
 	}
 }
 
-func TestControlCommandCreatePersistenceFailureReturnsInternalServerError(t *testing.T) {
-	st := &store.Store{}
-	handler := newAdminTestServer(st).Handler()
-	st.AttachBackend(context.Background(), httpFailingBackend{operation: "control"}, store.Info{Backend: "test"})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/control-commands", strings.NewReader(`{"command_id":"control-fail","tenant_id":"default","agent_id":"agent-a","type":"policy_update","payload_json":{}}`))
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusInternalServerError || len(st.ControlCommands) != 0 {
-		t.Fatalf("control create status=%d body=%q commands=%+v", rec.Code, rec.Body.String(), st.ControlCommands)
-	}
-}
-
 func TestPolicyPublishPersistenceFailureReturnsInternalServerError(t *testing.T) {
 	st := &store.Store{Policies: []policymodel.Policy{{TenantID: "default", PolicyID: "policy-fail", Version: 1}}}
 	handler := newAdminTestServer(st).Handler()

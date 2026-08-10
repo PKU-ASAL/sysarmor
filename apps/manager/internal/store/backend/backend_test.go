@@ -102,8 +102,8 @@ func TestOpenPostgresRunsMigrationAndPersistsSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(postgres) error = %v", err)
 	}
-	if result.Migration.Version != 4 {
-		t.Fatalf("migration version = %d, want 4", result.Migration.Version)
+	if result.Migration.Version != 5 {
+		t.Fatalf("migration version = %d, want 5", result.Migration.Version)
 	}
 	if result.Store == nil || result.Store.Info().Backend != KindPostgres {
 		t.Fatalf("store info = %+v", result.Store.Info())

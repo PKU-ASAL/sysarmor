@@ -15,8 +15,8 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
-	if got.Version != 4 {
-		t.Fatalf("migration version = %d, want 4", got.Version)
+	if got.Version != 5 {
+		t.Fatalf("migration version = %d, want 5", got.Version)
 	}
 	query := FakeAllQueries()
 	for _, want := range []string{
@@ -30,6 +30,8 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 		"INSERT INTO schema_migrations (version) VALUES (3)",
 		"ADD COLUMN IF NOT EXISTS claim_token",
 		"INSERT INTO schema_migrations (version) VALUES (4)",
+		"CREATE TABLE IF NOT EXISTS control_audit",
+		"INSERT INTO schema_migrations (version) VALUES (5)",
 		"SELECT pg_advisory_unlock",
 	} {
 		if !strings.Contains(query, want) {
@@ -51,12 +53,15 @@ func TestApplyMigrationsUpgradesExistingV3Schema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 4 {
-		t.Fatalf("version=%d, want 4", got.Version)
+	if got.Version != 5 {
+		t.Fatalf("version=%d, want 5", got.Version)
 	}
 	queries := FakeAllQueries()
-	if !strings.Contains(queries, "ADD COLUMN IF NOT EXISTS claim_token") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (4)") {
-		t.Fatalf("v3 upgrade did not apply v4:\n%s", queries)
+	if !strings.Contains(queries, "ADD COLUMN IF NOT EXISTS claim_token") ||
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (4)") ||
+		!strings.Contains(queries, "CREATE TABLE IF NOT EXISTS control_audit") ||
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (5)") {
+		t.Fatalf("v3 upgrade did not apply v4 and v5:\n%s", queries)
 	}
 	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (3)") {
 		t.Fatalf("v3 migration was replayed:\n%s", queries)

@@ -59,3 +59,10 @@ func TestDevelopmentGatewayRejectsTLSConfiguration(t *testing.T) {
 		t.Fatalf("NewDevelopmentGateway() error = %v, want ambiguous development TLS error", err)
 	}
 }
+
+func TestGatewayControlPlaneRejectsMissingDatabase(t *testing.T) {
+	server, err := NewGatewayControlPlane(ControlPlaneConfig{})
+	if err == nil || server != nil || !strings.Contains(err.Error(), "database") {
+		t.Fatalf("server=%v error=%v", server, err)
+	}
+}

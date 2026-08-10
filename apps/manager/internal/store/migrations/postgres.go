@@ -1,6 +1,6 @@
 package migrations
 
-const PostgresVersion = 4
+const PostgresVersion = 5
 
 type Migration struct {
 	Version int
@@ -49,6 +49,23 @@ UPDATE telemetry_batches
   WHERE claim_token IS NULL;
 ALTER TABLE telemetry_batches
   ALTER COLUMN claim_token SET NOT NULL;
+`
+
+const ControlAuditSchema = `
+CREATE TABLE IF NOT EXISTS control_audit (
+  tenant_id TEXT NOT NULL,
+  audit_id TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL,
+  data JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, audit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_control_audit_resource
+  ON control_audit (tenant_id, resource_id, created_at);
 `
 
 const PostgresSchema = `
@@ -332,5 +349,6 @@ func Ordered() []Migration {
 		{Version: 2, Name: "agent_unenrollment_lifecycle", SQL: AgentUnenrollmentsSchema},
 		{Version: 3, Name: "tenant_telemetry_batches", SQL: TenantTelemetryBatchesSchema},
 		{Version: 4, Name: "telemetry_batch_claim_fencing", SQL: TelemetryBatchClaimFencingSchema},
+		{Version: 5, Name: "control_audit", SQL: ControlAuditSchema},
 	}
 }

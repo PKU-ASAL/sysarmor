@@ -62,7 +62,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 			t.Fatalf("postgres schema still creates incident report table %s", removed)
 		}
 	}
-	if len(ordered) != 4 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" {
+	if len(ordered) != 5 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" || ordered[4].Version != 5 || ordered[4].Name != "control_audit" {
 		t.Fatalf("ordered migrations = %+v", ordered)
 	}
 	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "lease_until"} {
@@ -76,6 +76,23 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 	for _, want := range []string{"ADD COLUMN IF NOT EXISTS claim_token", "UPDATE telemetry_batches", "SET NOT NULL"} {
 		if !strings.Contains(ordered[3].SQL, want) {
 			t.Fatalf("claim fencing migration missing %q", want)
+		}
+	}
+}
+
+func TestPostgresMigrationsAddControlAudit(t *testing.T) {
+	ordered := Ordered()
+	latest := ordered[len(ordered)-1]
+	if latest.Version != 5 || latest.Name != "control_audit" {
+		t.Fatalf("latest migration = %+v", latest)
+	}
+	for _, want := range []string{
+		"CREATE TABLE IF NOT EXISTS control_audit",
+		"PRIMARY KEY (tenant_id, audit_id)",
+		"CREATE INDEX IF NOT EXISTS idx_control_audit_resource",
+	} {
+		if !strings.Contains(latest.SQL, want) {
+			t.Fatalf("control audit migration missing %q", want)
 		}
 	}
 }
