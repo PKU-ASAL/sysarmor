@@ -150,6 +150,7 @@ func (processor batchProcessor) Process(ctx context.Context, message ports.RawMe
 	if batch.GetHeader() == nil || batch.GetHeader().GetBatchId() == "" || batch.GetHeader().GetTenantId() == "" || batch.GetHeader().GetAgentId() == "" {
 		return permanentMessage(message, "invalid_data_batch", errors.New("batch identity is required"))
 	}
+	stabilizeBatchTime(batch, time.Now().UTC())
 	if _, err := processor.processor.Process(ctx, batch); err != nil {
 		if platformopensearch.ErrorClassOf(err) == platformopensearch.ErrorPermanent {
 			return permanentMessage(message, "permanent_projection", err)
@@ -157,6 +158,27 @@ func (processor batchProcessor) Process(ctx context.Context, message ports.RawMe
 		return err
 	}
 	return nil
+}
+
+func stabilizeBatchTime(batch *dataplanev1.DataBatch, fallback time.Time) {
+	latest := batch.GetHeader().GetCreatedAtUnixNano()
+	for _, frame := range batch.GetEvents() {
+		if eventTime := int64(frame.GetEvent().GetOccurredAtNs()); eventTime > latest {
+			latest = eventTime
+		}
+		if observed, err := time.Parse(time.RFC3339Nano, frame.GetObservedAt()); err == nil && observed.UnixNano() > latest {
+			latest = observed.UnixNano()
+		}
+	}
+	for _, frame := range batch.GetSignals() {
+		if observed, err := time.Parse(time.RFC3339Nano, frame.GetObservedAt()); err == nil && observed.UnixNano() > latest {
+			latest = observed.UnixNano()
+		}
+	}
+	if latest <= 0 {
+		latest = fallback.UnixNano()
+	}
+	batch.Header.CreatedAtUnixNano = latest
 }
 
 func permanentMessage(message ports.RawMessage, class string, cause error) error {
