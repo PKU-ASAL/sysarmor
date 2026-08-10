@@ -17,9 +17,18 @@ type issueService interface {
 	Execute(context.Context, enrollmentapp.IssueCertificateCommand) (enrollmentapp.IssueCertificateResult, error)
 }
 
-type Handler struct{ issue issueService }
+type completionService interface {
+	Execute(context.Context, enrollmentapp.CompleteUnenrollmentCommand) (enrollmentapp.CompleteUnenrollmentResult, error)
+}
 
-func NewHandler(issue issueService) *Handler { return &Handler{issue: issue} }
+type Handler struct {
+	issue      issueService
+	completion completionService
+}
+
+func NewHandler(issue issueService, completion completionService) *Handler {
+	return &Handler{issue: issue, completion: completion}
+}
 
 type certificateRequest struct {
 	Token string `json:"token"`

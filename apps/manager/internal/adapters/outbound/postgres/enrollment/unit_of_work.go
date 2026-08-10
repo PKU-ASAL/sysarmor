@@ -43,6 +43,10 @@ func (tx transaction) Certificates() ports.CertificateRepository {
 	return certificateRepository{executor: tx.executor}
 }
 
+func (tx transaction) Unenrollments() ports.UnenrollmentRepository {
+	return unenrollmentRepository{executor: tx.executor}
+}
+
 type sqlExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row

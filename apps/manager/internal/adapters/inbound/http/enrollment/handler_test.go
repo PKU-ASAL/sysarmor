@@ -28,7 +28,7 @@ func TestCertificatePreservesPublishedResponse(t *testing.T) {
 			}},
 		},
 	}}
-	handler := NewHandler(service)
+	handler := NewHandler(service, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/enrollment-certificate", strings.NewReader(`{"token":"secret","csr":"csr"}`))
 	rec := httptest.NewRecorder()
 
@@ -54,6 +54,28 @@ func TestCertificatePreservesPublishedResponse(t *testing.T) {
 	}
 }
 
+func TestCompletionHashesTokenAndPreservesResponse(t *testing.T) {
+	record := pendingHTTPUnenrollment(t)
+	service := &completionServiceStub{result: enrollmentapp.CompleteUnenrollmentResult{Unenrollment: record}}
+	handler := NewHandler(nil, service)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/unenrollment-completions", strings.NewReader(`{
+		"schema_version":"sysarmor.unenrollment-completion/v1","tenant_id":"tenant-a","agent_id":"agent-a",
+		"enrollment_id":"enroll-a","certificate_serial":"42","revocation_receipt":"receipt-a","completion_token":"secret"
+	}`))
+	rec := httptest.NewRecorder()
+
+	handler.Completion(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if service.command.TokenHash == "secret" || service.command.TokenHash == "" {
+		t.Fatalf("completion token hash = %q", service.command.TokenHash)
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"revoked_endpoint_pending"`) {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
 type issueServiceStub struct {
 	command enrollmentapp.IssueCertificateCommand
 	result  enrollmentapp.IssueCertificateResult
@@ -63,4 +85,30 @@ type issueServiceStub struct {
 func (stub *issueServiceStub) Execute(_ context.Context, command enrollmentapp.IssueCertificateCommand) (enrollmentapp.IssueCertificateResult, error) {
 	stub.command = command
 	return stub.result, stub.err
+}
+
+type completionServiceStub struct {
+	command enrollmentapp.CompleteUnenrollmentCommand
+	result  enrollmentapp.CompleteUnenrollmentResult
+	err     error
+}
+
+func (stub *completionServiceStub) Execute(_ context.Context, command enrollmentapp.CompleteUnenrollmentCommand) (enrollmentapp.CompleteUnenrollmentResult, error) {
+	stub.command = command
+	return stub.result, stub.err
+}
+
+func pendingHTTPUnenrollment(t *testing.T) domainenrollment.Unenrollment {
+	t.Helper()
+	tenantID, err := tenant.NewID("tenant-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := domainenrollment.NewPendingUnenrollment(domainenrollment.UnenrollmentIdentity{
+		TenantID: tenantID, AgentID: "agent-a", EnrollmentID: "enroll-a", CertificateSerial: "42",
+	}, "receipt-a", "token-hash", time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
 }

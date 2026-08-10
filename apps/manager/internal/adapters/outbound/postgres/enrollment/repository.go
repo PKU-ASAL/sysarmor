@@ -8,6 +8,7 @@ import (
 
 	domainenrollment "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/enrollment"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
 type enrollmentRepository struct{ executor sqlExecutor }
@@ -73,4 +74,48 @@ func optionalTime(value time.Time) any {
 		return nil
 	}
 	return value.UTC()
+}
+
+type unenrollmentRepository struct{ executor sqlExecutor }
+
+func (repository unenrollmentRepository) Get(ctx context.Context, tenantID tenant.ID, enrollmentID string) (domainenrollment.Unenrollment, error) {
+	if tenantID == "" {
+		return domainenrollment.Unenrollment{}, failure.New(failure.InvalidArgument, "tenant is required")
+	}
+	var raw []byte
+	err := repository.executor.QueryRowContext(ctx,
+		`SELECT data FROM agent_unenrollments WHERE tenant_id=$1 AND enrollment_id=$2`, tenantID.String(), enrollmentID).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return domainenrollment.Unenrollment{}, failure.New(failure.NotFound, "unenrollment not found")
+	}
+	if err != nil {
+		return domainenrollment.Unenrollment{}, fmt.Errorf("get unenrollment: %w", err)
+	}
+	return decodeUnenrollment(raw)
+}
+
+func (repository unenrollmentRepository) Put(ctx context.Context, value domainenrollment.Unenrollment) error {
+	raw, err := encodeUnenrollment(value)
+	if err != nil {
+		return err
+	}
+	_, err = repository.executor.ExecContext(ctx, `INSERT INTO agent_unenrollments
+(tenant_id,enrollment_id,agent_id,certificate_serial,status,revoked_at,endpoint_completed_at,created_at,updated_at,data)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+ON CONFLICT (tenant_id,enrollment_id) DO UPDATE SET status=excluded.status,
+endpoint_completed_at=excluded.endpoint_completed_at,updated_at=excluded.updated_at,data=excluded.data`,
+		value.Identity.TenantID.String(), value.Identity.EnrollmentID, value.Identity.AgentID,
+		value.Identity.CertificateSerial, string(value.Status), value.RevokedAt, optionalTime(value.CompletedAt),
+		value.RevokedAt, unenrollmentUpdatedAt(value), raw)
+	if err != nil {
+		return fmt.Errorf("put unenrollment: %w", err)
+	}
+	return nil
+}
+
+func unenrollmentUpdatedAt(value domainenrollment.Unenrollment) time.Time {
+	if !value.CompletedAt.IsZero() {
+		return value.CompletedAt
+	}
+	return value.RevokedAt
 }

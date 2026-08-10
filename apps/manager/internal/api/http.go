@@ -82,6 +82,7 @@ type identityRoutes interface {
 
 type enrollmentRoutes interface {
 	Certificate(http.ResponseWriter, *http.Request)
+	Completion(http.ResponseWriter, *http.Request)
 }
 
 func (s *Server) SetPolicyRoutes(routes policyRoutes)         { s.policyRoutes = routes }
@@ -338,7 +339,11 @@ func (s *Server) Handler() http.Handler {
 	} else {
 		mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentRoutes.Certificate)
 	}
-	mux.HandleFunc("/api/v1/unenrollment-completions", s.unenrollmentCompletion)
+	if s.enrollmentRoutes == nil {
+		mux.HandleFunc("/api/v1/unenrollment-completions", s.unenrollmentCompletion)
+	} else {
+		mux.HandleFunc("/api/v1/unenrollment-completions", s.enrollmentRoutes.Completion)
+	}
 	mux.HandleFunc("/api/v1/agent-install.sh", s.agentInstallScript)
 	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRollouts)
 	mux.HandleFunc("/api/v1/responses", s.responses)

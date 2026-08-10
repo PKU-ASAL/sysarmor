@@ -36,6 +36,29 @@ func TestIssueCertificateReturnsNoResultWhenCommitFails(t *testing.T) {
 	}
 }
 
+func TestCompleteUnenrollmentReturnsNoResultWhenCommitFails(t *testing.T) {
+	wantErr := errors.New("commit failed")
+	record := pendingUnenrollment(t)
+	repository := &unenrollmentRepositoryStub{current: record}
+	uow := &enrollmentUnitOfWorkStub{
+		tx: enrollmentTransactionStub{unenrollments: repository}, commitErr: wantErr,
+	}
+	service := NewCompletionService(uow, clockStub{now: time.Unix(300, 0).UTC()})
+
+	result, err := service.Execute(context.Background(), CompleteUnenrollmentCommand{
+		Identity: record.Identity, Receipt: record.Receipt, TokenHash: record.CompletionTokenHash,
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("completion error = %v", err)
+	}
+	if result != (CompleteUnenrollmentResult{}) {
+		t.Fatalf("result escaped failed transaction = %#v", result)
+	}
+	if repository.puts != 1 {
+		t.Fatalf("unenrollment writes = %d", repository.puts)
+	}
+}
+
 type enrollmentUnitOfWorkStub struct {
 	tx        ports.EnrollmentTransaction
 	commitErr error
@@ -49,8 +72,9 @@ func (stub *enrollmentUnitOfWorkStub) Execute(ctx context.Context, fn func(conte
 }
 
 type enrollmentTransactionStub struct {
-	enrollments  ports.EnrollmentRepository
-	certificates ports.CertificateRepository
+	enrollments   ports.EnrollmentRepository
+	certificates  ports.CertificateRepository
+	unenrollments ports.UnenrollmentRepository
 }
 
 func (stub enrollmentTransactionStub) Enrollments() ports.EnrollmentRepository {
@@ -58,6 +82,9 @@ func (stub enrollmentTransactionStub) Enrollments() ports.EnrollmentRepository {
 }
 func (stub enrollmentTransactionStub) Certificates() ports.CertificateRepository {
 	return stub.certificates
+}
+func (stub enrollmentTransactionStub) Unenrollments() ports.UnenrollmentRepository {
+	return stub.unenrollments
 }
 
 type enrollmentRepositoryStub struct {
@@ -77,6 +104,20 @@ func (stub *enrollmentRepositoryStub) Put(context.Context, domainenrollment.Enro
 type certificateRepositoryStub struct{ puts int }
 
 func (stub *certificateRepositoryStub) Put(context.Context, domainenrollment.Certificate) error {
+	stub.puts++
+	return nil
+}
+
+type unenrollmentRepositoryStub struct {
+	current domainenrollment.Unenrollment
+	puts    int
+}
+
+func (stub *unenrollmentRepositoryStub) Get(context.Context, tenant.ID, string) (domainenrollment.Unenrollment, error) {
+	return stub.current, nil
+}
+
+func (stub *unenrollmentRepositoryStub) Put(context.Context, domainenrollment.Unenrollment) error {
 	stub.puts++
 	return nil
 }
@@ -116,4 +157,24 @@ func issuance(t *testing.T) domainenrollment.Issuance {
 		},
 		CAPEM: "ca",
 	}
+}
+
+func pendingUnenrollment(t *testing.T) domainenrollment.Unenrollment {
+	t.Helper()
+	value, err := domainenrollment.NewPendingUnenrollment(domainenrollment.UnenrollmentIdentity{
+		TenantID: mustApplicationTenant(t), AgentID: "agent-a", EnrollmentID: "enroll-a", CertificateSerial: "42",
+	}, "receipt-a", "token-hash", time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func mustApplicationTenant(t *testing.T) tenant.ID {
+	t.Helper()
+	value, err := tenant.NewID("tenant-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
 }

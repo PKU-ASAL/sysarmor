@@ -37,6 +37,18 @@ type certificateRecord struct {
 	CertificatePEM       string    `json:"certificate_pem,omitempty"`
 }
 
+type unenrollmentRecord struct {
+	TenantID            string                              `json:"tenant_id"`
+	AgentID             string                              `json:"agent_id"`
+	EnrollmentID        string                              `json:"enrollment_id"`
+	CertificateSerial   string                              `json:"certificate_serial"`
+	Receipt             string                              `json:"revocation_receipt"`
+	CompletionTokenHash string                              `json:"completion_token_hash,omitempty"`
+	Status              domainenrollment.UnenrollmentStatus `json:"status"`
+	RevokedAt           time.Time                           `json:"revoked_at"`
+	CompletedAt         time.Time                           `json:"endpoint_completed_at,omitempty"`
+}
+
 func encodeEnrollment(value domainenrollment.Enrollment) ([]byte, error) {
 	record := enrollmentRecord{ID: value.ID, TenantID: value.TenantID.String(), AgentID: value.AgentID,
 		TokenHash: value.TokenHash, GatewayAddress: value.GatewayAddress, GatewayServerName: value.GatewayServerName,
@@ -65,4 +77,34 @@ func encodeCertificate(value domainenrollment.Certificate) ([]byte, error) {
 		SerialNumber: value.SerialNumber, UnenrollmentProtocol: value.UnenrollmentProtocol, Subject: value.Subject,
 		NotBefore: value.NotBefore, NotAfter: value.NotAfter, CreatedAt: value.CreatedAt, CertificatePEM: value.CertificatePEM}
 	return json.Marshal(record)
+}
+
+func encodeUnenrollment(value domainenrollment.Unenrollment) ([]byte, error) {
+	record := unenrollmentRecord{TenantID: value.Identity.TenantID.String(), AgentID: value.Identity.AgentID,
+		EnrollmentID: value.Identity.EnrollmentID, CertificateSerial: value.Identity.CertificateSerial,
+		Receipt: value.Receipt, CompletionTokenHash: value.CompletionTokenHash, Status: value.Status,
+		RevokedAt: value.RevokedAt, CompletedAt: value.CompletedAt}
+	return json.Marshal(record)
+}
+
+func decodeUnenrollment(raw []byte) (domainenrollment.Unenrollment, error) {
+	var record unenrollmentRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return domainenrollment.Unenrollment{}, fmt.Errorf("decode unenrollment record: %w", err)
+	}
+	tenantID, err := tenant.NewID(record.TenantID)
+	if err != nil {
+		return domainenrollment.Unenrollment{}, err
+	}
+	value, err := domainenrollment.NewPendingUnenrollment(domainenrollment.UnenrollmentIdentity{TenantID: tenantID,
+		AgentID: record.AgentID, EnrollmentID: record.EnrollmentID, CertificateSerial: record.CertificateSerial},
+		record.Receipt, record.CompletionTokenHash, record.RevokedAt)
+	if err != nil {
+		return domainenrollment.Unenrollment{}, err
+	}
+	if record.Status == domainenrollment.UnenrollmentCompleted {
+		return value.Complete(domainenrollment.UnenrollmentCompletion{Identity: value.Identity,
+			Receipt: value.Receipt, TokenHash: value.CompletionTokenHash}, record.CompletedAt)
+	}
+	return value, nil
 }

@@ -36,7 +36,8 @@ func NewManagerEnrollmentHTTP(config EnrollmentHTTPConfig) (*enrollmenthttp.Hand
 		return nil, fmt.Errorf("configure enrollment certificate issuer: %w", err)
 	}
 	service := enrollmentapp.NewIssueService(enrollmentpostgres.NewUnitOfWork(config.DB), issuer, systemClock{})
-	return enrollmenthttp.NewHandler(service), nil
+	completion := enrollmentapp.NewCompletionService(enrollmentpostgres.NewUnitOfWork(config.DB), systemClock{})
+	return enrollmenthttp.NewHandler(service, completion), nil
 }
 
 func readEnrollmentFile(name, path string) ([]byte, error) {

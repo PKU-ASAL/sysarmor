@@ -1,6 +1,7 @@
 package enrollment
 
 import (
+	"crypto/subtle"
 	"strings"
 	"time"
 
@@ -162,7 +163,12 @@ func (value Unenrollment) Complete(completion UnenrollmentCompletion, at time.Ti
 }
 
 func (value Unenrollment) matches(completion UnenrollmentCompletion) bool {
-	return value.Identity == completion.Identity && value.Receipt == completion.Receipt && value.CompletionTokenHash == completion.TokenHash
+	return value.Identity == completion.Identity && secureEqual(value.Receipt, completion.Receipt) &&
+		secureEqual(value.CompletionTokenHash, completion.TokenHash)
+}
+
+func secureEqual(left, right string) bool {
+	return subtle.ConstantTimeCompare([]byte(strings.ToLower(left)), []byte(strings.ToLower(right))) == 1
 }
 
 func normalizeIdentity(value UnenrollmentIdentity) UnenrollmentIdentity {

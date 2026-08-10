@@ -4,6 +4,7 @@ import (
 	"context"
 
 	domainenrollment "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/enrollment"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
 type EnrollmentRepository interface {
@@ -15,9 +16,15 @@ type CertificateRepository interface {
 	Put(context.Context, domainenrollment.Certificate) error
 }
 
+type UnenrollmentRepository interface {
+	Get(context.Context, tenant.ID, string) (domainenrollment.Unenrollment, error)
+	Put(context.Context, domainenrollment.Unenrollment) error
+}
+
 type EnrollmentTransaction interface {
 	Enrollments() EnrollmentRepository
 	Certificates() CertificateRepository
+	Unenrollments() UnenrollmentRepository
 }
 
 type EnrollmentUnitOfWork interface {
