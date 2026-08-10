@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -453,5 +455,33 @@ func TestProcessorUsesTelemetryBatchPortForDuplicateClaim(t *testing.T) {
 	}
 	if batches.commits != 0 {
 		t.Fatalf("commits = %d, want 0", batches.commits)
+	}
+}
+
+func TestRemoteProcessorDoesNotRegisterAgentAgain(t *testing.T) {
+	state := &store.Store{}
+	processor := NewProcessorWithHistory(state, &recordingIndexer{}, NewOpenSearchHistory(nil))
+	if _, err := processor.Process(context.Background(), dataBatch("remote-agent", nil, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Agents) != 0 {
+		t.Fatalf("agents = %+v, worker must not duplicate gateway registration", state.Agents)
+	}
+}
+
+func TestRemoteProcessorDoesNotSaveLegacySnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-state.json")
+	state, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batches := &recordingTelemetryBatches{claim: ports.TelemetryClaimed, token: "claim-token"}
+	processor := NewProcessorWithHistory(state, &recordingIndexer{}, NewOpenSearchHistory(nil))
+	processor.SetTelemetryBatches(batches)
+	if _, err := processor.Process(context.Background(), dataBatch("remote-save", nil, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("legacy snapshot was written: %v", err)
 	}
 }

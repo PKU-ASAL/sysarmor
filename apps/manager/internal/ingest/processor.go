@@ -96,7 +96,9 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 	}()
 	agent := store.AgentIdentityFromDataBatch(batch)
 	tenantID := agent.Normalized().TenantID
-	p.store.AddAgent(agent)
+	if p.local {
+		p.store.AddAgent(agent)
+	}
 	touchedScopes := map[string]touchedScope{}
 	currentEvents := make([]*eventv1.CanonicalEvent, 0, len(batch.GetEvents()))
 	currentSignals := make([]*signalv1.Signal, 0, len(batch.GetSignals()))
@@ -147,8 +149,10 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, err
 	}
 	convergenceLatency := time.Since(start)
-	if err := p.store.Save(); err != nil {
-		return Result{}, err
+	if p.local {
+		if err := p.store.Save(); err != nil {
+			return Result{}, err
+		}
 	}
 	delta := telemetryBatchDelta(batch, claimToken, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
 	if err := p.batches.Commit(ctx, delta); err != nil {
