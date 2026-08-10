@@ -45,7 +45,19 @@ LEGACY_ROOTS = {
     "apps/manager/internal/ingest",
 }
 STANDARD_LIBRARY = {
-    "domain": {"crypto/subtle", "errors", "strconv", "strings", "time"},
+    "domain": {
+        "crypto/sha256",
+        "crypto/subtle",
+        "bytes",
+        "encoding/binary",
+        "encoding/hex",
+        "errors",
+        "math",
+        "sort",
+        "strconv",
+        "strings",
+        "time",
+    },
     "application": {"context", "errors", "fmt", "sort", "strings", "sync", "time"},
     "ports": {"context", "errors", "io", "time"},
 }
