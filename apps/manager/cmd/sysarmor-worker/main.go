@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,12 +14,18 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	kafkain "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/kafka"
+	kafkaout "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/kafka"
 	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
+	workerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
-	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	managerstore "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
+	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
+	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var version = "dev"
@@ -68,7 +75,9 @@ func main() {
 		}
 	}()
 
-	consumer, err := openKafkaConsumerWithRetry(ctx, splitCSV(*kafkaBrokers), *kafkaTopic, *kafkaGroupID)
+	consumer, err := kafkain.WaitForConsumer(ctx, func() (*kafkain.RawConsumer, error) {
+		return kafkain.NewRawConsumer(splitCSV(*kafkaBrokers), *kafkaTopic, *kafkaGroupID)
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open kafka consumer: %v\n", err)
 		os.Exit(1)
@@ -78,7 +87,7 @@ func main() {
 			log.Printf("close kafka consumer: %v", err)
 		}
 	}()
-	dlqProducer, err := platformkafka.NewWriterProducer(splitCSV(*kafkaBrokers))
+	dlqProducer, err := kafkaout.NewRawProducer(splitCSV(*kafkaBrokers))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open kafka dead letter producer: %v\n", err)
 		os.Exit(1)
@@ -102,7 +111,7 @@ func main() {
 	} else {
 		processor.SetRarityReader(managerstore.NewRarityReader(storeResult.Store))
 	}
-	err = ingestworker.NewWorkerWithDLQ(consumer, processor, dlqProducer).Run(ctx)
+	err = workerapp.New(consumer, batchProcessor{processor: processor}, dlqProducer).Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "run ingest worker: %v\n", err)
 		os.Exit(1)
@@ -128,21 +137,31 @@ func splitCSV(value string) []string {
 	return out
 }
 
-func openKafkaConsumerWithRetry(ctx context.Context, brokers []string, topic, groupID string) (*platformkafka.ReaderConsumer, error) {
-	var lastErr error
-	for attempt := 0; attempt < 30; attempt++ {
-		consumer, err := platformkafka.NewReaderConsumer(brokers, topic, groupID)
-		if err == nil {
-			return consumer, nil
-		}
-		lastErr = err
-		timer := time.NewTimer(2 * time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
-		}
+type batchProcessor struct{ processor *ingestworker.Processor }
+
+func (processor batchProcessor) Process(ctx context.Context, message ports.RawMessage) error {
+	batch := &dataplanev1.DataBatch{}
+	if err := protojson.Unmarshal(message.Value, batch); err != nil {
+		return permanentMessage(message, "invalid_data_batch", err)
 	}
-	return nil, lastErr
+	if _, err := schema.ValidateDataPlane(batch.GetSchemaVersion()); err != nil {
+		return permanentMessage(message, "unsupported_schema_version", err)
+	}
+	if batch.GetHeader() == nil || batch.GetHeader().GetBatchId() == "" || batch.GetHeader().GetTenantId() == "" || batch.GetHeader().GetAgentId() == "" {
+		return permanentMessage(message, "invalid_data_batch", errors.New("batch identity is required"))
+	}
+	if _, err := processor.processor.Process(ctx, batch); err != nil {
+		if platformopensearch.ErrorClassOf(err) == platformopensearch.ErrorPermanent {
+			return permanentMessage(message, "permanent_projection", err)
+		}
+		return err
+	}
+	return nil
+}
+
+func permanentMessage(message ports.RawMessage, class string, cause error) error {
+	envelope, _ := json.Marshal(map[string]any{"source_topic": message.Topic, "source_partition": message.Partition, "source_offset": message.Offset, "source_key": message.Key, "failure_class": class, "failure_message": cause.Error(), "failure_code": class, "payload": message.Value})
+	deadLetter := message
+	deadLetter.Value = envelope
+	return ports.PermanentError{Err: cause, Message: &deadLetter}
 }
