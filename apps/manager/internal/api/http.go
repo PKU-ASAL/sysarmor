@@ -13,7 +13,6 @@ import (
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"net/http"
@@ -63,23 +62,6 @@ func (s *Server) identityRequest(r *http.Request) (managerapp.RequestContext, er
 		return managerapp.RequestContext{}, fmt.Errorf("identity application is not configured")
 	}
 	return s.identityResolve(r)
-}
-
-type policyPublishRequest struct {
-	TenantID  string `json:"tenant_id"`
-	PolicyID  string `json:"policy_id"`
-	Version   uint64 `json:"version"`
-	Published bool   `json:"published"`
-	Actor     string `json:"actor,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-}
-
-type policyAssignmentRequest struct {
-	policymodel.Assignment
-	Actor     string `json:"actor,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	Downlink  bool   `json:"downlink,omitempty"`
-	CommandID string `json:"command_id,omitempty"`
 }
 
 type evidencePullbackRequest struct {
@@ -151,7 +133,7 @@ func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
 		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
 		searchRoutes: unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{},
-		statusRoutes: unavailableStatusRoutes{}}
+		statusRoutes: unavailableStatusRoutes{}, policyRoutes: unavailablePolicyRoutes{}}
 	return s
 }
 
@@ -159,20 +141,12 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.statusRoutes.Health)
 	mux.HandleFunc("/api/v1/recompute", s.recompute)
-	mux.HandleFunc("/api/v1/rules", s.handleRules)
-	if s.policyRoutes == nil {
-		mux.HandleFunc("/api/v1/policies", s.policies)
-		mux.HandleFunc("/api/v1/policy-publish", s.policyPublish)
-		mux.HandleFunc("/api/v1/policy-audit", s.policyAudit)
-		mux.HandleFunc("/api/v1/policy-assignments", s.policyAssignments)
-		mux.HandleFunc("/api/v1/effective-policy", s.effectivePolicy)
-	} else {
-		mux.HandleFunc("/api/v1/policies", s.policyRoutes.Policies)
-		mux.HandleFunc("/api/v1/policy-publish", s.policyRoutes.Publish)
-		mux.HandleFunc("/api/v1/policy-audit", s.policyRoutes.Audits)
-		mux.HandleFunc("/api/v1/policy-assignments", s.policyRoutes.Assignments)
-		mux.HandleFunc("/api/v1/effective-policy", s.policyRoutes.Effective)
-	}
+	mux.HandleFunc("/api/v1/rules", s.policyRoutes.Rules)
+	mux.HandleFunc("/api/v1/policies", s.policyRoutes.Policies)
+	mux.HandleFunc("/api/v1/policy-publish", s.policyRoutes.Publish)
+	mux.HandleFunc("/api/v1/policy-audit", s.policyRoutes.Audits)
+	mux.HandleFunc("/api/v1/policy-assignments", s.policyRoutes.Assignments)
+	mux.HandleFunc("/api/v1/effective-policy", s.policyRoutes.Effective)
 	mux.HandleFunc("/api/v1/artifacts", s.artifactRoutes.Artifacts)
 	mux.HandleFunc("/api/v1/artifacts/", s.artifactRoutes.Artifact)
 	mux.HandleFunc("/api/v1/channels", s.artifactRoutes.Channels)
@@ -231,14 +205,6 @@ func (s *Server) handleEvidencePullbacks(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.controlRoutes.Evidence(w, r)
-}
-
-func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
-	if s.policyRoutes == nil {
-		http.Error(w, "policy application is not configured", http.StatusServiceUnavailable)
-		return
-	}
-	s.policyRoutes.Rules(w, r)
 }
 
 func (s *Server) handleControlCommands(w http.ResponseWriter, r *http.Request) {

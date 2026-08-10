@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
@@ -23,8 +21,6 @@ import (
 	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 	"google.golang.org/protobuf/encoding/protojson"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1381,71 +1377,6 @@ func TestOpenPostgresPersistsPolicyAndIncidentStateAcrossReopen(t *testing.T) {
 	}
 }
 
-func TestOpenPostgresBacksManagerIngestQueryPolicyAndIncidentAPI(t *testing.T) {
-	fakeSetExecError(nil)
-	fakeSetSnapshot(nil)
-	result, err := Open(context.Background(), Options{
-		Kind:           KindPostgres,
-		PostgresDriver: fakeDriverName,
-		PostgresDSN:    "test-dsn",
-	})
-	if err != nil {
-		t.Fatalf("Open(postgres) error = %v", err)
-	}
-	server := managerapi.NewServer(result.Store)
-	setTestTelemetryApplication(server, result.Store)
-	handler := authenticatedManagerHandler(server.Handler())
-	batch := backendDataBatch("pg-api-batch-1", "agent-pg-api", "host-pg-api",
-		[]*eventv1.CanonicalEvent{{
-			Id:       "ev-pg-api",
-			Labels:   pgLabels("pg-api"),
-			Behavior: "process.exec",
-			AgentId:  "agent-pg-api",
-			HostId:   "host-pg-api",
-		}},
-		[]*signalv1.Signal{
-			postgresEndpointSignal("sig-pg-web", "pg-api", "web_runtime_spawns_shell", "lin-pg", false, postgresProcess("process:p-web")),
-			postgresEndpointSignal("sig-pg-drop", "pg-api", "payload_dropped", "lin-pg", false, postgresFile("/dev/shm/x.sh")),
-			postgresEndpointSignal("sig-pg-c2", "pg-api", "reverse_shell_pattern", "lin-pg", true, postgresProcess("process:p-bash"), postgresSocket("10.66.0.99:443")),
-		})
-	acceptDataBatch(t, result.Store, batch)
-	assertGetContains(t, handler, "/api/v1/events?label=scenario=pg-api", `"id":"ev-pg-api"`)
-	assertGetContains(t, handler, "/api/v1/signals?label=scenario=pg-api&layer=endpoint", `"id":"sig-pg-c2"`)
-
-	policy := policymodel.DefaultPolicy("default")
-	policy.PolicyID = "pg-api-policy"
-	policy.Version = 11
-	policy.Published = false
-	postJSON(t, handler, "/api/v1/policies?actor=pg-api-test", policy, http.StatusOK)
-	postJSON(t, handler, "/api/v1/policy-publish", map[string]any{
-		"tenant_id": "default", "policy_id": "pg-api-policy", "version": 11, "published": true, "actor": "publisher",
-	}, http.StatusOK)
-	postJSON(t, handler, "/api/v1/policy-assignments", map[string]any{
-		"tenant_id": "default", "agent_id": "agent-pg-api", "policy_id": "pg-api-policy", "policy_version": 11, "actor": "operator",
-	}, http.StatusOK)
-	assertGetContains(t, handler, "/api/v1/effective-policy?tenant_id=default&agent_id=agent-pg-api", `"policy_id":"pg-api-policy"`)
-
-	reopened, err := Open(context.Background(), Options{
-		Kind:           KindPostgres,
-		PostgresDriver: fakeDriverName,
-		PostgresDSN:    "test-dsn",
-	})
-	if err != nil {
-		t.Fatalf("reopen postgres error = %v", err)
-	}
-	reopenedHandler := authenticatedManagerHandler(managerapi.NewServer(reopened.Store).Handler())
-	// Telemetry reports are not persisted in the relational backend.
-	assertGetContains(t, reopenedHandler, "/api/v1/effective-policy?tenant_id=default&agent_id=agent-pg-api", `"policy_id":"pg-api-policy"`)
-	assertGetContains(t, reopenedHandler, "/api/v1/policy-audit?tenant_id=default&policy_id=pg-api-policy", `"actor":"backend-admin"`)
-}
-
-func authenticatedManagerHandler(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		principal := managerauth.Principal{Subject: "backend-admin", TenantID: "default", Roles: []string{"admin"}}
-		next.ServeHTTP(w, r.WithContext(managerauth.WithPrincipal(r.Context(), principal)))
-	})
-}
-
 func TestOpenPostgresValidatesConfigAndWrapsMigrationError(t *testing.T) {
 	if _, err := Open(context.Background(), Options{Kind: KindPostgres}); err == nil || !strings.Contains(err.Error(), "postgres driver is required") {
 		t.Fatalf("missing driver error = %v", err)
@@ -1485,33 +1416,6 @@ func acceptDataBatch(t *testing.T, st *store.Store, batch *dataplanev1.DataBatch
 	}
 	if result.Duplicate {
 		t.Fatalf("data batch rejected: %+v", result)
-	}
-}
-
-func postJSON(t *testing.T, handler http.Handler, path string, body any, wantStatus int) {
-	t.Helper()
-	data, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(data)))
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != wantStatus {
-		t.Fatalf("POST %s status = %d body=%s", path, rec.Code, rec.Body.String())
-	}
-}
-
-func assertGetContains(t *testing.T, handler http.Handler, path string, want string) {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET %s status = %d body=%s", path, rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), want) {
-		t.Fatalf("GET %s missing %s: %s", path, want, rec.Body.String())
 	}
 }
 

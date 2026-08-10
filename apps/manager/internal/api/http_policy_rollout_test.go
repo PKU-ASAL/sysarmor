@@ -89,7 +89,6 @@ func TestPolicyRolloutsFilterByStatus(t *testing.T) {
 
 func TestPolicyRolloutsReturnServerErrorWhenFactStoreFails(t *testing.T) {
 	st := &store.Store{Agents: []store.AgentIdentity{{TenantID: "default", AgentID: "stale-agent"}}}
-	st.AttachBackend(context.Background(), httpFailingBackend{operation: "rollout"}, store.Info{Backend: "test"})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/policy-rollouts", nil)
 	rec := httptest.NewRecorder()

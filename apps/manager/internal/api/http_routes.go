@@ -71,6 +71,27 @@ type statusRoutes interface {
 
 type unavailableSearchRoutes struct{}
 
+type unavailablePolicyRoutes struct{}
+
+func (unavailablePolicyRoutes) Rules(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+func (unavailablePolicyRoutes) Policies(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+func (unavailablePolicyRoutes) Publish(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+func (unavailablePolicyRoutes) Audits(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+func (unavailablePolicyRoutes) Assignments(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+func (unavailablePolicyRoutes) Effective(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+
 func (unavailableSearchRoutes) Fields(w http.ResponseWriter, _ *http.Request) {
 	unavailable(w, "search")
 }

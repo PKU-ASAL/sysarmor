@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
@@ -29,17 +28,10 @@ type identityStore interface {
 }
 
 type policyControlStore interface {
-	AssignPolicyWithAudit(policymodel.Assignment, policymodel.AuditRecord, *controlmodel.ControlCommand) (policymodel.Assignment, *controlmodel.ControlCommand, bool, error)
 	EffectivePolicyWithError(string, string, string, string) (policymodel.Policy, bool, error)
 	EnsureDefaultPolicy(string)
 	EnsureDefaultPolicyWithError(string) error
-	GetPolicyWithError(string, string, uint64) (policymodel.Policy, bool, error)
 	ListAssignmentsWithError(string, string) ([]policymodel.Assignment, error)
-	ListPoliciesWithError(string) ([]policymodel.Policy, error)
-	ListPolicyAuditsWithError(string, string) ([]policymodel.AuditRecord, error)
-	PublishPolicyWithAudit(string, string, uint64, bool, policymodel.AuditRecord) (policymodel.Policy, bool, error)
-	RecordPolicyAudit(policymodel.AuditRecord) policymodel.AuditRecord
-	UpsertPolicyWithError(policymodel.Policy) (policymodel.Policy, error)
 }
 
 type telemetryStore interface {
