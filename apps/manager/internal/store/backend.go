@@ -34,18 +34,10 @@ type Backend interface {
 	ListPolicyAudits(ctx context.Context, tenantID, policyID string) ([]policymodel.AuditRecord, error)
 	GetPolicy(ctx context.Context, tenantID, policyID string, version uint64) (policymodel.Policy, bool, error)
 	EffectivePolicy(ctx context.Context, tenantID, agentID, scopeType, scopeSelector string) (policymodel.Policy, bool, error)
-	ListEnrollments(ctx context.Context, tenantID, status string) ([]Enrollment, error)
-	GetEnrollmentByTokenHash(ctx context.Context, tokenHash string) (Enrollment, bool, error)
-	GetEnrollmentByBootstrapTokenHash(ctx context.Context, tokenHash string) (Enrollment, bool, error)
-	ConsumeEnrollmentBootstrap(ctx context.Context, bootstrapHash, enrollmentHash, enrollmentPreview string, fetchedAt time.Time) (Enrollment, bool, error)
-	CommitEnrollmentIssue(ctx context.Context, tokenHash, keyHash string, proposed Enrollment, cert AgentCertificate) (Enrollment, EnrollmentIssueResult, error)
 	ListArtifacts(ctx context.Context, tenantID, kind, status string) ([]Artifact, error)
 	GetArtifact(ctx context.Context, tenantID, artifactID string) (Artifact, bool, error)
 	ListChannels(ctx context.Context, tenantID string) ([]ArtifactChannel, error)
 	GetChannel(ctx context.Context, tenantID, channel string) (ArtifactChannel, bool, error)
-	GetAgentCertificate(ctx context.Context, tenantID, serial string) (AgentCertificate, bool, error)
-	GetUnenrollment(ctx context.Context, tenantID, enrollmentID string) (UnenrollmentRecord, bool, error)
-	ListUnenrollments(ctx context.Context, tenantID string) ([]UnenrollmentRecord, error)
 
 	CreateResponse(ctx context.Context, cmd responsemodel.Command) (bool, error)
 	WriteResponse(ctx context.Context, cmd responsemodel.Command, ack *responsemodel.Ack) error
@@ -56,13 +48,8 @@ type Backend interface {
 	WritePolicyAudit(ctx context.Context, audit policymodel.AuditRecord) error
 	CommitPolicyPublication(ctx context.Context, policy policymodel.Policy, audit policymodel.AuditRecord) error
 	CommitPolicyAssignment(ctx context.Context, assignment policymodel.Assignment, audit policymodel.AuditRecord, command *controlmodel.ControlCommand) (*controlmodel.ControlCommand, error)
-	WriteEnrollment(ctx context.Context, enrollment Enrollment) error
 	WriteArtifact(ctx context.Context, artifact Artifact) error
 	WriteChannel(ctx context.Context, channel ArtifactChannel) error
-	WriteAgentCertificate(ctx context.Context, cert AgentCertificate) error
-	RevokeAgentCertificate(ctx context.Context, tenantID, agentID, enrollmentID, serial string, revokedAt time.Time, receipt string) (AgentCertificate, bool, error)
-	AuthorizeAgentUnenrollment(ctx context.Context, tenantID, agentID, enrollmentID, serial, tokenHash string, revokedAt time.Time, receipt string) (AgentCertificate, UnenrollmentRecord, bool, error)
-	CompleteAgentUnenrollment(ctx context.Context, tenantID, agentID, enrollmentID, serial, receipt, tokenHash string, completedAt time.Time) (UnenrollmentRecord, bool, error)
 }
 
 type TenantMetricsBackend interface {

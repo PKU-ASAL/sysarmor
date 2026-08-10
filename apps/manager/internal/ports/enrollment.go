@@ -25,8 +25,15 @@ type UnenrollmentRepository interface {
 	Put(context.Context, domainenrollment.Unenrollment) error
 }
 
+type InstallMaterialRepository interface {
+	Resolve(context.Context, tenant.ID, string, string) (domainenrollment.InstallMaterial, error)
+	GetArtifact(context.Context, tenant.ID, string) (domainenrollment.InstallArtifact, error)
+	ListArtifacts(context.Context, tenant.ID) ([]domainenrollment.DeploymentArtifact, error)
+}
+
 type EnrollmentTransaction interface {
 	Enrollments() EnrollmentRepository
+	InstallMaterials() InstallMaterialRepository
 	Certificates() CertificateRepository
 	Unenrollments() UnenrollmentRepository
 }

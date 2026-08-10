@@ -23,6 +23,9 @@ type createRequest struct {
 	GatewayAddress    string            `json:"gateway_addr"`
 	GatewayServerName string            `json:"gateway_sni,omitempty"`
 	Profile           string            `json:"profile,omitempty"`
+	Channel           string            `json:"channel,omitempty"`
+	ArtifactID        string            `json:"artifact_id,omitempty"`
+	ArtifactURL       string            `json:"artifact_url,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty"`
 	TTL               string            `json:"ttl,omitempty"`
 }
@@ -34,14 +37,23 @@ type enrollmentDocument struct {
 	HostID                string            `json:"host_id,omitempty"`
 	TokenPreview          string            `json:"token_preview,omitempty"`
 	BootstrapTokenPreview string            `json:"bootstrap_token_preview,omitempty"`
+	BootstrapFetchedAt    time.Time         `json:"bootstrap_fetched_at,omitempty"`
 	GatewayAddress        string            `json:"gateway_addr"`
 	GatewayServerName     string            `json:"gateway_sni,omitempty"`
 	Profile               string            `json:"profile,omitempty"`
+	Channel               string            `json:"channel,omitempty"`
+	ArtifactID            string            `json:"artifact_id,omitempty"`
+	ArtifactSHA256        string            `json:"artifact_sha256,omitempty"`
+	ArtifactURL           string            `json:"artifact_url,omitempty"`
 	Labels                map[string]string `json:"labels,omitempty"`
 	Status                string            `json:"status"`
 	CreatedAt             time.Time         `json:"created_at"`
 	ExpiresAt             time.Time         `json:"expires_at"`
 	CreatedBy             string            `json:"created_by,omitempty"`
+	UsedAt                time.Time         `json:"used_at,omitempty"`
+	IssuedSerialNumber    string            `json:"issued_serial_number,omitempty"`
+	IssuedNotAfter        time.Time         `json:"issued_not_after,omitempty"`
+	IssuedAt              time.Time         `json:"issued_at,omitempty"`
 }
 
 func (handler *Handler) Enrollments(writer http.ResponseWriter, request *http.Request) {
@@ -71,7 +83,7 @@ func (handler *Handler) createEnrollment(writer http.ResponseWriter, request *ht
 		writeCreateError(writer, err)
 		return
 	}
-	writeJSON(writer, map[string]any{"enrollment": mapEnrollment(result.Enrollment), "token": result.Token,
+	writeJSON(writer, map[string]any{"enrollment": handler.mapEnrollmentDocument(result.Enrollment), "token": result.Token,
 		"install_url": handler.enrollmentInstallURL(request, result.BootstrapTicket)})
 }
 
@@ -96,13 +108,13 @@ func (handler *Handler) listEnrollments(writer http.ResponseWriter, request *htt
 	}
 	values := make([]enrollmentViewDocument, 0, len(result.Enrollments))
 	for _, value := range result.Enrollments {
-		values = append(values, mapEnrollmentView(value))
+		values = append(values, handler.mapEnrollmentView(value))
 	}
 	writeJSON(writer, map[string]any{"enrollments": values})
 }
 
-func mapEnrollmentView(value enrollmentapp.EnrollmentView) enrollmentViewDocument {
-	document := enrollmentViewDocument{enrollmentDocument: mapEnrollment(value.Enrollment)}
+func (handler *Handler) mapEnrollmentView(value enrollmentapp.EnrollmentView) enrollmentViewDocument {
+	document := enrollmentViewDocument{enrollmentDocument: handler.mapEnrollmentDocument(value.Enrollment)}
 	if !value.HasUnenrollment {
 		return document
 	}
@@ -152,15 +164,27 @@ func decodeCreateCommand(request *http.Request, requestContext managerapp.Reques
 	}
 	return enrollmentapp.CreateEnrollmentCommand{TenantID: tenantID, AgentID: input.AgentID, HostID: input.HostID,
 		GatewayAddress: input.GatewayAddress, GatewayServerName: input.GatewayServerName,
-		Profile: input.Profile, Labels: input.Labels, TTL: ttl}, nil
+		Profile: input.Profile, Channel: input.Channel, ArtifactID: input.ArtifactID, ArtifactURL: input.ArtifactURL,
+		Labels: input.Labels, TTL: ttl}, nil
 }
 
 func mapEnrollment(value domainenrollment.Enrollment) enrollmentDocument {
 	return enrollmentDocument{EnrollmentID: value.ID, TenantID: value.TenantID.String(), AgentID: value.AgentID,
 		HostID: value.HostID, TokenPreview: value.TokenPreview, BootstrapTokenPreview: value.BootstrapTokenPreview,
-		GatewayAddress: value.GatewayAddress, GatewayServerName: value.GatewayServerName, Profile: value.Profile,
+		BootstrapFetchedAt: value.BootstrapFetchedAt,
+		GatewayAddress:     value.GatewayAddress, GatewayServerName: value.GatewayServerName, Profile: value.Profile,
+		Channel: value.Channel, ArtifactID: value.ArtifactID, ArtifactSHA256: value.ArtifactSHA256, ArtifactURL: value.ArtifactURL,
 		Labels: value.Labels, Status: string(value.Status), CreatedAt: value.CreatedAt, ExpiresAt: value.ExpiresAt,
-		CreatedBy: value.CreatedBy}
+		CreatedBy: value.CreatedBy, UsedAt: value.UsedAt, IssuedSerialNumber: value.Issuance.Certificate.SerialNumber,
+		IssuedNotAfter: value.Issuance.Certificate.NotAfter, IssuedAt: value.IssuedAt}
+}
+
+func (handler *Handler) mapEnrollmentDocument(value domainenrollment.Enrollment) enrollmentDocument {
+	document := mapEnrollment(value)
+	if value.Profile != "linux-container" {
+		document.ArtifactURL = rewritePackageDownloadURL(document.ArtifactURL, handler.packageDownloadBaseURL)
+	}
+	return document
 }
 
 func (handler *Handler) enrollmentInstallURL(request *http.Request, ticket string) string {

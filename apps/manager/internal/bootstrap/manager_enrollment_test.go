@@ -41,8 +41,10 @@ func TestNewManagerEnrollmentHTTPWiresEnrollmentQuery(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	for _, statement := range []string{
-		`CREATE TABLE enrollments (tenant_id TEXT, enrollment_id TEXT, status TEXT, created_at TIMESTAMP, data BLOB)`,
+		`CREATE TABLE enrollments (tenant_id TEXT, enrollment_id TEXT, token_hash TEXT, status TEXT, created_at TIMESTAMP, data BLOB)`,
 		`CREATE TABLE agent_unenrollments (tenant_id TEXT, enrollment_id TEXT, data BLOB)`,
+		`CREATE TABLE artifacts (tenant_id TEXT, artifact_id TEXT, sha256 TEXT, status TEXT, storage_path TEXT, data BLOB)`,
+		`CREATE TABLE artifact_channels (tenant_id TEXT, channel_name TEXT, artifact_id TEXT, data BLOB)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -50,8 +52,11 @@ func TestNewManagerEnrollmentHTTPWiresEnrollmentQuery(t *testing.T) {
 	}
 	certFile, keyFile := writeEnrollmentTestCA(t)
 	tenantID, _ := tenant.NewID("tenant-a")
+	artifactDir := t.TempDir()
 	handler, err := NewManagerEnrollmentHTTP(EnrollmentHTTPConfig{
-		DB: db, CACertFile: certFile, CAKeyFile: keyFile, Resolve: func(*http.Request) (managerapp.RequestContext, error) {
+		DB: db, CACertFile: certFile, CAKeyFile: keyFile, ArtifactPublicKeyFile: certFile,
+		ArtifactDir: artifactDir,
+		Resolve: func(*http.Request) (managerapp.RequestContext, error) {
 			return managerapp.RequestContext{Actor: tenant.Actor{
 				Subject: "viewer-a", TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleViewer),
 			}}, nil
@@ -64,6 +69,18 @@ func TestNewManagerEnrollmentHTTPWiresEnrollmentQuery(t *testing.T) {
 	handler.Enrollments(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/enrollments", nil))
 	if recorder.Code != http.StatusOK || recorder.Body.String() != "{\"enrollments\":[]}\n" {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	handler.Install(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/agent-install.sh?ticket=missing", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("install status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/enrollment-artifact", nil)
+	request.Header.Set("Authorization", "Enrollment missing")
+	handler.Artifact(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("artifact status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

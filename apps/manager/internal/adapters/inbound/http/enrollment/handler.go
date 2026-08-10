@@ -11,6 +11,7 @@ import (
 
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	enrollmentapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/enrollment"
+	domainenrollment "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/enrollment"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 )
 
@@ -30,29 +31,64 @@ type QueryService interface {
 	List(context.Context, managerapp.RequestContext, enrollmentapp.ListEnrollmentsQuery) (enrollmentapp.ListEnrollmentsResult, error)
 }
 
+type DeploymentQueryService interface {
+	DeploymentOptions(context.Context, managerapp.RequestContext) (enrollmentapp.DeploymentOptionsResult, error)
+}
+
+type BootstrapService interface {
+	Redeem(context.Context, enrollmentapp.RedeemBootstrapCommand) (enrollmentapp.RedeemBootstrapResult, error)
+}
+
+type ArtifactService interface {
+	Authorize(context.Context, enrollmentapp.AuthorizeArtifactCommand) (enrollmentapp.AuthorizeArtifactResult, error)
+}
+
+type InstallScriptRenderer interface {
+	Render(*http.Request, domainenrollment.Enrollment, string) (string, error)
+}
+
 type RequestContextResolver func(*http.Request) (managerapp.RequestContext, error)
 
 type Handler struct {
-	create     CreateService
-	query      QueryService
-	issue      IssueService
-	completion CompletionService
-	resolve    RequestContextResolver
-	publicURL  string
+	create                  CreateService
+	query                   QueryService
+	deployment              DeploymentQueryService
+	bootstrap               BootstrapService
+	artifact                ArtifactService
+	install                 InstallScriptRenderer
+	issue                   IssueService
+	completion              CompletionService
+	resolve                 RequestContextResolver
+	publicURL               string
+	artifactDir             string
+	deployGatewayAddress    string
+	deployGatewayServerName string
+	packageDownloadBaseURL  string
 }
 
 type Options struct {
-	Create     CreateService
-	Query      QueryService
-	Issue      IssueService
-	Completion CompletionService
-	Resolve    RequestContextResolver
-	PublicURL  string
+	Create                  CreateService
+	Query                   QueryService
+	DeploymentQuery         DeploymentQueryService
+	Bootstrap               BootstrapService
+	Artifact                ArtifactService
+	InstallScript           InstallScriptRenderer
+	Issue                   IssueService
+	Completion              CompletionService
+	Resolve                 RequestContextResolver
+	PublicURL               string
+	ArtifactDir             string
+	DeployGatewayAddress    string
+	DeployGatewayServerName string
+	PackageDownloadBaseURL  string
 }
 
 func NewHandler(options Options) *Handler {
-	return &Handler{create: options.Create, query: options.Query, issue: options.Issue,
-		completion: options.Completion, resolve: options.Resolve, publicURL: options.PublicURL}
+	return &Handler{create: options.Create, query: options.Query, deployment: options.DeploymentQuery, bootstrap: options.Bootstrap,
+		artifact: options.Artifact, install: options.InstallScript, issue: options.Issue,
+		completion: options.Completion, resolve: options.Resolve, publicURL: options.PublicURL,
+		artifactDir: options.ArtifactDir, deployGatewayAddress: options.DeployGatewayAddress,
+		deployGatewayServerName: options.DeployGatewayServerName, packageDownloadBaseURL: options.PackageDownloadBaseURL}
 }
 
 type certificateRequest struct {

@@ -39,11 +39,8 @@ type Store struct {
 	Pullbacks        []controlmodel.EvidencePullbackRequest
 	ControlCommands  []controlmodel.ControlCommand
 	AgentSessions    []AgentSession
-	Enrollments      []Enrollment
 	Artifacts        []Artifact
 	Channels         []ArtifactChannel
-	Certificates     []AgentCertificate
-	Unenrollments    []UnenrollmentRecord
 	TenantSignals    map[string][]*signalv1.Signal
 	MetricsByTenant  map[string]Metrics
 	RarityByTenant   map[string]rarity.Baseline

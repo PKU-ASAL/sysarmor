@@ -121,7 +121,11 @@ func managerEnrollmentConfig(db *sql.DB) bootstrap.EnrollmentHTTPConfig {
 	return bootstrap.EnrollmentHTTPConfig{
 		DB: db, CACertFile: os.Getenv("SYSARMOR_AGENT_CA_CERT"), CAKeyFile: os.Getenv("SYSARMOR_AGENT_CA_KEY"),
 		TrustDomain: os.Getenv("SYSARMOR_TRUST_DOMAIN"), PublicURL: os.Getenv("SYSARMOR_PUBLIC_URL"),
-		Resolve: managerapi.PolicyRequestContext,
+		ArtifactPublicKeyFile:   os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"),
+		ArtifactDir:             envDefault("SYSARMOR_ARTIFACT_DIR", "/var/lib/sysarmor/manager/artifacts"),
+		DeployGatewayAddress:    os.Getenv("SYSARMOR_DEPLOY_GATEWAY_ADDR"),
+		DeployGatewayServerName: os.Getenv("SYSARMOR_DEPLOY_GATEWAY_SNI"),
+		PackageDownloadBaseURL:  os.Getenv("SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL"), Resolve: managerapi.PolicyRequestContext,
 	}
 }
 

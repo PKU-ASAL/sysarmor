@@ -17,6 +17,8 @@ const (
 	StatusIssued Status = "issued"
 )
 
+var ErrChannelNotFound = failure.New(failure.InvalidArgument, "channel not found")
+
 type Enrollment struct {
 	ID                    string
 	TenantID              tenant.ID
@@ -30,6 +32,10 @@ type Enrollment struct {
 	GatewayAddress        string
 	GatewayServerName     string
 	Profile               string
+	Channel               string
+	ArtifactID            string
+	ArtifactSHA256        string
+	ArtifactURL           string
 	Labels                map[string]string
 	CreatedBy             string
 	Status                Status
@@ -38,6 +44,32 @@ type Enrollment struct {
 	UsedAt                time.Time
 	IssuedAt              time.Time
 	Issuance              Issuance
+}
+
+type InstallMaterial struct {
+	Channel        string
+	ArtifactID     string
+	ArtifactSHA256 string
+	ArtifactURL    string
+}
+
+type InstallArtifact struct {
+	ID          string
+	SHA256      string
+	Status      string
+	StoragePath string
+	DownloadURL string
+}
+
+type DeploymentArtifact struct {
+	ID          string
+	Version     string
+	OS          string
+	Arch        string
+	SHA256      string
+	Status      string
+	DownloadURL string
+	CreatedAt   time.Time
 }
 
 func (value Enrollment) RedeemBootstrap(bootstrapHash, tokenHash, tokenPreview string, at time.Time) (Enrollment, error) {
@@ -59,6 +91,19 @@ func (value Enrollment) RedeemBootstrap(bootstrapHash, tokenHash, tokenPreview s
 	return value, nil
 }
 
+func (value Enrollment) AuthorizeArtifact(at time.Time) (string, error) {
+	if value.Status != StatusActive || strings.TrimSpace(value.ArtifactID) == "" {
+		return "", failure.New(failure.NotFound, "enrollment artifact not found")
+	}
+	if at.IsZero() {
+		return "", failure.New(failure.InvalidArgument, "authorization time is required")
+	}
+	if !value.ExpiresAt.IsZero() && at.After(value.ExpiresAt) {
+		return "", failure.New(failure.FailedPrecondition, "enrollment token is expired")
+	}
+	return value.ArtifactID, nil
+}
+
 func NewEnrollment(value Enrollment) (Enrollment, error) {
 	value.ID = strings.TrimSpace(value.ID)
 	value.TokenHash = strings.TrimSpace(value.TokenHash)
@@ -69,6 +114,10 @@ func NewEnrollment(value Enrollment) (Enrollment, error) {
 		value.Status = StatusActive
 	}
 	value.AgentID = strings.TrimSpace(value.AgentID)
+	value.Channel = strings.TrimSpace(value.Channel)
+	value.ArtifactID = strings.TrimSpace(value.ArtifactID)
+	value.ArtifactSHA256 = strings.TrimSpace(value.ArtifactSHA256)
+	value.ArtifactURL = strings.TrimSpace(value.ArtifactURL)
 	value.Labels = cloneLabels(value.Labels)
 	if value.Status != StatusActive && value.Status != StatusUsed && value.Status != StatusIssued {
 		return Enrollment{}, failure.New(failure.InvalidArgument, "enrollment status is invalid")

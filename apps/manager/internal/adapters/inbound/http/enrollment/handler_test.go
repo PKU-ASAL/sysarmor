@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +27,13 @@ func TestCreateEnrollmentPreservesPublishedResponse(t *testing.T) {
 			ID: "enroll-a", TenantID: tenantID, AgentID: "agent-a", HostID: "host-a",
 			TokenPreview: "enr_...oken", BootstrapTokenPreview: "enr_...boot",
 			GatewayAddress: "gateway:9444", GatewayServerName: "gateway.internal", Profile: "linux-systemd",
-			Labels: map[string]string{"env": "prod"}, Status: domainenrollment.StatusActive,
+			Channel: "linux-systemd-stable", ArtifactID: "artifact-a", ArtifactSHA256: "sha256-a",
+			ArtifactURL: "https://packages.example/agent.tar.gz",
+			Labels:      map[string]string{"env": "prod"}, Status: domainenrollment.StatusActive,
+			BootstrapFetchedAt: time.Unix(110, 0).UTC(), UsedAt: time.Unix(120, 0).UTC(), IssuedAt: time.Unix(130, 0).UTC(),
+			Issuance: domainenrollment.Issuance{Certificate: domainenrollment.Certificate{
+				SerialNumber: "42", NotAfter: time.Unix(500, 0).UTC(), CertificatePEM: "secret-certificate",
+			}},
 			CreatedAt: time.Unix(100, 0).UTC(), ExpiresAt: time.Unix(3700, 0).UTC(), CreatedBy: "operator-a",
 		},
 		Token: "enrollment-token", BootstrapTicket: "bootstrap-ticket",
@@ -37,7 +45,8 @@ func TestCreateEnrollmentPreservesPublishedResponse(t *testing.T) {
 	}})
 	req := httptest.NewRequest(http.MethodPost, "http://manager.test/api/v1/enrollments", strings.NewReader(`{
 		"tenant_id":"tenant-a","agent_id":"agent-a","host_id":"host-a","gateway_addr":"gateway:9444",
-		"gateway_sni":"gateway.internal","profile":"linux-systemd","labels":{"env":"prod"},"ttl":"1h"
+		"gateway_sni":"gateway.internal","profile":"linux-systemd","channel":"linux-systemd-stable",
+		"artifact_id":"artifact-a","artifact_url":"https://ignored.example/agent.tar.gz","labels":{"env":"prod"},"ttl":"1h"
 	}`))
 	rec := httptest.NewRecorder()
 
@@ -47,6 +56,10 @@ func TestCreateEnrollmentPreservesPublishedResponse(t *testing.T) {
 	}
 	if service.command.TTL != time.Hour || service.request.Actor.Subject != "operator-a" {
 		t.Fatalf("request=%#v command=%#v", service.request, service.command)
+	}
+	if service.command.Channel != "linux-systemd-stable" || service.command.ArtifactID != "artifact-a" ||
+		service.command.ArtifactURL != "https://ignored.example/agent.tar.gz" {
+		t.Fatalf("material command=%#v", service.command)
 	}
 	if strings.Contains(rec.Body.String(), "token_hash") || strings.Contains(rec.Body.String(), "bootstrap_token_hash") {
 		t.Fatalf("response leaked token hash: %s", rec.Body.String())
@@ -64,6 +77,18 @@ func TestCreateEnrollmentPreservesPublishedResponse(t *testing.T) {
 	}
 	if response.Token != "enrollment-token" || response.Enrollment.EnrollmentID != "enroll-a" || response.Enrollment.TenantID != "tenant-a" {
 		t.Fatalf("response=%#v", response)
+	}
+	if !strings.Contains(rec.Body.String(), `"channel":"linux-systemd-stable"`) ||
+		!strings.Contains(rec.Body.String(), `"artifact_sha256":"sha256-a"`) ||
+		!strings.Contains(rec.Body.String(), `"bootstrap_fetched_at":"1970-01-01T00:01:50Z"`) ||
+		!strings.Contains(rec.Body.String(), `"used_at":"1970-01-01T00:02:00Z"`) ||
+		!strings.Contains(rec.Body.String(), `"issued_serial_number":"42"`) ||
+		!strings.Contains(rec.Body.String(), `"issued_not_after":"1970-01-01T00:08:20Z"`) ||
+		!strings.Contains(rec.Body.String(), `"issued_at":"1970-01-01T00:02:10Z"`) {
+		t.Fatalf("material response=%s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret-certificate") {
+		t.Fatalf("response leaked certificate: %s", rec.Body.String())
 	}
 	if response.InstallURL != "http://manager.test/api/v1/agent-install.sh?ticket=bootstrap-ticket" {
 		t.Fatalf("install URL=%q", response.InstallURL)
@@ -132,6 +157,54 @@ func TestListEnrollmentsProjectsUnenrollmentWithoutSecrets(t *testing.T) {
 	if !strings.Contains(body, `"unenrollment_status":"revoked_endpoint_pending"`) ||
 		!strings.Contains(body, `"enrollment_id":"enroll-a"`) {
 		t.Fatalf("body=%s", body)
+	}
+}
+
+func TestInstallRedeemsTicketAndReturnsNoStoreScript(t *testing.T) {
+	tenantID, _ := tenant.NewID("tenant-a")
+	bootstrap := &bootstrapServiceStub{result: enrollmentapp.RedeemBootstrapResult{
+		Enrollment: domainenrollment.Enrollment{ID: "enroll-a", TenantID: tenantID}, Token: "rotated-token",
+	}}
+	renderer := &installScriptRendererStub{script: "#!/usr/bin/env bash\necho install\n"}
+	handler := NewHandler(Options{Bootstrap: bootstrap, InstallScript: renderer})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent-install.sh?ticket=bootstrap-secret", nil)
+	rec := httptest.NewRecorder()
+
+	handler.Install(rec, req)
+	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-store" ||
+		rec.Header().Get("Content-Type") != "text/x-shellscript; charset=utf-8" {
+		t.Fatalf("status=%d headers=%v body=%s", rec.Code, rec.Header(), rec.Body.String())
+	}
+	if bootstrap.command.TicketHash == "" || bootstrap.command.TicketHash == "bootstrap-secret" {
+		t.Fatalf("ticket hash=%q", bootstrap.command.TicketHash)
+	}
+	if renderer.enrollment.ID != "enroll-a" || renderer.token != "rotated-token" || rec.Body.String() != renderer.script {
+		t.Fatalf("renderer enrollment=%#v token=%q body=%q", renderer.enrollment, renderer.token, rec.Body.String())
+	}
+}
+
+func TestArtifactAuthorizesTokenAndServesBoundFile(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "agent.tar.gz")
+	if err := os.WriteFile(path, []byte("artifact-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := &artifactServiceStub{result: enrollmentapp.AuthorizeArtifactResult{
+		Artifact: domainenrollment.InstallArtifact{ID: "artifact-a", SHA256: "sha256-a", Status: "active", StoragePath: path},
+	}}
+	handler := NewHandler(Options{Artifact: service, ArtifactDir: directory})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/enrollment-artifact", nil)
+	req.Header.Set("Authorization", "Enrollment enrollment-secret")
+	rec := httptest.NewRecorder()
+
+	handler.Artifact(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "artifact-bytes" ||
+		rec.Header().Get("X-SysArmor-Artifact-ID") != "artifact-a" ||
+		rec.Header().Get("X-SysArmor-Artifact-SHA256") != "sha256-a" {
+		t.Fatalf("status=%d headers=%v body=%q", rec.Code, rec.Header(), rec.Body.String())
+	}
+	if service.command.TokenHash == "" || service.command.TokenHash == "enrollment-secret" {
+		t.Fatalf("token hash=%q", service.command.TokenHash)
 	}
 }
 
@@ -215,6 +288,40 @@ type queryServiceStub struct {
 	query   enrollmentapp.ListEnrollmentsQuery
 	result  enrollmentapp.ListEnrollmentsResult
 	err     error
+}
+
+type bootstrapServiceStub struct {
+	command enrollmentapp.RedeemBootstrapCommand
+	result  enrollmentapp.RedeemBootstrapResult
+	err     error
+}
+
+type artifactServiceStub struct {
+	command enrollmentapp.AuthorizeArtifactCommand
+	result  enrollmentapp.AuthorizeArtifactResult
+	err     error
+}
+
+func (stub *artifactServiceStub) Authorize(_ context.Context, command enrollmentapp.AuthorizeArtifactCommand) (enrollmentapp.AuthorizeArtifactResult, error) {
+	stub.command = command
+	return stub.result, stub.err
+}
+
+func (stub *bootstrapServiceStub) Redeem(_ context.Context, command enrollmentapp.RedeemBootstrapCommand) (enrollmentapp.RedeemBootstrapResult, error) {
+	stub.command = command
+	return stub.result, stub.err
+}
+
+type installScriptRendererStub struct {
+	enrollment domainenrollment.Enrollment
+	token      string
+	script     string
+	err        error
+}
+
+func (stub *installScriptRendererStub) Render(_ *http.Request, enrollment domainenrollment.Enrollment, token string) (string, error) {
+	stub.enrollment, stub.token = enrollment, token
+	return stub.script, stub.err
 }
 
 func (stub *queryServiceStub) List(_ context.Context, request managerapp.RequestContext, query enrollmentapp.ListEnrollmentsQuery) (enrollmentapp.ListEnrollmentsResult, error) {

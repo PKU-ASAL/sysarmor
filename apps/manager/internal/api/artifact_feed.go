@@ -185,7 +185,7 @@ func artifactInstallURL(r *http.Request, artifact store.Artifact) string {
 func artifactInstallURLForProfile(r *http.Request, artifact store.Artifact, profile string) string {
 	if artifact.Metadata != nil {
 		if url := strings.TrimSpace(artifact.Metadata[artifactDownloadURLMetadataKey]); url != "" {
-			if defaultString(profile, "linux-systemd") == "linux-container" {
+			if strings.TrimSpace(profile) == "linux-container" {
 				return url
 			}
 			return rewritePackageDownloadURL(url)

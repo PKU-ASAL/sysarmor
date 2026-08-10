@@ -103,16 +103,10 @@ func saveTables(ctx context.Context, db *sql.DB, state store.State) error {
 	}
 	// Durable control-plane writers own responses and policy tables. Replaying
 	// them from a process-local snapshot can overwrite newer cross-process state.
-	if err := projectEnrollments(ctx, tx, state.Enrollments); err != nil {
-		return err
-	}
 	if err := projectArtifacts(ctx, tx, state.Artifacts); err != nil {
 		return err
 	}
 	if err := projectChannels(ctx, tx, state.Channels); err != nil {
-		return err
-	}
-	if err := projectAgentCertificates(ctx, tx, state.Certificates); err != nil {
 		return err
 	}
 	if err := projectEvidencePullbacks(ctx, tx, state.Pullbacks); err != nil {

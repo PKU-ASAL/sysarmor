@@ -2,6 +2,7 @@ package enrollment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,14 +15,18 @@ import (
 )
 
 type CreateEnrollmentCommand struct {
-	TenantID          string
-	AgentID           string
-	HostID            string
-	GatewayAddress    string
-	GatewayServerName string
-	Profile           string
-	Labels            map[string]string
-	TTL               time.Duration
+	TenantID           string
+	AgentID            string
+	HostID             string
+	GatewayAddress     string
+	GatewayServerName  string
+	Profile            string
+	Channel            string
+	ArtifactID         string
+	ArtifactURL        string
+	Labels             map[string]string
+	TTL                time.Duration
+	FallbackToArtifact bool
 }
 
 type CreateEnrollmentResult struct {
@@ -54,12 +59,18 @@ func (service *CreateService) Execute(ctx context.Context, request managerapp.Re
 		return CreateEnrollmentResult{}, err
 	}
 	now := service.clock.Now()
-	value, err := domainenrollment.NewEnrollment(newEnrollmentValue(command, tenantID, request.Actor.Subject, service.ids.New(), token, bootstrap, now))
-	if err != nil {
-		return CreateEnrollmentResult{}, err
-	}
+	id := service.ids.New()
 	var pending CreateEnrollmentResult
 	err = service.uow.Execute(ctx, func(txCtx context.Context, tx ports.EnrollmentTransaction) error {
+		material, err := resolveInstallMaterial(txCtx, tx, tenantID, command)
+		if err != nil {
+			return err
+		}
+		value, err := domainenrollment.NewEnrollment(newEnrollmentValue(
+			command, material, tenantID, request.Actor.Subject, id, token, bootstrap, now))
+		if err != nil {
+			return err
+		}
 		if err := tx.Enrollments().Put(txCtx, value); err != nil {
 			return fmt.Errorf("put enrollment: %w", err)
 		}
@@ -70,6 +81,21 @@ func (service *CreateService) Execute(ctx context.Context, request managerapp.Re
 		return CreateEnrollmentResult{}, err
 	}
 	return pending, nil
+}
+
+func resolveInstallMaterial(ctx context.Context, tx ports.EnrollmentTransaction, tenantID tenant.ID, command CreateEnrollmentCommand) (domainenrollment.InstallMaterial, error) {
+	channel, artifactID := strings.TrimSpace(command.Channel), strings.TrimSpace(command.ArtifactID)
+	if channel == "" && artifactID == "" {
+		return domainenrollment.InstallMaterial{ArtifactURL: strings.TrimSpace(command.ArtifactURL)}, nil
+	}
+	value, err := tx.InstallMaterials().Resolve(ctx, tenantID, channel, artifactID)
+	if errors.Is(err, domainenrollment.ErrChannelNotFound) && command.FallbackToArtifact && artifactID != "" {
+		value, err = tx.InstallMaterials().Resolve(ctx, tenantID, "", artifactID)
+	}
+	if err != nil {
+		return domainenrollment.InstallMaterial{}, fmt.Errorf("resolve install material: %w", err)
+	}
+	return value, nil
 }
 
 func authorizeCreate(request managerapp.RequestContext, command CreateEnrollmentCommand) (tenant.ID, error) {
@@ -114,7 +140,7 @@ func validateCreateCommand(command CreateEnrollmentCommand) error {
 	return nil
 }
 
-func newEnrollmentValue(command CreateEnrollmentCommand, tenantID tenant.ID, createdBy, id string, token, bootstrap ports.EnrollmentToken, now time.Time) domainenrollment.Enrollment {
+func newEnrollmentValue(command CreateEnrollmentCommand, material domainenrollment.InstallMaterial, tenantID tenant.ID, createdBy, id string, token, bootstrap ports.EnrollmentToken, now time.Time) domainenrollment.Enrollment {
 	hostID := strings.TrimSpace(command.HostID)
 	if hostID == "" {
 		hostID = strings.TrimSpace(command.AgentID)
@@ -127,5 +153,7 @@ func newEnrollmentValue(command CreateEnrollmentCommand, tenantID tenant.ID, cre
 		TokenHash: token.Hash, TokenPreview: token.Preview, BootstrapTokenHash: bootstrap.Hash,
 		BootstrapTokenPreview: bootstrap.Preview, GatewayAddress: strings.TrimSpace(command.GatewayAddress),
 		GatewayServerName: strings.TrimSpace(command.GatewayServerName), Profile: profile, Labels: command.Labels,
+		Channel: material.Channel, ArtifactID: material.ArtifactID,
+		ArtifactSHA256: material.ArtifactSHA256, ArtifactURL: material.ArtifactURL,
 		CreatedBy: strings.TrimSpace(createdBy), Status: domainenrollment.StatusActive, CreatedAt: now.UTC(), ExpiresAt: now.Add(command.TTL).UTC()}
 }

@@ -20,6 +20,11 @@ type EnrollmentView struct {
 
 type ListEnrollmentsResult struct{ Enrollments []EnrollmentView }
 
+type DeploymentOptionsResult struct {
+	Enrollments []EnrollmentView
+	Artifacts   []domainenrollment.DeploymentArtifact
+}
+
 type QueryService struct{ uow ports.EnrollmentUnitOfWork }
 
 func NewQueryService(uow ports.EnrollmentUnitOfWork) *QueryService { return &QueryService{uow: uow} }
@@ -40,6 +45,27 @@ func (service *QueryService) List(ctx context.Context, request managerapp.Reques
 		}
 		result.Enrollments = projectEnrollments(enrollments, unenrollments)
 		return nil
+	})
+	return result, err
+}
+
+func (service *QueryService) DeploymentOptions(ctx context.Context, request managerapp.RequestContext) (DeploymentOptionsResult, error) {
+	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
+		return DeploymentOptionsResult{}, err
+	}
+	var result DeploymentOptionsResult
+	err := service.uow.Execute(ctx, func(txCtx context.Context, tx ports.EnrollmentTransaction) error {
+		enrollments, err := tx.Enrollments().List(txCtx, request.Actor.TenantID, "")
+		if err != nil {
+			return fmt.Errorf("list deploy enrollments: %w", err)
+		}
+		unenrollments, err := tx.Unenrollments().List(txCtx, request.Actor.TenantID)
+		if err != nil {
+			return fmt.Errorf("list deploy unenrollments: %w", err)
+		}
+		result.Enrollments = projectEnrollments(enrollments, unenrollments)
+		result.Artifacts, err = tx.InstallMaterials().ListArtifacts(txCtx, request.Actor.TenantID)
+		return err
 	})
 	return result, err
 }

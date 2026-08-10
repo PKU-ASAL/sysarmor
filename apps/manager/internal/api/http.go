@@ -2,10 +2,7 @@ package managerapi
 
 import (
 	"context"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
@@ -33,9 +30,6 @@ type Server struct {
 	searcher         platformopensearch.Searcher
 	artifactDir      string
 	artifactPub      []byte
-	caCert           *x509.Certificate
-	caCertPEM        []byte
-	caKey            *rsa.PrivateKey
 	localTelemetry   bool
 	policyRoutes     policyRoutes
 	identityRoutes   identityRoutes
@@ -81,6 +75,11 @@ type identityRoutes interface {
 }
 
 type enrollmentRoutes interface {
+	Enrollments(http.ResponseWriter, *http.Request)
+	Install(http.ResponseWriter, *http.Request)
+	Artifact(http.ResponseWriter, *http.Request)
+	DeployOptions(http.ResponseWriter, *http.Request)
+	DeployAgentCommand(http.ResponseWriter, *http.Request)
 	Certificate(http.ResponseWriter, *http.Request)
 	Completion(http.ResponseWriter, *http.Request)
 }
@@ -115,31 +114,11 @@ type policyAssignmentRequest struct {
 	CommandID string `json:"command_id,omitempty"`
 }
 
-type enrollmentRequest struct {
-	TenantID    string            `json:"tenant_id,omitempty"`
-	AgentID     string            `json:"agent_id,omitempty"`
-	HostID      string            `json:"host_id,omitempty"`
-	GatewayAddr string            `json:"gateway_addr"`
-	GatewaySNI  string            `json:"gateway_sni,omitempty"`
-	Profile     string            `json:"profile,omitempty"`
-	Channel     string            `json:"channel,omitempty"`
-	ArtifactID  string            `json:"artifact_id,omitempty"`
-	ArtifactURL string            `json:"artifact_url,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	TTL         string            `json:"ttl,omitempty"`
-	Actor       string            `json:"actor,omitempty"`
-}
-
 type channelRequest struct {
 	TenantID   string `json:"tenant_id,omitempty"`
 	Channel    string `json:"channel"`
 	ArtifactID string `json:"artifact_id"`
 	Actor      string `json:"actor,omitempty"`
-}
-
-type certificateRequest struct {
-	Token string `json:"token,omitempty"`
-	CSR   string `json:"csr"`
 }
 
 type responseApprovalRequest struct {
@@ -219,17 +198,6 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 	if s.artifactPub, err = readRequiredFile("SYSARMOR_ARTIFACT_PUBLIC_KEY"); err != nil {
 		return nil, err
 	}
-	if s.caCertPEM, err = readRequiredFile("SYSARMOR_AGENT_CA_CERT"); err != nil {
-		return nil, err
-	}
-	caKeyPEM, err := readRequiredFile("SYSARMOR_AGENT_CA_KEY")
-	if err != nil {
-		return nil, err
-	}
-	s.caCert, s.caKey, err = parseCARequired(s.caCertPEM, caKeyPEM)
-	if err != nil {
-		return nil, err
-	}
 	if err := st.EnsureDefaultPolicyWithError("default"); err != nil {
 		return nil, fmt.Errorf("initialize production default policy: %w", err)
 	}
@@ -239,11 +207,6 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, artifactDir: defaultArtifactDir()}
 	s.artifactPub = readOptionalFile(os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"))
-	s.caCertPEM = readOptionalFile(os.Getenv("SYSARMOR_AGENT_CA_CERT"))
-	caKeyPEM := readOptionalFile(os.Getenv("SYSARMOR_AGENT_CA_KEY"))
-	if len(s.caCertPEM) > 0 && len(caKeyPEM) > 0 {
-		s.caCert, s.caKey = parseCA(s.caCertPEM, caKeyPEM)
-	}
 	return s
 }
 
@@ -281,36 +244,6 @@ func readRequiredFile(envName string) ([]byte, error) {
 	return data, nil
 }
 
-func parseCA(certPEM, keyPEM []byte) (*x509.Certificate, *rsa.PrivateKey) {
-	cert, key, _ := parseCARequired(certPEM, keyPEM)
-	return cert, key
-}
-
-func parseCARequired(certPEM, keyPEM []byte) (*x509.Certificate, *rsa.PrivateKey, error) {
-	certBlock, _ := pem.Decode(certPEM)
-	keyBlock, _ := pem.Decode(keyPEM)
-	if certBlock == nil || keyBlock == nil {
-		return nil, nil, fmt.Errorf("decode agent CA cert/key PEM")
-	}
-	cert, err := x509.ParseCertificate(certBlock.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parse agent CA cert: %w", err)
-	}
-	key, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
-	if err != nil {
-		parsed, parseErr := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
-		if parseErr != nil {
-			return nil, nil, fmt.Errorf("parse agent CA key: %w", err)
-		}
-		rsaKey, ok := parsed.(*rsa.PrivateKey)
-		if !ok {
-			return nil, nil, fmt.Errorf("agent CA key must be RSA")
-		}
-		key = rsaKey
-	}
-	return cert, key, nil
-}
-
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
@@ -332,19 +265,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/artifacts", s.artifacts)
 	mux.HandleFunc("/api/v1/artifacts/", s.artifactByID)
 	mux.HandleFunc("/api/v1/channels", s.channels)
-	mux.HandleFunc("/api/v1/enrollments", s.enrollments)
-	mux.HandleFunc("/api/v1/enrollment-artifact", s.enrollmentArtifact)
-	if s.enrollmentRoutes == nil {
-		mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentCertificate)
-	} else {
-		mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentRoutes.Certificate)
-	}
-	if s.enrollmentRoutes == nil {
-		mux.HandleFunc("/api/v1/unenrollment-completions", s.unenrollmentCompletion)
-	} else {
-		mux.HandleFunc("/api/v1/unenrollment-completions", s.enrollmentRoutes.Completion)
-	}
-	mux.HandleFunc("/api/v1/agent-install.sh", s.agentInstallScript)
+	mux.HandleFunc("/api/v1/enrollments", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.Enrollments(w, r)
+	})
+	mux.HandleFunc("/api/v1/enrollment-artifact", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.Artifact(w, r)
+	})
+	mux.HandleFunc("/api/v1/enrollment-certificate", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.Certificate(w, r)
+	})
+	mux.HandleFunc("/api/v1/unenrollment-completions", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.Completion(w, r)
+	})
+	mux.HandleFunc("/api/v1/agent-install.sh", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.Install(w, r)
+	})
 	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRollouts)
 	mux.HandleFunc("/api/v1/responses", s.responses)
 	mux.HandleFunc("/api/v1/response-decisions", s.responseDecisions)
@@ -356,8 +291,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/evidence-pullbacks", s.evidencePullbacks)
 	mux.HandleFunc("/api/v1/control-commands", s.controlCommands)
 	mux.HandleFunc("/api/v1/ui/overview", s.uiOverview)
-	mux.HandleFunc("/api/v1/ui/deploy/options", s.uiDeployOptions)
-	mux.HandleFunc("/api/v1/ui/deploy/agent-command", s.uiDeployAgentCommand)
+	mux.HandleFunc("/api/v1/ui/deploy/options", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.DeployOptions(w, r)
+	})
+	mux.HandleFunc("/api/v1/ui/deploy/agent-command", func(w http.ResponseWriter, r *http.Request) {
+		s.enrollmentRoutes.DeployAgentCommand(w, r)
+	})
 	mux.HandleFunc("/api/v1/search/fields", s.searchFields)
 	mux.HandleFunc("/api/v1/search/histogram", s.searchHistogram)
 	mux.HandleFunc("/api/v1/search", s.search)

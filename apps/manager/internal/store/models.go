@@ -65,37 +65,6 @@ type AgentSession struct {
 	Status            string    `json:"status,omitempty"`
 }
 
-type Enrollment struct {
-	EnrollmentID          string            `json:"enrollment_id"`
-	TenantID              string            `json:"tenant_id"`
-	AgentID               string            `json:"agent_id,omitempty"`
-	HostID                string            `json:"host_id,omitempty"`
-	TokenHash             string            `json:"token_hash,omitempty"`
-	TokenPreview          string            `json:"token_preview,omitempty"`
-	BootstrapTokenHash    string            `json:"bootstrap_token_hash,omitempty"`
-	BootstrapTokenPreview string            `json:"bootstrap_token_preview,omitempty"`
-	BootstrapFetchedAt    time.Time         `json:"bootstrap_fetched_at,omitempty"`
-	GatewayAddr           string            `json:"gateway_addr"`
-	GatewaySNI            string            `json:"gateway_sni,omitempty"`
-	Profile               string            `json:"profile,omitempty"`
-	Channel               string            `json:"channel,omitempty"`
-	ArtifactID            string            `json:"artifact_id,omitempty"`
-	ArtifactSHA256        string            `json:"artifact_sha256,omitempty"`
-	ArtifactURL           string            `json:"artifact_url,omitempty"`
-	Labels                map[string]string `json:"labels,omitempty"`
-	Status                string            `json:"status"`
-	CreatedAt             time.Time         `json:"created_at"`
-	ExpiresAt             time.Time         `json:"expires_at"`
-	CreatedBy             string            `json:"created_by,omitempty"`
-	UsedAt                time.Time         `json:"used_at,omitempty"`
-	IssuedKeySHA256       string            `json:"issued_key_sha256,omitempty"`
-	IssuedCertificatePEM  string            `json:"issued_certificate_pem,omitempty"`
-	IssuedCAPEM           string            `json:"issued_ca_pem,omitempty"`
-	IssuedSerialNumber    string            `json:"issued_serial_number,omitempty"`
-	IssuedNotAfter        time.Time         `json:"issued_not_after,omitempty"`
-	IssuedAt              time.Time         `json:"issued_at,omitempty"`
-}
-
 type ArtifactChannel struct {
 	TenantID   string    `json:"tenant_id"`
 	Channel    string    `json:"channel"`
@@ -123,21 +92,6 @@ type Artifact struct {
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
-type AgentCertificate struct {
-	TenantID             string    `json:"tenant_id"`
-	AgentID              string    `json:"agent_id"`
-	EnrollmentID         string    `json:"enrollment_id,omitempty"`
-	SerialNumber         string    `json:"serial_number"`
-	UnenrollmentProtocol string    `json:"unenrollment_protocol,omitempty"`
-	Subject              string    `json:"subject,omitempty"`
-	NotBefore            time.Time `json:"not_before"`
-	NotAfter             time.Time `json:"not_after"`
-	CreatedAt            time.Time `json:"created_at"`
-	RevokedAt            time.Time `json:"revoked_at,omitempty"`
-	RevocationReceipt    string    `json:"revocation_receipt,omitempty"`
-	CertificatePEM       string    `json:"certificate_pem,omitempty"`
-}
-
 type State struct {
 	Agents           []json.RawMessage                      `json:"agents"`
 	Events           []json.RawMessage                      `json:"events"`
@@ -153,11 +107,8 @@ type State struct {
 	Pullbacks        []controlmodel.EvidencePullbackRequest `json:"evidence_pullbacks"`
 	ControlCommands  []controlmodel.ControlCommand          `json:"control_commands,omitempty"`
 	AgentSessions    []AgentSession                         `json:"agent_sessions"`
-	Enrollments      []Enrollment                           `json:"enrollments,omitempty"`
 	Artifacts        []Artifact                             `json:"artifacts,omitempty"`
 	Channels         []ArtifactChannel                      `json:"channels,omitempty"`
-	Certificates     []AgentCertificate                     `json:"certificates,omitempty"`
-	Unenrollments    []UnenrollmentRecord                   `json:"unenrollments,omitempty"`
 	TenantSignals    map[string][]json.RawMessage           `json:"tenant_signals,omitempty"`
 	MetricsByTenant  map[string]Metrics                     `json:"metrics_by_tenant,omitempty"`
 	RarityByTenant   map[string]rarity.Baseline             `json:"rarity_by_tenant,omitempty"`

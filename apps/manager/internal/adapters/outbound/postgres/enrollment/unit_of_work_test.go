@@ -66,7 +66,9 @@ func TestEnrollmentRepositoryReadsTokenIdentity(t *testing.T) {
 	}
 	if got.ID != want.ID || got.TenantID != want.TenantID || got.AgentID != want.AgentID ||
 		got.HostID != want.HostID || got.GatewayAddress != want.GatewayAddress || got.Profile != want.Profile ||
-		got.BootstrapTokenHash != want.BootstrapTokenHash || !got.BootstrapFetchedAt.Equal(want.BootstrapFetchedAt) || got.Labels["env"] != "prod" {
+		got.BootstrapTokenHash != want.BootstrapTokenHash || !got.BootstrapFetchedAt.Equal(want.BootstrapFetchedAt) ||
+		got.Channel != want.Channel || got.ArtifactID != want.ArtifactID || got.ArtifactSHA256 != want.ArtifactSHA256 ||
+		got.ArtifactURL != want.ArtifactURL || got.Labels["env"] != "prod" {
 		t.Fatalf("enrollment = %#v", got)
 	}
 }
@@ -209,6 +211,72 @@ func TestUnenrollmentRepositoryListsTenant(t *testing.T) {
 	}
 }
 
+func TestInstallMaterialRepositoryResolvesActiveChannel(t *testing.T) {
+	db := newEnrollmentTestDB(t)
+	if _, err := db.Exec(`INSERT INTO artifacts
+(tenant_id,artifact_id,sha256,status,storage_path,data) VALUES (?,?,?,?,?,?)`, "tenant-a", "artifact-a", "sha256-a", "active", "/artifacts/agent.tar.gz",
+		[]byte(`{"artifact_id":"artifact-a","sha256":"sha256-a","status":"active","metadata":{"download_url":"https://packages.example/agent.tar.gz"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO artifact_channels (tenant_id,channel_name,artifact_id,data) VALUES (?,?,?,?)`,
+		"tenant-a", "linux-systemd-stable", "artifact-a", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	var material domainenrollment.InstallMaterial
+	err := NewUnitOfWork(db).Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		var err error
+		material, err = tx.InstallMaterials().Resolve(ctx, mustAdapterTenant(t), "linux-systemd-stable", "ignored")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if material.Channel != "linux-systemd-stable" || material.ArtifactID != "artifact-a" ||
+		material.ArtifactSHA256 != "sha256-a" || material.ArtifactURL != "https://packages.example/agent.tar.gz" {
+		t.Fatalf("material = %#v", material)
+	}
+	var artifact domainenrollment.InstallArtifact
+	err = NewUnitOfWork(db).Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		var err error
+		artifact, err = tx.InstallMaterials().GetArtifact(ctx, mustAdapterTenant(t), "artifact-a")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.ID != "artifact-a" || artifact.SHA256 != "sha256-a" || artifact.Status != "active" ||
+		artifact.StoragePath != "/artifacts/agent.tar.gz" || artifact.DownloadURL != "https://packages.example/agent.tar.gz" {
+		t.Fatalf("artifact = %#v", artifact)
+	}
+}
+
+func TestInstallMaterialRepositoryListsTenantAgentArtifacts(t *testing.T) {
+	db := newEnrollmentTestDB(t)
+	for _, row := range []struct{ tenantID, artifactID, kind string }{
+		{"tenant-a", "artifact-a", "agent"}, {"tenant-a", "policy-a", "policy"}, {"tenant-b", "artifact-b", "agent"},
+	} {
+		raw := []byte(`{"artifact_id":"` + row.artifactID + `","version":"1.0.0","os":"linux","arch":"amd64","sha256":"sha256-a","status":"active","created_at":"1970-01-01T00:01:40Z","metadata":{"download_url":"https://packages.example/` + row.artifactID + `.tar.gz"}}`)
+		if _, err := db.Exec(`INSERT INTO artifacts
+(tenant_id,artifact_id,artifact_kind,sha256,status,storage_path,created_at,data) VALUES (?,?,?,?,?,?,?,?)`,
+			row.tenantID, row.artifactID, row.kind, "sha256-a", "active", "", time.Unix(100, 0).UTC(), raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var artifacts []domainenrollment.DeploymentArtifact
+	err := NewUnitOfWork(db).Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		var err error
+		artifacts, err = tx.InstallMaterials().ListArtifacts(ctx, mustAdapterTenant(t))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifacts) != 1 || artifacts[0].ID != "artifact-a" ||
+		artifacts[0].DownloadURL != "https://packages.example/artifact-a.tar.gz" {
+		t.Fatalf("artifacts = %#v", artifacts)
+	}
+}
+
 func newEnrollmentTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
@@ -221,6 +289,8 @@ func newEnrollmentTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE enrollments (tenant_id TEXT, enrollment_id TEXT, agent_id TEXT, host_id TEXT, token_hash TEXT, status TEXT, created_at TIMESTAMP, expires_at TIMESTAMP, used_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id,enrollment_id))`,
 		`CREATE TABLE agent_certificates (tenant_id TEXT, agent_id TEXT, serial_number TEXT, enrollment_id TEXT, not_before TIMESTAMP, not_after TIMESTAMP, created_at TIMESTAMP, revoked_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id,serial_number))`,
 		`CREATE TABLE agent_unenrollments (tenant_id TEXT, enrollment_id TEXT, agent_id TEXT, certificate_serial TEXT, status TEXT, revoked_at TIMESTAMP, endpoint_completed_at TIMESTAMP, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id,enrollment_id))`,
+		`CREATE TABLE artifacts (tenant_id TEXT, artifact_id TEXT, artifact_kind TEXT, sha256 TEXT, status TEXT, storage_path TEXT, created_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id,artifact_id))`,
+		`CREATE TABLE artifact_channels (tenant_id TEXT, channel_name TEXT, artifact_id TEXT, data BLOB, PRIMARY KEY (tenant_id,channel_name))`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -263,7 +333,9 @@ func adapterEnrollment(t *testing.T) domainenrollment.Enrollment {
 		ID: "enroll-a", TenantID: tenantID, AgentID: "agent-a", HostID: "host-a", TokenHash: "token-hash",
 		TokenPreview: "token...hash", BootstrapTokenHash: "bootstrap-hash", BootstrapTokenPreview: "boot...hash",
 		GatewayAddress: "gateway:9444", GatewayServerName: "gateway.internal", Profile: "linux-systemd",
-		Labels: map[string]string{"env": "prod"}, CreatedBy: "admin-a",
+		Channel: "linux-systemd-stable", ArtifactID: "artifact-a", ArtifactSHA256: "sha256-a",
+		ArtifactURL: "https://packages.example/agent.tar.gz",
+		Labels:      map[string]string{"env": "prod"}, CreatedBy: "admin-a",
 		Status: domainenrollment.StatusActive, CreatedAt: time.Unix(50, 0).UTC(), ExpiresAt: time.Unix(500, 0).UTC(),
 	})
 	if err != nil {

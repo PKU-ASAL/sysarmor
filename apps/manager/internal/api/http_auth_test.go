@@ -72,7 +72,9 @@ func TestProtectedHandlerRejectsUnauthenticatedRequest(t *testing.T) {
 }
 
 func TestEnrollmentTokenEndpointsDoNotRequirePrincipal(t *testing.T) {
-	handler := NewServer(&store.Store{}).Handler()
+	server := NewServer(&store.Store{})
+	server.SetEnrollmentRoutes(enrollmentRoutesStub{})
+	handler := server.Handler()
 	for _, request := range []*http.Request{
 		httptest.NewRequest(http.MethodPost, "/api/v1/enrollment-certificate", strings.NewReader(`{"token":"invalid","csr":"invalid"}`)),
 		httptest.NewRequest(http.MethodGet, "/api/v1/agent-install.sh?token=invalid", nil),

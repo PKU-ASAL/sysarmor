@@ -107,6 +107,39 @@ func TestValidateGatewayAcceptsHostAndBracketedIPv6(t *testing.T) {
 	}
 }
 
+func TestNewEnrollmentPreservesInstallMaterial(t *testing.T) {
+	value := newActiveEnrollment(t)
+	value.Channel = "linux-systemd-stable"
+	value.ArtifactID = "artifact-a"
+	value.ArtifactSHA256 = "sha256-a"
+	value.ArtifactURL = "https://packages.example/agent.tar.gz"
+
+	created, err := NewEnrollment(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Channel != value.Channel || created.ArtifactID != value.ArtifactID ||
+		created.ArtifactSHA256 != value.ArtifactSHA256 || created.ArtifactURL != value.ArtifactURL {
+		t.Fatalf("install material = %#v", created)
+	}
+}
+
+func TestEnrollmentAuthorizesBoundArtifactBeforeExpiry(t *testing.T) {
+	value := newActiveEnrollment(t)
+	value.ArtifactID = "artifact-a"
+
+	artifactID, err := value.AuthorizeArtifact(time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifactID != "artifact-a" {
+		t.Fatalf("artifact ID = %q", artifactID)
+	}
+	if _, err := value.AuthorizeArtifact(time.Unix(600, 0).UTC()); failure.KindOf(err) != failure.FailedPrecondition {
+		t.Fatalf("expired artifact kind = %v", failure.KindOf(err))
+	}
+}
+
 func newActiveEnrollment(t *testing.T) Enrollment {
 	t.Helper()
 	value, err := NewEnrollment(Enrollment{

@@ -99,11 +99,10 @@ func TestPolicyAssignmentConflictReturnsConflict(t *testing.T) {
 	}
 }
 
-func TestEnrollmentArtifactAndChannelReadsFailClosed(t *testing.T) {
+func TestArtifactAndChannelReadsFailClosed(t *testing.T) {
 	for name, path := range map[string]string{
-		"enrollments": "/api/v1/enrollments?tenant_id=default",
-		"artifacts":   "/api/v1/artifacts?tenant_id=default",
-		"channels":    "/api/v1/channels?tenant_id=default",
+		"artifacts": "/api/v1/artifacts?tenant_id=default",
+		"channels":  "/api/v1/channels?tenant_id=default",
 	} {
 		t.Run(name, func(t *testing.T) {
 			st := &store.Store{}
@@ -120,10 +119,6 @@ func TestEnrollmentArtifactAndChannelReadsFailClosed(t *testing.T) {
 type httpFailingBackend struct {
 	store.Backend
 	operation string
-}
-
-func (b httpFailingBackend) ListEnrollments(context.Context, string, string) ([]store.Enrollment, error) {
-	return nil, b.failure("security_read")
 }
 
 func (b httpFailingBackend) ListArtifacts(context.Context, string, string, string) ([]store.Artifact, error) {

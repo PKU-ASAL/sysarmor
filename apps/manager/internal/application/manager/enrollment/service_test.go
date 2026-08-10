@@ -204,6 +204,57 @@ func TestRedeemBootstrapReturnsNoTokenWhenCommitFails(t *testing.T) {
 	}
 }
 
+func TestCreateEnrollmentResolvesChannelInsideTransaction(t *testing.T) {
+	repository := &enrollmentRepositoryStub{}
+	materials := &installMaterialRepositoryStub{value: domainenrollment.InstallMaterial{
+		Channel: "linux-systemd-stable", ArtifactID: "artifact-a", ArtifactSHA256: "sha256-a",
+		ArtifactURL: "https://packages.example/agent.tar.gz",
+	}}
+	service := NewCreateService(
+		&enrollmentUnitOfWorkStub{tx: enrollmentTransactionStub{enrollments: repository, materials: materials}},
+		&tokenGeneratorStub{values: []ports.EnrollmentToken{
+			{Plaintext: "enrollment-token", Hash: "enrollment-hash", Preview: "enr_...oken"},
+			{Plaintext: "bootstrap-token", Hash: "bootstrap-hash", Preview: "enr_...boot"},
+		}},
+		clockStub{now: time.Unix(100, 0).UTC()}, idGeneratorStub{value: "enroll-a"},
+	)
+
+	_, err := service.Execute(context.Background(), operatorRequest(t, "tenant-a"), CreateEnrollmentCommand{
+		TenantID: "tenant-a", AgentID: "agent-a", GatewayAddress: "gateway:9444", TTL: time.Hour,
+		Channel: "linux-systemd-stable", ArtifactID: "ignored-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if materials.channel != "linux-systemd-stable" || materials.artifactID != "ignored-artifact" {
+		t.Fatalf("material query channel=%q artifact=%q", materials.channel, materials.artifactID)
+	}
+	if repository.putValue.ArtifactID != "artifact-a" || repository.putValue.ArtifactSHA256 != "sha256-a" ||
+		repository.putValue.Channel != "linux-systemd-stable" {
+		t.Fatalf("enrollment = %#v", repository.putValue)
+	}
+}
+
+func TestAuthorizeArtifactUsesEnrollmentTenantAndBinding(t *testing.T) {
+	current := activeEnrollment(t)
+	current.ArtifactID = "artifact-a"
+	materials := &installMaterialRepositoryStub{artifact: domainenrollment.InstallArtifact{
+		ID: "artifact-a", SHA256: "sha256-a", Status: "active", StoragePath: "/artifacts/agent.tar.gz",
+	}}
+	service := NewArtifactService(&enrollmentUnitOfWorkStub{tx: enrollmentTransactionStub{
+		enrollments: &enrollmentRepositoryStub{current: current}, materials: materials,
+	}}, clockStub{now: time.Unix(100, 0).UTC()})
+
+	result, err := service.Authorize(context.Background(), AuthorizeArtifactCommand{TokenHash: "token-hash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if materials.artifactTenant != current.TenantID || materials.requestedArtifactID != "artifact-a" ||
+		result.Artifact.ID != "artifact-a" {
+		t.Fatalf("result=%#v tenant=%q artifact=%q", result, materials.artifactTenant, materials.requestedArtifactID)
+	}
+}
+
 type enrollmentUnitOfWorkStub struct {
 	tx        ports.EnrollmentTransaction
 	commitErr error
@@ -218,12 +269,16 @@ func (stub *enrollmentUnitOfWorkStub) Execute(ctx context.Context, fn func(conte
 
 type enrollmentTransactionStub struct {
 	enrollments   ports.EnrollmentRepository
+	materials     ports.InstallMaterialRepository
 	certificates  ports.CertificateRepository
 	unenrollments ports.UnenrollmentRepository
 }
 
 func (stub enrollmentTransactionStub) Enrollments() ports.EnrollmentRepository {
 	return stub.enrollments
+}
+func (stub enrollmentTransactionStub) InstallMaterials() ports.InstallMaterialRepository {
+	return stub.materials
 }
 func (stub enrollmentTransactionStub) Certificates() ports.CertificateRepository {
 	return stub.certificates
@@ -238,6 +293,7 @@ type enrollmentRepositoryStub struct {
 	listed           []domainenrollment.Enrollment
 	listTenant       tenant.ID
 	listStatus       domainenrollment.Status
+	putValue         domainenrollment.Enrollment
 	puts             int
 }
 
@@ -249,8 +305,9 @@ func (stub *enrollmentRepositoryStub) ByBootstrapTokenHash(context.Context, stri
 	return stub.bootstrapCurrent, nil
 }
 
-func (stub *enrollmentRepositoryStub) Put(context.Context, domainenrollment.Enrollment) error {
+func (stub *enrollmentRepositoryStub) Put(_ context.Context, value domainenrollment.Enrollment) error {
 	stub.puts++
+	stub.putValue = value
 	return nil
 }
 
@@ -290,6 +347,39 @@ func (stub *unenrollmentRepositoryStub) Put(context.Context, domainenrollment.Un
 func (stub *unenrollmentRepositoryStub) List(_ context.Context, tenantID tenant.ID) ([]domainenrollment.Unenrollment, error) {
 	stub.listTenant = tenantID
 	return stub.listed, nil
+}
+
+type installMaterialRepositoryStub struct {
+	value               domainenrollment.InstallMaterial
+	channel, artifactID string
+	resolveCalls        [][2]string
+	resolveErrors       []error
+	artifact            domainenrollment.InstallArtifact
+	artifactTenant      tenant.ID
+	requestedArtifactID string
+	artifacts           []domainenrollment.DeploymentArtifact
+	listTenant          tenant.ID
+}
+
+func (stub *installMaterialRepositoryStub) ListArtifacts(_ context.Context, tenantID tenant.ID) ([]domainenrollment.DeploymentArtifact, error) {
+	stub.listTenant = tenantID
+	return stub.artifacts, nil
+}
+
+func (stub *installMaterialRepositoryStub) GetArtifact(_ context.Context, tenantID tenant.ID, artifactID string) (domainenrollment.InstallArtifact, error) {
+	stub.artifactTenant, stub.requestedArtifactID = tenantID, artifactID
+	return stub.artifact, nil
+}
+
+func (stub *installMaterialRepositoryStub) Resolve(_ context.Context, _ tenant.ID, channel, artifactID string) (domainenrollment.InstallMaterial, error) {
+	stub.channel, stub.artifactID = channel, artifactID
+	stub.resolveCalls = append(stub.resolveCalls, [2]string{channel, artifactID})
+	if len(stub.resolveErrors) == 0 {
+		return stub.value, nil
+	}
+	err := stub.resolveErrors[0]
+	stub.resolveErrors = stub.resolveErrors[1:]
+	return stub.value, err
 }
 
 type certificateIssuerStub struct{ issuance domainenrollment.Issuance }
@@ -372,5 +462,16 @@ func operatorRequest(t *testing.T, tenantID string) managerapp.RequestContext {
 	}
 	return managerapp.RequestContext{Actor: tenant.Actor{
 		Subject: "operator-a", TenantID: value, Roles: tenant.NewRoleSet(tenant.RoleOperator),
+	}}
+}
+
+func viewerRequest(t *testing.T, tenantID string) managerapp.RequestContext {
+	t.Helper()
+	value, err := tenant.NewID(tenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return managerapp.RequestContext{Actor: tenant.Actor{
+		Subject: "viewer-a", TenantID: value, Roles: tenant.NewRoleSet(tenant.RoleViewer),
 	}}
 }

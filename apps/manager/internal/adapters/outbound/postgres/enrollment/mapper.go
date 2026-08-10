@@ -22,6 +22,10 @@ type enrollmentRecord struct {
 	GatewayAddress    string                    `json:"gateway_addr,omitempty"`
 	GatewayServerName string                    `json:"gateway_sni,omitempty"`
 	Profile           string                    `json:"profile,omitempty"`
+	Channel           string                    `json:"channel,omitempty"`
+	ArtifactID        string                    `json:"artifact_id,omitempty"`
+	ArtifactSHA256    string                    `json:"artifact_sha256,omitempty"`
+	ArtifactURL       string                    `json:"artifact_url,omitempty"`
 	Labels            map[string]string         `json:"labels,omitempty"`
 	CreatedBy         string                    `json:"created_by,omitempty"`
 	Status            domainenrollment.Status   `json:"status"`
@@ -62,7 +66,9 @@ func encodeEnrollment(value domainenrollment.Enrollment) ([]byte, error) {
 		TokenHash: value.TokenHash, TokenPreview: value.TokenPreview, BootstrapHash: value.BootstrapTokenHash,
 		BootstrapPreview: value.BootstrapTokenPreview, BootstrapFetched: value.BootstrapFetchedAt,
 		GatewayAddress: value.GatewayAddress, GatewayServerName: value.GatewayServerName,
-		Profile: value.Profile, Labels: value.Labels, CreatedBy: value.CreatedBy,
+		Profile: value.Profile, Channel: value.Channel, ArtifactID: value.ArtifactID,
+		ArtifactSHA256: value.ArtifactSHA256, ArtifactURL: value.ArtifactURL,
+		Labels: value.Labels, CreatedBy: value.CreatedBy,
 		Status: value.Status, CreatedAt: value.CreatedAt, ExpiresAt: value.ExpiresAt,
 		UsedAt: value.UsedAt, IssuedAt: value.IssuedAt, Issuance: value.Issuance}
 	return json.Marshal(record)
@@ -82,7 +88,9 @@ func decodeEnrollment(raw []byte) (domainenrollment.Enrollment, error) {
 		BootstrapTokenHash: record.BootstrapHash, BootstrapTokenPreview: record.BootstrapPreview,
 		BootstrapFetchedAt: record.BootstrapFetched, GatewayAddress: record.GatewayAddress,
 		GatewayServerName: record.GatewayServerName, Status: record.Status, CreatedAt: record.CreatedAt,
-		Profile: record.Profile, Labels: record.Labels, CreatedBy: record.CreatedBy, ExpiresAt: record.ExpiresAt,
+		Profile: record.Profile, Channel: record.Channel, ArtifactID: record.ArtifactID,
+		ArtifactSHA256: record.ArtifactSHA256, ArtifactURL: record.ArtifactURL,
+		Labels: record.Labels, CreatedBy: record.CreatedBy, ExpiresAt: record.ExpiresAt,
 		UsedAt: record.UsedAt, IssuedAt: record.IssuedAt, Issuance: record.Issuance})
 }
 

@@ -72,11 +72,8 @@ func (s *Store) ImportState(state State) error {
 	s.Pullbacks = state.Pullbacks
 	s.ControlCommands = state.ControlCommands
 	s.AgentSessions = state.AgentSessions
-	s.Enrollments = state.Enrollments
 	s.Artifacts = state.Artifacts
 	s.Channels = state.Channels
-	s.Certificates = state.Certificates
-	s.Unenrollments = state.Unenrollments
 	s.MetricsByTenant = state.MetricsByTenant
 	s.RarityByTenant = make(map[string]rarity.Baseline, len(state.RarityByTenant))
 	for tenantID, baseline := range state.RarityByTenant {
@@ -204,15 +201,10 @@ func (s *Store) exportStateLocked() (State, error) {
 	for key, batch := range s.TelemetryBatches {
 		state.TelemetryBatches[key] = batch
 	}
-	for _, enrollment := range s.Enrollments {
-		state.Enrollments = append(state.Enrollments, cloneEnrollment(enrollment))
-	}
 	for _, artifact := range s.Artifacts {
 		state.Artifacts = append(state.Artifacts, cloneArtifact(artifact))
 	}
 	state.Channels = append([]ArtifactChannel(nil), s.Channels...)
-	state.Certificates = append([]AgentCertificate(nil), s.Certificates...)
-	state.Unenrollments = append([]UnenrollmentRecord(nil), s.Unenrollments...)
 	for _, agent := range s.Agents {
 		raw, err := json.Marshal(agent)
 		if err != nil {

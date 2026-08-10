@@ -19,59 +19,6 @@ import (
 	"time"
 )
 
-func TestCommitEnrollmentIssueIsBoundToOneKey(t *testing.T) {
-	st := &Store{}
-	created := st.CreateEnrollment(Enrollment{
-		EnrollmentID: "enr-a", TenantID: "default", AgentID: "agent-a",
-		TokenHash: "token-hash", GatewayAddr: "gateway:9444", Status: "active",
-	})
-	proposed := created
-	proposed.IssuedCertificatePEM = "certificate-a"
-	proposed.IssuedSerialNumber = "1"
-	proposed.IssuedAt = time.Now().UTC()
-
-	issued, result, err := st.CommitEnrollmentIssue("token-hash", "key-a", proposed, AgentCertificate{
-		TenantID: "default", AgentID: "agent-a", SerialNumber: "1",
-	})
-	if err != nil || result != EnrollmentIssued || issued.IssuedKeySHA256 != "key-a" {
-		t.Fatalf("first issue result=%q enrollment=%+v err=%v", result, issued, err)
-	}
-	replayed, result, err := st.CommitEnrollmentIssue("token-hash", "key-a", Enrollment{}, AgentCertificate{})
-	if err != nil || result != EnrollmentIssueReplay || replayed.IssuedSerialNumber != "1" {
-		t.Fatalf("replay result=%q enrollment=%+v err=%v", result, replayed, err)
-	}
-	if _, result, err = st.CommitEnrollmentIssue("token-hash", "key-b", Enrollment{}, AgentCertificate{}); err != nil || result != EnrollmentIssueConflict {
-		t.Fatalf("different key result=%q err=%v", result, err)
-	}
-}
-
-func TestConsumeEnrollmentBootstrapRotatesTokenOnce(t *testing.T) {
-	st := &Store{}
-	st.CreateEnrollment(Enrollment{
-		EnrollmentID:       "enr-bootstrap",
-		TenantID:           "default",
-		AgentID:            "agent-a",
-		TokenHash:          "old-enrollment-hash",
-		BootstrapTokenHash: "bootstrap-hash",
-		Status:             "active",
-		ExpiresAt:          time.Now().UTC().Add(time.Hour),
-	})
-	fetchedAt := time.Now().UTC()
-	consumed, ok, err := st.ConsumeEnrollmentBootstrap("bootstrap-hash", "new-enrollment-hash", "enr_...new", fetchedAt)
-	if err != nil || !ok {
-		t.Fatalf("first consume enrollment=%+v ok=%t err=%v", consumed, ok, err)
-	}
-	if consumed.TokenHash != "new-enrollment-hash" || !consumed.BootstrapFetchedAt.Equal(fetchedAt) {
-		t.Fatalf("consumed enrollment=%+v", consumed)
-	}
-	if _, ok := st.GetEnrollmentByTokenHash("old-enrollment-hash"); ok {
-		t.Fatal("old enrollment token remained valid")
-	}
-	if _, ok, err := st.ConsumeEnrollmentBootstrap("bootstrap-hash", "another-hash", "enr_...other", fetchedAt.Add(time.Second)); err != nil || ok {
-		t.Fatalf("second consume ok=%t err=%v", ok, err)
-	}
-}
-
 func TestListSignalsFiltersLabelsLayerAndTerminal(t *testing.T) {
 	st := &Store{}
 	st.AddSignal(&signalv1.Signal{
@@ -1447,90 +1394,6 @@ func TestPendingResponsesLoadsFromBackend(t *testing.T) {
 	}
 }
 
-func TestRevokeAgentCertificateIsIdempotentAndRejectsIdentityConflict(t *testing.T) {
-	st := &Store{}
-	st.RecordAgentCertificate(AgentCertificate{
-		TenantID: "tenant-a", AgentID: "agent-a", EnrollmentID: "enroll-a", SerialNumber: "42",
-	})
-	revokedAt := time.Unix(100, 0).UTC()
-	first, ok, err := st.RevokeAgentCertificate("tenant-a", "agent-a", "enroll-a", "42", revokedAt)
-	if err != nil || !ok || first.RevocationReceipt == "" || !first.RevokedAt.Equal(revokedAt) {
-		t.Fatalf("first revoke=%+v ok=%t err=%v", first, ok, err)
-	}
-	legacyRecord, ok, err := st.GetUnenrollmentWithError("tenant-a", "enroll-a")
-	if err != nil || !ok || legacyRecord.Status != UnenrollmentUnknownLegacy || legacyRecord.RevocationReceipt != first.RevocationReceipt {
-		t.Fatalf("legacy record=%+v ok=%t err=%v", legacyRecord, ok, err)
-	}
-	second, ok, err := st.RevokeAgentCertificate("tenant-a", "agent-a", "enroll-a", "42", revokedAt.Add(time.Hour))
-	if err != nil || !ok || second.RevocationReceipt != first.RevocationReceipt || !second.RevokedAt.Equal(first.RevokedAt) {
-		t.Fatalf("replayed revoke=%+v ok=%t err=%v", second, ok, err)
-	}
-	if _, _, err := st.RevokeAgentCertificate("tenant-a", "agent-other", "enroll-a", "42", revokedAt); !errors.Is(err, ErrConflict) {
-		t.Fatalf("identity conflict error=%v, want ErrConflict", err)
-	}
-	st.RecordAgentCertificate(AgentCertificate{
-		TenantID: "tenant-a", AgentID: "agent-a", EnrollmentID: "enroll-legacy", SerialNumber: "43", RevokedAt: revokedAt,
-	})
-	legacy, ok, err := st.RevokeAgentCertificate("tenant-a", "agent-a", "enroll-legacy", "43", revokedAt.Add(time.Hour))
-	if err != nil || !ok || legacy.RevocationReceipt == "" || !legacy.RevokedAt.Equal(revokedAt) {
-		t.Fatalf("legacy revoked certificate=%+v ok=%t err=%v", legacy, ok, err)
-	}
-}
-
-func TestAuthorizeAgentUnenrollmentIsIdempotent(t *testing.T) {
-	st := &Store{}
-	st.RecordAgentCertificate(AgentCertificate{
-		TenantID: "tenant-a", AgentID: "agent-a", EnrollmentID: "enroll-a", SerialNumber: "42",
-	})
-	tokenHash := strings.Repeat("a", 64)
-	revokedAt := time.Unix(100, 0).UTC()
-
-	first, ok, err := st.AuthorizeAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", tokenHash, revokedAt)
-	if err != nil || !ok || first.Status != UnenrollmentRevokedEndpointPending || first.RevocationReceipt == "" || !first.RevokedAt.Equal(revokedAt) {
-		t.Fatalf("first=%+v ok=%t err=%v", first, ok, err)
-	}
-	replayed, ok, err := st.AuthorizeAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", tokenHash, revokedAt.Add(time.Hour))
-	if err != nil || !ok || replayed.RevocationReceipt != first.RevocationReceipt || !replayed.RevokedAt.Equal(first.RevokedAt) {
-		t.Fatalf("replayed=%+v ok=%t err=%v", replayed, ok, err)
-	}
-	if _, _, err := st.AuthorizeAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", strings.Repeat("b", 64), revokedAt); !errors.Is(err, ErrConflict) {
-		t.Fatalf("token hash conflict error=%v, want ErrConflict", err)
-	}
-	certificate, ok, err := st.GetAgentCertificateWithError("tenant-a", "42")
-	if err != nil || !ok || certificate.RevocationReceipt != first.RevocationReceipt || !certificate.RevokedAt.Equal(revokedAt) {
-		t.Fatalf("certificate=%+v ok=%t err=%v", certificate, ok, err)
-	}
-}
-
-func TestCompleteAgentUnenrollmentValidatesBindingsAndIsIdempotent(t *testing.T) {
-	st := &Store{}
-	st.RecordAgentCertificate(AgentCertificate{
-		TenantID: "tenant-a", AgentID: "agent-a", EnrollmentID: "enroll-a", SerialNumber: "42",
-	})
-	tokenHash := strings.Repeat("a", 64)
-	record, ok, err := st.AuthorizeAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", tokenHash, time.Unix(100, 0).UTC())
-	if err != nil || !ok {
-		t.Fatalf("authorize=%+v ok=%t err=%v", record, ok, err)
-	}
-	if _, _, err := st.CompleteAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", record.RevocationReceipt, strings.Repeat("b", 64), time.Unix(200, 0).UTC()); !errors.Is(err, ErrConflict) {
-		t.Fatalf("completion conflict error=%v, want ErrConflict", err)
-	}
-	pending, ok, err := st.GetUnenrollmentWithError("tenant-a", "enroll-a")
-	if err != nil || !ok || pending.Status != UnenrollmentRevokedEndpointPending {
-		t.Fatalf("pending=%+v ok=%t err=%v", pending, ok, err)
-	}
-
-	completedAt := time.Unix(200, 0).UTC()
-	completed, ok, err := st.CompleteAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", record.RevocationReceipt, tokenHash, completedAt)
-	if err != nil || !ok || completed.Status != UnenrollmentEndpointCompleted || !completed.EndpointCompletedAt.Equal(completedAt) {
-		t.Fatalf("completed=%+v ok=%t err=%v", completed, ok, err)
-	}
-	replayed, ok, err := st.CompleteAgentUnenrollment("tenant-a", "agent-a", "enroll-a", "42", record.RevocationReceipt, tokenHash, completedAt.Add(time.Hour))
-	if err != nil || !ok || !replayed.EndpointCompletedAt.Equal(completedAt) {
-		t.Fatalf("replayed=%+v ok=%t err=%v", replayed, ok, err)
-	}
-}
-
 func TestPendingResponsesWithErrorReturnsBackendFailure(t *testing.T) {
 	st := &Store{}
 	st.AttachBackend(context.Background(), failingControlPlaneBackend{operation: "response_read"}, Info{Backend: "test"})
@@ -1548,9 +1411,6 @@ func TestSecurityControlReadsWithErrorReturnBackendFailure(t *testing.T) {
 		name string
 		read func() error
 	}{
-		{"enrollments", func() error { _, err := st.ListEnrollmentsWithError("default", ""); return err }},
-		{"enrollment token", func() error { _, _, err := st.GetEnrollmentByTokenHashWithError("hash"); return err }},
-		{"bootstrap token", func() error { _, _, err := st.GetEnrollmentByBootstrapTokenHashWithError("hash"); return err }},
 		{"artifacts", func() error { _, err := st.ListArtifactsWithError("default", "", ""); return err }},
 		{"artifact", func() error { _, _, err := st.GetArtifactWithError("default", "artifact-a"); return err }},
 		{"channels", func() error { _, err := st.ListChannelsWithError("default"); return err }},
@@ -1603,18 +1463,6 @@ func (b *restartingControlPlaneBackend) CommitPolicyAssignment(_ context.Context
 type failingControlPlaneBackend struct {
 	Backend
 	operation string
-}
-
-func (b failingControlPlaneBackend) ListEnrollments(context.Context, string, string) ([]Enrollment, error) {
-	return nil, b.readFailure()
-}
-
-func (b failingControlPlaneBackend) GetEnrollmentByTokenHash(context.Context, string) (Enrollment, bool, error) {
-	return Enrollment{}, false, b.readFailure()
-}
-
-func (b failingControlPlaneBackend) GetEnrollmentByBootstrapTokenHash(context.Context, string) (Enrollment, bool, error) {
-	return Enrollment{}, false, b.readFailure()
 }
 
 func (b failingControlPlaneBackend) ListArtifacts(context.Context, string, string, string) ([]Artifact, error) {

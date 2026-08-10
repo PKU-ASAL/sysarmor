@@ -39,6 +39,10 @@ func (tx transaction) Enrollments() ports.EnrollmentRepository {
 	return enrollmentRepository{executor: tx.executor}
 }
 
+func (tx transaction) InstallMaterials() ports.InstallMaterialRepository {
+	return installMaterialRepository{executor: tx.executor}
+}
+
 func (tx transaction) Certificates() ports.CertificateRepository {
 	return certificateRepository{executor: tx.executor}
 }
