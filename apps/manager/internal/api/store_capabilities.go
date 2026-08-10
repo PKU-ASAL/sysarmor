@@ -37,7 +37,6 @@ type policyControlStore interface {
 	ListAssignmentsWithError(string, string) ([]policymodel.Assignment, error)
 	ListPoliciesWithError(string) ([]policymodel.Policy, error)
 	ListPolicyAuditsWithError(string, string) ([]policymodel.AuditRecord, error)
-	ListRules(string) []policymodel.RuleContent
 	PublishPolicyWithAudit(string, string, uint64, bool, policymodel.AuditRecord) (policymodel.Policy, bool, error)
 	RecordPolicyAudit(policymodel.AuditRecord) policymodel.AuditRecord
 	UpsertPolicyWithError(policymodel.Policy) (policymodel.Policy, error)

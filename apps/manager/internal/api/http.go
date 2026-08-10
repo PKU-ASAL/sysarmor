@@ -159,7 +159,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.statusRoutes.Health)
 	mux.HandleFunc("/api/v1/recompute", s.recompute)
-	mux.HandleFunc("/api/v1/rules", s.rules)
+	mux.HandleFunc("/api/v1/rules", s.handleRules)
 	if s.policyRoutes == nil {
 		mux.HandleFunc("/api/v1/policies", s.policies)
 		mux.HandleFunc("/api/v1/policy-publish", s.policyPublish)
@@ -231,6 +231,14 @@ func (s *Server) handleEvidencePullbacks(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.controlRoutes.Evidence(w, r)
+}
+
+func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
+	if s.policyRoutes == nil {
+		http.Error(w, "policy application is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	s.policyRoutes.Rules(w, r)
 }
 
 func (s *Server) handleControlCommands(w http.ResponseWriter, r *http.Request) {

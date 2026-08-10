@@ -15,20 +15,22 @@ func TestPolicyEndpointsDelegateToInjectedRoutes(t *testing.T) {
 	handler := adminTestHandler(server)
 
 	for _, path := range []string{
+		"/api/v1/rules",
 		"/api/v1/policies", "/api/v1/policy-publish", "/api/v1/policy-audit",
 		"/api/v1/policy-assignments", "/api/v1/effective-policy",
 	} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
 	}
-	if routes.calls != 5 {
-		t.Fatalf("delegated calls = %d, want 5", routes.calls)
+	if routes.calls != 6 {
+		t.Fatalf("delegated calls = %d, want 6", routes.calls)
 	}
 }
 
 type recordingPolicyRoutes struct{ calls int }
 
 func (routes *recordingPolicyRoutes) Policies(http.ResponseWriter, *http.Request)    { routes.calls++ }
+func (routes *recordingPolicyRoutes) Rules(http.ResponseWriter, *http.Request)       { routes.calls++ }
 func (routes *recordingPolicyRoutes) Publish(http.ResponseWriter, *http.Request)     { routes.calls++ }
 func (routes *recordingPolicyRoutes) Audits(http.ResponseWriter, *http.Request)      { routes.calls++ }
 func (routes *recordingPolicyRoutes) Assignments(http.ResponseWriter, *http.Request) { routes.calls++ }

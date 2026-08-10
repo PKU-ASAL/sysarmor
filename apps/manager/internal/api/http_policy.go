@@ -12,14 +12,6 @@ import (
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 
-func (s *Server) rules(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	writeJSON(w, s.store.ListRules(r.URL.Query().Get("where")))
-}
-
 func (s *Server) policies(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

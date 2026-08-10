@@ -3,6 +3,7 @@ package managerapi
 import "net/http"
 
 type policyRoutes interface {
+	Rules(http.ResponseWriter, *http.Request)
 	Policies(http.ResponseWriter, *http.Request)
 	Publish(http.ResponseWriter, *http.Request)
 	Audits(http.ResponseWriter, *http.Request)

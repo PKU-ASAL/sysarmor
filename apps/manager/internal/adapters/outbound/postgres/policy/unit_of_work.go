@@ -39,6 +39,7 @@ type transaction struct {
 }
 
 func (tx *transaction) Policies() ports.PolicyRepository { return repository{tx.executor} }
+func (tx *transaction) Rules() ports.RuleRepository      { return ruleRepository{tx.executor} }
 func (tx *transaction) Assignments() ports.AssignmentRepository {
 	return assignmentRepository{tx.executor}
 }

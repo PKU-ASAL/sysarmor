@@ -113,6 +113,7 @@ func policyRequestContext(t *testing.T) (tenant.ID, managerapp.RequestContext) {
 type fakePolicyState struct {
 	seed        domainpolicy.Policy
 	policies    []domainpolicy.Policy
+	rules       []domainpolicy.Rule
 	assignments []domainpolicy.Assignment
 	controls    []policyports.PolicyControlCommand
 	audits      []audit.Record
@@ -123,6 +124,7 @@ type fakePolicyUnitOfWork struct {
 	failAudit      error
 	failControl    error
 	lastTenant     tenant.ID
+	lastRuleWhere  string
 	effectiveError error
 	defaultPolicy  domainpolicy.Policy
 	policyByID     map[domainpolicy.ID]domainpolicy.Policy
@@ -137,7 +139,8 @@ func (uow *fakePolicyUnitOfWork) Execute(ctx context.Context, fn func(context.Co
 	tx := &fakePolicyTransaction{
 		state: &staged, failAudit: uow.failAudit, failControl: uow.failControl,
 		observedTenant: &uow.lastTenant, effectiveError: uow.effectiveError,
-		defaultPolicy: uow.defaultPolicy, policyByID: uow.policyByID,
+		observedRuleWhere: &uow.lastRuleWhere,
+		defaultPolicy:     uow.defaultPolicy, policyByID: uow.policyByID,
 	}
 	if err := fn(ctx, tx); err != nil {
 		return err
@@ -147,13 +150,14 @@ func (uow *fakePolicyUnitOfWork) Execute(ctx context.Context, fn func(context.Co
 }
 
 type fakePolicyTransaction struct {
-	state          *fakePolicyState
-	failAudit      error
-	failControl    error
-	observedTenant *tenant.ID
-	effectiveError error
-	defaultPolicy  domainpolicy.Policy
-	policyByID     map[domainpolicy.ID]domainpolicy.Policy
+	state             *fakePolicyState
+	failAudit         error
+	failControl       error
+	observedTenant    *tenant.ID
+	observedRuleWhere *string
+	effectiveError    error
+	defaultPolicy     domainpolicy.Policy
+	policyByID        map[domainpolicy.ID]domainpolicy.Policy
 }
 
 func (tx *fakePolicyTransaction) Policies() policyports.PolicyRepository {
@@ -170,6 +174,20 @@ func (tx *fakePolicyTransaction) Controls() policyports.PolicyControlRepository 
 }
 func (tx *fakePolicyTransaction) Audits() policyports.AuditRepository {
 	return fakeAudits{state: tx.state, err: tx.failAudit, observedTenant: tx.observedTenant}
+}
+func (tx *fakePolicyTransaction) Rules() policyports.RuleRepository {
+	return fakeRules{state: tx.state, observedTenant: tx.observedTenant, observedWhere: tx.observedRuleWhere}
+}
+
+type fakeRules struct {
+	state          *fakePolicyState
+	observedTenant *tenant.ID
+	observedWhere  *string
+}
+
+func (repo fakeRules) List(_ context.Context, tenantID tenant.ID, filter domainpolicy.RuleFilter) ([]domainpolicy.Rule, error) {
+	*repo.observedTenant, *repo.observedWhere = tenantID, filter.Where
+	return append([]domainpolicy.Rule(nil), repo.state.rules...), nil
 }
 
 type fakePolicies struct {

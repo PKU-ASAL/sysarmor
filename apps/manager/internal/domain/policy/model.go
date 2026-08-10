@@ -53,6 +53,14 @@ type AssignmentFilter struct {
 	AgentID string
 }
 
+type Rule struct {
+	TenantID tenant.ID
+	Where    string
+	Document []byte
+}
+
+type RuleFilter struct{ Where string }
+
 func ManagerDefault(tenantID tenant.ID) Policy {
 	identity := `"policy_id":"default-edr-policy","version":1`
 	document := `{"tenant_id":` + strconv.Quote(tenantID.String()) + `,` + identity + `,` +

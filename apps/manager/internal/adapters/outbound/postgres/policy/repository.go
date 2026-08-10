@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
@@ -14,6 +15,39 @@ import (
 )
 
 type repository struct{ db sqlExecutor }
+
+type ruleRepository struct{ db sqlExecutor }
+
+func (repo ruleRepository) List(ctx context.Context, tenantID tenant.ID, filter domainpolicy.RuleFilter) ([]domainpolicy.Rule, error) {
+	if tenantID.IsZero() {
+		return nil, failure.New(failure.InvalidArgument, "tenant is required")
+	}
+	rows, err := repo.db.QueryContext(ctx, `
+SELECT rule_where, data FROM rules
+WHERE tenant_id = $1 AND ($2 = '' OR rule_where = $2)
+ORDER BY rule_id ASC, version ASC
+`, tenantID.String(), filter.Where)
+	if err != nil {
+		return nil, fmt.Errorf("list rules: %w", err)
+	}
+	defer rows.Close()
+	result := []domainpolicy.Rule{}
+	for rows.Next() {
+		var where string
+		var document []byte
+		if err := rows.Scan(&where, &document); err != nil {
+			return nil, fmt.Errorf("scan rule: %w", err)
+		}
+		if !json.Valid(document) {
+			return nil, fmt.Errorf("decode rule: invalid JSON document")
+		}
+		result = append(result, domainpolicy.Rule{TenantID: tenantID, Where: where, Document: append([]byte(nil), document...)})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rules: %w", err)
+	}
+	return result, nil
+}
 
 func (repo repository) Get(ctx context.Context, tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.Version) (domainpolicy.Policy, error) {
 	if err := validatePolicyIdentity(tenantID, id); err != nil {

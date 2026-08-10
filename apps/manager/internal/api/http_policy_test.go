@@ -17,11 +17,7 @@ func TestPolicyAPIAssignmentAndCloudRuleDisable(t *testing.T) {
 	srv := NewServer(st)
 	handler := adminTestHandler(srv)
 
-	rec := get(t, handler, "/api/v1/rules?where=cloud")
-	if !strings.Contains(rec.Body.String(), "dropped_payload_executed_and_connects") {
-		t.Fatalf("rules response missing cloud rule: %s", rec.Body.String())
-	}
-	rec = get(t, handler, "/api/v1/policies?tenant_id=default")
+	rec := get(t, handler, "/api/v1/policies?tenant_id=default")
 	if !strings.Contains(rec.Body.String(), policymodel.DefaultPolicyID) {
 		t.Fatalf("policies response missing default policy: %s", rec.Body.String())
 	}

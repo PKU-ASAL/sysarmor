@@ -62,6 +62,20 @@ func TestAssignMapsDownlinkTarget(t *testing.T) {
 	}
 }
 
+func TestRulesUseAuthenticatedTenantAndPreserveDocuments(t *testing.T) {
+	tenantID := mustHTTPPolicyTenant(t)
+	queries := &ruleQueryRecorder{rules: []domainpolicy.Rule{{TenantID: tenantID, Where: "cloud",
+		Document: []byte(`{"rule_id":"cloud-a","where":"cloud"}`)}}}
+	handler := NewHandler(Options{Query: queries, Resolve: fixedResolver(t, tenantID)})
+	recorder := httptest.NewRecorder()
+	handler.Rules(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/rules?tenant_id=other&where=cloud", nil))
+
+	if recorder.Code != http.StatusOK || queries.request.Actor.TenantID != tenantID || queries.filter.Where != "cloud" ||
+		!strings.Contains(recorder.Body.String(), `"rule_id":"cloud-a"`) {
+		t.Fatalf("status=%d request=%+v filter=%+v body=%s", recorder.Code, queries.request, queries.filter, recorder.Body.String())
+	}
+}
+
 type publishRecorder struct {
 	request managerapp.RequestContext
 	command policyapp.PublishPolicyCommand
@@ -76,6 +90,19 @@ func (recorder *publishRecorder) Execute(_ context.Context, request managerapp.R
 type assignRecorder struct {
 	command policyapp.AssignPolicyCommand
 	result  policyapp.AssignPolicyResult
+}
+
+type ruleQueryRecorder struct {
+	PolicyQueries
+	request managerapp.RequestContext
+	filter  domainpolicy.RuleFilter
+	rules   []domainpolicy.Rule
+}
+
+func (recorder *ruleQueryRecorder) ListRules(_ context.Context, request managerapp.RequestContext,
+	filter domainpolicy.RuleFilter) ([]domainpolicy.Rule, error) {
+	recorder.request, recorder.filter = request, filter
+	return recorder.rules, nil
 }
 
 func (recorder *assignRecorder) Execute(_ context.Context, _ managerapp.RequestContext, command policyapp.AssignPolicyCommand) (policyapp.AssignPolicyResult, error) {

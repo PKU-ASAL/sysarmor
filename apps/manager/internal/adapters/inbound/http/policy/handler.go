@@ -29,6 +29,7 @@ type SavePolicy interface {
 }
 
 type PolicyQueries interface {
+	ListRules(context.Context, managerapp.RequestContext, domainpolicy.RuleFilter) ([]domainpolicy.Rule, error)
 	GetPolicy(context.Context, managerapp.RequestContext, policyapp.GetPolicyQuery) (policyapp.GetPolicyResult, error)
 	ListPolicies(context.Context, managerapp.RequestContext, policyapp.ListPoliciesQuery) (policyapp.ListPoliciesResult, error)
 	ListAssignments(context.Context, managerapp.RequestContext, domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error)
@@ -61,6 +62,28 @@ func (handler *Handler) Policies(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (handler *Handler) Rules(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	request, ok := handler.resolve(w, r)
+	if !ok {
+		return
+	}
+	values, err := handler.options.Query.ListRules(r.Context(), request,
+		domainpolicy.RuleFilter{Where: r.URL.Query().Get("where")})
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+	documents := make([]json.RawMessage, 0, len(values))
+	for _, value := range values {
+		documents = append(documents, json.RawMessage(value.Document))
+	}
+	writeJSON(w, documents)
 }
 
 func (handler *Handler) Publish(w http.ResponseWriter, r *http.Request) {

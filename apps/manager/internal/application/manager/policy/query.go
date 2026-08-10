@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
@@ -25,6 +26,20 @@ type GetPolicyQuery struct {
 type GetPolicyResult struct{ Policy domainpolicy.Policy }
 type EffectivePolicyQuery struct{ Target domainpolicy.Target }
 type EffectivePolicyResult struct{ Policy domainpolicy.Policy }
+
+func (service *QueryService) ListRules(ctx context.Context, request managerapp.RequestContext, filter domainpolicy.RuleFilter) ([]domainpolicy.Rule, error) {
+	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
+		return nil, err
+	}
+	filter.Where = strings.TrimSpace(filter.Where)
+	var result []domainpolicy.Rule
+	err := service.uow.Execute(ctx, func(txCtx context.Context, tx ports.PolicyTransaction) error {
+		var err error
+		result, err = tx.Rules().List(txCtx, request.Actor.TenantID, filter)
+		return err
+	})
+	return result, err
+}
 
 func (service *QueryService) GetPolicy(ctx context.Context, request managerapp.RequestContext, query GetPolicyQuery) (GetPolicyResult, error) {
 	if err := request.Actor.Require(tenant.RoleViewer); err != nil {

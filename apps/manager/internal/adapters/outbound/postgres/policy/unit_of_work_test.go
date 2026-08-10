@@ -36,6 +36,22 @@ func TestPolicyRepositoryIsTenantScoped(t *testing.T) {
 	}
 }
 
+func TestRuleRepositoryRejectsInvalidDocument(t *testing.T) {
+	db := newPolicyTestDB(t)
+	if _, err := db.Exec(`INSERT INTO rules (tenant_id, rule_id, version, rule_where, data) VALUES (?, ?, ?, ?, ?)`,
+		"tenant-a", "rule-a", 1, "cloud", []byte(`{"rule_id":`)); err != nil {
+		t.Fatal(err)
+	}
+	tenantID := mustAdapterTenantID(t, "tenant-a")
+	err := NewUnitOfWork(db).Execute(context.Background(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		_, err := tx.Rules().List(ctx, tenantID, domainpolicy.RuleFilter{Where: "cloud"})
+		return err
+	})
+	if err == nil || !strings.Contains(err.Error(), "decode rule") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestPolicyRepositoryCanonicalizesDocumentIdentity(t *testing.T) {
 	db := newPolicyTestDB(t)
 	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{"tenant_id":"tenant-b","policy_id":"other","version":99}`)
@@ -206,6 +222,7 @@ func newPolicyTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = db.Close() })
 	for _, statement := range []string{
 		`CREATE TABLE policies (tenant_id TEXT, policy_id TEXT, version INTEGER, scope_type TEXT, scope_selector TEXT, mode TEXT, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, policy_id, version))`,
+		`CREATE TABLE rules (tenant_id TEXT, rule_id TEXT, version INTEGER, rule_where TEXT, data BLOB, PRIMARY KEY (tenant_id, rule_id, version))`,
 		`CREATE TABLE policy_assignments (tenant_id TEXT, assignment_id TEXT, agent_id TEXT, scope_type TEXT, scope_selector TEXT, policy_id TEXT, policy_version INTEGER, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, assignment_id))`,
 		`CREATE TABLE policy_audit (tenant_id TEXT, audit_id TEXT, action TEXT, policy_id TEXT, policy_version INTEGER, assignment_id TEXT, actor TEXT, status TEXT, reason TEXT, created_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, audit_id))`,
 		`CREATE TABLE control_commands (tenant_id TEXT, command_id TEXT, agent_id TEXT, command_type TEXT, status TEXT, policy_id TEXT, policy_version INTEGER, actor TEXT, reason TEXT, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, command_id))`,

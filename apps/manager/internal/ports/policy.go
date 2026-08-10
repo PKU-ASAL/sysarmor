@@ -17,6 +17,10 @@ type PolicyRepository interface {
 	Put(context.Context, domainpolicy.Policy) error
 }
 
+type RuleRepository interface {
+	List(context.Context, tenant.ID, domainpolicy.RuleFilter) ([]domainpolicy.Rule, error)
+}
+
 type AssignmentRepository interface {
 	Candidates(context.Context, tenant.ID, domainpolicy.Target) ([]domainpolicy.Assignment, error)
 	List(context.Context, tenant.ID, domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error)
@@ -46,6 +50,7 @@ type AuditRepository interface {
 
 type PolicyTransaction interface {
 	Policies() PolicyRepository
+	Rules() RuleRepository
 	Assignments() AssignmentRepository
 	Controls() PolicyControlRepository
 	Audits() AuditRepository

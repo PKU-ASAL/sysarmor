@@ -22,6 +22,21 @@ func TestQueryPoliciesUsesActorTenant(t *testing.T) {
 	}
 }
 
+func TestQueryRulesUsesActorTenantAndWhereFilter(t *testing.T) {
+	tenantID, requestContext := policyRequestContext(t)
+	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{})
+	uow.committed.rules = []domainpolicy.Rule{{TenantID: tenantID, Where: "cloud", Document: []byte(`{"rule_id":"cloud-a"}`)}}
+	service := NewQueryService(uow)
+
+	rules, err := service.ListRules(context.Background(), requestContext, domainpolicy.RuleFilter{Where: "cloud"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uow.lastTenant != tenantID || uow.lastRuleWhere != "cloud" || len(rules) != 1 || rules[0].TenantID != tenantID {
+		t.Fatalf("rules=%+v tenant=%q where=%q", rules, uow.lastTenant, uow.lastRuleWhere)
+	}
+}
+
 func TestQueryPolicyGetsRequestedVersion(t *testing.T) {
 	tenantID, requestContext := policyRequestContext(t)
 	uow := newFakePolicyUnitOfWork(domainpolicy.Policy{TenantID: tenantID, ID: "policy-a", Version: 3})
