@@ -26,3 +26,6 @@ type GatewaySessionStore interface {
 type HotSessionWriter interface {
 	Touch(context.Context, GatewaySession) error
 }
+type AgentCertificateAuthorizer interface {
+	Authorize(context.Context, string, string, string) error
+}
