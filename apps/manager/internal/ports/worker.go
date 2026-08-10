@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
@@ -29,6 +30,15 @@ type BatchProcessor interface {
 
 type RarityReader interface {
 	Rarity(context.Context, tenant.ID) (identity.RarityBaseline, error)
+}
+
+type HistorySnapshot struct {
+	Events  [][]byte
+	Signals [][]byte
+}
+
+type HistoryReader interface {
+	ReadDocuments(context.Context, string, map[string]string, time.Time, time.Time) (HistorySnapshot, error)
 }
 
 type PermanentError struct {

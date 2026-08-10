@@ -7,18 +7,41 @@ import (
 	"time"
 
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-type HistoryReader interface {
-	Read(context.Context, string, map[string]string, time.Time, time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error)
-}
-
 type OpenSearchHistory struct {
 	searcher platformopensearch.Searcher
+}
+
+func (h *OpenSearchHistory) ReadDocuments(ctx context.Context, tenantID string, labels map[string]string, from, to time.Time) (ports.HistorySnapshot, error) {
+	if h == nil || h.searcher == nil {
+		return ports.HistorySnapshot{}, nil
+	}
+	request := platformopensearch.SearchRequest{Size: 10000, Labels: cloneStringMap(labels), Exact: map[string]string{"tenant_id": tenantID}, TimeField: "@timestamp", TimeFrom: from.UTC().Format(time.RFC3339Nano), TimeTo: to.UTC().Format(time.RFC3339Nano), Index: platformopensearch.EventsReadAlias}
+	events, err := h.searcher.Search(ctx, request)
+	if err != nil {
+		return ports.HistorySnapshot{}, fmt.Errorf("read event history: %w", err)
+	}
+	request.Index = platformopensearch.SignalsReadAlias
+	request.Exact["where"] = "SIGNAL_WHERE_ENDPOINT"
+	signals, err := h.searcher.Search(ctx, request)
+	if err != nil {
+		return ports.HistorySnapshot{}, fmt.Errorf("read signal history: %w", err)
+	}
+	return ports.HistorySnapshot{Events: documentBytes(filterTenantDocuments(events, tenantID)), Signals: documentBytes(filterTenantDocuments(signals, tenantID))}, nil
+}
+
+func documentBytes(documents []json.RawMessage) [][]byte {
+	result := make([][]byte, 0, len(documents))
+	for _, document := range documents {
+		result = append(result, append([]byte(nil), document...))
+	}
+	return result
 }
 
 func NewOpenSearchHistory(searcher platformopensearch.Searcher) *OpenSearchHistory {
@@ -26,33 +49,40 @@ func NewOpenSearchHistory(searcher platformopensearch.Searcher) *OpenSearchHisto
 }
 
 func (h *OpenSearchHistory) Read(ctx context.Context, tenantID string, labels map[string]string, from, to time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
-	if h == nil || h.searcher == nil {
-		return nil, nil, nil
-	}
-	request := platformopensearch.SearchRequest{Size: 10000, Labels: cloneStringMap(labels), Exact: map[string]string{"tenant_id": tenantID}, TimeField: "@timestamp", TimeFrom: from.UTC().Format(time.RFC3339Nano), TimeTo: to.UTC().Format(time.RFC3339Nano)}
-	request.Index = platformopensearch.EventsReadAlias
-	eventDocs, err := h.searcher.Search(ctx, request)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read event history: %w", err)
-	}
-	request.Index = platformopensearch.SignalsReadAlias
-	request.Exact["where"] = "SIGNAL_WHERE_ENDPOINT"
-	signalDocs, err := h.searcher.Search(ctx, request)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read signal history: %w", err)
-	}
-	events, err := decodeEvents(filterTenantDocuments(eventDocs, tenantID))
+	documents, err := h.ReadDocuments(ctx, tenantID, labels, from, to)
 	if err != nil {
 		return nil, nil, err
 	}
-	signals, err := decodeSignals(filterTenantDocuments(signalDocs, tenantID))
+	events, err := decodeEvents(documents.Events)
+	if err != nil {
+		return nil, nil, err
+	}
+	signals, err := decodeSignals(documents.Signals)
 	return events, signals, err
 }
 
 type storeHistory struct{ store *store.Store }
 
-func (h storeHistory) Read(_ context.Context, tenantID string, labels map[string]string, _, _ time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
-	return h.store.ListEventsForTenant(tenantID, store.LabelSelector(labels), ""), h.store.ListSignalsForTenant(tenantID, store.LabelSelector(labels), "endpoint", false), nil
+func (h storeHistory) ReadDocuments(_ context.Context, tenantID string, labels map[string]string, _, _ time.Time) (ports.HistorySnapshot, error) {
+	events := h.store.ListEventsForTenant(tenantID, store.LabelSelector(labels), "")
+	signals := h.store.ListSignalsForTenant(tenantID, store.LabelSelector(labels), "endpoint", false)
+	eventBytes := make([][]byte, 0, len(events))
+	for _, event := range events {
+		encoded, err := protojson.Marshal(event)
+		if err != nil {
+			return ports.HistorySnapshot{}, err
+		}
+		eventBytes = append(eventBytes, encoded)
+	}
+	signalBytes := make([][]byte, 0, len(signals))
+	for _, signal := range signals {
+		encoded, err := protojson.Marshal(signal)
+		if err != nil {
+			return ports.HistorySnapshot{}, err
+		}
+		signalBytes = append(signalBytes, encoded)
+	}
+	return ports.HistorySnapshot{Events: eventBytes, Signals: signalBytes}, nil
 }
 
 func filterTenantDocuments(raw []json.RawMessage, tenantID string) []json.RawMessage {
@@ -68,7 +98,7 @@ func filterTenantDocuments(raw []json.RawMessage, tenantID string) []json.RawMes
 	return out
 }
 
-func decodeEvents(raw []json.RawMessage) ([]*eventv1.CanonicalEvent, error) {
+func decodeEvents(raw [][]byte) ([]*eventv1.CanonicalEvent, error) {
 	out := make([]*eventv1.CanonicalEvent, 0, len(raw))
 	for _, document := range raw {
 		event := &eventv1.CanonicalEvent{}
@@ -80,7 +110,7 @@ func decodeEvents(raw []json.RawMessage) ([]*eventv1.CanonicalEvent, error) {
 	return out, nil
 }
 
-func decodeSignals(raw []json.RawMessage) ([]*signalv1.Signal, error) {
+func decodeSignals(raw [][]byte) ([]*signalv1.Signal, error) {
 	out := make([]*signalv1.Signal, 0, len(raw))
 	for _, document := range raw {
 		signal := &signalv1.Signal{}

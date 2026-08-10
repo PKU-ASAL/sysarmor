@@ -30,7 +30,7 @@ type Processor struct {
 	store     *store.Store
 	engine    *analyticingest.Engine
 	projector platformopensearch.Projector
-	history   HistoryReader
+	history   ports.HistoryReader
 	rarity    RarityReader
 	local     bool
 }
@@ -52,7 +52,7 @@ func NewProcessor(st *store.Store, projector platformopensearch.Projector) *Proc
 	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, local: true}
 }
 
-func NewProcessorWithHistory(st *store.Store, projector platformopensearch.Projector, history HistoryReader) *Processor {
+func NewProcessorWithHistory(st *store.Store, projector platformopensearch.Projector, history ports.HistoryReader) *Processor {
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
@@ -209,9 +209,17 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 	totalIncidents := 0
 	var documents []platformopensearch.Document
 	for _, scope := range touchedScopes {
-		historyEvents, historySignals, err := p.history.Read(ctx, scope.agent.Normalized().TenantID, scope.labels, upper.Add(-15*time.Minute), upper)
+		historyDocs, err := p.history.ReadDocuments(ctx, scope.agent.Normalized().TenantID, scope.labels, upper.Add(-15*time.Minute), upper)
 		if err != nil {
 			return 0, 0, nil, err
+		}
+		historyEvents, err := decodeEvents(historyDocs.Events)
+		if err != nil {
+			return 0, 0, nil, fmt.Errorf("decode event history: %w", err)
+		}
+		historySignals, err := decodeSignals(historyDocs.Signals)
+		if err != nil {
+			return 0, 0, nil, fmt.Errorf("decode signal history: %w", err)
 		}
 		events := mergeEvents(historyEvents, matchingEvents(currentEvents, scope.labels))
 		endpointSignals := mergeSignals(historySignals, matchingSignals(currentSignals, scope.labels))
