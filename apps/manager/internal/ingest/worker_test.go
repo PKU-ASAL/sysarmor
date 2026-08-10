@@ -441,6 +441,12 @@ type fixedDetectionPolicies struct {
 	calls  int
 }
 
+type fixedRarityReader struct{}
+
+func (fixedRarityReader) Rarity(context.Context, tenant.ID) (identity.RarityBaseline, error) {
+	return identity.RarityBaseline{WorkloadCounts: map[string]map[string]uint64{}}, nil
+}
+
 func (reader *fixedDetectionPolicies) Effective(context.Context, tenant.ID, identity.AgentID) (domainpolicy.Policy, error) {
 	reader.calls++
 	return reader.policy, nil
@@ -509,5 +515,14 @@ func TestProcessorReadsDetectionPolicyThroughPort(t *testing.T) {
 	}
 	if reader.calls != 1 || len(policy.GetCloudRules()) != 1 || policy.GetCloudRules()[0] != "rule-a" {
 		t.Fatalf("calls=%d policy=%+v", reader.calls, policy)
+	}
+}
+
+func TestRemoteProcessorDoesNotRequireLegacyStore(t *testing.T) {
+	batches := &recordingTelemetryBatches{claim: ports.TelemetryClaimed, token: "claim-token"}
+	policies := &fixedDetectionPolicies{policy: domainpolicy.Policy{Document: []byte(`{}`)}}
+	processor := NewRemoteProcessor(&recordingIndexer{}, NewOpenSearchHistory(nil), fixedRarityReader{}, batches, policies)
+	if _, err := processor.Process(context.Background(), dataBatch("storeless", nil, nil)); err != nil {
+		t.Fatal(err)
 	}
 }

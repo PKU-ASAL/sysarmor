@@ -67,13 +67,23 @@ func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector,
 	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}}
 }
 
+func NewRemoteProcessor(projector ports.DocumentProjector, history ports.HistoryReader, rarityReader ports.RarityReader, batches ports.TelemetryBatches, policies ports.DetectionPolicyReader) *Processor {
+	if projector == nil {
+		projector = ports.NoopDocumentProjector{}
+	}
+	return &Processor{engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: rarityReader, batches: batches, policies: policies}
+}
+
 func (p *Processor) SetRarityReader(reader RarityReader)                       { p.rarity = reader }
 func (p *Processor) SetTelemetryBatches(batches ports.TelemetryBatches)        { p.batches = batches }
 func (p *Processor) SetDetectionPolicies(policies ports.DetectionPolicyReader) { p.policies = policies }
 
 func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (Result, error) {
-	if p == nil || p.store == nil {
-		return Result{}, fmt.Errorf("ingest processor store is nil")
+	if p == nil || p.engine == nil || p.history == nil || p.rarity == nil || p.batches == nil || p.policies == nil {
+		return Result{}, fmt.Errorf("ingest processor dependencies are incomplete")
+	}
+	if p.local && p.store == nil {
+		return Result{}, fmt.Errorf("local ingest processor store is nil")
 	}
 	if batch == nil || batch.GetHeader() == nil {
 		return Result{}, fmt.Errorf("data batch header identity is required")

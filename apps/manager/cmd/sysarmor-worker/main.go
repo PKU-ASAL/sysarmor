@@ -108,14 +108,19 @@ func main() {
 	}
 
 	log.Printf("sysarmor-worker consuming topic=%s group=%s store_backend=%s", *kafkaTopic, *kafkaGroupID, *storeBackend)
-	processor := ingestworker.NewProcessorWithHistory(storeResult.Store, indexer, ingestworker.NewOpenSearchHistory(indexer))
+	var processor *ingestworker.Processor
 	if storeResult.DB != nil {
 		identityRepositories := identitypostgres.NewRepositories(storeResult.DB)
-		processor.SetRarityReader(identityRepositories.Snapshots())
-		processor.SetTelemetryBatches(workerpostgres.NewTelemetryBatches(storeResult.DB))
 		policyQueries := managerpolicy.NewQueryService(policypostgres.NewUnitOfWork(storeResult.DB))
-		processor.SetDetectionPolicies(workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()))
+		processor = ingestworker.NewRemoteProcessor(
+			indexer,
+			ingestworker.NewOpenSearchHistory(indexer),
+			identityRepositories.Snapshots(),
+			workerpostgres.NewTelemetryBatches(storeResult.DB),
+			workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()),
+		)
 	} else {
+		processor = ingestworker.NewProcessorWithHistory(storeResult.Store, indexer, ingestworker.NewOpenSearchHistory(indexer))
 		processor.SetRarityReader(managerstore.NewRarityReader(storeResult.Store))
 	}
 	err = workerapp.New(consumer, batchProcessor{processor: processor}, dlqProducer).Run(ctx)
