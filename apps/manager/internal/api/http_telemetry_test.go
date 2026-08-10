@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"

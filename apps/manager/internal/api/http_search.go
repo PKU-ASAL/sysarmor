@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 )
 
 type searchFieldsResponse struct {

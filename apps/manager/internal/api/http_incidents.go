@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 )
 
 func (s *Server) incidents(w http.ResponseWriter, r *http.Request) {

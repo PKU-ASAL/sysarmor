@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"

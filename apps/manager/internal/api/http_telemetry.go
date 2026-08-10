@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
