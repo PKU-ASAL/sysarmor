@@ -51,6 +51,10 @@ type DocumentProjector interface {
 	BulkIndex(context.Context, []SearchDocument) error
 }
 
+type NoopDocumentProjector struct{}
+
+func (NoopDocumentProjector) BulkIndex(context.Context, []SearchDocument) error { return nil }
+
 type PermanentError struct {
 	Err     error
 	Message *RawMessage

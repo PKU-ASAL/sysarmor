@@ -13,7 +13,6 @@ import (
 	analyticingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -37,6 +36,13 @@ type Processor struct {
 
 type RarityReader = ports.RarityReader
 
+const (
+	eventsIndex    = "sysarmor-events-write"
+	signalsIndex   = "sysarmor-signals-write"
+	incidentsIndex = "sysarmor-incidents-write"
+	evidenceIndex  = "sysarmor-evidence-write"
+)
+
 type Result struct {
 	AcceptedEvents  int
 	AcceptedSignals int
@@ -47,14 +53,14 @@ type Result struct {
 
 func NewProcessor(st *store.Store, projector ports.DocumentProjector) *Processor {
 	if projector == nil {
-		projector = platformopensearch.NoopIndexer{}
+		projector = ports.NoopDocumentProjector{}
 	}
 	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, local: true}
 }
 
 func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector, history ports.HistoryReader) *Processor {
 	if projector == nil {
-		projector = platformopensearch.NoopIndexer{}
+		projector = ports.NoopDocumentProjector{}
 	}
 	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}}
 }
@@ -363,7 +369,7 @@ func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]ports.S
 			return nil, fmt.Errorf("marshal event %q: %w", ev.GetId(), err)
 		}
 		documentID := EventDocumentID(batch.GetHeader().GetTenantId(), batch.GetHeader().GetAgentId(), ev.GetId())
-		documents = append(documents, decorateDocument(ports.SearchDocument{Index: platformopensearch.EventsWriteAlias, ID: documentID, Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
+		documents = append(documents, decorateDocument(ports.SearchDocument{Index: eventsIndex, ID: documentID, Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
 	}
 	for _, frame := range batch.GetSignals() {
 		sig := frame.GetSignal()
@@ -389,14 +395,14 @@ func incidentDocuments(inc *incidentv1.Incident) ([]ports.SearchDocument, error)
 	id := IncidentDocumentID(inc)
 	documents := []ports.SearchDocument{}
 	if inc.GetEvidence() == nil {
-		return append(documents, ports.SearchDocument{Index: platformopensearch.IncidentsWriteAlias, ID: id, Body: raw}), nil
+		return append(documents, ports.SearchDocument{Index: incidentsIndex, ID: id, Body: raw}), nil
 	}
 	evidenceRaw, err := protojson.Marshal(inc.GetEvidence())
 	if err != nil {
 		return nil, fmt.Errorf("marshal incident evidence %q: %w", id, err)
 	}
-	documents = append(documents, ports.SearchDocument{Index: platformopensearch.EvidenceWriteAlias, ID: id + ":evidence", Body: evidenceRaw})
-	documents = append(documents, ports.SearchDocument{Index: platformopensearch.IncidentsWriteAlias, ID: id, Body: raw})
+	documents = append(documents, ports.SearchDocument{Index: evidenceIndex, ID: id + ":evidence", Body: evidenceRaw})
+	documents = append(documents, ports.SearchDocument{Index: incidentsIndex, ID: id, Body: raw})
 	return documents, nil
 }
 
@@ -420,7 +426,7 @@ func signalDocumentWithID(sig *signalv1.Signal, id string) (ports.SearchDocument
 	if err != nil {
 		return ports.SearchDocument{}, fmt.Errorf("marshal signal %q: %w", id, err)
 	}
-	return ports.SearchDocument{Index: platformopensearch.SignalsWriteAlias, ID: id, Body: raw}, nil
+	return ports.SearchDocument{Index: signalsIndex, ID: id, Body: raw}, nil
 }
 
 func EndpointSignalDocumentID(tenantID, agentID, signalID string) string {
