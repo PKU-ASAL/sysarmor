@@ -22,10 +22,9 @@ import (
 	workerpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/worker"
 	managerpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/policy"
 	workerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
-	managerstore "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -34,7 +33,6 @@ import (
 var version = "dev"
 
 func main() {
-	storeBackend := flag.String("store-backend", backend.KindPostgres, "store backend: postgres")
 	postgresDriver := flag.String("postgres-driver", envDefault("SYSARMOR_POSTGRES_DRIVER", "postgres"), "database/sql driver name for postgres backend")
 	postgresDSN := flag.String("postgres-dsn", envDefault("SYSARMOR_POSTGRES_DSN", ""), "Postgres DSN for postgres backend")
 	kafkaBrokers := flag.String("kafka-brokers", envDefault("SYSARMOR_KAFKA_BROKERS", ""), "comma-separated Kafka brokers for raw telemetry ingest")
@@ -49,10 +47,6 @@ func main() {
 		fmt.Println(version)
 		return
 	}
-	if *storeBackend == backend.KindFile {
-		fmt.Fprintln(os.Stderr, "open store: file backend has been removed from the sysarmor-worker product path; use postgres")
-		os.Exit(1)
-	}
 	if strings.TrimSpace(*opensearchURL) == "" {
 		fmt.Fprintln(os.Stderr, "open opensearch indexer: opensearch url is required")
 		os.Exit(1)
@@ -63,20 +57,12 @@ func main() {
 
 	openCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	storeResult, err := backend.Open(openCtx, backend.Options{
-		Kind:           *storeBackend,
-		PostgresDriver: *postgresDriver,
-		PostgresDSN:    *postgresDSN,
-	})
+	db, _, err := bootstrap.OpenPostgres(openCtx, *postgresDriver, *postgresDSN)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "open store: %v\n", err)
+		fmt.Fprintf(os.Stderr, "open postgres: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := storeResult.Close(); err != nil {
-			log.Printf("close store backend: %v", err)
-		}
-	}()
+	defer db.Close()
 
 	consumer, err := kafkain.WaitForConsumer(ctx, func() (*kafkain.RawConsumer, error) {
 		return kafkain.NewRawConsumer(splitCSV(*kafkaBrokers), *kafkaTopic, *kafkaGroupID)
@@ -107,22 +93,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("sysarmor-worker consuming topic=%s group=%s store_backend=%s", *kafkaTopic, *kafkaGroupID, *storeBackend)
-	var processor *ingestworker.Processor
-	if storeResult.DB != nil {
-		identityRepositories := identitypostgres.NewRepositories(storeResult.DB)
-		policyQueries := managerpolicy.NewQueryService(policypostgres.NewUnitOfWork(storeResult.DB))
-		processor = ingestworker.NewRemoteProcessor(
-			indexer,
-			ingestworker.NewOpenSearchHistory(indexer),
-			identityRepositories.Snapshots(),
-			workerpostgres.NewTelemetryBatches(storeResult.DB),
-			workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()),
-		)
-	} else {
-		processor = ingestworker.NewProcessorWithHistory(storeResult.Store, indexer, ingestworker.NewOpenSearchHistory(indexer))
-		processor.SetRarityReader(managerstore.NewRarityReader(storeResult.Store))
-	}
+	log.Printf("sysarmor-worker consuming topic=%s group=%s store_backend=postgres", *kafkaTopic, *kafkaGroupID)
+	identityRepositories := identitypostgres.NewRepositories(db)
+	policyQueries := managerpolicy.NewQueryService(policypostgres.NewUnitOfWork(db))
+	processor := ingestworker.NewRemoteProcessor(indexer, ingestworker.NewOpenSearchHistory(indexer), identityRepositories.Snapshots(), workerpostgres.NewTelemetryBatches(db), workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()))
 	err = workerapp.New(consumer, batchProcessor{processor: processor}, dlqProducer).Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "run ingest worker: %v\n", err)

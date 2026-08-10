@@ -48,7 +48,17 @@ func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Clo
 }
 
 func openManagerDatabase(ctx context.Context, config ManagerConfig) (*sql.DB, storepostgres.MigrationResult, error) {
-	db, err := sql.Open(strings.TrimSpace(config.PostgresDriver), config.PostgresDSN)
+	return OpenPostgres(ctx, config.PostgresDriver, config.PostgresDSN)
+}
+
+func OpenPostgres(ctx context.Context, driver, dsn string) (*sql.DB, storepostgres.MigrationResult, error) {
+	if strings.TrimSpace(dsn) == "" {
+		return nil, storepostgres.MigrationResult{}, fmt.Errorf("postgres dsn is required")
+	}
+	if strings.TrimSpace(driver) == "" {
+		return nil, storepostgres.MigrationResult{}, fmt.Errorf("postgres driver is required")
+	}
+	db, err := sql.Open(strings.TrimSpace(driver), dsn)
 	if err != nil {
 		return nil, storepostgres.MigrationResult{}, fmt.Errorf("open postgres: %w", err)
 	}

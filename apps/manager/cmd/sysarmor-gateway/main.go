@@ -16,7 +16,6 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"google.golang.org/grpc"
@@ -31,7 +30,6 @@ func main() {
 	grpcTLSKey := flag.String("tls-key", envDefault("SYSARMOR_GRPC_TLS_KEY", ""), "gateway gRPC server TLS private key")
 	grpcClientCA := flag.String("client-ca", envDefault("SYSARMOR_GRPC_CLIENT_CA", ""), "CA bundle used to verify agent client certificates")
 	development := flag.Bool("development", false, "allow insecure gRPC on a loopback listen address")
-	storeBackend := flag.String("store-backend", backend.KindPostgres, "store backend: postgres")
 	postgresDriver := flag.String("postgres-driver", envDefault("SYSARMOR_POSTGRES_DRIVER", "postgres"), "database/sql driver name for postgres backend")
 	postgresDSN := flag.String("postgres-dsn", envDefault("SYSARMOR_POSTGRES_DSN", ""), "Postgres DSN for postgres backend")
 	kafkaBrokers := flag.String("kafka-brokers", envDefault("SYSARMOR_KAFKA_BROKERS", ""), "comma-separated Kafka brokers for raw telemetry ingest")
@@ -42,10 +40,6 @@ func main() {
 	if flag.NArg() > 0 && flag.Arg(0) == "version" {
 		fmt.Println(version)
 		return
-	}
-	if *storeBackend == backend.KindFile {
-		fmt.Fprintln(os.Stderr, "open store: file backend has been removed from the sysarmor-gateway product path; use postgres")
-		os.Exit(1)
 	}
 	prepared, err := prepareGateway(gatewaySecurityConfig{
 		listen:   *listen,
@@ -63,27 +57,19 @@ func main() {
 
 	openCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	storeResult, err := backend.Open(openCtx, backend.Options{
-		Kind:           *storeBackend,
-		PostgresDriver: *postgresDriver,
-		PostgresDSN:    *postgresDSN,
-	})
+	db, _, err := bootstrap.OpenPostgres(openCtx, *postgresDriver, *postgresDSN)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "open store: %v\n", err)
+		fmt.Fprintf(os.Stderr, "open postgres: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := storeResult.Close(); err != nil {
-			log.Printf("close store backend: %v", err)
-		}
-	}()
+	defer db.Close()
 
 	if *healthListen != "" {
 		startHealthServer(ctx, *healthListen, prepared.MTLSEnabled())
 	}
 
 	dataServer, closeData, err := bootstrap.NewGatewayDataPlane(bootstrap.DataPlaneConfig{
-		DB: storeResult.DB, KafkaBrokers: splitCSV(*kafkaBrokers), RedisAddress: *redisAddr, AgentToken: *devToken,
+		DB: db, KafkaBrokers: splitCSV(*kafkaBrokers), RedisAddress: *redisAddr, AgentToken: *devToken,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure gateway data plane: %v\n", err)
@@ -94,7 +80,7 @@ func main() {
 			log.Printf("close gateway data plane: %v", err)
 		}
 	}()
-	controlServer, err := bootstrap.NewGatewayControlPlane(bootstrap.ControlPlaneConfig{DB: storeResult.DB, AgentToken: *devToken})
+	controlServer, err := bootstrap.NewGatewayControlPlane(bootstrap.ControlPlaneConfig{DB: db, AgentToken: *devToken})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure gateway control plane: %v\n", err)
 		os.Exit(1)
