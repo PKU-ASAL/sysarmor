@@ -17,6 +17,7 @@ import (
 	kafkain "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/kafka"
 	kafkaout "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/kafka"
 	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
+	workerpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/worker"
 	workerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
@@ -108,6 +109,7 @@ func main() {
 	processor := ingestworker.NewProcessorWithHistory(storeResult.Store, indexer, ingestworker.NewOpenSearchHistory(indexer))
 	if storeResult.DB != nil {
 		processor.SetRarityReader(identitypostgres.NewRepositories(storeResult.DB).Snapshots())
+		processor.SetTelemetryBatches(workerpostgres.NewTelemetryBatches(storeResult.DB))
 	} else {
 		processor.SetRarityReader(managerstore.NewRarityReader(storeResult.Store))
 	}
