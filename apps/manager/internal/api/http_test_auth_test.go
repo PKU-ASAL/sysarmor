@@ -16,6 +16,7 @@ func newAdminTestServer(st ManagerStore) *authenticatedTestServer {
 	server := NewServer(st)
 	if memoryStore, ok := st.(*store.Store); ok {
 		setTestIdentityApplication(server, memoryStore)
+		setTestTelemetryApplication(server, memoryStore)
 	}
 	return &authenticatedTestServer{
 		Server: server,
@@ -26,6 +27,11 @@ func newAdminTestServer(st ManagerStore) *authenticatedTestServer {
 }
 
 func adminTestHandler(server *Server) http.Handler {
+	if _, unavailable := server.telemetryRoutes.(unavailableTelemetryRoutes); unavailable {
+		if memoryStore, ok := server.store.(*store.Store); ok {
+			setTestTelemetryApplication(server, memoryStore)
+		}
+	}
 	return (&authenticatedTestServer{
 		Server: server,
 		principal: managerauth.Principal{

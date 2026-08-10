@@ -1393,6 +1393,7 @@ func TestOpenPostgresBacksManagerIngestQueryPolicyAndIncidentAPI(t *testing.T) {
 		t.Fatalf("Open(postgres) error = %v", err)
 	}
 	server := managerapi.NewServer(result.Store)
+	setTestTelemetryApplication(server, result.Store)
 	handler := authenticatedManagerHandler(server.Handler())
 	batch := backendDataBatch("pg-api-batch-1", "agent-pg-api", "host-pg-api",
 		[]*eventv1.CanonicalEvent{{

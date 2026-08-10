@@ -53,6 +53,7 @@ func (s fakeSearcher) Search(_ context.Context, search platformopensearch.Search
 func newTestServer(st *store.Store) *Server {
 	server := NewServer(st)
 	setTestIdentityApplication(server, st)
+	setTestTelemetryApplication(server, st)
 	return server
 }
 

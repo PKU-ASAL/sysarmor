@@ -14,7 +14,9 @@ import (
 )
 
 func TestSearchFieldsReturnsAllowlistedTelemetryFields(t *testing.T) {
-	handler := NewServer(&store.Store{}).Handler()
+	server := NewServer(&store.Store{})
+	setTestSearchApplication(server, &recordingSearcher{})
+	handler := server.Handler()
 
 	rec := get(t, handler, "/api/v1/search/fields?index=events-*,signals-*")
 
@@ -41,7 +43,9 @@ func TestSearchTelemetryReturnsDiscoverRows(t *testing.T) {
 			json.RawMessage(`{"id":"sig-a","tenant_id":"default","@timestamp":"2026-07-08T21:06:18Z","host":{"name":"prod-api-01"},"event":{"kind":"signal","summary":"credential access","tactic":"CredentialAccess","severity":"critical"}}`),
 		},
 	}}
-	handler := adminTestHandler(NewServerWithSearch(&store.Store{}, searcher))
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	setTestSearchApplication(server, searcher)
+	handler := adminTestHandler(server)
 	body := `{"indexes":["sysarmor-events-read","sysarmor-signals-read"],"query":"host.name:prod-api-01","time":{"field":"@timestamp","from":"2026-07-08T21:00:00Z","to":"2026-07-08T21:10:00Z"},"limit":50,"offset":0}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -80,7 +84,10 @@ func TestSearchTelemetryReturnsDiscoverRows(t *testing.T) {
 }
 
 func TestSearchTelemetryRejectsUnsupportedField(t *testing.T) {
-	handler := adminTestHandler(NewServerWithSearch(&store.Store{}, &recordingSearcher{}))
+	searcher := &recordingSearcher{}
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	setTestSearchApplication(server, searcher)
+	handler := adminTestHandler(server)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(`{"indexes":["sysarmor-events-read"],"query":"process.args:curl"}`))
 	rec := httptest.NewRecorder()
 
@@ -100,7 +107,9 @@ func TestIncidentsSearchUsesTopLevelTenantField(t *testing.T) {
 			json.RawMessage(`{"id":"inc-a","tenant_id":"default","labels":{"scenario":"apt-fileless-c2-managed"}}`),
 		},
 	}}
-	handler := NewServerWithSearch(&store.Store{}, searcher).Handler()
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	setTestTelemetryApplication(server, &store.Store{})
+	handler := server.Handler()
 	rec := get(t, handler, "/api/v1/incidents?tenant_id=default&label=scenario=apt-fileless-c2-managed")
 
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"inc-a"`) {
@@ -122,7 +131,9 @@ func TestSearchHistogramReturnsTimeBuckets(t *testing.T) {
 			json.RawMessage(`{"id":"sig-b","tenant_id":"default","@timestamp":"2026-07-08T21:06:00Z","host":{"name":"prod-api-01"},"event":{"kind":"signal","severity":"high","summary":"lateral movement"}}`),
 		},
 	}}
-	handler := adminTestHandler(NewServerWithSearch(&store.Store{}, searcher))
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	setTestSearchApplication(server, searcher)
+	handler := adminTestHandler(server)
 	body := `{"indexes":["sysarmor-signals-read"],"time":{"field":"@timestamp","from":"2026-07-08T21:00:00Z","to":"2026-07-08T21:10:00Z"},"bucket_count":2}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/histogram", strings.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -156,7 +167,9 @@ func TestTelemetrySearchScopesEveryIndexToPrincipalTenant(t *testing.T) {
 			json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-b","@timestamp":"2026-07-08T21:04:00Z"}`),
 		},
 	}}
-	handler := tenantTestHandler(NewServerWithSearch(&store.Store{}, searcher), "tenant-a")
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	setTestSearchApplication(server, searcher)
+	handler := tenantTestHandler(server, "tenant-a")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(`{"indexes":["events-*","signals-*"]}`))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -178,7 +191,9 @@ func TestTelemetryHistogramScopesCountsToPrincipalTenant(t *testing.T) {
 			json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-b","@timestamp":"2026-07-08T21:02:00Z"}`),
 		},
 	}}
-	handler := tenantTestHandler(NewServerWithSearch(&store.Store{}, searcher), "tenant-a")
+	server := NewServerWithSearch(&store.Store{}, searcher)
+	setTestSearchApplication(server, searcher)
+	handler := tenantTestHandler(server, "tenant-a")
 	body := `{"indexes":["signals-*"],"time":{"from":"2026-07-08T21:00:00Z","to":"2026-07-08T21:10:00Z"},"bucket_count":1}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/histogram", strings.NewReader(body))
 	rec := httptest.NewRecorder()

@@ -35,6 +35,8 @@ type Server struct {
 	controlRoutes    controlRoutes
 	responseRoutes   responseRoutes
 	artifactRoutes   artifactRoutes
+	telemetryRoutes  telemetryRoutes
+	searchRoutes     searchRoutes
 	identityQuery    identityQueries
 	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
@@ -110,6 +112,42 @@ type artifactRoutes interface {
 	Channels(http.ResponseWriter, *http.Request)
 }
 
+type telemetryRoutes interface {
+	Events(http.ResponseWriter, *http.Request)
+	Signals(http.ResponseWriter, *http.Request)
+	Incidents(http.ResponseWriter, *http.Request)
+}
+
+type searchRoutes interface {
+	Fields(http.ResponseWriter, *http.Request)
+	Search(http.ResponseWriter, *http.Request)
+	Histogram(http.ResponseWriter, *http.Request)
+}
+
+type unavailableSearchRoutes struct{}
+
+func (unavailableSearchRoutes) Fields(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "search application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableSearchRoutes) Search(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "search application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableSearchRoutes) Histogram(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "search application is not configured", http.StatusServiceUnavailable)
+}
+
+type unavailableTelemetryRoutes struct{}
+
+func (unavailableTelemetryRoutes) Events(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "telemetry application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableTelemetryRoutes) Signals(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "telemetry application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableTelemetryRoutes) Incidents(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "telemetry application is not configured", http.StatusServiceUnavailable)
+}
+
 type unavailableArtifactRoutes struct{}
 
 func (unavailableArtifactRoutes) Artifacts(w http.ResponseWriter, _ *http.Request) {
@@ -143,6 +181,8 @@ func (s *Server) SetEnrollmentRoutes(routes enrollmentRoutes) { s.enrollmentRout
 func (s *Server) SetControlRoutes(routes controlRoutes)       { s.controlRoutes = routes }
 func (s *Server) SetResponseRoutes(routes responseRoutes)     { s.responseRoutes = routes }
 func (s *Server) SetArtifactRoutes(routes artifactRoutes)     { s.artifactRoutes = routes }
+func (s *Server) SetTelemetryRoutes(routes telemetryRoutes)   { s.telemetryRoutes = routes }
+func (s *Server) SetSearchRoutes(routes searchRoutes)         { s.searchRoutes = routes }
 
 type policyPublishRequest struct {
 	TenantID  string `json:"tenant_id"`
@@ -232,7 +272,8 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
-		artifactRoutes: unavailableArtifactRoutes{}}
+		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
+		searchRoutes: unavailableSearchRoutes{}}
 	return s
 }
 
@@ -289,9 +330,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/ui/deploy/agent-command", func(w http.ResponseWriter, r *http.Request) {
 		s.enrollmentRoutes.DeployAgentCommand(w, r)
 	})
-	mux.HandleFunc("/api/v1/search/fields", s.searchFields)
-	mux.HandleFunc("/api/v1/search/histogram", s.searchHistogram)
-	mux.HandleFunc("/api/v1/search", s.search)
+	mux.HandleFunc("/api/v1/search/fields", s.searchRoutes.Fields)
+	mux.HandleFunc("/api/v1/search/histogram", s.searchRoutes.Histogram)
+	mux.HandleFunc("/api/v1/search", s.searchRoutes.Search)
 	if s.identityRoutes != nil {
 		mux.HandleFunc("/api/v1/agents", s.identityRoutes.Agents)
 		mux.HandleFunc("/api/v1/agent-sessions", s.identityRoutes.Sessions)
@@ -299,9 +340,9 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/api/v1/rarity-baseline", s.identityRoutes.Rarity)
 	}
 	mux.HandleFunc("/api/v1/agent-health", s.agentHealth)
-	mux.HandleFunc("/api/v1/events", s.events)
-	mux.HandleFunc("/api/v1/signals", s.signals)
-	mux.HandleFunc("/api/v1/incidents", s.incidents)
+	mux.HandleFunc("/api/v1/events", s.telemetryRoutes.Events)
+	mux.HandleFunc("/api/v1/signals", s.telemetryRoutes.Signals)
+	mux.HandleFunc("/api/v1/incidents", s.telemetryRoutes.Incidents)
 	mux.HandleFunc("/api/v1/store-status", s.storeStatus)
 	return limitRequestBody(normalizeAPIErrors(requireProductionPrincipal(mux)), maxManagerRequestBody)
 }

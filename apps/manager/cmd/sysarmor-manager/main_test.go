@@ -3,8 +3,22 @@ package main
 import (
 	"database/sql"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 )
+
+func TestManagerConfiguresTelemetryApplicationRoutes(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "bootstrap.NewManagerTelemetryHTTP") || !strings.Contains(text, "SetTelemetryRoutes") ||
+		!strings.Contains(text, "bootstrap.NewManagerSearchHTTP") || !strings.Contains(text, "SetSearchRoutes") {
+		t.Fatal("manager main does not configure telemetry and search application routes")
+	}
+}
 
 func TestManagerEnrollmentConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("SYSARMOR_AGENT_CA_CERT", "/tmp/agent-ca.crt")

@@ -47,7 +47,9 @@ func TestAgentGatewayManagerLocalDataPath(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	managerHandler := managerapi.NewServer(st).Handler()
+	managerServer := managerapi.NewServer(st)
+	setTestTelemetryApplication(managerServer, st)
+	managerHandler := managerServer.Handler()
 	manager := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal := managerauth.Principal{Subject: "platform-viewer", TenantID: "default", Roles: []string{"viewer"}}
 		managerHandler.ServeHTTP(w, r.WithContext(managerauth.WithPrincipal(r.Context(), principal)))

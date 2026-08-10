@@ -81,6 +81,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "configure production manager: %v\n", err)
 		os.Exit(1)
 	}
+	telemetryRoutes, err := bootstrap.NewManagerTelemetryHTTP(searcher, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure telemetry application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetTelemetryRoutes(telemetryRoutes)
+	searchRoutes, err := bootstrap.NewManagerSearchHTTP(searcher, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure search application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetSearchRoutes(searchRoutes)
 	policyRoutes, err := bootstrap.NewManagerPolicyHTTP(storeResult.DB, managerapi.PolicyRequestContext)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure policy application: %v\n", err)

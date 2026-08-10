@@ -3,65 +3,11 @@ package managerapi
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"strings"
 
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
-
-func (s *Server) events(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	tenantID := requestTenantID(r)
-	labels := parseLabelSelector(q["label"])
-	limit := parseUint(q.Get("limit"))
-	offset := parseUint(q.Get("offset"))
-	if s.searcher != nil {
-		raw, err := s.searchTelemetry(r.Context(), platformopensearch.SearchRequest{
-			Index:  platformopensearch.EventsReadAlias,
-			Size:   searchLimit(limit),
-			Offset: int(offset),
-			Labels: labels,
-			Exact:  withTenantExact(stringExactFilter("behavior", q.Get("behavior")), tenantID),
-		})
-		if err != nil {
-			http.Error(w, fmt.Sprintf("query events: %v", err), http.StatusBadGateway)
-			return
-		}
-		raw = filterRawTelemetry(raw, labels, rawAll(rawStringEquals("tenant_id", tenantID), rawStringEquals("behavior", q.Get("behavior"))))
-		writeRawList(w, raw)
-		return
-	}
-	writeEventList(w, pageSlice(s.store.ListEventsForTenant(tenantID, labels, q.Get("behavior")), limit, offset))
-}
-
-func (s *Server) signals(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	tenantID := requestTenantID(r)
-	labels := parseLabelSelector(q["label"])
-	limit := parseUint(q.Get("limit"))
-	offset := parseUint(q.Get("offset"))
-	if s.searcher != nil {
-		raw, err := s.searchTelemetry(r.Context(), platformopensearch.SearchRequest{
-			Index:  platformopensearch.SignalsReadAlias,
-			Size:   searchLimit(limit),
-			Offset: int(offset),
-			Labels: labels,
-			Exact:  withTenantExact(signalExactFilter(q.Get("layer")), tenantID),
-			Bool:   boolFilter("terminal", q.Get("terminal")),
-		})
-		if err != nil {
-			http.Error(w, fmt.Sprintf("query signals: %v", err), http.StatusBadGateway)
-			return
-		}
-		raw = filterRawTelemetry(raw, labels, rawAll(rawStringEquals("tenant_id", tenantID), rawSignalMatches(q.Get("layer"), q.Get("terminal"))))
-		writeRawList(w, raw)
-		return
-	}
-	signals := s.store.ListSignalsForTenant(tenantID, labels, q.Get("layer"), q.Get("terminal") == "true")
-	writeSignalList(w, pageSlice(signals, limit, offset))
-}
 
 func withTenantExact(exact map[string]string, tenantID string) map[string]string {
 	if exact == nil {

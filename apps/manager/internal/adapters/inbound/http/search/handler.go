@@ -1,6 +1,7 @@
-package managerapi
+package search
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,70 +9,42 @@ import (
 	"strings"
 	"time"
 
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
+	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
+	telemetryapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/telemetry"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 )
 
-type searchFieldsResponse struct {
-	Indexes []string              `json:"indexes"`
-	Fields  []searchFieldResponse `json:"fields"`
+type Service interface {
+	Search(context.Context, managerapp.RequestContext, telemetryapp.SearchQuery) ([]domaintelemetry.IndexedDocument, error)
 }
 
-type searchFieldResponse struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	Searchable   bool   `json:"searchable"`
-	Aggregatable bool   `json:"aggregatable"`
+type RequestContextResolver func(*http.Request) (managerapp.RequestContext, error)
+
+type Options struct {
+	Service Service
+	Resolve RequestContextResolver
 }
 
-type telemetrySearchRequest struct {
-	Indexes []string     `json:"indexes"`
-	Query   string       `json:"query"`
-	Time    searchTime   `json:"time"`
-	Sort    []searchSort `json:"sort"`
-	Limit   int          `json:"limit"`
-	Offset  int          `json:"offset"`
-	Buckets int          `json:"bucket_count"`
-}
+type Handler struct{ options Options }
 
-type searchTime struct {
-	Field string `json:"field"`
-	From  string `json:"from"`
-	To    string `json:"to"`
-}
+func NewHandler(options Options) *Handler { return &Handler{options: options} }
 
-type searchSort struct {
-	Field     string `json:"field"`
-	Direction string `json:"direction"`
-}
-
-type telemetrySearchResponse struct {
-	Total         int                  `json:"total"`
-	TotalRelation string               `json:"total_relation"`
-	Rows          []telemetrySearchRow `json:"rows"`
-}
-
-type telemetrySearchRow struct {
-	Index     string         `json:"index"`
-	ID        string         `json:"id"`
-	Timestamp string         `json:"timestamp,omitempty"`
-	Severity  string         `json:"severity,omitempty"`
-	Host      string         `json:"host,omitempty"`
-	Summary   string         `json:"summary,omitempty"`
-	Tactic    string         `json:"tactic,omitempty"`
-	Source    map[string]any `json:"source,omitempty"`
-	Raw       map[string]any `json:"raw,omitempty"`
-}
-
-type telemetryHistogramResponse struct {
-	Buckets []telemetryHistogramBucket `json:"buckets"`
-}
-
-type telemetryHistogramBucket struct {
-	Start   string `json:"start"`
-	End     string `json:"end"`
-	Total   int    `json:"total"`
-	Events  int    `json:"events"`
-	Signals int    `json:"signals"`
+func (handler *Handler) resolve(writer http.ResponseWriter, request *http.Request) (managerapp.RequestContext, bool) {
+	if handler == nil || handler.options.Resolve == nil {
+		writeFailure(writer, failure.New(failure.Unauthenticated, "unauthorized"))
+		return managerapp.RequestContext{}, false
+	}
+	requestContext, err := handler.options.Resolve(request)
+	if err != nil {
+		writeFailure(writer, err)
+		return managerapp.RequestContext{}, false
+	}
+	if handler.options.Service == nil {
+		writeFailure(writer, failure.New(failure.Internal, "telemetry search service is not configured"))
+		return managerapp.RequestContext{}, false
+	}
+	return requestContext, true
 }
 
 var telemetrySearchFields = []searchFieldResponse{
@@ -87,7 +60,7 @@ var telemetrySearchFields = []searchFieldResponse{
 	{Name: "user.name", Type: "keyword", Searchable: true, Aggregatable: true},
 }
 
-func (s *Server) searchFields(w http.ResponseWriter, r *http.Request) {
+func (handler *Handler) Fields(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -97,10 +70,10 @@ func (s *Server) searchFields(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, searchFieldsResponse{Indexes: indexes, Fields: telemetrySearchFields})
+	writeJSON(w, searchFieldsResponse{Indexes: publicIndexes(indexes), Fields: telemetrySearchFields})
 }
 
-func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+func (handler *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -110,7 +83,11 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	docs, err := s.searchTelemetryDocuments(r, req, searchLimitFromInt(req.Limit))
+	requestContext, ok := handler.resolve(w, r)
+	if !ok {
+		return
+	}
+	docs, err := handler.searchTelemetryDocuments(r.Context(), requestContext, req, searchLimitFromInt(req.Limit))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("search telemetry: %v", err), http.StatusBadGateway)
 		return
@@ -122,7 +99,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, telemetrySearchResponse{Total: len(rows), TotalRelation: "eq", Rows: rows})
 }
 
-func (s *Server) searchHistogram(w http.ResponseWriter, r *http.Request) {
+func (handler *Handler) Histogram(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -132,7 +109,11 @@ func (s *Server) searchHistogram(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	docs, err := s.searchTelemetryDocuments(r, req, 1000)
+	requestContext, ok := handler.resolve(w, r)
+	if !ok {
+		return
+	}
+	docs, err := handler.searchTelemetryDocuments(r.Context(), requestContext, req, 1000)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("search telemetry histogram: %v", err), http.StatusBadGateway)
 		return
@@ -164,7 +145,7 @@ func decodeTelemetrySearchRequest(r *http.Request) (telemetrySearchRequest, erro
 	return req, nil
 }
 
-func (s *Server) searchTelemetryDocuments(r *http.Request, req telemetrySearchRequest, limit int) ([]telemetryDocument, error) {
+func (handler *Handler) searchTelemetryDocuments(ctx context.Context, request managerapp.RequestContext, req telemetrySearchRequest, limit int) ([]telemetryDocument, error) {
 	indexes, err := resolveTelemetryIndexes(req.Indexes)
 	if err != nil {
 		return nil, err
@@ -173,25 +154,17 @@ func (s *Server) searchTelemetryDocuments(r *http.Request, req telemetrySearchRe
 	if err != nil {
 		return nil, err
 	}
-	exact["tenant_id"] = requestTenantID(r)
-	docs := make([]telemetryDocument, 0)
-	for _, index := range indexes {
-		raw, err := s.searchTelemetry(r.Context(), platformopensearch.SearchRequest{
-			Index:     index,
-			Size:      limit,
-			Offset:    max(req.Offset, 0),
-			Query:     strings.Join(freeText, " "),
-			Exact:     opensearchExactFields(exact),
-			TimeField: req.Time.Field,
-			TimeFrom:  req.Time.From,
-			TimeTo:    req.Time.To,
-			SortField: firstSortField(req.Sort),
-			SortDesc:  firstSortDesc(req.Sort),
-		})
-		if err != nil {
-			return nil, err
-		}
-		docs = append(docs, filterTelemetryDocuments(index, raw, exact, freeText, req.Time)...)
+	values, err := handler.options.Service.Search(ctx, request, telemetryapp.SearchQuery{Indexes: indexes,
+		Query: strings.Join(freeText, " "), Exact: exact, Limit: limit, Offset: max(req.Offset, 0),
+		TimeField: req.Time.Field, TimeFrom: req.Time.From, TimeTo: req.Time.To,
+		SortField: firstSortField(req.Sort), SortDesc: firstSortDesc(req.Sort)})
+	if err != nil {
+		return nil, err
+	}
+	docs := make([]telemetryDocument, 0, len(values))
+	for _, value := range values {
+		raw := []json.RawMessage{json.RawMessage(value.Document)}
+		docs = append(docs, filterTelemetryDocuments(publicIndex(value.Index), raw, exact, freeText, req.Time)...)
 	}
 	sort.SliceStable(docs, func(i, j int) bool {
 		return docs[i].timestamp.After(docs[j].timestamp)
@@ -202,21 +175,21 @@ func (s *Server) searchTelemetryDocuments(r *http.Request, req telemetrySearchRe
 	return docs, nil
 }
 
-func resolveTelemetryIndexes(raw []string) ([]string, error) {
+func resolveTelemetryIndexes(raw []string) ([]domaintelemetry.Index, error) {
 	if len(raw) == 0 || strings.TrimSpace(strings.Join(raw, "")) == "" {
-		return []string{platformopensearch.EventsReadAlias, platformopensearch.SignalsReadAlias}, nil
+		return []domaintelemetry.Index{domaintelemetry.IndexEvents, domaintelemetry.IndexSignals}, nil
 	}
 	seen := map[string]bool{}
-	indexes := make([]string, 0, len(raw))
+	indexes := make([]domaintelemetry.Index, 0, len(raw))
 	for _, item := range raw {
 		switch strings.TrimSpace(item) {
-		case "events-*", "sysarmor-events", platformopensearch.EventsReadAlias:
-			addIndex(&indexes, seen, platformopensearch.EventsReadAlias)
-		case "signals-*", "sysarmor-signals", platformopensearch.SignalsReadAlias:
-			addIndex(&indexes, seen, platformopensearch.SignalsReadAlias)
-		case "events-*,signals-*", "sysarmor-events,sysarmor-signals", platformopensearch.EventsReadAlias + "," + platformopensearch.SignalsReadAlias:
-			addIndex(&indexes, seen, platformopensearch.EventsReadAlias)
-			addIndex(&indexes, seen, platformopensearch.SignalsReadAlias)
+		case "events-*", "sysarmor-events", "sysarmor-events-read":
+			addIndex(&indexes, seen, domaintelemetry.IndexEvents)
+		case "signals-*", "sysarmor-signals", "sysarmor-signals-read":
+			addIndex(&indexes, seen, domaintelemetry.IndexSignals)
+		case "events-*,signals-*", "sysarmor-events,sysarmor-signals", "sysarmor-events-read,sysarmor-signals-read":
+			addIndex(&indexes, seen, domaintelemetry.IndexEvents)
+			addIndex(&indexes, seen, domaintelemetry.IndexSignals)
 		case "":
 			continue
 		default:
@@ -226,22 +199,26 @@ func resolveTelemetryIndexes(raw []string) ([]string, error) {
 	return indexes, nil
 }
 
-func addIndex(indexes *[]string, seen map[string]bool, index string) {
-	if !seen[index] {
+func addIndex(indexes *[]domaintelemetry.Index, seen map[string]bool, index domaintelemetry.Index) {
+	if !seen[string(index)] {
 		*indexes = append(*indexes, index)
-		seen[index] = true
+		seen[string(index)] = true
 	}
 }
 
-func opensearchExactFields(exact map[string]string) map[string]string {
-	out := make(map[string]string, len(exact))
-	for field, value := range exact {
-		if field != "@timestamp" && field != "tenant_id" {
-			field += ".keyword"
-		}
-		out[field] = value
+func publicIndexes(indexes []domaintelemetry.Index) []string {
+	result := make([]string, 0, len(indexes))
+	for _, index := range indexes {
+		result = append(result, publicIndex(index))
 	}
-	return out
+	return result
+}
+
+func publicIndex(index domaintelemetry.Index) string {
+	if index == domaintelemetry.IndexSignals {
+		return "sysarmor-signals-read"
+	}
+	return "sysarmor-events-read"
 }
 
 func parseTelemetryQuery(query string) (map[string]string, []string, error) {
@@ -395,7 +372,7 @@ func addTelemetryDocumentToBucket(buckets []telemetryHistogramBucket, doc teleme
 			continue
 		}
 		buckets[i].Total++
-		if doc.index == platformopensearch.SignalsReadAlias {
+		if doc.index == "sysarmor-signals-read" {
 			buckets[i].Signals++
 		} else {
 			buckets[i].Events++
@@ -460,4 +437,35 @@ func firstSortDesc(sort []searchSort) bool {
 		return true
 	}
 	return strings.EqualFold(sort[0].Direction, "desc")
+}
+
+func writeJSON(writer http.ResponseWriter, value any) {
+	writer.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(writer).Encode(value); err != nil {
+		http.Error(writer, fmt.Sprintf("encode response: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func writeFailure(writer http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	switch failure.KindOf(err) {
+	case failure.InvalidArgument, failure.FailedPrecondition:
+		status = http.StatusBadRequest
+	case failure.Unauthenticated:
+		status = http.StatusUnauthorized
+	case failure.PermissionDenied:
+		status = http.StatusForbidden
+	case failure.RetryableDependency:
+		status = http.StatusBadGateway
+	}
+	http.Error(writer, err.Error(), status)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
