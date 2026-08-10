@@ -23,7 +23,10 @@ func decodeHealth(r *http.Request, tenantID tenant.ID) (domainidentity.Health, e
 	}
 	return domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(body.AgentID), HostID: body.HostID,
 		Status: body.Status, Scope: domainidentity.Scope{Type: body.Scope.Type, Selector: body.Scope.Selector},
-		ObservedAt: body.ObservedAt, Document: document}, nil
+		ObservedAt: body.ObservedAt, ReportedAt: body.ObservedAt, Document: document,
+		AppliedPolicy: domainidentity.PolicyRef{ID: body.PolicyID, Version: body.PolicyVersion},
+		PendingPolicy: domainidentity.PendingPolicy{Status: body.PendingPolicy.Status, Source: body.PendingPolicy.Source,
+			ID: body.PendingPolicy.PolicyID, Version: body.PendingPolicy.Version, Digest: body.PendingPolicy.Digest}}, nil
 }
 
 func healthDocuments(values []domainidentity.Health) []json.RawMessage {

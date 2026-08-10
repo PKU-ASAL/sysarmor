@@ -29,7 +29,6 @@ type policyControlStore interface {
 	EffectivePolicyWithError(string, string, string, string) (policymodel.Policy, bool, error)
 	EnsureDefaultPolicy(string)
 	EnsureDefaultPolicyWithError(string) error
-	ListAssignmentsWithError(string, string) ([]policymodel.Assignment, error)
 }
 
 type telemetryStore interface {

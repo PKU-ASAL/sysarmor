@@ -37,11 +37,16 @@ type PolicyQueries interface {
 	EffectivePolicy(context.Context, managerapp.RequestContext, policyapp.EffectivePolicyQuery) (policyapp.EffectivePolicyResult, error)
 }
 
+type RolloutQueries interface {
+	List(context.Context, managerapp.RequestContext, policyapp.RolloutQuery) ([]policyapp.Rollout, error)
+}
+
 type Options struct {
 	Publish PublishPolicy
 	Assign  AssignPolicy
 	Save    SavePolicy
 	Query   PolicyQueries
+	Rollout RolloutQueries
 	Resolve RequestContextResolver
 }
 

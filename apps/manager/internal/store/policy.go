@@ -422,17 +422,6 @@ func (s *Store) ListAssignments(tenantID, agentID string) []policymodel.Assignme
 	return out
 }
 
-func (s *Store) ListAssignmentsWithError(tenantID, agentID string) ([]policymodel.Assignment, error) {
-	if backend, ctx := s.backendCtx(); backend != nil {
-		assignments, err := backend.ListAssignments(ctx, tenantID, agentID)
-		if err != nil {
-			return nil, fmt.Errorf("list policy assignments: %w", err)
-		}
-		return assignments, nil
-	}
-	return s.ListAssignments(tenantID, agentID), nil
-}
-
 func (s *Store) EffectivePolicy(tenantID, agentID, scopeType, scopeSelector string) (policymodel.Policy, bool) {
 	if backend, ctx := s.backendCtx(); backend != nil {
 		if policy, ok, err := backend.EffectivePolicy(ctx, tenantID, agentID, scopeType, scopeSelector); err == nil && ok {

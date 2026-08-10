@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
@@ -38,13 +39,14 @@ func TestHealthRepositoryRejectsBlankTenant(t *testing.T) {
 
 func TestHealthRepositoryCanonicalizesIdentity(t *testing.T) {
 	db := newIdentityTestDB(t)
-	insertIdentityHealth(t, db, "tenant-a", "agent-a", `{"agent_id":"wrong","tenant_id":"tenant-b","status":"ok","scope":{"type":"host"}}`)
+	insertIdentityHealth(t, db, "tenant-a", "agent-a", `{"agent_id":"wrong","tenant_id":"tenant-b","status":"ok","scope":{"type":"host"},"policy_id":"policy-a","policy_version":3,"pending_policy":{"status":"pending","policy_id":"policy-b","version":4}}`)
 	tenantA := mustIdentityTenant(t, "tenant-a")
 	health, err := NewRepositories(db).Health().Get(context.Background(), tenantA, "agent-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if health.TenantID != tenantA || health.AgentID != "agent-a" || !strings.Contains(string(health.Document), `"tenant_id":"tenant-a"`) {
+	if health.TenantID != tenantA || health.AgentID != "agent-a" || health.AppliedPolicy.ID != "policy-a" || health.AppliedPolicy.Version != 3 ||
+		health.PendingPolicy.ID != "policy-b" || health.PendingPolicy.Version != 4 || !strings.Contains(string(health.Document), `"tenant_id":"tenant-a"`) {
 		t.Fatalf("health = %+v document=%s", health, health.Document)
 	}
 }
@@ -84,6 +86,22 @@ func TestHealthWriterCanonicalizesDocumentIdentity(t *testing.T) {
 	}
 	if strings.Contains(string(document), "tenant-b") || strings.Contains(string(document), "agent-b") {
 		t.Fatalf("stored document identity is not canonical: %s", document)
+	}
+}
+
+func TestHealthRepositoryKeepsProjectedAndReportedObservationTimesSeparate(t *testing.T) {
+	db := newIdentityTestDB(t)
+	projected := time.Date(2026, 8, 10, 1, 2, 3, 0, time.UTC)
+	if _, err := db.Exec(`INSERT INTO agent_health (tenant_id, agent_id, observed_at, data) VALUES (?, ?, ?, ?)`,
+		"tenant-a", "agent-a", projected, []byte(`{"tenant_id":"tenant-a","agent_id":"agent-a","observed_at":"0001-01-01T00:00:00Z"}`)); err != nil {
+		t.Fatal(err)
+	}
+	health, err := NewRepositories(db).Health().Get(context.Background(), mustIdentityTenant(t, "tenant-a"), "agent-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !health.ObservedAt.Equal(projected) || !health.ReportedAt.IsZero() {
+		t.Fatalf("observed=%s reported=%s", health.ObservedAt, health.ReportedAt)
 	}
 }
 

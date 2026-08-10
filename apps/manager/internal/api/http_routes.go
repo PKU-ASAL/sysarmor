@@ -9,6 +9,7 @@ type policyRoutes interface {
 	Audits(http.ResponseWriter, *http.Request)
 	Assignments(http.ResponseWriter, *http.Request)
 	Effective(http.ResponseWriter, *http.Request)
+	Rollouts(http.ResponseWriter, *http.Request)
 }
 
 type identityRoutes interface {
@@ -110,6 +111,9 @@ func (unavailablePolicyRoutes) Assignments(w http.ResponseWriter, _ *http.Reques
 	unavailable(w, "policy")
 }
 func (unavailablePolicyRoutes) Effective(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "policy")
+}
+func (unavailablePolicyRoutes) Rollouts(w http.ResponseWriter, _ *http.Request) {
 	unavailable(w, "policy")
 }
 

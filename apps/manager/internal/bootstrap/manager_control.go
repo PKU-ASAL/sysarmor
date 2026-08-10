@@ -30,13 +30,6 @@ func NewManagerControlHTTP(db *sql.DB, resolve controlhttp.RequestContextResolve
 	}), nil
 }
 
-func NewManagerControlQueries(db *sql.DB) (*controlapp.QueryService, error) {
-	if db == nil {
-		return nil, fmt.Errorf("manager control database is required")
-	}
-	return controlapp.NewQueryService(controlpostgres.NewUnitOfWork(db)), nil
-}
-
 type policyQueries interface {
 	GetPolicy(context.Context, managerapp.RequestContext, policyapp.GetPolicyQuery) (policyapp.GetPolicyResult, error)
 }

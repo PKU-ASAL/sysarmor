@@ -7,9 +7,7 @@ import (
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
-	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
-	domaincontrol "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/control"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -35,7 +33,6 @@ type Server struct {
 	overviewRoutes   overviewRoutes
 	statusRoutes     statusRoutes
 	identityQuery    identityQueries
-	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
 }
 
@@ -47,15 +44,9 @@ type identityQueries interface {
 	AgentOverview(context.Context, managerapp.RequestContext) (domainidentity.AgentOverview, error)
 }
 
-type controlQueries interface {
-	Commands(context.Context, managerapp.RequestContext, controlapp.CommandQuery) ([]domaincontrol.Command, error)
-}
-
 func (s *Server) SetIdentityApplication(query identityQueries, resolve func(*http.Request) (managerapp.RequestContext, error)) {
 	s.identityQuery, s.identityResolve = query, resolve
 }
-
-func (s *Server) SetControlApplication(query controlQueries) { s.controlQuery = query }
 
 func (s *Server) identityRequest(r *http.Request) (managerapp.RequestContext, error) {
 	if s.identityResolve == nil {
@@ -166,7 +157,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/agent-install.sh", func(w http.ResponseWriter, r *http.Request) {
 		s.enrollmentRoutes.Install(w, r)
 	})
-	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRollouts)
+	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRoutes.Rollouts)
 	mux.HandleFunc("/api/v1/responses", s.responseRoutes.Responses)
 	mux.HandleFunc("/api/v1/response-decisions", s.responseRoutes.Decisions)
 	mux.HandleFunc("/api/v1/response-approvals", s.responseRoutes.Approvals)

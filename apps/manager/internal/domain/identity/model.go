@@ -30,14 +30,27 @@ type AgentView struct {
 
 type Scope struct{ Type, Selector string }
 
+type PolicyRef struct {
+	ID      string
+	Version uint64
+}
+
+type PendingPolicy struct {
+	Status, Source, ID, Digest string
+	Version                    uint64
+}
+
 type Health struct {
-	TenantID   tenant.ID
-	AgentID    AgentID
-	HostID     string
-	Status     string
-	Scope      Scope
-	ObservedAt time.Time
-	Document   []byte
+	TenantID      tenant.ID
+	AgentID       AgentID
+	HostID        string
+	Status        string
+	Scope         Scope
+	ObservedAt    time.Time
+	ReportedAt    time.Time
+	Document      []byte
+	AppliedPolicy PolicyRef
+	PendingPolicy PendingPolicy
 }
 
 func (value Health) Clone() Health {

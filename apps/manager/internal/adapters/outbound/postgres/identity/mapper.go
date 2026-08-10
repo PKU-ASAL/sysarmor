@@ -22,7 +22,17 @@ func decodeAgent(tenantID tenant.ID, id, host, version string, document []byte) 
 
 func decodeHealth(tenantID tenant.ID, agentID domainidentity.AgentID, host, scopeType, scopeSelector string, observed time.Time, document []byte) (domainidentity.Health, error) {
 	var fields struct {
-		Status string `json:"status"`
+		Status        string    `json:"status"`
+		PolicyID      string    `json:"policy_id"`
+		PolicyVersion uint64    `json:"policy_version"`
+		ObservedAt    time.Time `json:"observed_at"`
+		PendingPolicy struct {
+			Status   string `json:"status"`
+			Source   string `json:"source"`
+			PolicyID string `json:"policy_id"`
+			Version  uint64 `json:"version"`
+			Digest   string `json:"digest"`
+		} `json:"pending_policy"`
 	}
 	if err := json.Unmarshal(document, &fields); err != nil {
 		return domainidentity.Health{}, fmt.Errorf("decode agent health: %w", err)
@@ -37,7 +47,11 @@ func decodeHealth(tenantID tenant.ID, agentID domainidentity.AgentID, host, scop
 	if err != nil {
 		return domainidentity.Health{}, fmt.Errorf("encode health document: %w", err)
 	}
-	return domainidentity.Health{TenantID: tenantID, AgentID: agentID, HostID: host, Status: fields.Status, Scope: domainidentity.Scope{Type: scopeType, Selector: scopeSelector}, ObservedAt: observed, Document: encoded}, nil
+	return domainidentity.Health{TenantID: tenantID, AgentID: agentID, HostID: host, Status: fields.Status,
+		Scope: domainidentity.Scope{Type: scopeType, Selector: scopeSelector}, ObservedAt: observed, ReportedAt: fields.ObservedAt, Document: encoded,
+		AppliedPolicy: domainidentity.PolicyRef{ID: fields.PolicyID, Version: fields.PolicyVersion},
+		PendingPolicy: domainidentity.PendingPolicy{Status: fields.PendingPolicy.Status, Source: fields.PendingPolicy.Source,
+			ID: fields.PendingPolicy.PolicyID, Version: fields.PendingPolicy.Version, Digest: fields.PendingPolicy.Digest}}, nil
 }
 
 func decodeSession(tenantID tenant.ID, id, agentID string, document []byte) (domainidentity.Session, error) {
