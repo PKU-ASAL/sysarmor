@@ -49,5 +49,6 @@ func (tx transaction) Unenrollments() ports.UnenrollmentRepository {
 
 type sqlExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }

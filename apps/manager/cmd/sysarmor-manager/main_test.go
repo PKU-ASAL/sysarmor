@@ -14,10 +14,12 @@ func TestManagerEnrollmentConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("SYSARMOR_AGENT_CA_CERT", "/tmp/agent-ca.crt")
 	t.Setenv("SYSARMOR_AGENT_CA_KEY", "/tmp/agent-ca.key")
 	t.Setenv("SYSARMOR_TRUST_DOMAIN", "tenant.example")
+	t.Setenv("SYSARMOR_PUBLIC_URL", "https://manager.example/base")
 	db := &sql.DB{}
 
 	config := managerEnrollmentConfig(db)
-	if config.DB != db || config.CACertFile != "/tmp/agent-ca.crt" || config.CAKeyFile != "/tmp/agent-ca.key" || config.TrustDomain != "tenant.example" {
+	if config.DB != db || config.CACertFile != "/tmp/agent-ca.crt" || config.CAKeyFile != "/tmp/agent-ca.key" ||
+		config.TrustDomain != "tenant.example" || config.PublicURL != "https://manager.example/base" {
 		t.Fatalf("enrollment config = %#v", config)
 	}
 }

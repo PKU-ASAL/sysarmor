@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainenrollment "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/enrollment"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	_ "modernc.org/sqlite"
@@ -42,10 +43,16 @@ func TestEnrollmentRepositoryReadsTokenIdentity(t *testing.T) {
 	db := newEnrollmentTestDB(t)
 	uow := NewUnitOfWork(db)
 	want := adapterEnrollment(t)
+	want.BootstrapFetchedAt = time.Unix(75, 0).UTC()
 	if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
 		return tx.Enrollments().Put(ctx, want)
 	}); err != nil {
 		t.Fatal(err)
+	}
+	var hostID string
+	if err := db.QueryRow(`SELECT host_id FROM enrollments WHERE tenant_id=? AND enrollment_id=?`,
+		want.TenantID.String(), want.ID).Scan(&hostID); err != nil || hostID != want.HostID {
+		t.Fatalf("host_id column = %q error=%v", hostID, err)
 	}
 
 	var got domainenrollment.Enrollment
@@ -57,8 +64,94 @@ func TestEnrollmentRepositoryReadsTokenIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != want.ID || got.TenantID != want.TenantID || got.AgentID != want.AgentID {
+	if got.ID != want.ID || got.TenantID != want.TenantID || got.AgentID != want.AgentID ||
+		got.HostID != want.HostID || got.GatewayAddress != want.GatewayAddress || got.Profile != want.Profile ||
+		got.BootstrapTokenHash != want.BootstrapTokenHash || !got.BootstrapFetchedAt.Equal(want.BootstrapFetchedAt) || got.Labels["env"] != "prod" {
 		t.Fatalf("enrollment = %#v", got)
+	}
+}
+
+func TestEnrollmentRepositoryReadsBootstrapIdentity(t *testing.T) {
+	db := newEnrollmentTestDB(t)
+	uow := NewUnitOfWork(db)
+	want := adapterEnrollment(t)
+	if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		return tx.Enrollments().Put(ctx, want)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var got domainenrollment.Enrollment
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		var err error
+		got, err = tx.Enrollments().ByBootstrapTokenHash(ctx, "bootstrap-hash")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != want.ID || got.BootstrapTokenHash != want.BootstrapTokenHash {
+		t.Fatalf("enrollment = %#v", got)
+	}
+}
+
+func TestEnrollmentRepositoryRejectsStaleBootstrapRedemption(t *testing.T) {
+	db := newEnrollmentTestDB(t)
+	uow := NewUnitOfWork(db)
+	current := adapterEnrollment(t)
+	if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		return tx.Enrollments().Put(ctx, current)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := current.RedeemBootstrap("bootstrap-hash", "rotated-a", "enr_...aaa", time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := current.RedeemBootstrap("bootstrap-hash", "rotated-b", "enr_...bbb", time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		if err := tx.Enrollments().RedeemBootstrap(ctx, current, first); err != nil {
+			return err
+		}
+		return tx.Enrollments().RedeemBootstrap(ctx, current, second)
+	})
+	if failure.KindOf(err) != failure.Conflict {
+		t.Fatalf("stale redemption kind = %v error=%v", failure.KindOf(err), err)
+	}
+}
+
+func TestEnrollmentRepositoryListsTenantAndStatus(t *testing.T) {
+	db := newEnrollmentTestDB(t)
+	uow := NewUnitOfWork(db)
+	issued := adapterEnrollment(t)
+	issued.Status = domainenrollment.StatusIssued
+	active := adapterEnrollment(t)
+	active.ID, active.TokenHash = "enroll-active", "token-active"
+	other := issued
+	other.ID, other.TenantID, other.TokenHash = "enroll-other", mustAdapterTenantID(t, "tenant-b"), "token-other"
+	if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		for _, value := range []domainenrollment.Enrollment{active, issued, other} {
+			if err := tx.Enrollments().Put(ctx, value); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var values []domainenrollment.Enrollment
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		var err error
+		values, err = tx.Enrollments().List(ctx, mustAdapterTenant(t), domainenrollment.StatusIssued)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].ID != issued.ID {
+		t.Fatalf("enrollments = %#v", values)
 	}
 }
 
@@ -89,6 +182,33 @@ func TestUnenrollmentRepositoryRoundTripsBoundIdentity(t *testing.T) {
 	}
 }
 
+func TestUnenrollmentRepositoryListsTenant(t *testing.T) {
+	db := newEnrollmentTestDB(t)
+	uow := NewUnitOfWork(db)
+	want := pendingAdapterUnenrollment(t, "tenant-a", "enroll-a")
+	other := pendingAdapterUnenrollment(t, "tenant-b", "enroll-b")
+	if err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		if err := tx.Unenrollments().Put(ctx, want); err != nil {
+			return err
+		}
+		return tx.Unenrollments().Put(ctx, other)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var values []domainenrollment.Unenrollment
+	err := uow.Execute(context.Background(), func(ctx context.Context, tx ports.EnrollmentTransaction) error {
+		var err error
+		values, err = tx.Unenrollments().List(ctx, mustAdapterTenant(t))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].Identity != want.Identity {
+		t.Fatalf("unenrollments = %#v", values)
+	}
+}
+
 func newEnrollmentTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
@@ -110,8 +230,23 @@ func newEnrollmentTestDB(t *testing.T) *sql.DB {
 }
 
 func mustAdapterTenant(t *testing.T) tenant.ID {
+	return mustAdapterTenantID(t, "tenant-a")
+}
+
+func mustAdapterTenantID(t *testing.T, raw string) tenant.ID {
 	t.Helper()
-	value, err := tenant.NewID("tenant-a")
+	value, err := tenant.NewID(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func pendingAdapterUnenrollment(t *testing.T, tenantID, enrollmentID string) domainenrollment.Unenrollment {
+	t.Helper()
+	value, err := domainenrollment.NewPendingUnenrollment(domainenrollment.UnenrollmentIdentity{
+		TenantID: mustAdapterTenantID(t, tenantID), AgentID: "agent-a", EnrollmentID: enrollmentID, CertificateSerial: "42",
+	}, "receipt-a", "token-hash", time.Unix(100, 0).UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +260,10 @@ func adapterEnrollment(t *testing.T) domainenrollment.Enrollment {
 		t.Fatal(err)
 	}
 	value, err := domainenrollment.NewEnrollment(domainenrollment.Enrollment{
-		ID: "enroll-a", TenantID: tenantID, AgentID: "agent-a", TokenHash: "token-hash",
+		ID: "enroll-a", TenantID: tenantID, AgentID: "agent-a", HostID: "host-a", TokenHash: "token-hash",
+		TokenPreview: "token...hash", BootstrapTokenHash: "bootstrap-hash", BootstrapTokenPreview: "boot...hash",
+		GatewayAddress: "gateway:9444", GatewayServerName: "gateway.internal", Profile: "linux-systemd",
+		Labels: map[string]string{"env": "prod"}, CreatedBy: "admin-a",
 		Status: domainenrollment.StatusActive, CreatedAt: time.Unix(50, 0).UTC(), ExpiresAt: time.Unix(500, 0).UTC(),
 	})
 	if err != nil {

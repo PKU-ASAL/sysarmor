@@ -9,6 +9,9 @@ import (
 
 type EnrollmentRepository interface {
 	ByTokenHash(context.Context, string) (domainenrollment.Enrollment, error)
+	ByBootstrapTokenHash(context.Context, string) (domainenrollment.Enrollment, error)
+	List(context.Context, tenant.ID, domainenrollment.Status) ([]domainenrollment.Enrollment, error)
+	RedeemBootstrap(context.Context, domainenrollment.Enrollment, domainenrollment.Enrollment) error
 	Put(context.Context, domainenrollment.Enrollment) error
 }
 
@@ -18,6 +21,7 @@ type CertificateRepository interface {
 
 type UnenrollmentRepository interface {
 	Get(context.Context, tenant.ID, string) (domainenrollment.Unenrollment, error)
+	List(context.Context, tenant.ID) ([]domainenrollment.Unenrollment, error)
 	Put(context.Context, domainenrollment.Unenrollment) error
 }
 
@@ -33,4 +37,14 @@ type EnrollmentUnitOfWork interface {
 
 type CertificateIssuer interface {
 	Issue(context.Context, domainenrollment.Enrollment, []byte) (domainenrollment.Issuance, error)
+}
+
+type EnrollmentToken struct {
+	Plaintext string
+	Hash      string
+	Preview   string
+}
+
+type EnrollmentTokenGenerator interface {
+	New() (EnrollmentToken, error)
 }

@@ -120,7 +120,8 @@ func main() {
 func managerEnrollmentConfig(db *sql.DB) bootstrap.EnrollmentHTTPConfig {
 	return bootstrap.EnrollmentHTTPConfig{
 		DB: db, CACertFile: os.Getenv("SYSARMOR_AGENT_CA_CERT"), CAKeyFile: os.Getenv("SYSARMOR_AGENT_CA_KEY"),
-		TrustDomain: os.Getenv("SYSARMOR_TRUST_DOMAIN"),
+		TrustDomain: os.Getenv("SYSARMOR_TRUST_DOMAIN"), PublicURL: os.Getenv("SYSARMOR_PUBLIC_URL"),
+		Resolve: managerapi.PolicyRequestContext,
 	}
 }
 

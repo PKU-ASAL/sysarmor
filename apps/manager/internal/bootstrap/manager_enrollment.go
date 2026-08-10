@@ -8,6 +8,7 @@ import (
 
 	enrollmenthttp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/enrollment"
 	certificateadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/certificate"
+	enrollmenttoken "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/enrollmenttoken"
 	enrollmentpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/enrollment"
 	enrollmentapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/enrollment"
 )
@@ -17,11 +18,16 @@ type EnrollmentHTTPConfig struct {
 	CACertFile  string
 	CAKeyFile   string
 	TrustDomain string
+	PublicURL   string
+	Resolve     enrollmenthttp.RequestContextResolver
 }
 
 func NewManagerEnrollmentHTTP(config EnrollmentHTTPConfig) (*enrollmenthttp.Handler, error) {
 	if config.DB == nil {
 		return nil, fmt.Errorf("enrollment postgres database is required")
+	}
+	if config.Resolve == nil {
+		return nil, fmt.Errorf("enrollment request context resolver is required")
 	}
 	certificatePEM, err := readEnrollmentFile("agent CA certificate", config.CACertFile)
 	if err != nil {
@@ -35,9 +41,15 @@ func NewManagerEnrollmentHTTP(config EnrollmentHTTPConfig) (*enrollmenthttp.Hand
 	if err != nil {
 		return nil, fmt.Errorf("configure enrollment certificate issuer: %w", err)
 	}
-	service := enrollmentapp.NewIssueService(enrollmentpostgres.NewUnitOfWork(config.DB), issuer, systemClock{})
-	completion := enrollmentapp.NewCompletionService(enrollmentpostgres.NewUnitOfWork(config.DB), systemClock{})
-	return enrollmenthttp.NewHandler(service, completion), nil
+	uow := enrollmentpostgres.NewUnitOfWork(config.DB)
+	service := enrollmentapp.NewIssueService(uow, issuer, systemClock{})
+	completion := enrollmentapp.NewCompletionService(uow, systemClock{})
+	create := enrollmentapp.NewCreateService(uow, enrollmenttoken.NewGenerator(), systemClock{}, uuidGenerator{})
+	query := enrollmentapp.NewQueryService(uow)
+	return enrollmenthttp.NewHandler(enrollmenthttp.Options{
+		Create: create, Query: query, Issue: service, Completion: completion,
+		Resolve: config.Resolve, PublicURL: config.PublicURL,
+	}), nil
 }
 
 func readEnrollmentFile(name, path string) ([]byte, error) {

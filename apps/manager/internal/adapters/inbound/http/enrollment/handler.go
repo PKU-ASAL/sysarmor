@@ -9,25 +9,50 @@ import (
 	"net/http"
 	"strings"
 
+	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	enrollmentapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/enrollment"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 )
 
-type issueService interface {
+type IssueService interface {
 	Execute(context.Context, enrollmentapp.IssueCertificateCommand) (enrollmentapp.IssueCertificateResult, error)
 }
 
-type completionService interface {
+type CompletionService interface {
 	Execute(context.Context, enrollmentapp.CompleteUnenrollmentCommand) (enrollmentapp.CompleteUnenrollmentResult, error)
 }
 
-type Handler struct {
-	issue      issueService
-	completion completionService
+type CreateService interface {
+	Execute(context.Context, managerapp.RequestContext, enrollmentapp.CreateEnrollmentCommand) (enrollmentapp.CreateEnrollmentResult, error)
 }
 
-func NewHandler(issue issueService, completion completionService) *Handler {
-	return &Handler{issue: issue, completion: completion}
+type QueryService interface {
+	List(context.Context, managerapp.RequestContext, enrollmentapp.ListEnrollmentsQuery) (enrollmentapp.ListEnrollmentsResult, error)
+}
+
+type RequestContextResolver func(*http.Request) (managerapp.RequestContext, error)
+
+type Handler struct {
+	create     CreateService
+	query      QueryService
+	issue      IssueService
+	completion CompletionService
+	resolve    RequestContextResolver
+	publicURL  string
+}
+
+type Options struct {
+	Create     CreateService
+	Query      QueryService
+	Issue      IssueService
+	Completion CompletionService
+	Resolve    RequestContextResolver
+	PublicURL  string
+}
+
+func NewHandler(options Options) *Handler {
+	return &Handler{create: options.Create, query: options.Query, issue: options.Issue,
+		completion: options.Completion, resolve: options.Resolve, publicURL: options.PublicURL}
 }
 
 type certificateRequest struct {

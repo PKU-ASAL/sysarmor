@@ -18,18 +18,45 @@ const (
 )
 
 type Enrollment struct {
-	ID                string
-	TenantID          tenant.ID
-	AgentID           string
-	TokenHash         string
-	GatewayAddress    string
-	GatewayServerName string
-	Status            Status
-	CreatedAt         time.Time
-	ExpiresAt         time.Time
-	UsedAt            time.Time
-	IssuedAt          time.Time
-	Issuance          Issuance
+	ID                    string
+	TenantID              tenant.ID
+	AgentID               string
+	HostID                string
+	TokenHash             string
+	TokenPreview          string
+	BootstrapTokenHash    string
+	BootstrapTokenPreview string
+	BootstrapFetchedAt    time.Time
+	GatewayAddress        string
+	GatewayServerName     string
+	Profile               string
+	Labels                map[string]string
+	CreatedBy             string
+	Status                Status
+	CreatedAt             time.Time
+	ExpiresAt             time.Time
+	UsedAt                time.Time
+	IssuedAt              time.Time
+	Issuance              Issuance
+}
+
+func (value Enrollment) RedeemBootstrap(bootstrapHash, tokenHash, tokenPreview string, at time.Time) (Enrollment, error) {
+	bootstrapHash = strings.TrimSpace(bootstrapHash)
+	tokenHash, tokenPreview = strings.TrimSpace(tokenHash), strings.TrimSpace(tokenPreview)
+	if value.Status != StatusActive || !value.BootstrapFetchedAt.IsZero() ||
+		!secureEqual(value.BootstrapTokenHash, bootstrapHash) {
+		return Enrollment{}, failure.New(failure.Conflict, "bootstrap ticket is not active")
+	}
+	if at.IsZero() || tokenHash == "" || tokenPreview == "" {
+		return Enrollment{}, failure.New(failure.InvalidArgument, "bootstrap redemption is incomplete")
+	}
+	if !value.ExpiresAt.IsZero() && at.After(value.ExpiresAt) {
+		return Enrollment{}, failure.New(failure.FailedPrecondition, "enrollment token is expired")
+	}
+	value.TokenHash, value.TokenPreview = tokenHash, tokenPreview
+	value.BootstrapTokenHash, value.BootstrapTokenPreview = "", ""
+	value.BootstrapFetchedAt = at.UTC()
+	return value, nil
 }
 
 func NewEnrollment(value Enrollment) (Enrollment, error) {
@@ -42,10 +69,22 @@ func NewEnrollment(value Enrollment) (Enrollment, error) {
 		value.Status = StatusActive
 	}
 	value.AgentID = strings.TrimSpace(value.AgentID)
+	value.Labels = cloneLabels(value.Labels)
 	if value.Status != StatusActive && value.Status != StatusUsed && value.Status != StatusIssued {
 		return Enrollment{}, failure.New(failure.InvalidArgument, "enrollment status is invalid")
 	}
 	return value, nil
+}
+
+func cloneLabels(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 type Certificate struct {

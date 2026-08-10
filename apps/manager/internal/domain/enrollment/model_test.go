@@ -70,6 +70,43 @@ func TestEnrollmentIssueReplaysOriginalCertificateForSameKey(t *testing.T) {
 	}
 }
 
+func TestEnrollmentRedeemsBootstrapOnceAndRotatesToken(t *testing.T) {
+	value := newActiveEnrollment(t)
+	value.BootstrapTokenHash = "bootstrap-hash"
+	redeemedAt := time.Unix(100, 0).UTC()
+
+	redeemed, err := value.RedeemBootstrap("bootstrap-hash", "rotated-hash", "enr_...ated", redeemedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redeemed.TokenHash != "rotated-hash" || redeemed.TokenPreview != "enr_...ated" ||
+		!redeemed.BootstrapFetchedAt.Equal(redeemedAt) {
+		t.Fatalf("redeemed enrollment = %#v", redeemed)
+	}
+	if redeemed.BootstrapTokenHash != "" || redeemed.BootstrapTokenPreview != "" {
+		t.Fatalf("bootstrap secret was retained = %#v", redeemed)
+	}
+	if _, err := redeemed.RedeemBootstrap("bootstrap-hash", "other-hash", "enr_...ther", redeemedAt); failure.KindOf(err) != failure.Conflict {
+		t.Fatalf("second redemption kind = %v", failure.KindOf(err))
+	}
+}
+
+func TestValidateIdentityRejectsPathComponents(t *testing.T) {
+	for _, values := range [][2]string{{"tenant/a", "agent-a"}, {"tenant-a", "../agent"}, {"tenant-a", "agent?admin=true"}} {
+		if err := ValidateIdentity(values[0], values[1]); failure.KindOf(err) != failure.InvalidArgument {
+			t.Fatalf("identity=%q/%q kind=%v", values[0], values[1], failure.KindOf(err))
+		}
+	}
+}
+
+func TestValidateGatewayAcceptsHostAndBracketedIPv6(t *testing.T) {
+	for _, address := range []string{"gateway.example:9444", "[::1]:9444"} {
+		if err := ValidateGateway(address, "gateway.example"); err != nil {
+			t.Fatalf("gateway=%q error=%v", address, err)
+		}
+	}
+}
+
 func newActiveEnrollment(t *testing.T) Enrollment {
 	t.Helper()
 	value, err := NewEnrollment(Enrollment{
