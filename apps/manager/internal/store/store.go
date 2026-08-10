@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"

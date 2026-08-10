@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -17,6 +17,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 )
 
 func TestListSignalsFiltersLabelsLayerAndTerminal(t *testing.T) {
@@ -136,7 +139,8 @@ func TestTenantTelemetryStateRoundTrip(t *testing.T) {
 	}
 	st.AddSignalForTenant("tenant-a", &signalv1.Signal{Id: "signal-a"})
 	baseline := rarity.Baseline{}
-	baseline.Observe([]*signalv1.Signal{{Name: "signal-a"}})
+	mapped, _ := contractmapper.SignalToDomain(&signalv1.Signal{Name: "signal-a"})
+	baseline.Observe([]domaintelemetry.Signal{mapped})
 	claim, token, claimErr := st.ClaimTelemetryBatch(context.Background(), "tenant-a", "batch-a", time.Minute)
 	if claimErr != nil || claim != BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, claimErr)
@@ -648,13 +652,14 @@ func TestExportImportStateRoundTrip(t *testing.T) {
 	st.UpsertAgentHealth(agenthealth.AgentHealth{AgentID: "agent-a", HostID: "host-a", TenantID: "default", Status: "ok"})
 	st.RecordDataBatchAppend(AgentIdentity{AgentID: "agent-a", TenantID: "default"}, "batch-a", "http", time.Unix(10, 0).UTC())
 	baseline := rarity.Baseline{}
-	baseline.Observe([]*signalv1.Signal{{
+	mapped, _ := contractmapper.SignalToDomain(&signalv1.Signal{
 		Name: "download_by_lolbin",
 		Entities: []*signalv1.EntityRef{{
 			Kind: "container",
 			Key:  "checkout-api",
 		}},
-	}})
+	})
+	baseline.Observe([]domaintelemetry.Signal{mapped})
 	claim, token, err := st.ClaimTelemetryBatch(context.Background(), "default", "telemetry-batch", time.Minute)
 	if err != nil || claim != BatchClaimed {
 		t.Fatalf("claim=%v err=%v", claim, err)

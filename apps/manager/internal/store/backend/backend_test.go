@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
@@ -1220,15 +1222,17 @@ func TestOpenPostgresProjectsRarityBaselineTable(t *testing.T) {
 		t.Fatalf("Open(postgres) error = %v", err)
 	}
 	baseline := rarity.Baseline{}
-	baseline.Observe([]*signalv1.Signal{{
+	mappedA, _ := contractmapper.SignalToDomain(&signalv1.Signal{
 		Name: "download_by_lolbin",
 		Entities: []*signalv1.EntityRef{{
 			Kind: "container",
 			Key:  "checkout-api",
 		}},
-	}, {
+	})
+	mappedB, _ := contractmapper.SignalToDomain(&signalv1.Signal{
 		Name: "reverse_shell_pattern",
-	}})
+	})
+	baseline.Observe([]domaintelemetry.Signal{mappedA, mappedB})
 	commitBackendTelemetry(t, result.Store, store.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "rarity-batch", Rarity: baseline})
 	execLog := fakeExecLog()
 	for _, want := range []string{
@@ -1255,7 +1259,8 @@ func TestOpenPostgresProjectsTenantMetricsAndRarity(t *testing.T) {
 		t.Fatal(err)
 	}
 	baseline := rarity.Baseline{}
-	baseline.Observe([]*signalv1.Signal{{Name: "tenant-signal"}})
+	mapped, _ := contractmapper.SignalToDomain(&signalv1.Signal{Name: "tenant-signal"})
+	baseline.Observe([]domaintelemetry.Signal{mapped})
 	commitBackendTelemetry(t, result.Store, store.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "tenant-batch", Metrics: store.Metrics{DataBatchesAppended: 1, EventsIngested: 3, SignalsEmitted: 2}, Rarity: baseline})
 	execLog := fakeExecLog()
 	for _, want := range []string{"INSERT INTO metrics", "tenant-a", `"events_ingested":3`, "INSERT INTO rarity_baseline", "tenant-signal"} {

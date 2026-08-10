@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
-	analyticingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
@@ -27,7 +28,7 @@ import (
 
 type Processor struct {
 	store     *store.Store
-	engine    *analyticingest.Engine
+	engine    *Engine
 	projector ports.DocumentProjector
 	history   ports.HistoryReader
 	rarity    RarityReader
@@ -57,21 +58,21 @@ func NewProcessor(st *store.Store, projector ports.DocumentProjector) *Processor
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}, local: true}
+	return &Processor{store: st, engine: NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}, local: true}
 }
 
 func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector, history ports.HistoryReader) *Processor {
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}}
+	return &Processor{store: st, engine: NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}}
 }
 
 func NewRemoteProcessor(projector ports.DocumentProjector, history ports.HistoryReader, rarityReader ports.RarityReader, batches ports.TelemetryBatches, policies ports.DetectionPolicyReader) *Processor {
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: rarityReader, batches: batches, policies: policies}
+	return &Processor{engine: NewEngine(), projector: projector, history: history, rarity: rarityReader, batches: batches, policies: policies}
 }
 
 func (p *Processor) SetRarityReader(reader RarityReader)                       { p.rarity = reader }
@@ -182,13 +183,15 @@ func telemetryBatchDelta(batch *dataplanev1.DataBatch, claimToken string, events
 		MaxLatencyMs: latencyMs, TotalLatencyMs: latencyMs, AverageLatencyMs: float64(latencyMs),
 	}
 	baseline := rarity.Baseline{}
-	currentSignals := make([]*signalv1.Signal, 0, len(batch.GetSignals()))
+	domainSignals := make([]domaintelemetry.Signal, 0, len(batch.GetSignals()))
 	for _, frame := range batch.GetSignals() {
 		if signal := frame.GetSignal(); signal != nil {
-			currentSignals = append(currentSignals, signal)
+			if mapped, err := contractmapper.SignalToDomain(signal); err == nil {
+				domainSignals = append(domainSignals, mapped)
+			}
 		}
 	}
-	baseline.Observe(currentSignals)
+	baseline.Observe(domainSignals)
 	return ports.TelemetryBatchDelta{TenantID: batch.GetHeader().GetTenantId(), BatchID: batch.GetHeader().GetBatchId(), ClaimToken: claimToken, Metrics: metrics, Rarity: identity.RarityBaseline{WorkloadCounts: baseline.WorkloadCounts}}
 }
 

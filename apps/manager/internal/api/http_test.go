@@ -16,12 +16,14 @@ import (
 	"testing"
 	"time"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
 	identityhttp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/identity"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
@@ -218,7 +220,11 @@ func seedTenantTelemetry(t *testing.T, st *store.Store, tenantID, batchID string
 		t.Fatalf("claim=%v err=%v", claim, err)
 	}
 	baseline := rarity.Baseline{}
-	baseline.Observe(signals)
+	for _, signal := range signals {
+		if mapped, err := contractmapper.SignalToDomain(signal); err == nil {
+			baseline.Observe([]domaintelemetry.Signal{mapped})
+		}
+	}
 	if err := st.CommitTelemetryBatch(context.Background(), store.TelemetryBatchDelta{TenantID: tenantID, BatchID: batchID, ClaimToken: token, Metrics: metrics, Rarity: baseline}); err != nil {
 		t.Fatal(err)
 	}

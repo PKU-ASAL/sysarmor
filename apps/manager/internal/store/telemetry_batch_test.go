@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 )
 
 func TestFileTelemetryBatchCommitSurvivesReopen(t *testing.T) {

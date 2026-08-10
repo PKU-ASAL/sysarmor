@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 )
 
 func (s *Store) ClaimTelemetryBatch(ctx context.Context, tenantID, batchID string, leaseDuration time.Duration) (BatchClaim, string, error) {
