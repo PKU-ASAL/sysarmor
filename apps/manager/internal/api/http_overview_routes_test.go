@@ -4,13 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestOverviewRouteDelegatesToApplicationAdapter(t *testing.T) {
 	routes := &overviewRoutesStub{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetOverviewRoutes(routes)
 	handler := adminTestHandler(server)
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil))
@@ -20,7 +18,7 @@ func TestOverviewRouteDelegatesToApplicationAdapter(t *testing.T) {
 }
 
 func TestOverviewRouteReturnsUnavailableWithoutAdapter(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	recorder := httptest.NewRecorder()
 	adminTestHandler(server).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil))
 	if recorder.Code != http.StatusServiceUnavailable {

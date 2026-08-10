@@ -2,7 +2,6 @@ package managerapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,7 +12,6 @@ import (
 )
 
 type Server struct {
-	store            ManagerStore
 	searcher         platformopensearch.Searcher
 	policyRoutes     policyRoutes
 	identityRoutes   identityRoutes
@@ -75,26 +73,16 @@ type DataResume struct {
 	ResumeCursor string `json:"resume_cursor,omitempty"`
 }
 
-func NewServer(st ManagerStore) *Server {
-	st.EnsureDefaultPolicy("default")
-	return newServer(st, nil)
+func NewServer() *Server {
+	return newServer(nil)
 }
 
-func NewServerWithSearch(st ManagerStore, searcher platformopensearch.Searcher) *Server {
-	st.EnsureDefaultPolicy("default")
-	return newServer(st, searcher)
+func NewServerWithSearch(searcher platformopensearch.Searcher) *Server {
+	return newServer(searcher)
 }
 
-func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.Searcher) (*Server, error) {
-	s := newServer(st, searcher)
-	if err := st.EnsureDefaultPolicyWithError("default"); err != nil {
-		return nil, fmt.Errorf("initialize production default policy: %w", err)
-	}
-	return s, nil
-}
-
-func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
-	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
+func newServer(searcher platformopensearch.Searcher) *Server {
+	s := &Server{searcher: searcher, responseRoutes: unavailableResponseRoutes{},
 		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
 		analysisRoutes: unavailableAnalysisRoutes{},
 		searchRoutes:   unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{},

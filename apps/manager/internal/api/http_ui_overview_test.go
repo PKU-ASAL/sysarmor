@@ -15,7 +15,7 @@ import (
 )
 
 func TestUIOverviewUsesIdentityApplicationSummaries(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	identity := &testIdentityQueries{
 		overview: domainidentity.AgentOverview{Total: 3, Online: 2, Offline: 1},
 		metrics:  domainidentity.Metrics{EventsIngested: 12, SignalsEmitted: 5},
@@ -133,7 +133,7 @@ func TestUIOverviewRejectsSearchDocumentsFromAnotherTenant(t *testing.T) {
 			json.RawMessage(`{"id":"incident-missing","severity":45}`),
 		},
 	}}
-	server := NewServerWithSearch(&store.Store{}, searcher)
+	server := NewServerWithSearch(searcher)
 	identity := testIdentityQuery(&store.Store{})
 	setTestOverviewApplication(server, identity,
 		platformopensearch.NewTelemetryReader(searcher), store.Info{Backend: "memory"})

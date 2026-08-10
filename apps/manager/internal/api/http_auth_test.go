@@ -46,7 +46,7 @@ func TestHandlerWithAuthAcceptsSignedJWTForProtectedAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	setTestStatusRoutes(server, &store.Store{})
 	handler := server.HandlerWithAuth(verifier)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/store-status", nil)
@@ -61,7 +61,7 @@ func TestHandlerWithAuthAcceptsSignedJWTForProtectedAPI(t *testing.T) {
 }
 
 func TestProtectedHandlerRejectsUnauthenticatedRequest(t *testing.T) {
-	handler := NewServer(&store.Store{}).Handler()
+	handler := NewServer().Handler()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
 	rec := httptest.NewRecorder()
 
@@ -74,7 +74,7 @@ func TestProtectedHandlerRejectsUnauthenticatedRequest(t *testing.T) {
 }
 
 func TestEnrollmentTokenEndpointsDoNotRequirePrincipal(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetEnrollmentRoutes(enrollmentRoutesStub{})
 	handler := server.Handler()
 	for _, request := range []*http.Request{
@@ -90,7 +90,7 @@ func TestEnrollmentTokenEndpointsDoNotRequirePrincipal(t *testing.T) {
 }
 
 func TestHandlerRejectsOversizedAnonymousBodyBeforeEndpoint(t *testing.T) {
-	handler := NewServer(&store.Store{}).Handler()
+	handler := NewServer().Handler()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/enrollment-certificate", strings.NewReader(`{}`))
 	req.ContentLength = maxManagerRequestBody + 1
 	rec := httptest.NewRecorder()
@@ -103,7 +103,7 @@ func TestHandlerRejectsOversizedAnonymousBodyBeforeEndpoint(t *testing.T) {
 }
 
 func TestForgedIdentityHeadersDoNotCreatePrincipal(t *testing.T) {
-	handler := NewServer(&store.Store{}).Handler()
+	handler := NewServer().Handler()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/reset", nil)
 	req.Header.Set("X-SysArmor-Operator-Token", "operator-token")
 	req.Header.Set("X-SysArmor-Actor", "forged-admin")

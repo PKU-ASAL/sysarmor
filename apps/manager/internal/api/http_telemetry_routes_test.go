@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestTelemetryRoutesDelegateToApplicationAdapter(t *testing.T) {
 	routes := &telemetryRoutesStub{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetTelemetryRoutes(routes)
 	handler := adminTestHandler(server)
 	for _, path := range []string{"/api/v1/events", "/api/v1/signals", "/api/v1/incidents"} {
@@ -23,7 +22,7 @@ func TestTelemetryRoutesDelegateToApplicationAdapter(t *testing.T) {
 }
 
 func TestTelemetryRoutesReturnUnavailableWithoutAdapter(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	handler := (&authenticatedTestServer{Server: server, principal: testAdminPrincipal()}).Handler()
 	for _, path := range []string{"/api/v1/events", "/api/v1/signals", "/api/v1/incidents"} {
 		recorder := httptest.NewRecorder()

@@ -47,7 +47,7 @@ func TestAgentGatewayManagerLocalDataPath(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	managerServer := managerapi.NewServer(st)
+	managerServer := managerapi.NewServer()
 	setTestTelemetryApplication(managerServer, st)
 	managerHandler := managerServer.Handler()
 	manager := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

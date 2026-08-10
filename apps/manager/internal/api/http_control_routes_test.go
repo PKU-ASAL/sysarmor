@@ -4,13 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestControlRoutesDelegateToApplicationAdapter(t *testing.T) {
 	routes := &controlRoutesStub{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetControlRoutes(routes)
 	handler := adminTestHandler(server)
 

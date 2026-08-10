@@ -4,12 +4,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestIdentityEndpointsReturnUnavailableWithoutAdapter(t *testing.T) {
-	handler := adminTestHandler(NewServer(&store.Store{}))
+	handler := adminTestHandler(NewServer())
 	requests := []struct{ method, path string }{
 		{http.MethodGet, "/api/v1/agents"}, {http.MethodGet, "/api/v1/agent-health"},
 		{http.MethodPost, "/api/v1/agent-health"}, {http.MethodGet, "/api/v1/agent-sessions"},

@@ -12,12 +12,10 @@ type authenticatedTestServer struct {
 	principal managerauth.Principal
 }
 
-func newAdminTestServer(st ManagerStore) *authenticatedTestServer {
-	server := NewServer(st)
-	if memoryStore, ok := st.(*store.Store); ok {
-		setTestIdentityApplication(server, memoryStore)
-		setTestTelemetryApplication(server, memoryStore)
-	}
+func newAdminTestServer(st *store.Store) *authenticatedTestServer {
+	server := NewServer()
+	setTestIdentityApplication(server, st)
+	setTestTelemetryApplication(server, st)
 	return &authenticatedTestServer{
 		Server: server,
 		principal: managerauth.Principal{
@@ -27,10 +25,8 @@ func newAdminTestServer(st ManagerStore) *authenticatedTestServer {
 }
 
 func adminTestHandler(server *Server) http.Handler {
-	if _, unavailable := server.telemetryRoutes.(unavailableTelemetryRoutes); unavailable {
-		if memoryStore, ok := server.store.(*store.Store); ok {
-			setTestTelemetryApplication(server, memoryStore)
-		}
+	if _, unavailable := server.telemetryRoutes.(unavailableTelemetryRoutes); unavailable && server.searcher != nil {
+		setTestTelemetryApplication(server, nil)
 	}
 	return (&authenticatedTestServer{
 		Server: server,

@@ -51,7 +51,7 @@ func (s fakeSearcher) Search(_ context.Context, search platformopensearch.Search
 }
 
 func newTestServer(st *store.Store) *Server {
-	server := NewServer(st)
+	server := NewServer()
 	setTestIdentityApplication(server, st)
 	setTestTelemetryApplication(server, st)
 	setTestStoreOverviewApplication(server, st)
@@ -224,12 +224,12 @@ func seedTenantTelemetry(t *testing.T, st *store.Store, tenantID, batchID string
 	}
 }
 
-func appendBatch(t *testing.T, srv *Server, batch *dataplanev1.DataBatch) {
+func appendBatch(t *testing.T, st *store.Store, batch *dataplanev1.DataBatch) {
 	t.Helper()
-	_ = appendBatchAndAck(t, srv, batch)
+	_ = appendBatchAndAck(t, st, batch)
 }
 
-func appendBatchAndAck(t *testing.T, srv *Server, batch *dataplanev1.DataBatch) *dataplanev1.DataAck {
+func appendBatchAndAck(t *testing.T, st *store.Store, batch *dataplanev1.DataBatch) *dataplanev1.DataAck {
 	t.Helper()
 	if batch.Header == nil {
 		batch.Header = &dataplanev1.BatchHeader{AgentId: "agent-a", HostId: "host-a", TenantId: "default"}
@@ -245,10 +245,6 @@ func appendBatchAndAck(t *testing.T, srv *Server, batch *dataplanev1.DataBatch) 
 	}
 	if batch.Header.TenantId == "" {
 		batch.Header.TenantId = "default"
-	}
-	st, ok := srv.store.(*store.Store)
-	if !ok {
-		t.Fatalf("test server store type = %T, want *store.Store", srv.store)
 	}
 	duplicate := isDuplicateTestBatch(st, batch)
 	st.RecordDataBatchAppend(store.AgentIdentityFromDataBatch(batch), batch.GetHeader().GetBatchId(), "grpc", time.Now().UTC())

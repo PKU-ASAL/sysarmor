@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestSearchRoutesDelegateToApplicationAdapter(t *testing.T) {
 	routes := &searchRoutesStub{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetSearchRoutes(routes)
 	handler := adminTestHandler(server)
 	for _, endpoint := range []struct{ method, path string }{
@@ -27,7 +26,7 @@ func TestSearchRoutesDelegateToApplicationAdapter(t *testing.T) {
 }
 
 func TestSearchRoutesReturnUnavailableWithoutAdapter(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	handler := (&authenticatedTestServer{Server: server, principal: managerauth.Principal{
 		Subject: "admin-a", TenantID: "default", Roles: []string{"admin"},
 	}}).Handler()

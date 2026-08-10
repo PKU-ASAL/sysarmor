@@ -4,13 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestStatusRoutesDelegateToInjectedAdapter(t *testing.T) {
 	routes := &statusRoutesStub{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetStatusRoutes(routes)
 	server.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	adminTestHandler(server).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/store-status", nil))
@@ -20,7 +18,7 @@ func TestStatusRoutesDelegateToInjectedAdapter(t *testing.T) {
 }
 
 func TestStatusRoutesReturnUnavailableWithoutAdapter(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	for _, handler := range []struct {
 		path    string
 		handler http.Handler

@@ -4,13 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestPolicyEndpointsDelegateToInjectedRoutes(t *testing.T) {
 	routes := &recordingPolicyRoutes{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetPolicyRoutes(routes)
 	handler := adminTestHandler(server)
 
@@ -28,7 +26,7 @@ func TestPolicyEndpointsDelegateToInjectedRoutes(t *testing.T) {
 }
 
 func TestPolicyEndpointsReturnUnavailableWithoutAdapter(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	handler := adminTestHandler(server)
 	for _, path := range []string{"/api/v1/rules", "/api/v1/policies", "/api/v1/policy-publish",
 		"/api/v1/policy-audit", "/api/v1/policy-assignments", "/api/v1/effective-policy", "/api/v1/policy-rollouts"} {

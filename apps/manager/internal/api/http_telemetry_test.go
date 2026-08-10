@@ -19,7 +19,6 @@ import (
 )
 
 func TestSearchBackedTelemetryQueries(t *testing.T) {
-	st := &store.Store{}
 	searcher := fakeSearcher{docs: map[string][]json.RawMessage{
 		"sysarmor-events-read": {
 			json.RawMessage(`{"id":"ev-a","tenant_id":"default","behavior":"process.exec","labels":{"scenario":"managed"}}`),
@@ -33,7 +32,7 @@ func TestSearchBackedTelemetryQueries(t *testing.T) {
 			json.RawMessage(`{"id":"inc-a","tenant_id":"default","summary":"incident","labels":{"scenario":"managed"}}`),
 		},
 	}}
-	handler := adminTestHandler(NewServerWithSearch(st, searcher))
+	handler := adminTestHandler(NewServerWithSearch(searcher))
 
 	rec := get(t, handler, "/api/v1/events?label=scenario=managed&behavior=process.exec")
 	if !strings.Contains(rec.Body.String(), `"id":"ev-a"`) || strings.Contains(rec.Body.String(), `"id":"ev-b"`) {
@@ -61,7 +60,7 @@ func TestEventsAndSignalsScopeSearchToPrincipalTenant(t *testing.T) {
 		},
 	}}
 	handler := (&authenticatedTestServer{
-		Server: NewServerWithSearch(&store.Store{}, searcher),
+		Server: NewServerWithSearch(searcher),
 		principal: managerauth.Principal{
 			Subject: "viewer-a", TenantID: "tenant-a", Roles: []string{"viewer"},
 		},
@@ -126,7 +125,7 @@ func TestUploadTriggersAnalyticsAndQueries(t *testing.T) {
 		endpointSignal("payload_dropped", "lin-a", false, fileEntity("/dev/shm/x.sh")),
 		endpointSignal("reverse_shell_pattern", "lin-a", true, processEntity("p-bash"), socketEntity("10.66.0.99:443")),
 	})
-	appendBatch(t, srv, batch)
+	appendBatch(t, st, batch)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/signals?label=scenario=apt-fileless-c2&layer=cloud", nil)
 	rec := httptest.NewRecorder()
@@ -170,7 +169,7 @@ func TestDataBatchAppendRecordsSessionCursor(t *testing.T) {
 		Id:       "ev-ack",
 		Behavior: "process.exec",
 	}}, nil)
-	ack := appendBatchAndAck(t, srv, batch)
+	ack := appendBatchAndAck(t, st, batch)
 	if !ack.GetAccepted() || ack.GetStatus() != dataplanev1.DataAck_STATUS_ACCEPTED || ack.GetBatchId() != batch.GetHeader().GetBatchId() || ack.GetCommittedCursor() != batch.GetHeader().GetBatchId() || ack.GetAcceptedEvents() != 1 || ack.GetServerTime() == "" {
 		t.Fatalf("ack = %#v", ack)
 	}
@@ -224,11 +223,11 @@ func TestDataBatchAppendRetryIsIdempotentForAcceptedCounts(t *testing.T) {
 		endpointSignal("payload_dropped", "lin-retry", false, fileEntity("/dev/shm/x.sh")),
 		endpointSignal("reverse_shell_pattern", "lin-retry", true, processEntity("p-bash"), socketEntity("10.66.0.99:443")),
 	})
-	first := appendBatchAndAck(t, srv, batch)
+	first := appendBatchAndAck(t, st, batch)
 	if !first.GetAccepted() {
 		t.Fatalf("first ack = %#v", first)
 	}
-	second := appendBatchAndAck(t, srv, batch)
+	second := appendBatchAndAck(t, st, batch)
 	if !second.GetAccepted() || second.GetStatus() != dataplanev1.DataAck_STATUS_DUPLICATE || second.GetReasonCode() != "duplicate" || second.GetContractVersion() != "dataplane.v1" {
 		t.Fatalf("retry ack = %#v, want duplicate idempotent retry", second)
 	}
@@ -280,11 +279,11 @@ func TestUploadUpdatesRarityBaselineWithoutDuplicateAmplification(t *testing.T) 
 			Key:  "checkout-api",
 		}},
 	}})
-	appendBatch(t, srv, batch)
+	appendBatch(t, st, batch)
 	if got := st.RarityBaselineSnapshotForTenant("default").Count("container:checkout-api", "download_by_lolbin"); got != 1 {
 		t.Fatalf("workload baseline count = %d, want 1", got)
 	}
-	appendBatch(t, srv, batch)
+	appendBatch(t, st, batch)
 	if got := st.RarityBaselineSnapshotForTenant("default").Count("container:checkout-api", "download_by_lolbin"); got != 1 {
 		t.Fatalf("workload baseline count after duplicate = %d, want 1", got)
 	}
@@ -339,7 +338,7 @@ func TestAgentsEventsAndReset(t *testing.T) {
 		endpointSignalForScenario("apt-staged-drop", "payload_dropped", "lin-a", false, fileEntity("/var/lib/app/plugins/helper")),
 		endpointSignalForScenario("apt-staged-drop", "suspicious_exec_connect", "lin-b", false, fileEntity("/var/lib/app/plugins/helper"), socketEntity("10.66.0.99:443")),
 	})
-	appendBatch(t, srv, batch)
+	appendBatch(t, st, batch)
 
 	rec := get(t, handler, "/api/v1/agents")
 	if !strings.Contains(rec.Body.String(), "agent-a") {
@@ -368,7 +367,7 @@ func TestSplitUploadRecomputesScenarioDerivedResults(t *testing.T) {
 	scenario := "apt-staged-drop-stream"
 	payload := fileEntity("/var/lib/app/plugins/helper")
 
-	appendBatch(t, srv, httpDataBatch("", "", "", nil, []*signalv1.Signal{
+	appendBatch(t, st, httpDataBatch("", "", "", nil, []*signalv1.Signal{
 		endpointSignalForScenario(scenario, "payload_dropped", "lin-drop", false, payload),
 	}))
 	rec := get(t, handler, "/api/v1/incidents?label=scenario="+scenario)
@@ -376,7 +375,7 @@ func TestSplitUploadRecomputesScenarioDerivedResults(t *testing.T) {
 		t.Fatalf("first split batch should not create incident: %s", rec.Body.String())
 	}
 
-	appendBatch(t, srv, httpDataBatch("", "", "", nil, []*signalv1.Signal{
+	appendBatch(t, st, httpDataBatch("", "", "", nil, []*signalv1.Signal{
 		endpointSignalForScenario(scenario, "suspicious_exec_connect", "lin-connect", false, payload, socketEntity("10.66.0.99:443")),
 	}))
 
@@ -396,7 +395,7 @@ func TestSplitUploadRecomputesScenarioDerivedResults(t *testing.T) {
 		}
 	}
 
-	appendBatch(t, srv, httpDataBatch("", "", "", []*eventv1.CanonicalEvent{{Id: "noise-1", Labels: labelsForScenario(scenario), Behavior: "process.exec"}}, nil))
+	appendBatch(t, st, httpDataBatch("", "", "", []*eventv1.CanonicalEvent{{Id: "noise-1", Labels: labelsForScenario(scenario), Behavior: "process.exec"}}, nil))
 	rec = get(t, handler, "/api/v1/signals?label=scenario="+scenario+"&layer=cloud")
 	if got := strings.Count(rec.Body.String(), "dropped_payload_executed_and_connects"); got != 1 {
 		t.Fatalf("cloud signal duplicated after recompute, count = %d: %s", got, rec.Body.String())

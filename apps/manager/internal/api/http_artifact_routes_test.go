@@ -4,13 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestArtifactRoutesDelegateToApplicationAdapter(t *testing.T) {
 	routes := &artifactRoutesStub{}
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetArtifactRoutes(routes)
 	handler := adminTestHandler(server)
 
@@ -30,7 +28,7 @@ func TestArtifactRoutesDelegateToApplicationAdapter(t *testing.T) {
 }
 
 func TestArtifactRoutesReturnUnavailableWithoutAdapter(t *testing.T) {
-	handler := adminTestHandler(NewServer(&store.Store{}))
+	handler := adminTestHandler(NewServer())
 	for _, path := range []string{"/api/v1/artifacts", "/api/v1/artifacts/artifact-a", "/api/v1/channels"} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))

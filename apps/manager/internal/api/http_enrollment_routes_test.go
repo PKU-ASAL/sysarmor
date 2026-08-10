@@ -4,12 +4,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestEnrollmentRoutesHandleEveryEnrollmentEndpoint(t *testing.T) {
-	server := NewServer(&store.Store{})
+	server := NewServer()
 	server.SetEnrollmentRoutes(enrollmentRoutesStub{})
 	handler := adminTestHandler(server)
 	for _, endpoint := range []struct {

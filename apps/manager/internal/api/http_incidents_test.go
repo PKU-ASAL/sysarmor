@@ -7,11 +7,10 @@ import (
 	"testing"
 
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 func TestIncidentMutationRoutesAreNotRegistered(t *testing.T) {
-	handler := NewServer(&store.Store{}).Handler()
+	handler := NewServer().Handler()
 	for _, path := range []string{
 		"/api/v1/incident-lifecycle",
 		"/api/v1/incident-merge",
@@ -31,7 +30,7 @@ func TestIncidentReportsRequireSearchBackend(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/incidents?tenant_id=default", nil)
 	rec := httptest.NewRecorder()
 	req = req.WithContext(managerauth.WithPrincipal(req.Context(), managerauth.Principal{Subject: "viewer", TenantID: "default", Roles: []string{"viewer"}}))
-	newServer(&store.Store{}, nil).Handler().ServeHTTP(rec, req)
+	newServer(nil).Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
