@@ -12,36 +12,7 @@ import (
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 )
-
-func TestResponseCreatePersistenceFailureReturnsInternalServerError(t *testing.T) {
-	st := &store.Store{}
-	handler := newAdminTestServer(st).Handler()
-	st.AttachBackend(context.Background(), httpFailingBackend{operation: "response"}, store.Info{Backend: "test"})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/responses", strings.NewReader(`{"response_id":"response-fail","tenant_id":"default","agent_id":"agent-a","action":"collect","mode":"observe"}`))
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusInternalServerError || len(st.Responses) != 0 {
-		t.Fatalf("response create status=%d body=%q responses=%+v", rec.Code, rec.Body.String(), st.Responses)
-	}
-}
-
-func TestResponseAckPersistenceFailureReturnsInternalServerError(t *testing.T) {
-	st := &store.Store{Responses: []responsemodel.Command{{ResponseID: "response-fail", TenantID: "default", AgentID: "agent-a", Status: "pending"}}}
-	handler := newAdminTestServer(st).Handler()
-	st.AttachBackend(context.Background(), httpFailingBackend{operation: "response"}, store.Info{Backend: "test"})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/response-acks", strings.NewReader(`{"response_id":"response-fail","agent_id":"agent-a"}`))
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusInternalServerError || st.Responses[0].Status != "pending" {
-		t.Fatalf("response ack status=%d body=%q response=%+v", rec.Code, rec.Body.String(), st.Responses[0])
-	}
-}
 
 func TestPolicyPublishPersistenceFailureReturnsInternalServerError(t *testing.T) {
 	st := &store.Store{Policies: []policymodel.Policy{{TenantID: "default", PolicyID: "policy-fail", Version: 1}}}
@@ -119,24 +90,12 @@ func (b httpFailingBackend) ListAgents(context.Context) ([]store.AgentIdentity, 
 	return nil, b.failure("rollout")
 }
 
-func (b httpFailingBackend) WriteResponse(context.Context, responsemodel.Command, *responsemodel.Ack) error {
-	return b.failure("response")
-}
-
-func (b httpFailingBackend) CreateResponse(context.Context, responsemodel.Command) (bool, error) {
-	return false, b.failure("response")
-}
-
 func (b httpFailingBackend) WriteControlCommand(context.Context, controlmodel.ControlCommand) error {
 	return b.failure("control")
 }
 
 func (b httpFailingBackend) CreateControlCommand(context.Context, controlmodel.ControlCommand) (bool, error) {
 	return false, b.failure("control")
-}
-
-func (httpFailingBackend) ListResponses(context.Context, string, string) ([]responsemodel.AuditRecord, error) {
-	return nil, nil
 }
 
 func (httpFailingBackend) ListControlCommands(context.Context, string, string, string) ([]controlmodel.ControlCommand, error) {

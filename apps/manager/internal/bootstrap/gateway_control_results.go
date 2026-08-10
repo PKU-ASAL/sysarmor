@@ -5,14 +5,21 @@ import (
 
 	controlpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/control"
 	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
+	responseapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/response"
 	domaincontrol "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/control"
 	domaingateway "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/gateway"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/response"
 )
 
 type gatewayControlStateWriter struct {
-	legacy  controlpostgres.StateWriter
-	results *controlapp.ResultService
+	legacy    controlpostgres.StateWriter
+	results   *controlapp.ResultService
+	responses responseResults
+}
+
+type responseResults interface {
+	Acknowledge(context.Context, responseapp.AcknowledgeCommand) (domainresponse.Acknowledged, error)
 }
 
 func (writer gatewayControlStateWriter) RecordHealth(ctx context.Context, value domainidentity.Health) error {
@@ -24,7 +31,12 @@ func (writer gatewayControlStateWriter) RecordCapability(ctx context.Context, va
 }
 
 func (writer gatewayControlStateWriter) AckResponse(ctx context.Context, value domaingateway.Ack) error {
-	return writer.legacy.AckResponse(ctx, value)
+	_, err := writer.responses.Acknowledge(ctx, responseapp.AcknowledgeCommand{
+		TenantID: value.TenantID, AgentID: value.AgentID, ResponseID: value.ID,
+		Accepted: value.Accepted, Unsupported: value.Unsupported, ObserveOnly: value.ObserveOnly,
+		Executed: value.Executed, Message: value.Message, ObservedAt: value.ObservedAt,
+	})
+	return err
 }
 
 func (writer gatewayControlStateWriter) AckCommand(ctx context.Context, value domaingateway.Ack) error {

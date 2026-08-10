@@ -117,6 +117,12 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetControlApplication(controlQueries)
+	responseRoutes, err := bootstrap.NewManagerResponseHTTP(storeResult.DB, searcher, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure response application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetResponseRoutes(responseRoutes)
 	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}

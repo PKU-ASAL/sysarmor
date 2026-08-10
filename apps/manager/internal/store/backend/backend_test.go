@@ -12,6 +12,7 @@ import (
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -102,8 +103,8 @@ func TestOpenPostgresRunsMigrationAndPersistsSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(postgres) error = %v", err)
 	}
-	if result.Migration.Version != 5 {
-		t.Fatalf("migration version = %d, want 5", result.Migration.Version)
+	if result.Migration.Version != migrations.PostgresVersion {
+		t.Fatalf("migration version = %d, want %d", result.Migration.Version, migrations.PostgresVersion)
 	}
 	if result.Store == nil || result.Store.Info().Backend != KindPostgres {
 		t.Fatalf("store info = %+v", result.Store.Info())

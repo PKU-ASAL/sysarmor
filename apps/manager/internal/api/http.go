@@ -17,7 +17,6 @@ import (
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"net/http"
@@ -37,6 +36,7 @@ type Server struct {
 	identityRoutes   identityRoutes
 	enrollmentRoutes enrollmentRoutes
 	controlRoutes    controlRoutes
+	responseRoutes   responseRoutes
 	identityQuery    identityQueries
 	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
@@ -99,19 +99,33 @@ type controlRoutes interface {
 	Evidence(http.ResponseWriter, *http.Request)
 }
 
+type responseRoutes interface {
+	Responses(http.ResponseWriter, *http.Request)
+	Decisions(http.ResponseWriter, *http.Request)
+	Approvals(http.ResponseWriter, *http.Request)
+	Acknowledgements(http.ResponseWriter, *http.Request)
+}
+
+type unavailableResponseRoutes struct{}
+
+func (unavailableResponseRoutes) Responses(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableResponseRoutes) Decisions(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableResponseRoutes) Approvals(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableResponseRoutes) Acknowledgements(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
+}
+
 func (s *Server) SetPolicyRoutes(routes policyRoutes)         { s.policyRoutes = routes }
 func (s *Server) SetIdentityRoutes(routes identityRoutes)     { s.identityRoutes = routes }
 func (s *Server) SetEnrollmentRoutes(routes enrollmentRoutes) { s.enrollmentRoutes = routes }
 func (s *Server) SetControlRoutes(routes controlRoutes)       { s.controlRoutes = routes }
-
-type responseDecisionRequest struct {
-	SignalID string              `json:"signal_id"`
-	TenantID string              `json:"tenant_id"`
-	AgentID  string              `json:"agent_id"`
-	Scope    responsemodel.Scope `json:"scope,omitempty"`
-	Target   string              `json:"target,omitempty"`
-	Actor    string              `json:"actor,omitempty"`
-}
+func (s *Server) SetResponseRoutes(routes responseRoutes)     { s.responseRoutes = routes }
 
 type policyPublishRequest struct {
 	TenantID  string `json:"tenant_id"`
@@ -135,16 +149,6 @@ type channelRequest struct {
 	Channel    string `json:"channel"`
 	ArtifactID string `json:"artifact_id"`
 	Actor      string `json:"actor,omitempty"`
-}
-
-type responseApprovalRequest struct {
-	ResponseID string `json:"response_id"`
-	TenantID   string `json:"tenant_id"`
-	AgentID    string `json:"agent_id"`
-	Approved   bool   `json:"approved"`
-	Actor      string `json:"actor,omitempty"`
-	Role       string `json:"role,omitempty"`
-	Reason     string `json:"reason,omitempty"`
 }
 
 type evidencePullbackRequest struct {
@@ -221,7 +225,7 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 }
 
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
-	s := &Server{store: st, searcher: searcher, artifactDir: defaultArtifactDir()}
+	s := &Server{store: st, searcher: searcher, artifactDir: defaultArtifactDir(), responseRoutes: unavailableResponseRoutes{}}
 	s.artifactPub = readOptionalFile(os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"))
 	return s
 }
@@ -297,10 +301,10 @@ func (s *Server) Handler() http.Handler {
 		s.enrollmentRoutes.Install(w, r)
 	})
 	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRollouts)
-	mux.HandleFunc("/api/v1/responses", s.responses)
-	mux.HandleFunc("/api/v1/response-decisions", s.responseDecisions)
-	mux.HandleFunc("/api/v1/response-approvals", s.responseApprovals)
-	mux.HandleFunc("/api/v1/response-acks", s.responseAcks)
+	mux.HandleFunc("/api/v1/responses", s.responseRoutes.Responses)
+	mux.HandleFunc("/api/v1/response-decisions", s.responseRoutes.Decisions)
+	mux.HandleFunc("/api/v1/response-approvals", s.responseRoutes.Approvals)
+	mux.HandleFunc("/api/v1/response-acks", s.responseRoutes.Acknowledgements)
 	if s.identityRoutes != nil {
 		mux.HandleFunc("/api/v1/data-resume", s.identityRoutes.Resume)
 	}

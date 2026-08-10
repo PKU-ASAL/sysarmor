@@ -37,15 +37,6 @@ func (writer StateWriter) RecordCapability(ctx context.Context, value domaingate
 	result, err := writer.db.ExecContext(ctx, `INSERT INTO agents (tenant_id,agent_id,host_id,version,data) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,agent_id) DO UPDATE SET host_id=EXCLUDED.host_id,version=EXCLUDED.version,observed_at=now(),data=EXCLUDED.data`, value.TenantID, value.AgentID, value.HostID, value.Version, document)
 	return affected(result, err, "record agent capability")
 }
-func (writer StateWriter) AckResponse(ctx context.Context, value domaingateway.Ack) error {
-	document, _ := json.Marshal(value)
-	updated := value.ObservedAt
-	if updated.IsZero() {
-		updated = time.Now().UTC()
-	}
-	result, err := writer.db.ExecContext(ctx, `UPDATE response_audit SET status=$4,updated_at=$5,ack=$6 WHERE tenant_id=$1 AND agent_id=$2 AND response_id=$3`, value.TenantID, value.AgentID, value.ID, value.Status, updated, document)
-	return affected(result, err, "ack response")
-}
 func affected(result sql.Result, err error, operation string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", operation, err)

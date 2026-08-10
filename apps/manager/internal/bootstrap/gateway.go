@@ -12,10 +12,12 @@ import (
 	kafkaadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/kafka"
 	controlpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/control"
 	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
+	responsepostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/response"
 	redisadapter "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/redis"
 	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway/handlers"
 	controlapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/control"
+	responseapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/response"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"google.golang.org/grpc"
 )
@@ -74,7 +76,8 @@ func NewGatewayControlPlane(cfg ControlPlaneConfig) (*controlgrpc.Server, error)
 	sessions := controlpostgres.NewSessionRepository(cfg.DB)
 	legacyState := controlpostgres.NewStateWriter(cfg.DB)
 	state := gatewayControlStateWriter{legacy: legacyState,
-		results: controlapp.NewResultService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})}
+		results:   controlapp.NewResultService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{}),
+		responses: responseapp.NewService(responsepostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})}
 	delivery := controlapp.NewDeliveryService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})
 	dispatcher := gatewayapp.NewDispatcher(map[string]ports.ControlHandler{
 		"hello":                    handlers.NewHelloHandler(gatewayapp.NewOpenSessionService(sessions, delivery)),

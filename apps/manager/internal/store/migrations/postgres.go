@@ -1,6 +1,6 @@
 package migrations
 
-const PostgresVersion = 5
+const PostgresVersion = 6
 
 type Migration struct {
 	Version int
@@ -66,6 +66,25 @@ CREATE TABLE IF NOT EXISTS control_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_control_audit_resource
   ON control_audit (tenant_id, resource_id, created_at);
+`
+
+const ResponseDecisionsSchema = `
+CREATE TABLE IF NOT EXISTS response_decisions (
+  tenant_id TEXT NOT NULL,
+  audit_id TEXT NOT NULL,
+  response_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT '',
+  approved BOOLEAN NOT NULL DEFAULT FALSE,
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL,
+  data JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, audit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_response_decisions_response
+  ON response_decisions (tenant_id, response_id, created_at);
 `
 
 const PostgresSchema = `
@@ -350,5 +369,6 @@ func Ordered() []Migration {
 		{Version: 3, Name: "tenant_telemetry_batches", SQL: TenantTelemetryBatchesSchema},
 		{Version: 4, Name: "telemetry_batch_claim_fencing", SQL: TelemetryBatchClaimFencingSchema},
 		{Version: 5, Name: "control_audit", SQL: ControlAuditSchema},
+		{Version: 6, Name: "response_decisions", SQL: ResponseDecisionsSchema},
 	}
 }

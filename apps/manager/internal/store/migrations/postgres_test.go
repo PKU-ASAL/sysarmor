@@ -25,6 +25,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 		"events",
 		"signals",
 		"response_audit",
+		"response_decisions",
 		"evidence_pullbacks",
 		"control_commands",
 		"agent_sessions",
@@ -62,7 +63,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 			t.Fatalf("postgres schema still creates incident report table %s", removed)
 		}
 	}
-	if len(ordered) != 5 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" || ordered[4].Version != 5 || ordered[4].Name != "control_audit" {
+	if len(ordered) != 6 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" || ordered[4].Version != 5 || ordered[4].Name != "control_audit" || ordered[5].Version != 6 || ordered[5].Name != "response_decisions" {
 		t.Fatalf("ordered migrations = %+v", ordered)
 	}
 	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "lease_until"} {
@@ -80,18 +81,34 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationsAddResponseDecisions(t *testing.T) {
+	latest := Ordered()[len(Ordered())-1]
+	if latest.Version != 6 || latest.Name != "response_decisions" {
+		t.Fatalf("latest migration = %+v", latest)
+	}
+	for _, want := range []string{
+		"CREATE TABLE IF NOT EXISTS response_decisions",
+		"PRIMARY KEY (tenant_id, audit_id)",
+		"CREATE INDEX IF NOT EXISTS idx_response_decisions_response",
+	} {
+		if !strings.Contains(latest.SQL, want) {
+			t.Fatalf("response decisions migration missing %q", want)
+		}
+	}
+}
+
 func TestPostgresMigrationsAddControlAudit(t *testing.T) {
 	ordered := Ordered()
-	latest := ordered[len(ordered)-1]
-	if latest.Version != 5 || latest.Name != "control_audit" {
-		t.Fatalf("latest migration = %+v", latest)
+	controlAudit := ordered[4]
+	if controlAudit.Version != 5 || controlAudit.Name != "control_audit" {
+		t.Fatalf("control audit migration = %+v", controlAudit)
 	}
 	for _, want := range []string{
 		"CREATE TABLE IF NOT EXISTS control_audit",
 		"PRIMARY KEY (tenant_id, audit_id)",
 		"CREATE INDEX IF NOT EXISTS idx_control_audit_resource",
 	} {
-		if !strings.Contains(latest.SQL, want) {
+		if !strings.Contains(controlAudit.SQL, want) {
 			t.Fatalf("control audit migration missing %q", want)
 		}
 	}

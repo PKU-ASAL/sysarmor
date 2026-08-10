@@ -10,7 +10,6 @@ import (
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 )
 
 type ManagerStore interface {
@@ -31,10 +30,7 @@ type identityStore interface {
 }
 
 type policyControlStore interface {
-	AckResponse(responsemodel.Ack) (responsemodel.Command, bool, error)
-	ApproveResponse(string, string, string, bool, string, string, string) (responsemodel.Command, bool)
 	AssignPolicyWithAudit(policymodel.Assignment, policymodel.AuditRecord, *controlmodel.ControlCommand) (policymodel.Assignment, *controlmodel.ControlCommand, bool, error)
-	CreateResponse(responsemodel.Command) (responsemodel.Command, error)
 	EffectivePolicyWithError(string, string, string, string) (policymodel.Policy, bool, error)
 	EnsureDefaultPolicy(string)
 	EnsureDefaultPolicyWithError(string) error
@@ -42,9 +38,7 @@ type policyControlStore interface {
 	ListAssignmentsWithError(string, string) ([]policymodel.Assignment, error)
 	ListPoliciesWithError(string) ([]policymodel.Policy, error)
 	ListPolicyAuditsWithError(string, string) ([]policymodel.AuditRecord, error)
-	ListResponsesWithError(string, string) ([]responsemodel.AuditRecord, error)
 	ListRules(string) []policymodel.RuleContent
-	PendingResponsesWithError(string, string) ([]responsemodel.Command, error)
 	PublishPolicyWithAudit(string, string, uint64, bool, policymodel.AuditRecord) (policymodel.Policy, bool, error)
 	RecordPolicyAudit(policymodel.AuditRecord) policymodel.AuditRecord
 	UpsertPolicyWithError(policymodel.Policy) (policymodel.Policy, error)
