@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -98,6 +99,12 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetIdentityApplication(identityQueries, managerapi.PolicyRequestContext)
+	enrollmentRoutes, err := bootstrap.NewManagerEnrollmentHTTP(managerEnrollmentConfig(storeResult.DB))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure enrollment application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetEnrollmentRoutes(enrollmentRoutes)
 	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}
@@ -107,6 +114,13 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "manager serve: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func managerEnrollmentConfig(db *sql.DB) bootstrap.EnrollmentHTTPConfig {
+	return bootstrap.EnrollmentHTTPConfig{
+		DB: db, CACertFile: os.Getenv("SYSARMOR_AGENT_CA_CERT"), CAKeyFile: os.Getenv("SYSARMOR_AGENT_CA_KEY"),
+		TrustDomain: os.Getenv("SYSARMOR_TRUST_DOMAIN"),
 	}
 }
 

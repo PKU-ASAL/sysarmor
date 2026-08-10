@@ -29,18 +29,19 @@ import (
 )
 
 type Server struct {
-	store           ManagerStore
-	searcher        platformopensearch.Searcher
-	artifactDir     string
-	artifactPub     []byte
-	caCert          *x509.Certificate
-	caCertPEM       []byte
-	caKey           *rsa.PrivateKey
-	localTelemetry  bool
-	policyRoutes    policyRoutes
-	identityRoutes  identityRoutes
-	identityQuery   identityQueries
-	identityResolve func(*http.Request) (managerapp.RequestContext, error)
+	store            ManagerStore
+	searcher         platformopensearch.Searcher
+	artifactDir      string
+	artifactPub      []byte
+	caCert           *x509.Certificate
+	caCertPEM        []byte
+	caKey            *rsa.PrivateKey
+	localTelemetry   bool
+	policyRoutes     policyRoutes
+	identityRoutes   identityRoutes
+	enrollmentRoutes enrollmentRoutes
+	identityQuery    identityQueries
+	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
 }
 
 type identityQueries interface {
@@ -79,8 +80,13 @@ type identityRoutes interface {
 	Rarity(http.ResponseWriter, *http.Request)
 }
 
-func (s *Server) SetPolicyRoutes(routes policyRoutes)     { s.policyRoutes = routes }
-func (s *Server) SetIdentityRoutes(routes identityRoutes) { s.identityRoutes = routes }
+type enrollmentRoutes interface {
+	Certificate(http.ResponseWriter, *http.Request)
+}
+
+func (s *Server) SetPolicyRoutes(routes policyRoutes)         { s.policyRoutes = routes }
+func (s *Server) SetIdentityRoutes(routes identityRoutes)     { s.identityRoutes = routes }
+func (s *Server) SetEnrollmentRoutes(routes enrollmentRoutes) { s.enrollmentRoutes = routes }
 
 type responseDecisionRequest struct {
 	SignalID string              `json:"signal_id"`
@@ -327,7 +333,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/channels", s.channels)
 	mux.HandleFunc("/api/v1/enrollments", s.enrollments)
 	mux.HandleFunc("/api/v1/enrollment-artifact", s.enrollmentArtifact)
-	mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentCertificate)
+	if s.enrollmentRoutes == nil {
+		mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentCertificate)
+	} else {
+		mux.HandleFunc("/api/v1/enrollment-certificate", s.enrollmentRoutes.Certificate)
+	}
 	mux.HandleFunc("/api/v1/unenrollment-completions", s.unenrollmentCompletion)
 	mux.HandleFunc("/api/v1/agent-install.sh", s.agentInstallScript)
 	mux.HandleFunc("/api/v1/policy-rollouts", s.policyRollouts)

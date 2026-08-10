@@ -53,6 +53,23 @@ func TestUnenrollmentRejectsIdentityMismatch(t *testing.T) {
 	}
 }
 
+func TestEnrollmentIssueReplaysOriginalCertificateForSameKey(t *testing.T) {
+	value := newActiveEnrollment(t)
+	first := Issuance{KeySHA256: "key-a", Certificate: Certificate{SerialNumber: "42", CertificatePEM: "first"}}
+	issued, _, err := value.Issue(first, time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry := Issuance{KeySHA256: "key-a", Certificate: Certificate{SerialNumber: "99", CertificatePEM: "rotated"}}
+	replayed, certificate, err := issued.Issue(retry, time.Unix(200, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.Issuance.Certificate.SerialNumber != "42" || certificate.CertificatePEM != "first" {
+		t.Fatalf("replay changed certificate: enrollment=%#v certificate=%#v", replayed, certificate)
+	}
+}
+
 func newActiveEnrollment(t *testing.T) Enrollment {
 	t.Helper()
 	value, err := NewEnrollment(Enrollment{

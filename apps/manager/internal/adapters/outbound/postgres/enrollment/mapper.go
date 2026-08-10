@@ -10,16 +10,18 @@ import (
 )
 
 type enrollmentRecord struct {
-	ID        string                    `json:"enrollment_id"`
-	TenantID  string                    `json:"tenant_id"`
-	AgentID   string                    `json:"agent_id,omitempty"`
-	TokenHash string                    `json:"token_hash,omitempty"`
-	Status    domainenrollment.Status   `json:"status"`
-	CreatedAt time.Time                 `json:"created_at"`
-	ExpiresAt time.Time                 `json:"expires_at,omitempty"`
-	UsedAt    time.Time                 `json:"used_at,omitempty"`
-	IssuedAt  time.Time                 `json:"issued_at,omitempty"`
-	Issuance  domainenrollment.Issuance `json:"issuance,omitempty"`
+	ID                string                    `json:"enrollment_id"`
+	TenantID          string                    `json:"tenant_id"`
+	AgentID           string                    `json:"agent_id,omitempty"`
+	TokenHash         string                    `json:"token_hash,omitempty"`
+	GatewayAddress    string                    `json:"gateway_addr,omitempty"`
+	GatewayServerName string                    `json:"gateway_sni,omitempty"`
+	Status            domainenrollment.Status   `json:"status"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	ExpiresAt         time.Time                 `json:"expires_at,omitempty"`
+	UsedAt            time.Time                 `json:"used_at,omitempty"`
+	IssuedAt          time.Time                 `json:"issued_at,omitempty"`
+	Issuance          domainenrollment.Issuance `json:"issuance,omitempty"`
 }
 
 type certificateRecord struct {
@@ -37,7 +39,8 @@ type certificateRecord struct {
 
 func encodeEnrollment(value domainenrollment.Enrollment) ([]byte, error) {
 	record := enrollmentRecord{ID: value.ID, TenantID: value.TenantID.String(), AgentID: value.AgentID,
-		TokenHash: value.TokenHash, Status: value.Status, CreatedAt: value.CreatedAt, ExpiresAt: value.ExpiresAt,
+		TokenHash: value.TokenHash, GatewayAddress: value.GatewayAddress, GatewayServerName: value.GatewayServerName,
+		Status: value.Status, CreatedAt: value.CreatedAt, ExpiresAt: value.ExpiresAt,
 		UsedAt: value.UsedAt, IssuedAt: value.IssuedAt, Issuance: value.Issuance}
 	return json.Marshal(record)
 }
@@ -52,7 +55,8 @@ func decodeEnrollment(raw []byte) (domainenrollment.Enrollment, error) {
 		return domainenrollment.Enrollment{}, err
 	}
 	return domainenrollment.NewEnrollment(domainenrollment.Enrollment{ID: record.ID, TenantID: tenantID,
-		AgentID: record.AgentID, TokenHash: record.TokenHash, Status: record.Status, CreatedAt: record.CreatedAt,
+		AgentID: record.AgentID, TokenHash: record.TokenHash, GatewayAddress: record.GatewayAddress,
+		GatewayServerName: record.GatewayServerName, Status: record.Status, CreatedAt: record.CreatedAt,
 		ExpiresAt: record.ExpiresAt, UsedAt: record.UsedAt, IssuedAt: record.IssuedAt, Issuance: record.Issuance})
 }
 

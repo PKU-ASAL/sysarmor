@@ -17,16 +17,18 @@ const (
 )
 
 type Enrollment struct {
-	ID        string
-	TenantID  tenant.ID
-	AgentID   string
-	TokenHash string
-	Status    Status
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	UsedAt    time.Time
-	IssuedAt  time.Time
-	Issuance  Issuance
+	ID                string
+	TenantID          tenant.ID
+	AgentID           string
+	TokenHash         string
+	GatewayAddress    string
+	GatewayServerName string
+	Status            Status
+	CreatedAt         time.Time
+	ExpiresAt         time.Time
+	UsedAt            time.Time
+	IssuedAt          time.Time
+	Issuance          Issuance
 }
 
 func NewEnrollment(value Enrollment) (Enrollment, error) {
@@ -65,6 +67,12 @@ type Issuance struct {
 }
 
 func (value Enrollment) Issue(issuance Issuance, at time.Time) (Enrollment, Certificate, error) {
+	if value.Status == StatusIssued {
+		if value.Issuance.KeySHA256 == strings.TrimSpace(issuance.KeySHA256) {
+			return value, value.Issuance.Certificate, nil
+		}
+		return Enrollment{}, Certificate{}, failure.New(failure.Conflict, "enrollment token is bound to another key")
+	}
 	if value.Status != StatusActive {
 		return Enrollment{}, Certificate{}, failure.New(failure.Conflict, "enrollment token is not active")
 	}

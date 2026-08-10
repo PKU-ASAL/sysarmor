@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 	"testing"
@@ -8,6 +9,18 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 )
+
+func TestManagerEnrollmentConfigUsesEnvironment(t *testing.T) {
+	t.Setenv("SYSARMOR_AGENT_CA_CERT", "/tmp/agent-ca.crt")
+	t.Setenv("SYSARMOR_AGENT_CA_KEY", "/tmp/agent-ca.key")
+	t.Setenv("SYSARMOR_TRUST_DOMAIN", "tenant.example")
+	db := &sql.DB{}
+
+	config := managerEnrollmentConfig(db)
+	if config.DB != db || config.CACertFile != "/tmp/agent-ca.crt" || config.CAKeyFile != "/tmp/agent-ca.key" || config.TrustDomain != "tenant.example" {
+		t.Fatalf("enrollment config = %#v", config)
+	}
+}
 
 func TestNewManagerHTTPServerConfiguresTimeouts(t *testing.T) {
 	server := newManagerHTTPServer(":0", http.NewServeMux())
