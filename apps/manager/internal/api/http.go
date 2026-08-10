@@ -13,9 +13,6 @@ import (
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
-	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
-	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
-	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -37,6 +34,7 @@ type Server struct {
 	artifactRoutes   artifactRoutes
 	telemetryRoutes  telemetryRoutes
 	searchRoutes     searchRoutes
+	overviewRoutes   overviewRoutes
 	identityQuery    identityQueries
 	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
@@ -66,123 +64,6 @@ func (s *Server) identityRequest(r *http.Request) (managerapp.RequestContext, er
 	}
 	return s.identityResolve(r)
 }
-
-type policyRoutes interface {
-	Policies(http.ResponseWriter, *http.Request)
-	Publish(http.ResponseWriter, *http.Request)
-	Audits(http.ResponseWriter, *http.Request)
-	Assignments(http.ResponseWriter, *http.Request)
-	Effective(http.ResponseWriter, *http.Request)
-}
-
-type identityRoutes interface {
-	Agents(http.ResponseWriter, *http.Request)
-	Health(http.ResponseWriter, *http.Request)
-	Sessions(http.ResponseWriter, *http.Request)
-	Resume(http.ResponseWriter, *http.Request)
-	Metrics(http.ResponseWriter, *http.Request)
-	Rarity(http.ResponseWriter, *http.Request)
-}
-
-type enrollmentRoutes interface {
-	Enrollments(http.ResponseWriter, *http.Request)
-	Install(http.ResponseWriter, *http.Request)
-	Artifact(http.ResponseWriter, *http.Request)
-	DeployOptions(http.ResponseWriter, *http.Request)
-	DeployAgentCommand(http.ResponseWriter, *http.Request)
-	Certificate(http.ResponseWriter, *http.Request)
-	Completion(http.ResponseWriter, *http.Request)
-}
-
-type controlRoutes interface {
-	Commands(http.ResponseWriter, *http.Request)
-	Evidence(http.ResponseWriter, *http.Request)
-}
-
-type responseRoutes interface {
-	Responses(http.ResponseWriter, *http.Request)
-	Decisions(http.ResponseWriter, *http.Request)
-	Approvals(http.ResponseWriter, *http.Request)
-	Acknowledgements(http.ResponseWriter, *http.Request)
-}
-
-type artifactRoutes interface {
-	Artifacts(http.ResponseWriter, *http.Request)
-	Artifact(http.ResponseWriter, *http.Request)
-	Channels(http.ResponseWriter, *http.Request)
-}
-
-type telemetryRoutes interface {
-	Events(http.ResponseWriter, *http.Request)
-	Signals(http.ResponseWriter, *http.Request)
-	Incidents(http.ResponseWriter, *http.Request)
-}
-
-type searchRoutes interface {
-	Fields(http.ResponseWriter, *http.Request)
-	Search(http.ResponseWriter, *http.Request)
-	Histogram(http.ResponseWriter, *http.Request)
-}
-
-type unavailableSearchRoutes struct{}
-
-func (unavailableSearchRoutes) Fields(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "search application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableSearchRoutes) Search(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "search application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableSearchRoutes) Histogram(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "search application is not configured", http.StatusServiceUnavailable)
-}
-
-type unavailableTelemetryRoutes struct{}
-
-func (unavailableTelemetryRoutes) Events(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "telemetry application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableTelemetryRoutes) Signals(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "telemetry application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableTelemetryRoutes) Incidents(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "telemetry application is not configured", http.StatusServiceUnavailable)
-}
-
-type unavailableArtifactRoutes struct{}
-
-func (unavailableArtifactRoutes) Artifacts(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "artifact application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableArtifactRoutes) Artifact(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "artifact application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableArtifactRoutes) Channels(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "artifact application is not configured", http.StatusServiceUnavailable)
-}
-
-type unavailableResponseRoutes struct{}
-
-func (unavailableResponseRoutes) Responses(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableResponseRoutes) Decisions(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableResponseRoutes) Approvals(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
-}
-func (unavailableResponseRoutes) Acknowledgements(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "response application is not configured", http.StatusServiceUnavailable)
-}
-
-func (s *Server) SetPolicyRoutes(routes policyRoutes)         { s.policyRoutes = routes }
-func (s *Server) SetIdentityRoutes(routes identityRoutes)     { s.identityRoutes = routes }
-func (s *Server) SetEnrollmentRoutes(routes enrollmentRoutes) { s.enrollmentRoutes = routes }
-func (s *Server) SetControlRoutes(routes controlRoutes)       { s.controlRoutes = routes }
-func (s *Server) SetResponseRoutes(routes responseRoutes)     { s.responseRoutes = routes }
-func (s *Server) SetArtifactRoutes(routes artifactRoutes)     { s.artifactRoutes = routes }
-func (s *Server) SetTelemetryRoutes(routes telemetryRoutes)   { s.telemetryRoutes = routes }
-func (s *Server) SetSearchRoutes(routes searchRoutes)         { s.searchRoutes = routes }
 
 type policyPublishRequest struct {
 	TenantID  string `json:"tenant_id"`
@@ -273,7 +154,7 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
 		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
-		searchRoutes: unavailableSearchRoutes{}}
+		searchRoutes: unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{}}
 	return s
 }
 
@@ -323,7 +204,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	mux.HandleFunc("/api/v1/evidence-pullbacks", s.handleEvidencePullbacks)
 	mux.HandleFunc("/api/v1/control-commands", s.handleControlCommands)
-	mux.HandleFunc("/api/v1/ui/overview", s.uiOverview)
+	mux.HandleFunc("/api/v1/ui/overview", s.overviewRoutes.Overview)
 	mux.HandleFunc("/api/v1/ui/deploy/options", func(w http.ResponseWriter, r *http.Request) {
 		s.enrollmentRoutes.DeployOptions(w, r)
 	})
@@ -418,59 +299,6 @@ func cloneStringMap(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
-}
-
-func pageSlice[T any](in []T, limit, offset uint64) []T {
-	if offset >= uint64(len(in)) {
-		return []T{}
-	}
-	out := in[offset:]
-	if limit > 0 && limit < uint64(len(out)) {
-		out = out[:limit]
-	}
-	return out
-}
-
-func writeProtoJSON(w http.ResponseWriter, msg proto.Message) {
-	w.Header().Set("Content-Type", "application/json")
-	data, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(msg)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("encode proto json: %v", err), http.StatusInternalServerError)
-		return
-	}
-	_, _ = w.Write(append(data, '\n'))
-}
-
-func writeSignalList(w http.ResponseWriter, signals []*signalv1.Signal) {
-	w.Header().Set("Content-Type", "application/json")
-	raw := make([]json.RawMessage, 0, len(signals))
-	for _, sig := range signals {
-		raw = append(raw, mustProtoJSON(sig))
-	}
-	_ = json.NewEncoder(w).Encode(raw)
-}
-
-func writeRawList(w http.ResponseWriter, raw []json.RawMessage) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(raw)
-}
-
-func writeEventList(w http.ResponseWriter, events []*eventv1.CanonicalEvent) {
-	w.Header().Set("Content-Type", "application/json")
-	raw := make([]json.RawMessage, 0, len(events))
-	for _, ev := range events {
-		raw = append(raw, mustProtoJSON(ev))
-	}
-	_ = json.NewEncoder(w).Encode(raw)
-}
-
-func writeIncidentList(w http.ResponseWriter, incidents []*incidentv1.Incident) {
-	w.Header().Set("Content-Type", "application/json")
-	raw := make([]json.RawMessage, 0, len(incidents))
-	for _, inc := range incidents {
-		raw = append(raw, mustProtoJSON(inc))
-	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"incidents": raw})
 }
 
 func writeAnalysisResult(w http.ResponseWriter, result ingest.Result) {

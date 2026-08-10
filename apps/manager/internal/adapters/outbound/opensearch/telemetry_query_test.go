@@ -69,6 +69,24 @@ func TestTelemetryReaderFiltersSignalsAndIncidents(t *testing.T) {
 	}
 }
 
+func TestTelemetryReaderSummarizesTenantIncidents(t *testing.T) {
+	searcher := &telemetryQuerySearcherStub{documents: []json.RawMessage{
+		json.RawMessage(`{"id":"critical","tenant_id":"tenant-a","severity":95}`),
+		json.RawMessage(`{"id":"high","tenant_id":"tenant-a","severity":75}`),
+		json.RawMessage(`{"id":"medium","tenant_id":"tenant-a","severity":45}`),
+		json.RawMessage(`{"id":"other","tenant_id":"tenant-b","severity":95}`),
+	}}
+	reader := NewTelemetryReader(searcher)
+	summary, err := reader.IncidentOverview(context.Background(), tenant.ID("tenant-a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Open != 3 || summary.Critical != 1 || summary.High != 1 || summary.Medium != 1 ||
+		searcher.request.Exact["tenant_id"] != "tenant-a" {
+		t.Fatalf("summary=%+v request=%+v", summary, searcher.request)
+	}
+}
+
 func TestTelemetrySearchReaderMapsFieldsAndFiltersTenant(t *testing.T) {
 	searcher := &telemetryQuerySearcherStub{documents: []json.RawMessage{
 		json.RawMessage(`{"id":"event-a","tenant_id":"tenant-a"}`),

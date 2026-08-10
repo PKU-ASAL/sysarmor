@@ -10,14 +10,21 @@ import (
 )
 
 func NewManagerTelemetryHTTP(searcher platformopensearch.Searcher, resolve telemetryhttp.RequestContextResolver) (*telemetryhttp.Handler, error) {
-	if searcher == nil {
-		return nil, fmt.Errorf("manager telemetry searcher is required")
+	service, err := NewManagerTelemetryQueries(searcher)
+	if err != nil {
+		return nil, err
 	}
 	if resolve == nil {
 		return nil, fmt.Errorf("manager telemetry request context resolver is required")
 	}
-	service := telemetryapp.NewQueryService(platformopensearch.NewTelemetryReader(searcher))
 	return telemetryhttp.NewHandler(telemetryhttp.Options{Service: service, Resolve: resolve}), nil
+}
+
+func NewManagerTelemetryQueries(searcher platformopensearch.Searcher) (*telemetryapp.QueryService, error) {
+	if searcher == nil {
+		return nil, fmt.Errorf("manager telemetry searcher is required")
+	}
+	return telemetryapp.NewQueryService(platformopensearch.NewTelemetryReader(searcher)), nil
 }
 
 func NewManagerSearchHTTP(searcher platformopensearch.Searcher, resolve searchhttp.RequestContextResolver) (*searchhttp.Handler, error) {

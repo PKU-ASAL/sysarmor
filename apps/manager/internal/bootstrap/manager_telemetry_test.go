@@ -24,6 +24,16 @@ func TestNewManagerTelemetryHTTPRequiresDependencies(t *testing.T) {
 	}
 }
 
+func TestNewManagerTelemetryQueriesRequiresSearcher(t *testing.T) {
+	if _, err := NewManagerTelemetryQueries(nil); err == nil || !strings.Contains(err.Error(), "searcher") {
+		t.Fatalf("searcher error=%v", err)
+	}
+	queries, err := NewManagerTelemetryQueries(telemetryBootstrapSearcher{})
+	if err != nil || queries == nil {
+		t.Fatalf("queries=%v error=%v", queries, err)
+	}
+}
+
 func TestNewManagerTelemetryHTTPWiresQuery(t *testing.T) {
 	tenantID, _ := tenant.NewID("tenant-a")
 	handler, err := NewManagerTelemetryHTTP(telemetryBootstrapSearcher{}, func(*http.Request) (managerapp.RequestContext, error) {

@@ -20,6 +20,17 @@ func TestManagerConfiguresTelemetryApplicationRoutes(t *testing.T) {
 	}
 }
 
+func TestManagerConfiguresOverviewApplicationRoute(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "bootstrap.NewManagerOverviewHTTP") || !strings.Contains(text, "SetOverviewRoutes") {
+		t.Fatal("manager main does not configure overview application route")
+	}
+}
+
 func TestManagerEnrollmentConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("SYSARMOR_AGENT_CA_CERT", "/tmp/agent-ca.crt")
 	t.Setenv("SYSARMOR_AGENT_CA_KEY", "/tmp/agent-ca.key")

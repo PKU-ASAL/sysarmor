@@ -51,3 +51,7 @@ type TelemetrySearchFilter struct {
 type TelemetrySearchReader interface {
 	Search(context.Context, tenant.ID, TelemetrySearchFilter) ([]domaintelemetry.IndexedDocument, error)
 }
+
+type IncidentOverviewReader interface {
+	IncidentOverview(context.Context, tenant.ID) (domaintelemetry.IncidentOverview, error)
+}

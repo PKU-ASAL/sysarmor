@@ -111,6 +111,16 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetIdentityApplication(identityQueries, managerapi.PolicyRequestContext)
+	storeInfo := st.Info()
+	overviewRoutes, err := bootstrap.NewManagerOverviewHTTP(identityQueries, searcher,
+		bootstrap.ManagerStorageStatus{Backend: storeInfo.Backend, StateVersion: storeInfo.StateVersion,
+			MigrationVersion: storeInfo.MigrationVersion, PostgresSchemaVersion: storeInfo.PostgresSchema},
+		managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure overview application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetOverviewRoutes(overviewRoutes)
 	enrollmentRoutes, err := bootstrap.NewManagerEnrollmentHTTP(managerEnrollmentConfig(storeResult.DB))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure enrollment application: %v\n", err)

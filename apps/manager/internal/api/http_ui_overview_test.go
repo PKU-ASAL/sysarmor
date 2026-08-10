@@ -16,12 +16,15 @@ import (
 
 func TestUIOverviewUsesIdentityApplicationSummaries(t *testing.T) {
 	server := NewServer(&store.Store{})
-	server.SetIdentityApplication(&testIdentityQueries{
+	identity := &testIdentityQueries{
 		overview: domainidentity.AgentOverview{Total: 3, Online: 2, Offline: 1},
 		metrics:  domainidentity.Metrics{EventsIngested: 12, SignalsEmitted: 5},
-	}, PolicyRequestContext)
+	}
+	server.SetIdentityApplication(identity, PolicyRequestContext)
+	telemetry := testStoreTelemetryReader{store: &store.Store{}}
+	setTestOverviewApplication(server, identity, telemetry, store.Info{Backend: "memory"})
 	rec := get(t, server.Handler(), "/api/v1/ui/overview")
-	var got overviewResponse
+	var got testOverviewResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +111,7 @@ func TestUIOverviewIsScopedToPrincipalTenant(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	var got overviewResponse
+	var got testOverviewResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode overview: %v body=%s", err, rec.Body.String())
 	}
@@ -132,18 +135,33 @@ func TestUIOverviewRejectsSearchDocumentsFromAnotherTenant(t *testing.T) {
 		},
 	}}
 	server := NewServerWithSearch(&store.Store{}, searcher)
-	server.SetIdentityApplication(testIdentityQuery(&store.Store{}), PolicyRequestContext)
-	server.localTelemetry = false
+	identity := testIdentityQuery(&store.Store{})
+	server.SetIdentityApplication(identity, PolicyRequestContext)
+	setTestOverviewApplication(server, identity,
+		platformopensearch.NewTelemetryReader(searcher), store.Info{Backend: "memory"})
 	handler := tenantTestHandler(server, "tenant-a")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ui/overview", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	var got overviewResponse
+	var got testOverviewResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode overview: %v body=%s", err, rec.Body.String())
 	}
 	if got.Incidents.Open != 1 || got.Incidents.Critical != 1 || got.Incidents.High != 0 || got.Incidents.Medium != 0 {
 		t.Fatalf("incident summary = %+v, want only tenant-a", got.Incidents)
 	}
+}
+
+type testOverviewResponse struct {
+	Agents struct {
+		Total, Online, Degraded, Offline int
+	} `json:"agents"`
+	Telemetry struct {
+		Events24h  uint64 `json:"events_24h"`
+		Signals24h uint64 `json:"signals_24h"`
+	} `json:"telemetry"`
+	Incidents struct {
+		Open, Critical, High, Medium int
+	} `json:"incidents"`
 }

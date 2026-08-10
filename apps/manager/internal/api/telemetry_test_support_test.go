@@ -3,9 +3,11 @@ package managerapi
 import (
 	"context"
 
+	overviewhttp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/overview"
 	searchhttp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/search"
 	telemetryhttp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/telemetry"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
+	overviewapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/overview"
 	telemetryapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/telemetry"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
@@ -14,6 +16,24 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
+
+func setTestStoreOverviewApplication(server *Server, memory *store.Store) {
+	reader := ports.IncidentOverviewReader(testStoreTelemetryReader{store: memory})
+	if server.searcher != nil {
+		reader = platformopensearch.NewTelemetryReader(server.searcher)
+	}
+	setTestOverviewApplication(server, testIdentityQuery(memory), reader, memory.Info())
+}
+
+func setTestOverviewApplication(server *Server, identity overviewapp.IdentityQuery,
+	telemetry ports.IncidentOverviewReader, info store.Info) {
+	service := overviewapp.NewService(identity, telemetry, overviewapp.StorageStatus{Backend: info.Backend,
+		StateVersion: info.StateVersion, MigrationVersion: info.MigrationVersion,
+		PostgresSchemaVersion: info.PostgresSchema})
+	server.SetOverviewRoutes(overviewhttp.NewHandler(overviewhttp.Options{
+		Service: service, Resolve: PolicyRequestContext,
+	}))
+}
 
 func setTestSearchApplication(server *Server, searcher platformopensearch.Searcher) {
 	reader := platformopensearch.NewTelemetryReader(searcher)
@@ -35,6 +55,22 @@ func setTestTelemetryApplication(server *Server, memory *store.Store) {
 }
 
 type testStoreTelemetryReader struct{ store *store.Store }
+
+func (reader testStoreTelemetryReader) IncidentOverview(_ context.Context, tenantID tenant.ID) (domaintelemetry.IncidentOverview, error) {
+	result := domaintelemetry.IncidentOverview{}
+	for _, incident := range reader.store.ListIncidentsForTenant(tenantID.String(), nil) {
+		result.Open++
+		switch {
+		case incident.GetSeverity() >= 90:
+			result.Critical++
+		case incident.GetSeverity() >= 70:
+			result.High++
+		case incident.GetSeverity() >= 40:
+			result.Medium++
+		}
+	}
+	return result, nil
+}
 
 func (reader testStoreTelemetryReader) Events(_ context.Context, tenantID tenant.ID, filter ports.EventFilter) ([]domaintelemetry.Document, error) {
 	values := reader.store.ListEventsForTenant(tenantID.String(), store.LabelSelector(filter.Labels), filter.Behavior)

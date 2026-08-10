@@ -58,6 +58,36 @@ func (reader *TelemetryReader) Incidents(ctx context.Context, tenantID tenant.ID
 	})
 }
 
+func (reader *TelemetryReader) IncidentOverview(ctx context.Context, tenantID tenant.ID) (domaintelemetry.IncidentOverview, error) {
+	documents, err := reader.Incidents(ctx, tenantID, ports.IncidentFilter{Limit: 1000})
+	if err != nil {
+		return domaintelemetry.IncidentOverview{}, err
+	}
+	result := domaintelemetry.IncidentOverview{}
+	for _, document := range documents {
+		var incident struct {
+			Severity int `json:"severity"`
+		}
+		if err := json.Unmarshal(document, &incident); err != nil {
+			return domaintelemetry.IncidentOverview{}, failure.New(failure.Internal, fmt.Sprintf("decode incident: %v", err))
+		}
+		addIncidentSeverity(&result, incident.Severity)
+	}
+	return result, nil
+}
+
+func addIncidentSeverity(result *domaintelemetry.IncidentOverview, severity int) {
+	result.Open++
+	switch {
+	case severity >= 90:
+		result.Critical++
+	case severity >= 70:
+		result.High++
+	case severity >= 40:
+		result.Medium++
+	}
+}
+
 func (reader *TelemetryReader) search(ctx context.Context, tenantID tenant.ID, request SearchRequest, labels map[string]string, matches func(map[string]any) bool) ([]domaintelemetry.Document, error) {
 	if tenantID.IsZero() {
 		return nil, failure.New(failure.InvalidArgument, "tenant is required")

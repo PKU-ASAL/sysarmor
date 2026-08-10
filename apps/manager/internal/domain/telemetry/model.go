@@ -14,6 +14,13 @@ type IndexedDocument struct {
 	Document Document
 }
 
+type IncidentOverview struct {
+	Open     int
+	Critical int
+	High     int
+	Medium   int
+}
+
 func (document Document) Clone() Document {
 	return append(Document(nil), document...)
 }
