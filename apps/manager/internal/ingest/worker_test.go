@@ -10,6 +10,7 @@ import (
 
 	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -422,4 +423,35 @@ func lastDocIDContaining(docs []platformopensearch.Document, index, needle strin
 		}
 	}
 	return ""
+}
+
+type recordingTelemetryBatches struct {
+	claim   ports.TelemetryClaim
+	token   string
+	commits int
+}
+
+func (b *recordingTelemetryBatches) Claim(context.Context, string, string, time.Duration) (ports.TelemetryClaim, string, error) {
+	return b.claim, b.token, nil
+}
+
+func (b *recordingTelemetryBatches) Commit(context.Context, ports.TelemetryBatchDelta) error {
+	b.commits++
+	return nil
+}
+
+func (*recordingTelemetryBatches) Abandon(context.Context, string, string, string) error { return nil }
+
+func TestProcessorUsesTelemetryBatchPortForDuplicateClaim(t *testing.T) {
+	batches := &recordingTelemetryBatches{claim: ports.TelemetryDuplicate, token: "claim-token"}
+	processor := NewProcessor(&store.Store{}, &recordingIndexer{})
+	processor.SetTelemetryBatches(batches)
+
+	result, err := processor.Process(context.Background(), dataBatch("duplicate", nil, nil))
+	if err != nil || !result.Duplicate {
+		t.Fatalf("Process() result=%+v error=%v", result, err)
+	}
+	if batches.commits != 0 {
+		t.Fatalf("commits = %d, want 0", batches.commits)
+	}
 }

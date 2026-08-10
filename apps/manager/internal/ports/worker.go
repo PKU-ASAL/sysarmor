@@ -55,6 +55,33 @@ type NoopDocumentProjector struct{}
 
 func (NoopDocumentProjector) BulkIndex(context.Context, []SearchDocument) error { return nil }
 
+type TelemetryClaim int
+
+const (
+	TelemetryClaimed TelemetryClaim = iota
+	TelemetryDuplicate
+	TelemetryBusy
+)
+
+type TelemetryMetrics struct {
+	DataBatches, Events, EndpointSignals, CloudSignals uint64
+	Signals, Incidents                                 uint64
+	LastLatencyMs, MaxLatencyMs, TotalLatencyMs        uint64
+	AverageLatencyMs                                   float64
+}
+
+type TelemetryBatchDelta struct {
+	TenantID, BatchID, ClaimToken string
+	Metrics                       TelemetryMetrics
+	Rarity                        identity.RarityBaseline
+}
+
+type TelemetryBatches interface {
+	Claim(context.Context, string, string, time.Duration) (TelemetryClaim, string, error)
+	Commit(context.Context, TelemetryBatchDelta) error
+	Abandon(context.Context, string, string, string) error
+}
+
 type PermanentError struct {
 	Err     error
 	Message *RawMessage

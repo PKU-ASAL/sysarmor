@@ -12,6 +12,7 @@ import (
 
 	analyticingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
@@ -31,6 +32,7 @@ type Processor struct {
 	projector ports.DocumentProjector
 	history   ports.HistoryReader
 	rarity    RarityReader
+	batches   ports.TelemetryBatches
 	local     bool
 }
 
@@ -55,17 +57,18 @@ func NewProcessor(st *store.Store, projector ports.DocumentProjector) *Processor
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, local: true}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, local: true}
 }
 
 func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector, history ports.HistoryReader) *Processor {
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}}
 }
 
-func (p *Processor) SetRarityReader(reader RarityReader) { p.rarity = reader }
+func (p *Processor) SetRarityReader(reader RarityReader)                { p.rarity = reader }
+func (p *Processor) SetTelemetryBatches(batches ports.TelemetryBatches) { p.batches = batches }
 
 func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (Result, error) {
 	if p == nil || p.store == nil {
@@ -75,20 +78,20 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, fmt.Errorf("data batch header identity is required")
 	}
 	header := batch.GetHeader()
-	claim, claimToken, err := p.store.ClaimTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), 30*time.Second)
+	claim, claimToken, err := p.batches.Claim(ctx, header.GetTenantId(), header.GetBatchId(), 30*time.Second)
 	if err != nil {
 		return Result{}, fmt.Errorf("claim telemetry batch: %w", err)
 	}
-	if claim == store.BatchDuplicate {
+	if claim == ports.TelemetryDuplicate {
 		return Result{Duplicate: true}, nil
 	}
-	if claim == store.BatchBusy {
+	if claim == ports.TelemetryBusy {
 		return Result{}, fmt.Errorf("telemetry batch is already processing")
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			_ = p.store.AbandonTelemetryBatch(ctx, header.GetTenantId(), header.GetBatchId(), claimToken)
+			_ = p.batches.Abandon(ctx, header.GetTenantId(), header.GetBatchId(), claimToken)
 		}
 	}()
 	agent := store.AgentIdentityFromDataBatch(batch)
@@ -148,20 +151,20 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, err
 	}
 	delta := telemetryBatchDelta(batch, claimToken, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
-	if err := p.store.CommitTelemetryBatch(ctx, delta); err != nil {
+	if err := p.batches.Commit(ctx, delta); err != nil {
 		return Result{}, err
 	}
 	committed = true
 	return Result{AcceptedEvents: len(currentEvents), AcceptedSignals: len(currentSignals), CloudSignals: cloudSignals, Incidents: incidents}, nil
 }
 
-func telemetryBatchDelta(batch *dataplanev1.DataBatch, claimToken string, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) store.TelemetryBatchDelta {
+func telemetryBatchDelta(batch *dataplanev1.DataBatch, claimToken string, events, endpointSignals, cloudSignals, incidents int, latency time.Duration) ports.TelemetryBatchDelta {
 	latencyMs := uint64(latency.Milliseconds())
-	metrics := store.Metrics{
-		DataBatchesAppended: 1, EventsIngested: uint64(events), EndpointSignalsIngested: uint64(endpointSignals),
-		CloudSignalsEmitted: uint64(cloudSignals), SignalsEmitted: uint64(endpointSignals + cloudSignals),
-		IncidentsCreated: uint64(incidents), LastConvergenceLatencyMs: latencyMs,
-		MaxConvergenceLatencyMs: latencyMs, TotalConvergenceLatencyMs: latencyMs, AverageConvergenceLatency: float64(latencyMs),
+	metrics := ports.TelemetryMetrics{
+		DataBatches: 1, Events: uint64(events), EndpointSignals: uint64(endpointSignals),
+		CloudSignals: uint64(cloudSignals), Signals: uint64(endpointSignals + cloudSignals),
+		Incidents: uint64(incidents), LastLatencyMs: latencyMs,
+		MaxLatencyMs: latencyMs, TotalLatencyMs: latencyMs, AverageLatencyMs: float64(latencyMs),
 	}
 	baseline := rarity.Baseline{}
 	currentSignals := make([]*signalv1.Signal, 0, len(batch.GetSignals()))
@@ -171,7 +174,7 @@ func telemetryBatchDelta(batch *dataplanev1.DataBatch, claimToken string, events
 		}
 	}
 	baseline.Observe(currentSignals)
-	return store.TelemetryBatchDelta{TenantID: batch.GetHeader().GetTenantId(), BatchID: batch.GetHeader().GetBatchId(), ClaimToken: claimToken, Metrics: metrics, Rarity: baseline}
+	return ports.TelemetryBatchDelta{TenantID: batch.GetHeader().GetTenantId(), BatchID: batch.GetHeader().GetBatchId(), ClaimToken: claimToken, Metrics: metrics, Rarity: identity.RarityBaseline{WorkloadCounts: baseline.WorkloadCounts}}
 }
 
 type touchedScope struct {
