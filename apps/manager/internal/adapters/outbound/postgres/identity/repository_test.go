@@ -97,9 +97,9 @@ func newIdentityTestDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	for _, statement := range []string{
-		`CREATE TABLE agents (tenant_id TEXT, agent_id TEXT, host_id TEXT, version TEXT, data BLOB)`,
+		`CREATE TABLE agents (tenant_id TEXT, agent_id TEXT, host_id TEXT, version TEXT, observed_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, agent_id))`,
 		`CREATE TABLE agent_health (tenant_id TEXT, agent_id TEXT, host_id TEXT, scope_type TEXT, scope_selector TEXT, observed_at TIMESTAMP, data BLOB)`,
-		`CREATE TABLE agent_sessions (tenant_id TEXT, session_id TEXT, agent_id TEXT, status TEXT, data_transport TEXT, control_transport TEXT, last_ack_cursor TEXT, started_at TIMESTAMP, last_seen_at TIMESTAMP, last_data_seen_at TIMESTAMP, last_control_seen_at TIMESTAMP, closed_at TIMESTAMP, data BLOB)`,
+		`CREATE TABLE agent_sessions (tenant_id TEXT, session_id TEXT, agent_id TEXT, status TEXT, data_transport TEXT, control_transport TEXT, last_ack_cursor TEXT, started_at TIMESTAMP, last_seen_at TIMESTAMP, last_data_seen_at TIMESTAMP, last_control_seen_at TIMESTAMP, closed_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, session_id))`,
 		`CREATE TABLE metrics (tenant_id TEXT, metric_key TEXT, data BLOB, PRIMARY KEY (tenant_id, metric_key))`,
 		`CREATE TABLE rarity_baseline (tenant_id TEXT, workload_key TEXT, signal_name TEXT, signal_count INTEGER, data BLOB, PRIMARY KEY (tenant_id, workload_key, signal_name))`,
 	} {
