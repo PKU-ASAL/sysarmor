@@ -29,7 +29,7 @@ import (
 type Processor struct {
 	store     *store.Store
 	engine    *analyticingest.Engine
-	projector platformopensearch.Projector
+	projector ports.DocumentProjector
 	history   ports.HistoryReader
 	rarity    RarityReader
 	local     bool
@@ -45,14 +45,14 @@ type Result struct {
 	Duplicate       bool
 }
 
-func NewProcessor(st *store.Store, projector platformopensearch.Projector) *Processor {
+func NewProcessor(st *store.Store, projector ports.DocumentProjector) *Processor {
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
 	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, local: true}
 }
 
-func NewProcessorWithHistory(st *store.Store, projector platformopensearch.Projector, history ports.HistoryReader) *Processor {
+func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector, history ports.HistoryReader) *Processor {
 	if projector == nil {
 		projector = platformopensearch.NoopIndexer{}
 	}
@@ -204,10 +204,10 @@ func labelSelectorKey(labels store.LabelSelector) string {
 	return strings.Join(parts, ",")
 }
 
-func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes map[string]touchedScope, currentEvents []*eventv1.CanonicalEvent, currentSignals []*signalv1.Signal, upper time.Time) (int, int, []platformopensearch.Document, error) {
+func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes map[string]touchedScope, currentEvents []*eventv1.CanonicalEvent, currentSignals []*signalv1.Signal, upper time.Time) (int, int, []ports.SearchDocument, error) {
 	totalCloud := 0
 	totalIncidents := 0
-	var documents []platformopensearch.Document
+	var documents []ports.SearchDocument
 	for _, scope := range touchedScopes {
 		historyDocs, err := p.history.ReadDocuments(ctx, scope.agent.Normalized().TenantID, scope.labels, upper.Add(-15*time.Minute), upper)
 		if err != nil {
@@ -305,7 +305,7 @@ func frameTime(raw string, fallback time.Time) time.Time {
 	return fallback.UTC()
 }
 
-func decorateDocument(doc platformopensearch.Document, tenantID string, observed time.Time) platformopensearch.Document {
+func decorateDocument(doc ports.SearchDocument, tenantID string, observed time.Time) ports.SearchDocument {
 	var body map[string]any
 	if json.Unmarshal(doc.Body, &body) != nil {
 		return doc
@@ -351,8 +351,8 @@ func (p *Processor) effectiveDetectionPolicyForAgent(agent store.AgentIdentity) 
 	return policy.DetectionPolicy()
 }
 
-func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]platformopensearch.Document, error) {
-	var documents []platformopensearch.Document
+func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]ports.SearchDocument, error) {
+	var documents []ports.SearchDocument
 	for _, frame := range batch.GetEvents() {
 		ev := frame.GetEvent()
 		if ev.GetId() == "" {
@@ -363,7 +363,7 @@ func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]platfor
 			return nil, fmt.Errorf("marshal event %q: %w", ev.GetId(), err)
 		}
 		documentID := EventDocumentID(batch.GetHeader().GetTenantId(), batch.GetHeader().GetAgentId(), ev.GetId())
-		documents = append(documents, decorateDocument(platformopensearch.Document{Index: platformopensearch.EventsWriteAlias, ID: documentID, Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
+		documents = append(documents, decorateDocument(ports.SearchDocument{Index: platformopensearch.EventsWriteAlias, ID: documentID, Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
 	}
 	for _, frame := range batch.GetSignals() {
 		sig := frame.GetSignal()
@@ -378,7 +378,7 @@ func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]platfor
 	return documents, nil
 }
 
-func incidentDocuments(inc *incidentv1.Incident) ([]platformopensearch.Document, error) {
+func incidentDocuments(inc *incidentv1.Incident) ([]ports.SearchDocument, error) {
 	if inc == nil || inc.GetId() == "" {
 		return nil, nil
 	}
@@ -387,40 +387,40 @@ func incidentDocuments(inc *incidentv1.Incident) ([]platformopensearch.Document,
 		return nil, fmt.Errorf("marshal incident %q: %w", inc.GetId(), err)
 	}
 	id := IncidentDocumentID(inc)
-	documents := []platformopensearch.Document{}
+	documents := []ports.SearchDocument{}
 	if inc.GetEvidence() == nil {
-		return append(documents, platformopensearch.Document{Index: platformopensearch.IncidentsWriteAlias, ID: id, Body: raw}), nil
+		return append(documents, ports.SearchDocument{Index: platformopensearch.IncidentsWriteAlias, ID: id, Body: raw}), nil
 	}
 	evidenceRaw, err := protojson.Marshal(inc.GetEvidence())
 	if err != nil {
 		return nil, fmt.Errorf("marshal incident evidence %q: %w", id, err)
 	}
-	documents = append(documents, platformopensearch.Document{Index: platformopensearch.EvidenceWriteAlias, ID: id + ":evidence", Body: evidenceRaw})
-	documents = append(documents, platformopensearch.Document{Index: platformopensearch.IncidentsWriteAlias, ID: id, Body: raw})
+	documents = append(documents, ports.SearchDocument{Index: platformopensearch.EvidenceWriteAlias, ID: id + ":evidence", Body: evidenceRaw})
+	documents = append(documents, ports.SearchDocument{Index: platformopensearch.IncidentsWriteAlias, ID: id, Body: raw})
 	return documents, nil
 }
 
-func signalDocument(sig *signalv1.Signal) (platformopensearch.Document, error) {
+func signalDocument(sig *signalv1.Signal) (ports.SearchDocument, error) {
 	id := SignalDocumentID(sig)
 	return signalDocumentWithID(sig, id)
 }
 
-func batchSignalDocument(sig *signalv1.Signal, tenantID, agentID string) (platformopensearch.Document, error) {
+func batchSignalDocument(sig *signalv1.Signal, tenantID, agentID string) (ports.SearchDocument, error) {
 	if sig != nil && sig.GetWhere() == signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT {
 		return signalDocumentWithID(sig, EndpointSignalDocumentID(tenantID, agentID, sig.GetId()))
 	}
 	return signalDocument(sig)
 }
 
-func signalDocumentWithID(sig *signalv1.Signal, id string) (platformopensearch.Document, error) {
+func signalDocumentWithID(sig *signalv1.Signal, id string) (ports.SearchDocument, error) {
 	if id == "" {
-		return platformopensearch.Document{}, nil
+		return ports.SearchDocument{}, nil
 	}
 	raw, err := protojson.Marshal(sig)
 	if err != nil {
-		return platformopensearch.Document{}, fmt.Errorf("marshal signal %q: %w", id, err)
+		return ports.SearchDocument{}, fmt.Errorf("marshal signal %q: %w", id, err)
 	}
-	return platformopensearch.Document{Index: platformopensearch.SignalsWriteAlias, ID: id, Body: raw}, nil
+	return ports.SearchDocument{Index: platformopensearch.SignalsWriteAlias, ID: id, Body: raw}, nil
 }
 
 func EndpointSignalDocumentID(tenantID, agentID, signalID string) string {

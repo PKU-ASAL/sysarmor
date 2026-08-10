@@ -10,23 +10,19 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 )
 
 var ErrDisabled = errors.New("opensearch indexing is disabled")
 
-type Document struct {
-	Index string
-	ID    string
-	Body  []byte
-}
+type Document = ports.SearchDocument
 
 type Indexer interface {
 	Index(context.Context, Document) error
 }
 
-type Projector interface {
-	BulkIndex(context.Context, []Document) error
-}
+type Projector = ports.DocumentProjector
 
 type ErrorClass string
 

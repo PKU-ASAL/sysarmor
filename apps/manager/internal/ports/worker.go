@@ -41,6 +41,16 @@ type HistoryReader interface {
 	ReadDocuments(context.Context, string, map[string]string, time.Time, time.Time) (HistorySnapshot, error)
 }
 
+type SearchDocument struct {
+	Index string
+	ID    string
+	Body  []byte
+}
+
+type DocumentProjector interface {
+	BulkIndex(context.Context, []SearchDocument) error
+}
+
 type PermanentError struct {
 	Err     error
 	Message *RawMessage

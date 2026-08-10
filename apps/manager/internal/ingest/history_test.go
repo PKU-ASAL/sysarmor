@@ -29,9 +29,9 @@ func TestOpenSearchHistoryReadsTenantScopeAndWindow(t *testing.T) {
 		platformopensearch.SignalsReadAlias: {json.RawMessage(`{"id":"sig-history","tenant_id":"tenant-a","name":"payload_dropped","where":"SIGNAL_WHERE_ENDPOINT","labels":{"scenario":"a"},"@timestamp":"2026-07-12T00:05:00Z"}`)},
 	}}
 	upper := time.Date(2026, 7, 12, 0, 10, 0, 0, time.UTC)
-	events, signals, err := NewOpenSearchHistory(searcher).Read(context.Background(), "tenant-a", map[string]string{"scenario": "a"}, upper.Add(-15*time.Minute), upper)
-	if err != nil || len(events) != 1 || len(signals) != 1 {
-		t.Fatalf("Read() events=%d signals=%d error=%v", len(events), len(signals), err)
+	history, err := NewOpenSearchHistory(searcher).ReadDocuments(context.Background(), "tenant-a", map[string]string{"scenario": "a"}, upper.Add(-15*time.Minute), upper)
+	if err != nil || len(history.Events) != 1 || len(history.Signals) != 1 {
+		t.Fatalf("ReadDocuments() events=%d signals=%d error=%v", len(history.Events), len(history.Signals), err)
 	}
 	if len(searcher.requests) != 2 {
 		t.Fatalf("requests = %d", len(searcher.requests))
@@ -60,7 +60,15 @@ func TestOpenSearchHistoryRejectsDocumentsFromAnotherTenant(t *testing.T) {
 		},
 	}}
 
-	events, signals, err := NewOpenSearchHistory(searcher).Read(context.Background(), "tenant-a", nil, time.Time{}, time.Time{})
+	history, err := NewOpenSearchHistory(searcher).ReadDocuments(context.Background(), "tenant-a", nil, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := decodeEvents(history.Events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signals, err := decodeSignals(history.Signals)
 	if err != nil {
 		t.Fatal(err)
 	}

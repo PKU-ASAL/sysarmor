@@ -48,19 +48,6 @@ func NewOpenSearchHistory(searcher platformopensearch.Searcher) *OpenSearchHisto
 	return &OpenSearchHistory{searcher: searcher}
 }
 
-func (h *OpenSearchHistory) Read(ctx context.Context, tenantID string, labels map[string]string, from, to time.Time) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
-	documents, err := h.ReadDocuments(ctx, tenantID, labels, from, to)
-	if err != nil {
-		return nil, nil, err
-	}
-	events, err := decodeEvents(documents.Events)
-	if err != nil {
-		return nil, nil, err
-	}
-	signals, err := decodeSignals(documents.Signals)
-	return events, signals, err
-}
-
 type storeHistory struct{ store *store.Store }
 
 func (h storeHistory) ReadDocuments(_ context.Context, tenantID string, labels map[string]string, _, _ time.Time) (ports.HistorySnapshot, error) {
