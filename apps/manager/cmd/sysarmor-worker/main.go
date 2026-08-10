@@ -17,7 +17,9 @@ import (
 	kafkain "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/kafka"
 	kafkaout "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/kafka"
 	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
+	policypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/policy"
 	workerpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/worker"
+	managerpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/policy"
 	workerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker"
 	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
@@ -108,8 +110,11 @@ func main() {
 	log.Printf("sysarmor-worker consuming topic=%s group=%s store_backend=%s", *kafkaTopic, *kafkaGroupID, *storeBackend)
 	processor := ingestworker.NewProcessorWithHistory(storeResult.Store, indexer, ingestworker.NewOpenSearchHistory(indexer))
 	if storeResult.DB != nil {
-		processor.SetRarityReader(identitypostgres.NewRepositories(storeResult.DB).Snapshots())
+		identityRepositories := identitypostgres.NewRepositories(storeResult.DB)
+		processor.SetRarityReader(identityRepositories.Snapshots())
 		processor.SetTelemetryBatches(workerpostgres.NewTelemetryBatches(storeResult.DB))
+		policyQueries := managerpolicy.NewQueryService(policypostgres.NewUnitOfWork(storeResult.DB))
+		processor.SetDetectionPolicies(workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()))
 	} else {
 		processor.SetRarityReader(managerstore.NewRarityReader(storeResult.Store))
 	}

@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	platformkafka "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/kafka"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
@@ -433,6 +436,16 @@ type recordingTelemetryBatches struct {
 	commits int
 }
 
+type fixedDetectionPolicies struct {
+	policy domainpolicy.Policy
+	calls  int
+}
+
+func (reader *fixedDetectionPolicies) Effective(context.Context, tenant.ID, identity.AgentID) (domainpolicy.Policy, error) {
+	reader.calls++
+	return reader.policy, nil
+}
+
 func (b *recordingTelemetryBatches) Claim(context.Context, string, string, time.Duration) (ports.TelemetryClaim, string, error) {
 	return b.claim, b.token, nil
 }
@@ -483,5 +496,18 @@ func TestRemoteProcessorDoesNotSaveLegacySnapshot(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("legacy snapshot was written: %v", err)
+	}
+}
+
+func TestProcessorReadsDetectionPolicyThroughPort(t *testing.T) {
+	reader := &fixedDetectionPolicies{policy: domainpolicy.Policy{Document: []byte(`{"cloud_rules":["rule-a"]}`)}}
+	processor := NewProcessorWithHistory(&store.Store{}, &recordingIndexer{}, NewOpenSearchHistory(nil))
+	processor.SetDetectionPolicies(reader)
+	policy, err := processor.effectiveDetectionPolicyForAgent(context.Background(), store.AgentIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.calls != 1 || len(policy.GetCloudRules()) != 1 || policy.GetCloudRules()[0] != "rule-a" {
+		t.Fatalf("calls=%d policy=%+v", reader.calls, policy)
 	}
 }

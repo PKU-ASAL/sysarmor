@@ -56,13 +56,17 @@ func (service *QueryService) EffectivePolicy(ctx context.Context, request manage
 	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
 		return EffectivePolicyResult{}, err
 	}
+	return service.EffectivePolicyForTenant(ctx, request.Actor.TenantID, query.Target)
+}
+
+func (service *QueryService) EffectivePolicyForTenant(ctx context.Context, tenantID tenant.ID, target domainpolicy.Target) (EffectivePolicyResult, error) {
 	var result EffectivePolicyResult
 	err := service.uow.Execute(ctx, func(txCtx context.Context, tx ports.PolicyTransaction) error {
-		assignments, err := tx.Assignments().Candidates(txCtx, request.Actor.TenantID, query.Target)
+		assignments, err := tx.Assignments().Candidates(txCtx, tenantID, target)
 		if err != nil && failure.KindOf(err) != failure.NotFound {
 			return fmt.Errorf("get effective policy candidates: %w", err)
 		}
-		value, found, err := firstPublishedPolicy(txCtx, tx.Policies(), request.Actor.TenantID, assignments)
+		value, found, err := firstPublishedPolicy(txCtx, tx.Policies(), tenantID, assignments)
 		if err != nil {
 			return err
 		}
@@ -70,9 +74,9 @@ func (service *QueryService) EffectivePolicy(ctx context.Context, request manage
 			result.Policy = value
 			return nil
 		}
-		value, defaultErr := tx.Policies().Published(txCtx, request.Actor.TenantID, domainpolicy.DefaultPolicyID, 0)
+		value, defaultErr := tx.Policies().Published(txCtx, tenantID, domainpolicy.DefaultPolicyID, 0)
 		if failure.KindOf(defaultErr) == failure.NotFound {
-			result.Policy = domainpolicy.ManagerDefault(request.Actor.TenantID)
+			result.Policy = domainpolicy.ManagerDefault(tenantID)
 			return nil
 		}
 		result.Policy = value

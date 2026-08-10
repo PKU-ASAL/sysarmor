@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
@@ -80,6 +81,10 @@ type TelemetryBatches interface {
 	Claim(context.Context, string, string, time.Duration) (TelemetryClaim, string, error)
 	Commit(context.Context, TelemetryBatchDelta) error
 	Abandon(context.Context, string, string, string) error
+}
+
+type DetectionPolicyReader interface {
+	Effective(context.Context, tenant.ID, identity.AgentID) (domainpolicy.Policy, error)
 }
 
 type PermanentError struct {

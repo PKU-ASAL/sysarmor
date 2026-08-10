@@ -16,13 +16,12 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	policyv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/policy/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,6 +32,7 @@ type Processor struct {
 	history   ports.HistoryReader
 	rarity    RarityReader
 	batches   ports.TelemetryBatches
+	policies  ports.DetectionPolicyReader
 	local     bool
 }
 
@@ -57,18 +57,19 @@ func NewProcessor(st *store.Store, projector ports.DocumentProjector) *Processor
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, local: true}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}, local: true}
 }
 
 func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector, history ports.HistoryReader) *Processor {
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}}
+	return &Processor{store: st, engine: analyticingest.NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}}
 }
 
-func (p *Processor) SetRarityReader(reader RarityReader)                { p.rarity = reader }
-func (p *Processor) SetTelemetryBatches(batches ports.TelemetryBatches) { p.batches = batches }
+func (p *Processor) SetRarityReader(reader RarityReader)                       { p.rarity = reader }
+func (p *Processor) SetTelemetryBatches(batches ports.TelemetryBatches)        { p.batches = batches }
+func (p *Processor) SetDetectionPolicies(policies ports.DetectionPolicyReader) { p.policies = policies }
 
 func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (Result, error) {
 	if p == nil || p.store == nil {
@@ -236,7 +237,10 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 		}
 		events := mergeEvents(historyEvents, matchingEvents(currentEvents, scope.labels))
 		endpointSignals := mergeSignals(historySignals, matchingSignals(currentSignals, scope.labels))
-		policy := p.effectiveDetectionPolicyForAgent(scope.agent)
+		policy, err := p.effectiveDetectionPolicyForAgent(ctx, scope.agent)
+		if err != nil {
+			return 0, 0, nil, fmt.Errorf("read effective detection policy: %w", err)
+		}
 		analysis := p.engine.AnalyzeWithPolicy(events, endpointSignals, policy)
 		firstObserved, lastObserved := incidentObservedRange(events)
 		for _, inc := range analysis.Incidents {
@@ -318,18 +322,6 @@ func frameTime(raw string, fallback time.Time) time.Time {
 	return fallback.UTC()
 }
 
-func decorateDocument(doc ports.SearchDocument, tenantID string, observed time.Time) ports.SearchDocument {
-	var body map[string]any
-	if json.Unmarshal(doc.Body, &body) != nil {
-		return doc
-	}
-	delete(body, "tenantId")
-	body["tenant_id"] = tenantID
-	body["@timestamp"] = observed.UTC().Format(time.RFC3339Nano)
-	doc.Body, _ = json.Marshal(body)
-	return doc
-}
-
 func matchingEvents(events []*eventv1.CanonicalEvent, labels store.LabelSelector) []*eventv1.CanonicalEvent {
 	var out []*eventv1.CanonicalEvent
 	for _, event := range events {
@@ -350,90 +342,21 @@ func matchingSignals(signals []*signalv1.Signal, labels store.LabelSelector) []*
 	return out
 }
 
-func (p *Processor) effectiveDetectionPolicyForAgent(agent store.AgentIdentity) *policyv1.DetectionPolicy {
+func (p *Processor) effectiveDetectionPolicyForAgent(ctx context.Context, agent store.AgentIdentity) (*policyv1.DetectionPolicy, error) {
 	agent = agent.Normalized()
-	if !agent.Valid() {
-		policy, _ := p.store.EffectivePolicy("default", "", "", "")
-		return policy.DetectionPolicy()
-	}
-	var scope agenthealth.RuntimeScope
-	if health, ok := p.store.GetAgentHealth(agent.TenantID, agent.AgentID); ok {
-		scope = health.Scope
-	}
-	policy, _ := p.store.EffectivePolicy(agent.TenantID, agent.AgentID, scope.Type, scope.Selector)
-	return policy.DetectionPolicy()
-}
-
-func batchDocuments(batch *dataplanev1.DataBatch, fallback time.Time) ([]ports.SearchDocument, error) {
-	var documents []ports.SearchDocument
-	for _, frame := range batch.GetEvents() {
-		ev := frame.GetEvent()
-		if ev.GetId() == "" {
-			continue
-		}
-		raw, err := protojson.Marshal(ev)
-		if err != nil {
-			return nil, fmt.Errorf("marshal event %q: %w", ev.GetId(), err)
-		}
-		documentID := EventDocumentID(batch.GetHeader().GetTenantId(), batch.GetHeader().GetAgentId(), ev.GetId())
-		documents = append(documents, decorateDocument(ports.SearchDocument{Index: eventsIndex, ID: documentID, Body: raw}, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
-	}
-	for _, frame := range batch.GetSignals() {
-		sig := frame.GetSignal()
-		doc, err := batchSignalDocument(sig, batch.GetHeader().GetTenantId(), batch.GetHeader().GetAgentId())
-		if err != nil {
-			return nil, err
-		}
-		if doc.ID != "" {
-			documents = append(documents, decorateDocument(doc, batch.GetHeader().GetTenantId(), frameTime(frame.GetObservedAt(), fallback)))
-		}
-	}
-	return documents, nil
-}
-
-func incidentDocuments(inc *incidentv1.Incident) ([]ports.SearchDocument, error) {
-	if inc == nil || inc.GetId() == "" {
-		return nil, nil
-	}
-	raw, err := protojson.Marshal(inc)
+	tenantID, err := tenant.NewID(agent.TenantID)
 	if err != nil {
-		return nil, fmt.Errorf("marshal incident %q: %w", inc.GetId(), err)
+		return nil, err
 	}
-	id := IncidentDocumentID(inc)
-	documents := []ports.SearchDocument{}
-	if inc.GetEvidence() == nil {
-		return append(documents, ports.SearchDocument{Index: incidentsIndex, ID: id, Body: raw}), nil
-	}
-	evidenceRaw, err := protojson.Marshal(inc.GetEvidence())
+	policy, err := p.policies.Effective(ctx, tenantID, identity.AgentID(agent.AgentID))
 	if err != nil {
-		return nil, fmt.Errorf("marshal incident evidence %q: %w", id, err)
+		return nil, err
 	}
-	documents = append(documents, ports.SearchDocument{Index: evidenceIndex, ID: id + ":evidence", Body: evidenceRaw})
-	documents = append(documents, ports.SearchDocument{Index: incidentsIndex, ID: id, Body: raw})
-	return documents, nil
-}
-
-func signalDocument(sig *signalv1.Signal) (ports.SearchDocument, error) {
-	id := SignalDocumentID(sig)
-	return signalDocumentWithID(sig, id)
-}
-
-func batchSignalDocument(sig *signalv1.Signal, tenantID, agentID string) (ports.SearchDocument, error) {
-	if sig != nil && sig.GetWhere() == signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT {
-		return signalDocumentWithID(sig, EndpointSignalDocumentID(tenantID, agentID, sig.GetId()))
+	var wire policymodel.Policy
+	if err := json.Unmarshal(policy.Document, &wire); err != nil {
+		return nil, fmt.Errorf("decode policy document: %w", err)
 	}
-	return signalDocument(sig)
-}
-
-func signalDocumentWithID(sig *signalv1.Signal, id string) (ports.SearchDocument, error) {
-	if id == "" {
-		return ports.SearchDocument{}, nil
-	}
-	raw, err := protojson.Marshal(sig)
-	if err != nil {
-		return ports.SearchDocument{}, fmt.Errorf("marshal signal %q: %w", id, err)
-	}
-	return ports.SearchDocument{Index: signalsIndex, ID: id, Body: raw}, nil
+	return wire.DetectionPolicy(), nil
 }
 
 func EndpointSignalDocumentID(tenantID, agentID, signalID string) string {
