@@ -18,7 +18,7 @@ type TelemetryBatches struct{ db *sql.DB }
 func NewTelemetryBatches(db *sql.DB) *TelemetryBatches { return &TelemetryBatches{db: db} }
 
 func (repo *TelemetryBatches) Claim(ctx context.Context, tenantID, batchID string, lease time.Duration) (ports.TelemetryClaim, string, error) {
-	if repo == nil || repo.db == nil || strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" || lease <= 0 {
+	if repo == nil || repo.db == nil || strings.TrimSpace(tenantID) == "" || strings.TrimSpace(batchID) == "" || lease.Milliseconds() <= 0 {
 		return ports.TelemetryBusy, "", fmt.Errorf("database, tenant_id, batch_id, and positive lease are required")
 	}
 	token, err := claimToken()
@@ -45,8 +45,18 @@ func claimBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID, token string
 	var leaseUntil time.Time
 	err := tx.QueryRowContext(ctx, `SELECT status, lease_until FROM telemetry_batches WHERE tenant_id=$1 AND batch_id=$2`, tenantID, batchID).Scan(&status, &leaseUntil)
 	if err == sql.ErrNoRows {
-		_, err = tx.ExecContext(ctx, `INSERT INTO telemetry_batches (tenant_id,batch_id,status,claim_token,lease_until) VALUES ($1,$2,'processing',$3,$4)`, tenantID, batchID, token, time.Now().UTC().Add(lease))
-		return ports.TelemetryClaimed, err
+		result, insertErr := tx.ExecContext(ctx, `INSERT INTO telemetry_batches (tenant_id,batch_id,status,claim_token,lease_until) VALUES ($1,$2,'processing',$3,$4) ON CONFLICT (tenant_id,batch_id) DO NOTHING`, tenantID, batchID, token, time.Now().UTC().Add(lease))
+		if insertErr != nil {
+			return ports.TelemetryBusy, insertErr
+		}
+		inserted, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return ports.TelemetryBusy, rowsErr
+		}
+		if inserted == 1 {
+			return ports.TelemetryClaimed, nil
+		}
+		return claimBatch(ctx, tx, tenantID, batchID, token, lease)
 	}
 	if err != nil {
 		return ports.TelemetryBusy, fmt.Errorf("read telemetry claim: %w", err)

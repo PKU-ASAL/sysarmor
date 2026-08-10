@@ -49,6 +49,13 @@ func TestTelemetryBatchesCommitMetricsAndRarity(t *testing.T) {
 	}
 }
 
+func TestTelemetryBatchesRejectsSubMillisecondLease(t *testing.T) {
+	repository := NewTelemetryBatches(newTelemetryDB(t))
+	if _, _, err := repository.Claim(context.Background(), "tenant-a", "batch-a", time.Nanosecond); err == nil {
+		t.Fatal("Claim() accepted sub-millisecond lease")
+	}
+}
+
 func newTelemetryDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
