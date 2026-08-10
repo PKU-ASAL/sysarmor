@@ -37,7 +37,7 @@ func bindPrincipalTenant(next http.Handler) http.Handler {
 			return
 		}
 		query := r.URL.Query()
-		if tenant := query.Get("tenant_id"); tenant != "" && tenant != principal.TenantID {
+		if tenant := query.Get("tenant_id"); r.URL.Path != "/api/v1/recompute" && tenant != "" && tenant != principal.TenantID {
 			writeAPIError(w, http.StatusForbidden, "forbidden", "Forbidden")
 			return
 		}

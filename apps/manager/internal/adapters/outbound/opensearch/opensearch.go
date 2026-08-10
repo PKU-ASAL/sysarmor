@@ -57,19 +57,33 @@ type Searcher interface {
 	Search(context.Context, SearchRequest) ([]json.RawMessage, error)
 }
 
+type SearchHit struct {
+	Source json.RawMessage
+	Sort   []any
+}
+
+type SearchPage struct {
+	Hits []SearchHit
+}
+
+type PageSearcher interface {
+	SearchPage(context.Context, SearchRequest) (SearchPage, error)
+}
+
 type SearchRequest struct {
-	Index     string
-	Size      int
-	Offset    int
-	Query     string
-	Labels    map[string]string
-	Exact     map[string]string
-	Bool      map[string]bool
-	TimeField string
-	TimeFrom  string
-	TimeTo    string
-	SortField string
-	SortDesc  bool
+	Index       string
+	Size        int
+	Offset      int
+	Query       string
+	Labels      map[string]string
+	Exact       map[string]string
+	Bool        map[string]bool
+	TimeField   string
+	TimeFrom    string
+	TimeTo      string
+	SortField   string
+	SortDesc    bool
+	SearchAfter []any
 }
 
 type DisabledIndexer struct{}
@@ -224,12 +238,26 @@ func classifyStatus(status int) ErrorClass {
 }
 
 func (i *HTTPIndexer) Search(ctx context.Context, search SearchRequest) ([]json.RawMessage, error) {
+	page, err := i.SearchPage(ctx, search)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]json.RawMessage, 0, len(page.Hits))
+	for _, hit := range page.Hits {
+		if len(hit.Source) > 0 {
+			out = append(out, hit.Source)
+		}
+	}
+	return out, nil
+}
+
+func (i *HTTPIndexer) SearchPage(ctx context.Context, search SearchRequest) (SearchPage, error) {
 	if i == nil || i.client == nil || i.base == "" {
-		return nil, ErrDisabled
+		return SearchPage{}, ErrDisabled
 	}
 	index := strings.TrimSpace(search.Index)
 	if index == "" {
-		return nil, fmt.Errorf("opensearch index is required")
+		return SearchPage{}, fmt.Errorf("opensearch index is required")
 	}
 	size := search.Size
 	if size <= 0 {
@@ -237,8 +265,12 @@ func (i *HTTPIndexer) Search(ctx context.Context, search SearchRequest) ([]json.
 	}
 	bodyMap := map[string]any{
 		"size":  size,
-		"from":  max(search.Offset, 0),
 		"query": searchQuery(search),
+	}
+	if len(search.SearchAfter) > 0 {
+		bodyMap["search_after"] = search.SearchAfter
+	} else {
+		bodyMap["from"] = max(search.Offset, 0)
 	}
 	if sortField := strings.TrimSpace(search.SortField); sortField != "" {
 		order := "asc"
@@ -249,43 +281,44 @@ func (i *HTTPIndexer) Search(ctx context.Context, search SearchRequest) ([]json.
 	}
 	body, err := json.Marshal(bodyMap)
 	if err != nil {
-		return nil, err
+		return SearchPage{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, i.base+"/"+index+"/_search", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return SearchPage{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	i.setAuth(req)
 	resp, err := i.client.Do(req)
 	if err != nil {
-		return nil, err
+		return SearchPage{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
+		return SearchPage{}, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("opensearch search status %s", resp.Status)
+		return SearchPage{}, fmt.Errorf("opensearch search status %s", resp.Status)
 	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return SearchPage{}, err
 	}
 	var result struct {
 		Hits struct {
 			Hits []struct {
 				Source json.RawMessage `json:"_source"`
+				Sort   []any           `json:"sort"`
 			} `json:"hits"`
 		} `json:"hits"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, err
+		return SearchPage{}, err
 	}
-	out := make([]json.RawMessage, 0, len(result.Hits.Hits))
+	out := SearchPage{Hits: make([]SearchHit, 0, len(result.Hits.Hits))}
 	for _, hit := range result.Hits.Hits {
 		if len(hit.Source) > 0 {
-			out = append(out, hit.Source)
+			out.Hits = append(out.Hits, SearchHit{Source: hit.Source, Sort: hit.Sort})
 		}
 	}
 	return out, nil

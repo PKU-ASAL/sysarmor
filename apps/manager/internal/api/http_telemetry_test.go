@@ -322,7 +322,7 @@ func TestUploadIndexesSecurityDocuments(t *testing.T) {
 	}
 }
 
-func TestAgentsEventsResetAndRecompute(t *testing.T) {
+func TestAgentsEventsAndReset(t *testing.T) {
 	st := &store.Store{}
 	srv := newTestServer(st)
 	handler := adminTestHandler(srv)
@@ -349,11 +349,6 @@ func TestAgentsEventsResetAndRecompute(t *testing.T) {
 	rec = get(t, handler, "/api/v1/events?label=scenario=apt-staged-drop&behavior=process.exec")
 	if !strings.Contains(rec.Body.String(), "ev-1") {
 		t.Fatalf("events response missing ev-1: %s", rec.Body.String())
-	}
-
-	rec = get(t, handler, "/api/v1/recompute?label=scenario=apt-staged-drop&disable=cloud.cross_lineage")
-	if strings.Contains(rec.Body.String(), `"inc-`) {
-		t.Fatalf("disabled cross-lineage recompute should not incident: %s", rec.Body.String())
 	}
 
 	st.DeleteByLabels(store.LabelSelector{"scenario": "apt-staged-drop"})

@@ -20,7 +20,6 @@ func TestUIOverviewUsesIdentityApplicationSummaries(t *testing.T) {
 		overview: domainidentity.AgentOverview{Total: 3, Online: 2, Offline: 1},
 		metrics:  domainidentity.Metrics{EventsIngested: 12, SignalsEmitted: 5},
 	}
-	server.SetIdentityApplication(identity, PolicyRequestContext)
 	telemetry := testStoreTelemetryReader{store: &store.Store{}}
 	setTestOverviewApplication(server, identity, telemetry, store.Info{Backend: "memory"})
 	rec := get(t, server.Handler(), "/api/v1/ui/overview")
@@ -136,7 +135,6 @@ func TestUIOverviewRejectsSearchDocumentsFromAnotherTenant(t *testing.T) {
 	}}
 	server := NewServerWithSearch(&store.Store{}, searcher)
 	identity := testIdentityQuery(&store.Store{})
-	server.SetIdentityApplication(identity, PolicyRequestContext)
 	setTestOverviewApplication(server, identity,
 		platformopensearch.NewTelemetryReader(searcher), store.Info{Backend: "memory"})
 	handler := tenantTestHandler(server, "tenant-a")

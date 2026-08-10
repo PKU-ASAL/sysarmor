@@ -61,7 +61,6 @@ func newTestServer(st *store.Store) *Server {
 
 func setTestIdentityApplication(server *Server, st *store.Store) {
 	queries := testIdentityQuery(st)
-	server.SetIdentityApplication(queries, PolicyRequestContext)
 	server.SetIdentityRoutes(identityhttp.NewHandler(identityhttp.Options{Query: queries, Resolve: PolicyRequestContext}))
 }
 

@@ -1,22 +1,15 @@
 package managerapi
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
-	ingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
-	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
-	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
-	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
+	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
 type Server struct {
@@ -29,30 +22,10 @@ type Server struct {
 	responseRoutes   responseRoutes
 	artifactRoutes   artifactRoutes
 	telemetryRoutes  telemetryRoutes
+	analysisRoutes   analysisRoutes
 	searchRoutes     searchRoutes
 	overviewRoutes   overviewRoutes
 	statusRoutes     statusRoutes
-	identityQuery    identityQueries
-	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
-}
-
-type identityQueries interface {
-	ListAgents(context.Context, managerapp.RequestContext, identityapp.ListAgentsQuery) (identityapp.ListAgentsResult, error)
-	GetHealth(context.Context, managerapp.RequestContext, domainidentity.AgentID) (domainidentity.Health, error)
-	Rarity(context.Context, managerapp.RequestContext) (domainidentity.RarityBaseline, error)
-	Metrics(context.Context, managerapp.RequestContext) (domainidentity.Metrics, error)
-	AgentOverview(context.Context, managerapp.RequestContext) (domainidentity.AgentOverview, error)
-}
-
-func (s *Server) SetIdentityApplication(query identityQueries, resolve func(*http.Request) (managerapp.RequestContext, error)) {
-	s.identityQuery, s.identityResolve = query, resolve
-}
-
-func (s *Server) identityRequest(r *http.Request) (managerapp.RequestContext, error) {
-	if s.identityResolve == nil {
-		return managerapp.RequestContext{}, fmt.Errorf("identity application is not configured")
-	}
-	return s.identityResolve(r)
 }
 
 type evidencePullbackRequest struct {
@@ -123,7 +96,8 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
 		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
-		searchRoutes: unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{},
+		analysisRoutes: unavailableAnalysisRoutes{},
+		searchRoutes:   unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{},
 		statusRoutes: unavailableStatusRoutes{}, policyRoutes: unavailablePolicyRoutes{},
 		identityRoutes: unavailableIdentityRoutes{}}
 	return s
@@ -132,7 +106,7 @@ func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.statusRoutes.Health)
-	mux.HandleFunc("/api/v1/recompute", s.recompute)
+	mux.HandleFunc("/api/v1/recompute", s.analysisRoutes.Recompute)
 	mux.HandleFunc("/api/v1/rules", s.policyRoutes.Rules)
 	mux.HandleFunc("/api/v1/policies", s.policyRoutes.Policies)
 	mux.HandleFunc("/api/v1/policy-publish", s.policyRoutes.Publish)
@@ -203,20 +177,6 @@ func (s *Server) handleControlCommands(w http.ResponseWriter, r *http.Request) {
 	s.controlRoutes.Commands(w, r)
 }
 
-func parseLabelSelector(values []string) store.LabelSelector {
-	labels := store.LabelSelector{}
-	for _, raw := range values {
-		key, value, ok := strings.Cut(raw, "=")
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if !ok || key == "" {
-			continue
-		}
-		labels[key] = value
-	}
-	return labels
-}
-
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -239,16 +199,6 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func removeString(in []string, value string) []string {
-	out := make([]string, 0, len(in))
-	for _, item := range in {
-		if item != value {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
 func cloneStringMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
@@ -258,25 +208,4 @@ func cloneStringMap(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
-}
-
-func writeAnalysisResult(w http.ResponseWriter, result ingest.Result) {
-	w.Header().Set("Content-Type", "application/json")
-	cloud := make([]json.RawMessage, 0, len(result.CloudSignals))
-	for _, sig := range result.CloudSignals {
-		cloud = append(cloud, mustProtoJSON(sig))
-	}
-	incidents := make([]json.RawMessage, 0, len(result.Incidents))
-	for _, inc := range result.Incidents {
-		incidents = append(incidents, mustProtoJSON(inc))
-	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"cloud_signals": cloud, "incidents": incidents})
-}
-
-func mustProtoJSON(msg proto.Message) json.RawMessage {
-	data, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(msg)
-	if err != nil {
-		return json.RawMessage(`{}`)
-	}
-	return data
 }

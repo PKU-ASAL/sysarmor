@@ -141,6 +141,24 @@ func TestBindPrincipalTenantRejectsMismatch(t *testing.T) {
 	assertAPIError(t, rec, "forbidden")
 }
 
+func TestBindPrincipalTenantIgnoresRecomputeQueryTenant(t *testing.T) {
+	handler := bindPrincipalTenant(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("tenant_id") != "tenant-a" {
+			t.Fatalf("query tenant = %q", r.URL.Query().Get("tenant_id"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/recompute?tenant_id=tenant-b", nil)
+	req = req.WithContext(managerauth.WithPrincipal(req.Context(), managerauth.Principal{
+		Subject: "user", TenantID: "tenant-a", Roles: []string{"viewer"},
+	}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func assertAPIError(t *testing.T, rec *httptest.ResponseRecorder, code string) {
 	t.Helper()
 	if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {

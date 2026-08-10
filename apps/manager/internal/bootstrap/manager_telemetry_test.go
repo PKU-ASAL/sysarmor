@@ -66,3 +66,7 @@ type telemetryBootstrapSearcher struct{}
 func (telemetryBootstrapSearcher) Search(context.Context, platformopensearch.SearchRequest) ([]json.RawMessage, error) {
 	return []json.RawMessage{json.RawMessage(`{"id":"event-a","tenant_id":"tenant-a"}`)}, nil
 }
+
+func (telemetryBootstrapSearcher) SearchPage(context.Context, platformopensearch.SearchRequest) (platformopensearch.SearchPage, error) {
+	return platformopensearch.SearchPage{}, nil
+}

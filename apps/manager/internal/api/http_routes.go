@@ -55,6 +55,10 @@ type telemetryRoutes interface {
 	Incidents(http.ResponseWriter, *http.Request)
 }
 
+type analysisRoutes interface {
+	Recompute(http.ResponseWriter, *http.Request)
+}
+
 type searchRoutes interface {
 	Fields(http.ResponseWriter, *http.Request)
 	Search(http.ResponseWriter, *http.Request)
@@ -129,6 +133,12 @@ func (unavailableSearchRoutes) Histogram(w http.ResponseWriter, _ *http.Request)
 
 type unavailableTelemetryRoutes struct{}
 
+type unavailableAnalysisRoutes struct{}
+
+func (unavailableAnalysisRoutes) Recompute(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "analysis")
+}
+
 func (unavailableTelemetryRoutes) Events(w http.ResponseWriter, _ *http.Request) {
 	unavailable(w, "telemetry")
 }
@@ -192,6 +202,7 @@ func (s *Server) SetControlRoutes(routes controlRoutes)       { s.controlRoutes 
 func (s *Server) SetResponseRoutes(routes responseRoutes)     { s.responseRoutes = routes }
 func (s *Server) SetArtifactRoutes(routes artifactRoutes)     { s.artifactRoutes = routes }
 func (s *Server) SetTelemetryRoutes(routes telemetryRoutes)   { s.telemetryRoutes = routes }
+func (s *Server) SetAnalysisRoutes(routes analysisRoutes)     { s.analysisRoutes = routes }
 func (s *Server) SetSearchRoutes(routes searchRoutes)         { s.searchRoutes = routes }
 func (s *Server) SetOverviewRoutes(routes overviewRoutes)     { s.overviewRoutes = routes }
 func (s *Server) SetStatusRoutes(routes statusRoutes)         { s.statusRoutes = routes }

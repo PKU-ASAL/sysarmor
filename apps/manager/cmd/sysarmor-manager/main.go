@@ -68,7 +68,10 @@ func main() {
 		}
 	}()
 	st := storeResult.Store
-	var searcher platformopensearch.Searcher
+	var searcher interface {
+		platformopensearch.Searcher
+		platformopensearch.PageSearcher
+	}
 	if strings.TrimSpace(*opensearchURL) != "" {
 		searcher, err = platformopensearch.NewHTTPIndexerWithAuth(*opensearchURL, *opensearchUsername, *opensearchPassword)
 		if err != nil {
@@ -110,7 +113,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "configure identity queries: %v\n", err)
 		os.Exit(1)
 	}
-	managerSrv.SetIdentityApplication(identityQueries, managerapi.PolicyRequestContext)
+	analysisRoutes, err := bootstrap.NewManagerAnalysisHTTP(storeResult.DB, searcher, managerapi.PolicyRequestContext)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure analysis application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetAnalysisRoutes(analysisRoutes)
 	storeInfo := st.Info()
 	statusRoutes := bootstrap.NewManagerStatusHTTP(bootstrap.ManagerStatus{Backend: storeInfo.Backend, Path: storeInfo.Path,
 		StateVersion: storeInfo.StateVersion, MigrationVersion: storeInfo.MigrationVersion,
