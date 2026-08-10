@@ -16,6 +16,10 @@ type AgentHealthRepository interface {
 	List(context.Context, tenant.ID, domainidentity.HealthFilter) ([]domainidentity.Health, error)
 }
 
+type AgentHealthWriter interface {
+	Upsert(context.Context, domainidentity.Health) error
+}
+
 type AgentSessionRepository interface {
 	List(context.Context, tenant.ID, domainidentity.SessionFilter) ([]domainidentity.Session, error)
 }

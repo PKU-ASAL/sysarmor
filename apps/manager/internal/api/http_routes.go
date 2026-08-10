@@ -73,6 +73,27 @@ type unavailableSearchRoutes struct{}
 
 type unavailablePolicyRoutes struct{}
 
+type unavailableIdentityRoutes struct{}
+
+func (unavailableIdentityRoutes) Agents(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "identity")
+}
+func (unavailableIdentityRoutes) Health(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "identity")
+}
+func (unavailableIdentityRoutes) Sessions(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "identity")
+}
+func (unavailableIdentityRoutes) Resume(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "identity")
+}
+func (unavailableIdentityRoutes) Metrics(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "identity")
+}
+func (unavailableIdentityRoutes) Rarity(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "identity")
+}
+
 func (unavailablePolicyRoutes) Rules(w http.ResponseWriter, _ *http.Request) {
 	unavailable(w, "policy")
 }

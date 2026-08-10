@@ -133,7 +133,8 @@ func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
 		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
 		searchRoutes: unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{},
-		statusRoutes: unavailableStatusRoutes{}, policyRoutes: unavailablePolicyRoutes{}}
+		statusRoutes: unavailableStatusRoutes{}, policyRoutes: unavailablePolicyRoutes{},
+		identityRoutes: unavailableIdentityRoutes{}}
 	return s
 }
 
@@ -170,9 +171,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/response-decisions", s.responseRoutes.Decisions)
 	mux.HandleFunc("/api/v1/response-approvals", s.responseRoutes.Approvals)
 	mux.HandleFunc("/api/v1/response-acks", s.responseRoutes.Acknowledgements)
-	if s.identityRoutes != nil {
-		mux.HandleFunc("/api/v1/data-resume", s.identityRoutes.Resume)
-	}
+	mux.HandleFunc("/api/v1/data-resume", s.identityRoutes.Resume)
 	mux.HandleFunc("/api/v1/evidence-pullbacks", s.handleEvidencePullbacks)
 	mux.HandleFunc("/api/v1/control-commands", s.handleControlCommands)
 	mux.HandleFunc("/api/v1/ui/overview", s.overviewRoutes.Overview)
@@ -185,13 +184,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/search/fields", s.searchRoutes.Fields)
 	mux.HandleFunc("/api/v1/search/histogram", s.searchRoutes.Histogram)
 	mux.HandleFunc("/api/v1/search", s.searchRoutes.Search)
-	if s.identityRoutes != nil {
-		mux.HandleFunc("/api/v1/agents", s.identityRoutes.Agents)
-		mux.HandleFunc("/api/v1/agent-sessions", s.identityRoutes.Sessions)
-		mux.HandleFunc("/api/v1/metrics", s.identityRoutes.Metrics)
-		mux.HandleFunc("/api/v1/rarity-baseline", s.identityRoutes.Rarity)
-	}
-	mux.HandleFunc("/api/v1/agent-health", s.agentHealth)
+	mux.HandleFunc("/api/v1/agents", s.identityRoutes.Agents)
+	mux.HandleFunc("/api/v1/agent-sessions", s.identityRoutes.Sessions)
+	mux.HandleFunc("/api/v1/metrics", s.identityRoutes.Metrics)
+	mux.HandleFunc("/api/v1/rarity-baseline", s.identityRoutes.Rarity)
+	mux.HandleFunc("/api/v1/agent-health", s.identityRoutes.Health)
 	mux.HandleFunc("/api/v1/events", s.telemetryRoutes.Events)
 	mux.HandleFunc("/api/v1/signals", s.telemetryRoutes.Signals)
 	mux.HandleFunc("/api/v1/incidents", s.telemetryRoutes.Incidents)

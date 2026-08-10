@@ -49,6 +49,44 @@ func TestHealthRepositoryCanonicalizesIdentity(t *testing.T) {
 	}
 }
 
+func TestHealthWriterUpsertsCanonicalProjection(t *testing.T) {
+	db := newIdentityTestDB(t)
+	tenantA := mustIdentityTenant(t, "tenant-a")
+	writer := NewHealthWriter(db)
+	health := domainidentity.Health{TenantID: tenantA, AgentID: "agent-a", HostID: "host-a", Status: "ok", Scope: domainidentity.Scope{Type: "host"}, Document: []byte(`{"tenant_id":"tenant-a","agent_id":"agent-a","status":"ok"}`)}
+	if err := writer.Upsert(context.Background(), health); err != nil {
+		t.Fatal(err)
+	}
+	health.Status = "degraded"
+	health.Document = []byte(`{"tenant_id":"tenant-a","agent_id":"agent-a","status":"degraded"}`)
+	if err := writer.Upsert(context.Background(), health); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := NewRepositories(db).Health().Get(context.Background(), tenantA, "agent-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "degraded" || stored.HostID != "host-a" || stored.Scope.Type != "host" {
+		t.Fatalf("stored health = %+v", stored)
+	}
+}
+
+func TestHealthWriterCanonicalizesDocumentIdentity(t *testing.T) {
+	db := newIdentityTestDB(t)
+	tenantA := mustIdentityTenant(t, "tenant-a")
+	health := domainidentity.Health{TenantID: tenantA, AgentID: "agent-a", Document: []byte(`{"tenant_id":"tenant-b","agent_id":"agent-b","status":"ok"}`)}
+	if err := NewHealthWriter(db).Upsert(context.Background(), health); err != nil {
+		t.Fatal(err)
+	}
+	var document []byte
+	if err := db.QueryRow(`SELECT data FROM agent_health WHERE tenant_id = ? AND agent_id = ?`, "tenant-a", "agent-a").Scan(&document); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(document), "tenant-b") || strings.Contains(string(document), "agent-b") {
+		t.Fatalf("stored document identity is not canonical: %s", document)
+	}
+}
+
 func TestSessionRepositoryReadsNullableProjection(t *testing.T) {
 	db := newIdentityTestDB(t)
 	if _, err := db.Exec(`INSERT INTO agent_sessions (tenant_id, session_id, agent_id, data) VALUES (?, ?, ?, ?)`,
@@ -98,7 +136,7 @@ func newIdentityTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = db.Close() })
 	for _, statement := range []string{
 		`CREATE TABLE agents (tenant_id TEXT, agent_id TEXT, host_id TEXT, version TEXT, observed_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, agent_id))`,
-		`CREATE TABLE agent_health (tenant_id TEXT, agent_id TEXT, host_id TEXT, scope_type TEXT, scope_selector TEXT, observed_at TIMESTAMP, data BLOB)`,
+		`CREATE TABLE agent_health (tenant_id TEXT, agent_id TEXT, host_id TEXT, scope_type TEXT, scope_selector TEXT, observed_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, agent_id))`,
 		`CREATE TABLE agent_sessions (tenant_id TEXT, session_id TEXT, agent_id TEXT, status TEXT, data_transport TEXT, control_transport TEXT, last_ack_cursor TEXT, started_at TIMESTAMP, last_seen_at TIMESTAMP, last_data_seen_at TIMESTAMP, last_control_seen_at TIMESTAMP, closed_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, session_id))`,
 		`CREATE TABLE metrics (tenant_id TEXT, metric_key TEXT, data BLOB, PRIMARY KEY (tenant_id, metric_key))`,
 		`CREATE TABLE rarity_baseline (tenant_id TEXT, workload_key TEXT, signal_name TEXT, signal_count INTEGER, data BLOB, PRIMARY KEY (tenant_id, workload_key, signal_name))`,

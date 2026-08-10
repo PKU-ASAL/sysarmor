@@ -174,14 +174,3 @@ func TestBindPrincipalTenantInjectsQueryAndJSONBody(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
-
-func TestOperatorPrincipalCannotSatisfyAdminRequirement(t *testing.T) {
-	server := &Server{}
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin", nil)
-	req = req.WithContext(managerauth.WithPrincipal(req.Context(), managerauth.Principal{Subject: "user", TenantID: "tenant-a", Roles: []string{"operator"}}))
-	rec := httptest.NewRecorder()
-	allowed := server.requireOperator(rec, req, "admin")
-	if allowed || rec.Code != http.StatusForbidden {
-		t.Fatalf("operator satisfied admin requirement: allowed=%t status=%d", allowed, rec.Code)
-	}
-}

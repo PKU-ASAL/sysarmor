@@ -2,9 +2,29 @@ package identity
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
+	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
+
+func decodeHealth(r *http.Request, tenantID tenant.ID) (domainidentity.Health, error) {
+	var body agenthealth.AgentHealth
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return domainidentity.Health{}, failure.New(failure.InvalidArgument, fmt.Sprintf("decode agent health: %v", err))
+	}
+	body.TenantID = tenantID.String()
+	document, err := json.Marshal(body)
+	if err != nil {
+		return domainidentity.Health{}, fmt.Errorf("encode agent health: %w", err)
+	}
+	return domainidentity.Health{TenantID: tenantID, AgentID: domainidentity.AgentID(body.AgentID), HostID: body.HostID,
+		Status: body.Status, Scope: domainidentity.Scope{Type: body.Scope.Type, Selector: body.Scope.Selector},
+		ObservedAt: body.ObservedAt, Document: document}, nil
+}
 
 func healthDocuments(values []domainidentity.Health) []json.RawMessage {
 	result := make([]json.RawMessage, 0, len(values))

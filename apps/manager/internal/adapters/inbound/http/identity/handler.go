@@ -10,6 +10,7 @@ import (
 	identityapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
 type RequestContextResolver func(*http.Request) (managerapp.RequestContext, error)
@@ -25,9 +26,14 @@ type Queries interface {
 	AgentOverview(context.Context, managerapp.RequestContext) (domainidentity.AgentOverview, error)
 }
 
+type Commands interface {
+	RecordHealth(context.Context, managerapp.RequestContext, domainidentity.Health) error
+}
+
 type Options struct {
-	Query   Queries
-	Resolve RequestContextResolver
+	Query    Queries
+	Commands Commands
+	Resolve  RequestContextResolver
 }
 type Handler struct{ options Options }
 
@@ -49,6 +55,10 @@ func (handler *Handler) Agents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (handler *Handler) Health(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		handler.recordHealth(w, r)
+		return
+	}
 	request, ok := handler.getRequest(w, r)
 	if !ok {
 		return
@@ -69,6 +79,28 @@ func (handler *Handler) Health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, json.RawMessage(value.Document))
+}
+
+func (handler *Handler) recordHealth(w http.ResponseWriter, r *http.Request) {
+	request, err := handler.resolve(r)
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+	if err := request.Actor.Require(tenant.RoleAdmin); err != nil {
+		writeFailure(w, err)
+		return
+	}
+	health, err := decodeHealth(r, request.Actor.TenantID)
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+	if err := handler.options.Commands.RecordHealth(r.Context(), request, health); err != nil {
+		writeFailure(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 func (handler *Handler) Sessions(w http.ResponseWriter, r *http.Request) {

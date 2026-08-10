@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
@@ -24,7 +23,6 @@ type identityStore interface {
 	RecordDataBatchAppend(store.AgentIdentity, string, string, time.Time) store.AgentSession
 	RecordAgentSessionSeen(string, string, time.Time) store.AgentSession
 	RecordControlSessionOpen(string, string, string, time.Time) store.AgentSession
-	UpsertAgentHealth(agenthealth.AgentHealth)
 }
 
 type policyControlStore interface {
@@ -49,7 +47,6 @@ type telemetryStore interface {
 
 type operationalStore interface {
 	Info() store.Info
-	Save() error
 }
 
 var _ ManagerStore = (*store.Store)(nil)

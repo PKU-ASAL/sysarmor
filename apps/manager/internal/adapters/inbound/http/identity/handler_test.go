@@ -13,6 +13,59 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
+func TestHealthPostUsesCommandAndCanonicalTenant(t *testing.T) {
+	tenantID, err := tenant.NewID("tenant-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := &fakeCommands{}
+	handler := NewHandler(Options{Commands: commands, Resolve: func(*http.Request) (managerapp.RequestContext, error) {
+		return managerapp.RequestContext{Actor: tenant.Actor{TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleAdmin)}}, nil
+	}})
+	body := `{"tenant_id":"tenant-b","agent_id":"agent-a","host_id":"host-a","status":"ok","scope":{"type":"host"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent-health", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.Health(rec, req)
+
+	if rec.Code != http.StatusOK || rec.Body.String() != "{\"ok\":true}\n" {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if commands.health.TenantID != tenantID || commands.health.AgentID != "agent-a" || !strings.Contains(string(commands.health.Document), `"tenant_id":"tenant-a"`) {
+		t.Fatalf("health=%+v document=%s", commands.health, commands.health.Document)
+	}
+}
+
+func TestHealthPostRejectsMissingAgentID(t *testing.T) {
+	tenantID, err := tenant.NewID("tenant-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Options{Commands: identityapp.NewCommandService(fakeHealthWriter{}), Resolve: func(*http.Request) (managerapp.RequestContext, error) {
+		return managerapp.RequestContext{Actor: tenant.Actor{TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleAdmin)}}, nil
+	}})
+	rec := httptest.NewRecorder()
+	handler.Health(rec, httptest.NewRequest(http.MethodPost, "/api/v1/agent-health", strings.NewReader(`{"status":"ok"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHealthPostAuthorizesBeforeDecodingBody(t *testing.T) {
+	tenantID, err := tenant.NewID("tenant-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Options{Commands: identityapp.NewCommandService(fakeHealthWriter{}), Resolve: func(*http.Request) (managerapp.RequestContext, error) {
+		return managerapp.RequestContext{Actor: tenant.Actor{TenantID: tenantID, Roles: tenant.NewRoleSet(tenant.RoleViewer)}}, nil
+	}})
+	recorder := httptest.NewRecorder()
+	handler.Health(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/agent-health", strings.NewReader(`{"broken"`)))
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHealthUsesResolvedTenantAndPreservesDocument(t *testing.T) {
 	tenantID, err := tenant.NewID("tenant-a")
 	if err != nil {
@@ -55,6 +108,17 @@ type fakeQueries struct {
 	resume         identityapp.ResumeResult
 	observedTenant tenant.ID
 }
+
+type fakeCommands struct{ health domainidentity.Health }
+
+func (commands *fakeCommands) RecordHealth(_ context.Context, _ managerapp.RequestContext, health domainidentity.Health) error {
+	commands.health = health.Clone()
+	return nil
+}
+
+type fakeHealthWriter struct{}
+
+func (fakeHealthWriter) Upsert(context.Context, domainidentity.Health) error { return nil }
 
 func (fake *fakeQueries) GetHealth(_ context.Context, request managerapp.RequestContext, _ domainidentity.AgentID) (domainidentity.Health, error) {
 	fake.observedTenant = request.Actor.TenantID

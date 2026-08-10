@@ -17,7 +17,8 @@ func NewManagerIdentityHTTP(db *sql.DB, resolve identityhttp.RequestContextResol
 	if resolve == nil {
 		return nil, fmt.Errorf("manager identity request context resolver is required")
 	}
-	return identityhttp.NewHandler(identityhttp.Options{Query: queries, Resolve: resolve}), nil
+	commands := identityapp.NewCommandService(identitypostgres.NewHealthWriter(db))
+	return identityhttp.NewHandler(identityhttp.Options{Query: queries, Commands: commands, Resolve: resolve}), nil
 }
 
 func NewManagerIdentityQueries(db *sql.DB) (*identityapp.QueryService, error) {
