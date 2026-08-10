@@ -25,6 +25,8 @@ import (
 	platformredis "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/redis"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
+	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
+	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"google.golang.org/grpc"
 )
 
@@ -99,7 +101,22 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer(prepared.ServerOptions()...)
-	gateway.RegisterAgentServices(grpcServer, runtime)
+	if *localIngest {
+		gateway.RegisterAgentServices(grpcServer, runtime)
+	} else {
+		dataServer, closeData, err := bootstrap.NewGatewayDataPlane(bootstrap.DataPlaneConfig{DB: storeResult.DB, KafkaBrokers: splitCSV(*kafkaBrokers), RedisAddress: *redisAddr, AgentToken: *devToken})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "configure gateway data plane: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() {
+			if err := closeData(); err != nil {
+				log.Printf("close gateway data plane: %v", err)
+			}
+		}()
+		dataplanev1.RegisterAgentDataPlaneServiceServer(grpcServer, dataServer)
+		controlplanev1.RegisterAgentControlPlaneServiceServer(grpcServer, gateway.NewControlServer(runtime))
+	}
 
 	lis, err := net.Listen("tcp", *listen)
 	if err != nil {
