@@ -9,27 +9,6 @@ import (
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
-func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, map[string]any{"ok": true, "store": s.store.Info()})
-}
-
-func (s *Server) reset(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !s.requireOperator(w, r, "admin") {
-		return
-	}
-	labels := parseLabelSelector(r.URL.Query()["label"])
-	s.store.DeleteByLabels(labels)
-	if err := s.store.Save(); err != nil {
-		http.Error(w, fmt.Sprintf("save store: %v", err), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]any{"ok": true, "labels": labels})
-}
-
 // agentHealth is a write-only compatibility endpoint; reads are owned by Identity HTTP.
 func (s *Server) agentHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && s.identityRoutes != nil {
@@ -89,12 +68,4 @@ func (s *Server) roleFromRequest(r *http.Request, _ string) string {
 		return principal.Roles[0]
 	}
 	return ""
-}
-
-func (s *Server) storeStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	writeJSON(w, s.store.Info())
 }

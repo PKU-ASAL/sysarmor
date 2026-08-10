@@ -31,6 +31,17 @@ func TestManagerConfiguresOverviewApplicationRoute(t *testing.T) {
 	}
 }
 
+func TestManagerConfiguresStatusRoutes(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "bootstrap.NewManagerStatusHTTP") || !strings.Contains(text, "SetStatusRoutes") {
+		t.Fatal("manager main does not configure status routes")
+	}
+}
+
 func TestManagerEnrollmentConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("SYSARMOR_AGENT_CA_CERT", "/tmp/agent-ca.crt")
 	t.Setenv("SYSARMOR_AGENT_CA_KEY", "/tmp/agent-ca.key")

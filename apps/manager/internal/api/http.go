@@ -25,7 +25,6 @@ import (
 type Server struct {
 	store            ManagerStore
 	searcher         platformopensearch.Searcher
-	localTelemetry   bool
 	policyRoutes     policyRoutes
 	identityRoutes   identityRoutes
 	enrollmentRoutes enrollmentRoutes
@@ -35,6 +34,7 @@ type Server struct {
 	telemetryRoutes  telemetryRoutes
 	searchRoutes     searchRoutes
 	overviewRoutes   overviewRoutes
+	statusRoutes     statusRoutes
 	identityQuery    identityQueries
 	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
@@ -131,16 +131,12 @@ type DataResume struct {
 
 func NewServer(st ManagerStore) *Server {
 	st.EnsureDefaultPolicy("default")
-	s := newServer(st, nil)
-	s.localTelemetry = true
-	return s
+	return newServer(st, nil)
 }
 
 func NewServerWithSearch(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	st.EnsureDefaultPolicy("default")
-	s := newServer(st, searcher)
-	s.localTelemetry = true
-	return s
+	return newServer(st, searcher)
 }
 
 func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.Searcher) (*Server, error) {
@@ -154,13 +150,14 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
 	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
 		artifactRoutes: unavailableArtifactRoutes{}, telemetryRoutes: unavailableTelemetryRoutes{},
-		searchRoutes: unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{}}
+		searchRoutes: unavailableSearchRoutes{}, overviewRoutes: unavailableOverviewRoutes{},
+		statusRoutes: unavailableStatusRoutes{}}
 	return s
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", s.health)
+	mux.HandleFunc("/healthz", s.statusRoutes.Health)
 	mux.HandleFunc("/api/v1/recompute", s.recompute)
 	mux.HandleFunc("/api/v1/rules", s.rules)
 	if s.policyRoutes == nil {
@@ -224,7 +221,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/events", s.telemetryRoutes.Events)
 	mux.HandleFunc("/api/v1/signals", s.telemetryRoutes.Signals)
 	mux.HandleFunc("/api/v1/incidents", s.telemetryRoutes.Incidents)
-	mux.HandleFunc("/api/v1/store-status", s.storeStatus)
+	mux.HandleFunc("/api/v1/store-status", s.statusRoutes.StoreStatus)
 	return limitRequestBody(normalizeAPIErrors(requireProductionPrincipal(mux)), maxManagerRequestBody)
 }
 

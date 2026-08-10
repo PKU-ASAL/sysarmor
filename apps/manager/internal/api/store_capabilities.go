@@ -57,9 +57,7 @@ type telemetryStore interface {
 }
 
 type operationalStore interface {
-	DeleteByLabels(store.LabelSelector)
 	Info() store.Info
-	MetricsSnapshotForTenant(string) store.Metrics
 	Save() error
 }
 

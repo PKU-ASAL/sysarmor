@@ -63,6 +63,11 @@ type overviewRoutes interface {
 	Overview(http.ResponseWriter, *http.Request)
 }
 
+type statusRoutes interface {
+	Health(http.ResponseWriter, *http.Request)
+	StoreStatus(http.ResponseWriter, *http.Request)
+}
+
 type unavailableSearchRoutes struct{}
 
 func (unavailableSearchRoutes) Fields(w http.ResponseWriter, _ *http.Request) {
@@ -120,6 +125,15 @@ func (unavailableOverviewRoutes) Overview(w http.ResponseWriter, _ *http.Request
 	unavailable(w, "overview")
 }
 
+type unavailableStatusRoutes struct{}
+
+func (unavailableStatusRoutes) Health(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "status")
+}
+func (unavailableStatusRoutes) StoreStatus(w http.ResponseWriter, _ *http.Request) {
+	unavailable(w, "status")
+}
+
 func unavailable(writer http.ResponseWriter, application string) {
 	http.Error(writer, application+" application is not configured", http.StatusServiceUnavailable)
 }
@@ -133,3 +147,4 @@ func (s *Server) SetArtifactRoutes(routes artifactRoutes)     { s.artifactRoutes
 func (s *Server) SetTelemetryRoutes(routes telemetryRoutes)   { s.telemetryRoutes = routes }
 func (s *Server) SetSearchRoutes(routes searchRoutes)         { s.searchRoutes = routes }
 func (s *Server) SetOverviewRoutes(routes overviewRoutes)     { s.overviewRoutes = routes }
+func (s *Server) SetStatusRoutes(routes statusRoutes)         { s.statusRoutes = routes }

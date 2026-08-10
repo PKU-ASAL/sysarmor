@@ -112,6 +112,10 @@ func main() {
 	}
 	managerSrv.SetIdentityApplication(identityQueries, managerapi.PolicyRequestContext)
 	storeInfo := st.Info()
+	statusRoutes := bootstrap.NewManagerStatusHTTP(bootstrap.ManagerStatus{Backend: storeInfo.Backend, Path: storeInfo.Path,
+		StateVersion: storeInfo.StateVersion, MigrationVersion: storeInfo.MigrationVersion,
+		PostgresSchemaVersion: storeInfo.PostgresSchema})
+	managerSrv.SetStatusRoutes(statusRoutes)
 	overviewRoutes, err := bootstrap.NewManagerOverviewHTTP(identityQueries, searcher,
 		bootstrap.ManagerStorageStatus{Backend: storeInfo.Backend, StateVersion: storeInfo.StateVersion,
 			MigrationVersion: storeInfo.MigrationVersion, PostgresSchemaVersion: storeInfo.PostgresSchema},

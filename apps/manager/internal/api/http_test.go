@@ -55,6 +55,7 @@ func newTestServer(st *store.Store) *Server {
 	setTestIdentityApplication(server, st)
 	setTestTelemetryApplication(server, st)
 	setTestStoreOverviewApplication(server, st)
+	setTestStatusRoutes(server, st)
 	return server
 }
 
