@@ -3,11 +3,7 @@ package main
 import (
 	"database/sql"
 	"net/http"
-	"strings"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 )
 
 func TestManagerEnrollmentConfigUsesEnvironment(t *testing.T) {
@@ -40,6 +36,18 @@ func TestManagerEnrollmentConfigUsesDefaultArtifactDir(t *testing.T) {
 	}
 }
 
+func TestManagerArtifactConfigUsesEnvironment(t *testing.T) {
+	t.Setenv("SYSARMOR_ARTIFACT_PUBLIC_KEY", "/tmp/artifact-public.pem")
+	t.Setenv("SYSARMOR_ARTIFACT_DIR", "/var/lib/sysarmor/artifacts")
+	db := &sql.DB{}
+
+	config := managerArtifactConfig(db)
+	if config.DB != db || config.ArtifactPublicKeyFile != "/tmp/artifact-public.pem" ||
+		config.ArtifactDir != "/var/lib/sysarmor/artifacts" || config.Resolve == nil {
+		t.Fatalf("artifact config = %#v", config)
+	}
+}
+
 func TestNewManagerHTTPServerConfiguresTimeouts(t *testing.T) {
 	server := newManagerHTTPServer(":0", http.NewServeMux())
 
@@ -54,18 +62,5 @@ func TestNewManagerHTTPServerConfiguresTimeouts(t *testing.T) {
 	}
 	if server.IdleTimeout <= 0 {
 		t.Fatalf("IdleTimeout = %s, want positive", server.IdleTimeout)
-	}
-}
-
-func TestManagerServerSecurityProfileFollowsStoreBackend(t *testing.T) {
-	t.Setenv("SYSARMOR_ARTIFACT_PUBLIC_KEY", "")
-	t.Setenv("SYSARMOR_AGENT_CA_CERT", "")
-	t.Setenv("SYSARMOR_AGENT_CA_KEY", "")
-
-	if _, err := managerServerForBackend(backend.KindMemory, &store.Store{}, nil); err != nil {
-		t.Fatalf("memory manager server error = %v", err)
-	}
-	if _, err := managerServerForBackend(backend.KindPostgres, &store.Store{}, nil); err == nil || !strings.Contains(err.Error(), "SYSARMOR_ARTIFACT_PUBLIC_KEY") {
-		t.Fatalf("postgres manager server error = %v, want production security requirement", err)
 	}
 }

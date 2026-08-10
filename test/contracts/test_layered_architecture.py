@@ -39,7 +39,6 @@ LEGACY_ROOTS = {
 	"apps/agent/internal/telemetry",
 	"apps/manager/internal/analytics",
 	"apps/manager/internal/auth",
-	"apps/manager/internal/distribution",
 	"apps/manager/internal/platform",
 	"apps/manager/internal/store",
 	"apps/manager/internal/api",

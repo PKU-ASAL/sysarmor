@@ -15,7 +15,6 @@ import (
 type ManagerStore interface {
 	identityStore
 	policyControlStore
-	artifactStore
 	telemetryStore
 	operationalStore
 }
@@ -42,15 +41,6 @@ type policyControlStore interface {
 	PublishPolicyWithAudit(string, string, uint64, bool, policymodel.AuditRecord) (policymodel.Policy, bool, error)
 	RecordPolicyAudit(policymodel.AuditRecord) policymodel.AuditRecord
 	UpsertPolicyWithError(policymodel.Policy) (policymodel.Policy, error)
-}
-
-type artifactStore interface {
-	GetArtifactWithError(string, string) (store.Artifact, bool, error)
-	GetChannelWithError(string, string) (store.ArtifactChannel, bool, error)
-	ListArtifactsWithError(string, string, string) ([]store.Artifact, error)
-	ListChannelsWithError(string) ([]store.ArtifactChannel, error)
-	UpsertArtifact(store.Artifact) store.Artifact
-	UpsertChannel(store.ArtifactChannel) store.ArtifactChannel
 }
 
 type telemetryStore interface {

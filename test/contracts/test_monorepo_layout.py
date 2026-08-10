@@ -160,7 +160,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "apps/manager/internal/analytics",
             "apps/manager/internal/ingest",
             "apps/manager/internal/platform",
-            "apps/manager/internal/distribution",
             "apps/manager/integration",
         )
 
@@ -174,7 +173,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "models.go",
             "policy.go",
             "control.go",
-            "enrollment.go",
             "artifact.go",
             "telemetry.go",
             "persistence.go",
@@ -189,7 +187,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "policy.go",
             "control.go",
             "identity.go",
-            "enrollment.go",
             "artifact.go",
             "telemetry.go",
         )

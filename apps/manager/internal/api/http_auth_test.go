@@ -183,14 +183,3 @@ func TestOperatorPrincipalCannotSatisfyAdminRequirement(t *testing.T) {
 		t.Fatalf("operator satisfied admin requirement: allowed=%t status=%d", allowed, rec.Code)
 	}
 }
-
-func TestProductionServerRequiresSecurityFiles(t *testing.T) {
-	t.Setenv("SYSARMOR_ARTIFACT_PUBLIC_KEY", "")
-	t.Setenv("SYSARMOR_AGENT_CA_CERT", "")
-	t.Setenv("SYSARMOR_AGENT_CA_KEY", "")
-
-	_, err := NewProductionServerWithSearch(&store.Store{}, nil)
-	if err == nil || !strings.Contains(err.Error(), "SYSARMOR_ARTIFACT_PUBLIC_KEY") {
-		t.Fatalf("NewProductionServerWithSearch error = %v, want artifact public key requirement", err)
-	}
-}

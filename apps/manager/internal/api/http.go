@@ -20,7 +20,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,14 +28,13 @@ import (
 type Server struct {
 	store            ManagerStore
 	searcher         platformopensearch.Searcher
-	artifactDir      string
-	artifactPub      []byte
 	localTelemetry   bool
 	policyRoutes     policyRoutes
 	identityRoutes   identityRoutes
 	enrollmentRoutes enrollmentRoutes
 	controlRoutes    controlRoutes
 	responseRoutes   responseRoutes
+	artifactRoutes   artifactRoutes
 	identityQuery    identityQueries
 	controlQuery     controlQueries
 	identityResolve  func(*http.Request) (managerapp.RequestContext, error)
@@ -106,6 +104,24 @@ type responseRoutes interface {
 	Acknowledgements(http.ResponseWriter, *http.Request)
 }
 
+type artifactRoutes interface {
+	Artifacts(http.ResponseWriter, *http.Request)
+	Artifact(http.ResponseWriter, *http.Request)
+	Channels(http.ResponseWriter, *http.Request)
+}
+
+type unavailableArtifactRoutes struct{}
+
+func (unavailableArtifactRoutes) Artifacts(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "artifact application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableArtifactRoutes) Artifact(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "artifact application is not configured", http.StatusServiceUnavailable)
+}
+func (unavailableArtifactRoutes) Channels(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "artifact application is not configured", http.StatusServiceUnavailable)
+}
+
 type unavailableResponseRoutes struct{}
 
 func (unavailableResponseRoutes) Responses(w http.ResponseWriter, _ *http.Request) {
@@ -126,6 +142,7 @@ func (s *Server) SetIdentityRoutes(routes identityRoutes)     { s.identityRoutes
 func (s *Server) SetEnrollmentRoutes(routes enrollmentRoutes) { s.enrollmentRoutes = routes }
 func (s *Server) SetControlRoutes(routes controlRoutes)       { s.controlRoutes = routes }
 func (s *Server) SetResponseRoutes(routes responseRoutes)     { s.responseRoutes = routes }
+func (s *Server) SetArtifactRoutes(routes artifactRoutes)     { s.artifactRoutes = routes }
 
 type policyPublishRequest struct {
 	TenantID  string `json:"tenant_id"`
@@ -142,13 +159,6 @@ type policyAssignmentRequest struct {
 	Reason    string `json:"reason,omitempty"`
 	Downlink  bool   `json:"downlink,omitempty"`
 	CommandID string `json:"command_id,omitempty"`
-}
-
-type channelRequest struct {
-	TenantID   string `json:"tenant_id,omitempty"`
-	Channel    string `json:"channel"`
-	ArtifactID string `json:"artifact_id"`
-	Actor      string `json:"actor,omitempty"`
 }
 
 type evidencePullbackRequest struct {
@@ -214,10 +224,6 @@ func NewServerWithSearch(st ManagerStore, searcher platformopensearch.Searcher) 
 
 func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.Searcher) (*Server, error) {
 	s := newServer(st, searcher)
-	var err error
-	if s.artifactPub, err = readRequiredFile("SYSARMOR_ARTIFACT_PUBLIC_KEY"); err != nil {
-		return nil, err
-	}
 	if err := st.EnsureDefaultPolicyWithError("default"); err != nil {
 		return nil, fmt.Errorf("initialize production default policy: %w", err)
 	}
@@ -225,43 +231,9 @@ func NewProductionServerWithSearch(st ManagerStore, searcher platformopensearch.
 }
 
 func newServer(st ManagerStore, searcher platformopensearch.Searcher) *Server {
-	s := &Server{store: st, searcher: searcher, artifactDir: defaultArtifactDir(), responseRoutes: unavailableResponseRoutes{}}
-	s.artifactPub = readOptionalFile(os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"))
+	s := &Server{store: st, searcher: searcher, responseRoutes: unavailableResponseRoutes{},
+		artifactRoutes: unavailableArtifactRoutes{}}
 	return s
-}
-
-func defaultArtifactDir() string {
-	if v := strings.TrimSpace(os.Getenv("SYSARMOR_ARTIFACT_DIR")); v != "" {
-		return v
-	}
-	return "/var/lib/sysarmor/manager/artifacts"
-}
-
-func readOptionalFile(path string) []byte {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-func readRequiredFile(envName string) ([]byte, error) {
-	path := strings.TrimSpace(os.Getenv(envName))
-	if path == "" {
-		return nil, fmt.Errorf("%s is required", envName)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", envName, err)
-	}
-	if len(data) == 0 {
-		return nil, fmt.Errorf("%s is empty", envName)
-	}
-	return data, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -282,9 +254,9 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/api/v1/policy-assignments", s.policyRoutes.Assignments)
 		mux.HandleFunc("/api/v1/effective-policy", s.policyRoutes.Effective)
 	}
-	mux.HandleFunc("/api/v1/artifacts", s.artifacts)
-	mux.HandleFunc("/api/v1/artifacts/", s.artifactByID)
-	mux.HandleFunc("/api/v1/channels", s.channels)
+	mux.HandleFunc("/api/v1/artifacts", s.artifactRoutes.Artifacts)
+	mux.HandleFunc("/api/v1/artifacts/", s.artifactRoutes.Artifact)
+	mux.HandleFunc("/api/v1/channels", s.artifactRoutes.Channels)
 	mux.HandleFunc("/api/v1/enrollments", func(w http.ResponseWriter, r *http.Request) {
 		s.enrollmentRoutes.Enrollments(w, r)
 	})

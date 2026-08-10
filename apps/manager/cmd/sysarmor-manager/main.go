@@ -123,7 +123,13 @@ func main() {
 		os.Exit(1)
 	}
 	managerSrv.SetResponseRoutes(responseRoutes)
-	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
+	artifactSlice, err := bootstrap.NewManagerArtifact(managerArtifactConfig(storeResult.DB))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure artifact application: %v\n", err)
+		os.Exit(1)
+	}
+	managerSrv.SetArtifactRoutes(artifactSlice.Routes)
+	if err := artifactSlice.Feed.SeedFromEnv(ctx); err != nil {
 		log.Printf("seed package index: %v", err)
 	}
 
@@ -144,6 +150,14 @@ func managerEnrollmentConfig(db *sql.DB) bootstrap.EnrollmentHTTPConfig {
 		DeployGatewayAddress:    os.Getenv("SYSARMOR_DEPLOY_GATEWAY_ADDR"),
 		DeployGatewayServerName: os.Getenv("SYSARMOR_DEPLOY_GATEWAY_SNI"),
 		PackageDownloadBaseURL:  os.Getenv("SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL"), Resolve: managerapi.PolicyRequestContext,
+	}
+}
+
+func managerArtifactConfig(db *sql.DB) bootstrap.ArtifactConfig {
+	return bootstrap.ArtifactConfig{DB: db,
+		ArtifactPublicKeyFile: os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"),
+		ArtifactDir:           envDefault("SYSARMOR_ARTIFACT_DIR", "/var/lib/sysarmor/manager/artifacts"),
+		Resolve:               managerapi.PolicyRequestContext,
 	}
 }
 

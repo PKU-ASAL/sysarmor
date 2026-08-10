@@ -56,23 +56,6 @@ func TestPolicyAssignmentConflictReturnsConflict(t *testing.T) {
 	}
 }
 
-func TestArtifactAndChannelReadsFailClosed(t *testing.T) {
-	for name, path := range map[string]string{
-		"artifacts": "/api/v1/artifacts?tenant_id=default",
-		"channels":  "/api/v1/channels?tenant_id=default",
-	} {
-		t.Run(name, func(t *testing.T) {
-			st := &store.Store{}
-			st.AttachBackend(context.Background(), httpFailingBackend{operation: "security_read"}, store.Info{Backend: "test"})
-			rec := httptest.NewRecorder()
-			newAdminTestServer(st).Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-			if rec.Code != http.StatusInternalServerError {
-				t.Fatalf("status=%d body=%q, want 500", rec.Code, rec.Body.String())
-			}
-		})
-	}
-}
-
 type httpFailingBackend struct {
 	store.Backend
 	operation string
