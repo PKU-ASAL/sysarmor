@@ -12,9 +12,9 @@ import (
 
 	analyticingest "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/analytics/rarity"
-	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -35,9 +35,7 @@ type Processor struct {
 	local     bool
 }
 
-type RarityReader interface {
-	Rarity(context.Context, tenant.ID) (domainidentity.RarityBaseline, error)
-}
+type RarityReader = ports.RarityReader
 
 type Result struct {
 	AcceptedEvents  int

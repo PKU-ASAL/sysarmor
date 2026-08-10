@@ -1,6 +1,11 @@
 package ports
 
-import "context"
+import (
+	"context"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
+)
 
 type RawMessage struct {
 	Topic, Key string
@@ -20,6 +25,10 @@ type RawProducer interface {
 
 type BatchProcessor interface {
 	Process(context.Context, RawMessage) error
+}
+
+type RarityReader interface {
+	Rarity(context.Context, tenant.ID) (identity.RarityBaseline, error)
 }
 
 type PermanentError struct {
