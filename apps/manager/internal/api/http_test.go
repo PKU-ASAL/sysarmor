@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
-	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -260,12 +259,19 @@ func appendBatchAndAck(t *testing.T, st *store.Store, batch *dataplanev1.DataBat
 	acceptedEvents := 0
 	acceptedSignals := 0
 	if !duplicate {
-		result, err := ingestworker.NewProcessor(st, nil).Process(context.Background(), batch)
-		if err != nil {
-			t.Fatalf("Process() error = %v", err)
+		for _, frame := range batch.GetEvents() {
+			if event := frame.GetEvent(); event != nil {
+				event.TenantId = batch.GetHeader().GetTenantId()
+				st.AddEvent(event)
+				acceptedEvents++
+			}
 		}
-		acceptedEvents = result.AcceptedEvents
-		acceptedSignals = result.AcceptedSignals
+		for _, frame := range batch.GetSignals() {
+			if signal := frame.GetSignal(); signal != nil {
+				st.AddSignalForTenant(batch.GetHeader().GetTenantId(), signal)
+				acceptedSignals++
+			}
+		}
 	}
 	status := dataplanev1.DataAck_STATUS_ACCEPTED
 	message := "accepted"

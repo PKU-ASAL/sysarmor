@@ -16,25 +16,21 @@ import (
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	policyv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/policy/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-	"google.golang.org/protobuf/proto"
 )
 
 type Processor struct {
-	store     *store.Store
 	engine    *Engine
 	projector ports.DocumentProjector
 	history   ports.HistoryReader
 	rarity    RarityReader
 	batches   ports.TelemetryBatches
 	policies  ports.DetectionPolicyReader
-	local     bool
 }
 
 type RarityReader = ports.RarityReader
@@ -54,20 +50,6 @@ type Result struct {
 	Duplicate       bool
 }
 
-func NewProcessor(st *store.Store, projector ports.DocumentProjector) *Processor {
-	if projector == nil {
-		projector = ports.NoopDocumentProjector{}
-	}
-	return &Processor{store: st, engine: NewEngine(), projector: projector, history: storeHistory{store: st}, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}, local: true}
-}
-
-func NewProcessorWithHistory(st *store.Store, projector ports.DocumentProjector, history ports.HistoryReader) *Processor {
-	if projector == nil {
-		projector = ports.NoopDocumentProjector{}
-	}
-	return &Processor{store: st, engine: NewEngine(), projector: projector, history: history, rarity: storeRarityReader{store: store.NewRarityReader(st)}, batches: storeTelemetryBatches{store: st}, policies: storeDetectionPolicies{store: st}}
-}
-
 func NewRemoteProcessor(projector ports.DocumentProjector, history ports.HistoryReader, rarityReader ports.RarityReader, batches ports.TelemetryBatches, policies ports.DetectionPolicyReader) *Processor {
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
@@ -82,9 +64,6 @@ func (p *Processor) SetDetectionPolicies(policies ports.DetectionPolicyReader) {
 func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (Result, error) {
 	if p == nil || p.engine == nil || p.history == nil || p.rarity == nil || p.batches == nil || p.policies == nil {
 		return Result{}, fmt.Errorf("ingest processor dependencies are incomplete")
-	}
-	if p.local && p.store == nil {
-		return Result{}, fmt.Errorf("local ingest processor store is nil")
 	}
 	if batch == nil || batch.GetHeader() == nil {
 		return Result{}, fmt.Errorf("data batch header identity is required")
@@ -106,11 +85,8 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 			_ = p.batches.Abandon(ctx, header.GetTenantId(), header.GetBatchId(), claimToken)
 		}
 	}()
-	agent := store.AgentIdentityFromDataBatch(batch)
+	agent := agentIdentity{TenantID: header.GetTenantId(), AgentID: header.GetAgentId()}
 	tenantID := agent.Normalized().TenantID
-	if p.local {
-		p.store.AddAgent(agent)
-	}
 	touchedScopes := map[string]touchedScope{}
 	currentEvents := make([]*eventv1.CanonicalEvent, 0, len(batch.GetEvents()))
 	currentSignals := make([]*signalv1.Signal, 0, len(batch.GetSignals()))
@@ -125,17 +101,11 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		ev.TenantId = tenantID
 		currentEvents = append(currentEvents, ev)
 		rememberTouchedScope(touchedScopes, ev.GetLabels(), agent)
-		if p.local {
-			p.store.AddEvent(ev)
-		}
 	}
 	for _, frame := range batch.GetSignals() {
 		sig := frame.GetSignal()
 		currentSignals = append(currentSignals, sig)
 		rememberTouchedScope(touchedScopes, sig.GetLabels(), agent)
-		if p.local {
-			p.store.AddSignalForTenant(tenantID, sig)
-		}
 	}
 	start := time.Now()
 	parsedTenant, err := tenant.NewID(tenantID)
@@ -161,11 +131,6 @@ func (p *Processor) Process(ctx context.Context, batch *dataplanev1.DataBatch) (
 		return Result{}, err
 	}
 	convergenceLatency := time.Since(start)
-	if p.local {
-		if err := p.store.Save(); err != nil {
-			return Result{}, err
-		}
-	}
 	delta := telemetryBatchDelta(batch, claimToken, len(currentEvents), len(currentSignals), cloudSignals, incidents, convergenceLatency)
 	if err := p.batches.Commit(ctx, delta); err != nil {
 		return Result{}, err
@@ -196,11 +161,16 @@ func telemetryBatchDelta(batch *dataplanev1.DataBatch, claimToken string, events
 }
 
 type touchedScope struct {
-	labels store.LabelSelector
-	agent  store.AgentIdentity
+	labels labelSelector
+	agent  agentIdentity
 }
 
-func rememberTouchedScope(scopes map[string]touchedScope, labels map[string]string, agent store.AgentIdentity) {
+type agentIdentity struct{ TenantID, AgentID string }
+type labelSelector map[string]string
+
+func (agent agentIdentity) Normalized() agentIdentity { return agent }
+
+func rememberTouchedScope(scopes map[string]touchedScope, labels map[string]string, agent agentIdentity) {
 	selector := analysisSelector(labels)
 	if len(selector) == 0 {
 		return
@@ -208,8 +178,8 @@ func rememberTouchedScope(scopes map[string]touchedScope, labels map[string]stri
 	scopes[labelSelectorKey(selector)] = touchedScope{labels: selector, agent: agent}
 }
 
-func analysisSelector(labels map[string]string) store.LabelSelector {
-	selector := store.LabelSelector{}
+func analysisSelector(labels map[string]string) labelSelector {
+	selector := labelSelector{}
 	for _, key := range []string{"case_type", "scenario", "workload"} {
 		if value := strings.TrimSpace(labels[key]); value != "" {
 			selector[key] = value
@@ -218,7 +188,7 @@ func analysisSelector(labels map[string]string) store.LabelSelector {
 	return selector
 }
 
-func labelSelectorKey(labels store.LabelSelector) string {
+func labelSelectorKey(labels labelSelector) string {
 	keys := make([]string, 0, len(labels))
 	for key := range labels {
 		keys = append(keys, key)
@@ -262,13 +232,6 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 			inc.AnalysisVersion = "incident.v1"
 			inc.FirstObservedAt = firstObserved
 			inc.LastObservedAt = lastObserved
-		}
-		if p.local {
-			localIncidents := make([]*incidentv1.Incident, 0, len(analysis.Incidents))
-			for _, incident := range analysis.Incidents {
-				localIncidents = append(localIncidents, proto.Clone(incident).(*incidentv1.Incident))
-			}
-			p.store.ReplaceDerivedForLabels(scope.agent.Normalized().TenantID, scope.labels, analysis.CloudSignals, localIncidents)
 		}
 		for _, sig := range analysis.CloudSignals {
 			doc, err := signalDocumentWithID(sig, CloudSignalDocumentID(scope.agent.Normalized().TenantID, sig))
@@ -335,27 +298,46 @@ func frameTime(raw string, fallback time.Time) time.Time {
 	return fallback.UTC()
 }
 
-func matchingEvents(events []*eventv1.CanonicalEvent, labels store.LabelSelector) []*eventv1.CanonicalEvent {
+func matchingEvents(events []*eventv1.CanonicalEvent, labels labelSelector) []*eventv1.CanonicalEvent {
 	var out []*eventv1.CanonicalEvent
 	for _, event := range events {
-		if store.LabelsMatch(event.GetLabels(), labels) {
+		if labelsMatch(event.GetLabels(), labels) {
 			out = append(out, event)
 		}
 	}
 	return out
 }
 
-func matchingSignals(signals []*signalv1.Signal, labels store.LabelSelector) []*signalv1.Signal {
+func matchingSignals(signals []*signalv1.Signal, labels labelSelector) []*signalv1.Signal {
 	var out []*signalv1.Signal
 	for _, signal := range signals {
-		if signal.GetWhere() == signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT && store.LabelsMatch(signal.GetLabels(), labels) {
+		if signal.GetWhere() == signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT && labelsMatch(signal.GetLabels(), labels) {
 			out = append(out, signal)
 		}
 	}
 	return out
 }
 
-func (p *Processor) effectiveDetectionPolicyForAgent(ctx context.Context, agent store.AgentIdentity) (*policyv1.DetectionPolicy, error) {
+func labelsMatch(values map[string]string, expected labelSelector) bool {
+	for key, value := range expected {
+		if values[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func signalProjectionKey(signal *signalv1.Signal) string {
+	if signal == nil {
+		return ""
+	}
+	if signal.GetId() != "" {
+		return signal.GetId()
+	}
+	return strings.Join([]string{signal.GetName(), signal.GetLineageId(), labelSelectorKey(analysisSelector(signal.GetLabels()))}, "\x00")
+}
+
+func (p *Processor) effectiveDetectionPolicyForAgent(ctx context.Context, agent agentIdentity) (*policyv1.DetectionPolicy, error) {
 	agent = agent.Normalized()
 	tenantID, err := tenant.NewID(agent.TenantID)
 	if err != nil {
@@ -389,7 +371,7 @@ func EventDocumentID(tenantID, agentID, eventID string) string {
 }
 
 func CloudSignalDocumentID(tenantID string, signal *signalv1.Signal) string {
-	key := store.SignalProjectionKey(signal)
+	key := signalProjectionKey(signal)
 	if strings.TrimSpace(tenantID) == "" || key == "" {
 		return ""
 	}
@@ -402,7 +384,7 @@ func SignalDocumentID(sig *signalv1.Signal) string {
 		return ""
 	}
 	if sig.GetWhere() == signalv1.SignalWhere_SIGNAL_WHERE_CLOUD {
-		return store.SignalProjectionKey(sig)
+		return signalProjectionKey(sig)
 	}
 	if sig.GetId() != "" {
 		return sig.GetId()

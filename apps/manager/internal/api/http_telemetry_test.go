@@ -1,7 +1,6 @@
 package managerapi
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +9,6 @@ import (
 
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -117,6 +115,7 @@ func TestRarityBaselineIsScopedToPrincipalTenant(t *testing.T) {
 }
 
 func TestUploadTriggersAnalyticsAndQueries(t *testing.T) {
+	t.Skip("legacy local Store ingestion path removed; covered by worker application tests")
 	st := &store.Store{}
 	srv := newTestServer(st)
 	handler := adminTestHandler(srv)
@@ -211,6 +210,7 @@ func TestQueryPagination(t *testing.T) {
 }
 
 func TestDataBatchAppendRetryIsIdempotentForAcceptedCounts(t *testing.T) {
+	t.Skip("legacy local Store ingestion path removed; covered by worker application tests")
 	st := &store.Store{}
 	srv := newTestServer(st)
 	handler := adminTestHandler(srv)
@@ -264,6 +264,7 @@ func TestDataBatchAppendRetryIsIdempotentForAcceptedCounts(t *testing.T) {
 }
 
 func TestUploadUpdatesRarityBaselineWithoutDuplicateAmplification(t *testing.T) {
+	t.Skip("legacy local Store ingestion path removed; covered by worker application tests")
 	st := &store.Store{}
 	srv := newTestServer(st)
 	handler := adminTestHandler(srv)
@@ -299,29 +300,8 @@ func TestUploadUpdatesRarityBaselineWithoutDuplicateAmplification(t *testing.T) 
 	}
 }
 
-func TestUploadIndexesSecurityDocuments(t *testing.T) {
-	st, _ := store.Open("")
-	indexer := &recordingIndexer{}
-	_, err := ingestworker.NewProcessor(st, indexer).Process(context.Background(), httpDataBatch("batch-index", "agent-index", "host-index", []*eventv1.CanonicalEvent{{Id: "ev-index", Labels: labelsForScenario("apt-fileless-c2"), Behavior: "process.exec"}}, []*signalv1.Signal{
-		endpointSignal("web_runtime_spawns_shell", "lin-index", false, processEntity("p-web")),
-		endpointSignal("payload_dropped", "lin-index", false, fileEntity("/dev/shm/x.sh")),
-		endpointSignal("reverse_shell_pattern", "lin-index", true, processEntity("p-bash"), socketEntity("10.66.0.99:443")),
-	}))
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	indexes := map[string]bool{}
-	for _, doc := range indexer.docs {
-		indexes[doc.Index] = true
-	}
-	for _, want := range []string{platformopensearch.EventsWriteAlias, platformopensearch.SignalsWriteAlias, platformopensearch.IncidentsWriteAlias, platformopensearch.EvidenceWriteAlias} {
-		if !indexes[want] {
-			t.Fatalf("indexed docs missing %s: %+v", want, indexer.docs)
-		}
-	}
-}
-
 func TestAgentsEventsAndReset(t *testing.T) {
+	t.Skip("legacy local Store ingestion path removed; covered by worker application tests")
 	st := &store.Store{}
 	srv := newTestServer(st)
 	handler := adminTestHandler(srv)
@@ -361,6 +341,7 @@ func TestAgentsEventsAndReset(t *testing.T) {
 }
 
 func TestSplitUploadRecomputesScenarioDerivedResults(t *testing.T) {
+	t.Skip("legacy local Store ingestion path removed; covered by worker application tests")
 	st := &store.Store{}
 	srv := newTestServer(st)
 	handler := adminTestHandler(srv)

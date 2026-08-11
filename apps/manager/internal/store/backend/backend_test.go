@@ -10,7 +10,6 @@ import (
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
-	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
@@ -1411,17 +1410,6 @@ func backendDataBatch(batchID, agentID, hostID string, events []*eventv1.Canonic
 		batch.Signals = append(batch.Signals, &dataplanev1.SignalFrame{Sequence: uint64(i + 1), Signal: signal})
 	}
 	return batch
-}
-
-func acceptDataBatch(t *testing.T, st *store.Store, batch *dataplanev1.DataBatch) {
-	t.Helper()
-	result, err := ingestworker.NewProcessor(st, nil).Process(context.Background(), batch)
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-	if result.Duplicate {
-		t.Fatalf("data batch rejected: %+v", result)
-	}
 }
 
 func postgresEndpointSignal(id, scenario, name, lineage string, terminal bool, entities ...*signalv1.EntityRef) *signalv1.Signal {

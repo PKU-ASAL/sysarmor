@@ -8,7 +8,6 @@ import (
 
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -46,30 +45,6 @@ func documentBytes(documents []json.RawMessage) [][]byte {
 
 func NewOpenSearchHistory(searcher platformopensearch.Searcher) *OpenSearchHistory {
 	return &OpenSearchHistory{searcher: searcher}
-}
-
-type storeHistory struct{ store *store.Store }
-
-func (h storeHistory) ReadDocuments(_ context.Context, tenantID string, labels map[string]string, _, _ time.Time) (ports.HistorySnapshot, error) {
-	events := h.store.ListEventsForTenant(tenantID, store.LabelSelector(labels), "")
-	signals := h.store.ListSignalsForTenant(tenantID, store.LabelSelector(labels), "endpoint", false)
-	eventBytes := make([][]byte, 0, len(events))
-	for _, event := range events {
-		encoded, err := protojson.Marshal(event)
-		if err != nil {
-			return ports.HistorySnapshot{}, err
-		}
-		eventBytes = append(eventBytes, encoded)
-	}
-	signalBytes := make([][]byte, 0, len(signals))
-	for _, signal := range signals {
-		encoded, err := protojson.Marshal(signal)
-		if err != nil {
-			return ports.HistorySnapshot{}, err
-		}
-		signalBytes = append(signalBytes, encoded)
-	}
-	return ports.HistorySnapshot{Events: eventBytes, Signals: signalBytes}, nil
 }
 
 func filterTenantDocuments(raw []json.RawMessage, tenantID string) []json.RawMessage {

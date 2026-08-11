@@ -22,8 +22,8 @@ import (
 	workerpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/worker"
 	managerpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/policy"
 	workerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker"
+	processing "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker/processing"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
-	ingestworker "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ingest"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
@@ -100,7 +100,7 @@ func main() {
 	log.Printf("sysarmor-worker consuming topic=%s group=%s store_backend=postgres", *kafkaTopic, *kafkaGroupID)
 	identityRepositories := identitypostgres.NewRepositories(db)
 	policyQueries := managerpolicy.NewQueryService(policypostgres.NewUnitOfWork(db))
-	processor := ingestworker.NewRemoteProcessor(indexer, ingestworker.NewOpenSearchHistory(indexer), identityRepositories.Snapshots(), workerpostgres.NewTelemetryBatches(db), workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()))
+	processor := processing.NewRemoteProcessor(indexer, processing.NewOpenSearchHistory(indexer), identityRepositories.Snapshots(), workerpostgres.NewTelemetryBatches(db), workerapp.NewDetectionPolicies(policyQueries, identityRepositories.Health()))
 	err = workerapp.New(consumer, batchProcessor{processor: processor}, dlqProducer).Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "run ingest worker: %v\n", err)
@@ -127,7 +127,7 @@ func splitCSV(value string) []string {
 	return out
 }
 
-type batchProcessor struct{ processor *ingestworker.Processor }
+type batchProcessor struct{ processor *processing.Processor }
 
 func (processor batchProcessor) Process(ctx context.Context, message ports.RawMessage) error {
 	batch := &dataplanev1.DataBatch{}
