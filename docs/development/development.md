@@ -29,10 +29,9 @@ make web-build
 | `apps/agent/internal/endpoint/` | 事件规范化、匹配和端侧检测 |
 | `apps/agent/internal/sensors/` | Sensor 运行时与平台适配器实现 |
 | `apps/manager/internal/adapters/inbound/grpc/` | Agent-facing mTLS Data/Control gRPC adapters |
-| `apps/manager/internal/ingest/` | 持久遥测消费和投影 |
-| `apps/manager/internal/analytics/` | 云端关联、证据图和事件分析 |
+| `apps/manager/internal/application/worker/processing/` | Worker 遥测处理应用服务 |
 | `apps/manager/internal/` | Operator API、鉴权和控制面流程 |
-| `apps/manager/internal/store/` | PostgreSQL 控制面持久化 |
+| `apps/manager/internal/adapters/outbound/postgres/` | PostgreSQL 持久化 adapter |
 | `apps/manager/internal/platform/` | Kafka、Redis、OpenSearch adapter |
 | `deployments/` | 安装器、镜像、Compose、PKI 和运行配置 |
 | `apps/console/` | Manager Console 与认证 BFF |

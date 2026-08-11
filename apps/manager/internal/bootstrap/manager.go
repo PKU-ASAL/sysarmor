@@ -11,10 +11,9 @@ import (
 	"time"
 
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
+	postgresmigrations "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/migrations"
 	managerapi "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	storemigrations "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
-	storepostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/postgres"
 )
 
 type ManagerConfig struct {
@@ -48,30 +47,30 @@ func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Clo
 	return server, db, nil
 }
 
-func openManagerDatabase(ctx context.Context, config ManagerConfig) (*sql.DB, storepostgres.MigrationResult, error) {
+func openManagerDatabase(ctx context.Context, config ManagerConfig) (*sql.DB, postgresmigrations.MigrationResult, error) {
 	return OpenPostgres(ctx, config.PostgresDriver, config.PostgresDSN)
 }
 
-func OpenPostgres(ctx context.Context, driver, dsn string) (*sql.DB, storepostgres.MigrationResult, error) {
+func OpenPostgres(ctx context.Context, driver, dsn string) (*sql.DB, postgresmigrations.MigrationResult, error) {
 	if strings.TrimSpace(dsn) == "" {
-		return nil, storepostgres.MigrationResult{}, fmt.Errorf("postgres dsn is required")
+		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres dsn is required")
 	}
 	if strings.TrimSpace(driver) == "" {
-		return nil, storepostgres.MigrationResult{}, fmt.Errorf("postgres driver is required")
+		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres driver is required")
 	}
 	db, err := sql.Open(strings.TrimSpace(driver), dsn)
 	if err != nil {
-		return nil, storepostgres.MigrationResult{}, fmt.Errorf("open postgres: %w", err)
+		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("open postgres: %w", err)
 	}
-	migration, err := storepostgres.ApplyMigrations(ctx, db)
+	migration, err := postgresmigrations.ApplyMigrations(ctx, db)
 	if err != nil {
 		_ = db.Close()
-		return nil, storepostgres.MigrationResult{}, err
+		return nil, postgresmigrations.MigrationResult{}, err
 	}
 	return db, migration, nil
 }
 
-func buildManagerServer(ctx context.Context, db *sql.DB, migration storepostgres.MigrationResult, config ManagerConfig) (*http.Server, error) {
+func buildManagerServer(ctx context.Context, db *sql.DB, migration postgresmigrations.MigrationResult, config ManagerConfig) (*http.Server, error) {
 	searcher, err := platformopensearch.NewHTTPIndexerWithAuth(config.OpenSearchURL, config.OpenSearchUsername, config.OpenSearchPassword)
 	if err != nil {
 		return nil, fmt.Errorf("open opensearch searcher: %w", err)
@@ -87,7 +86,7 @@ func buildManagerServer(ctx context.Context, db *sql.DB, migration storepostgres
 	return managerHTTPServer(config.ListenAddress, routes.HandlerWithAuth(verifier)), nil
 }
 
-func composeManagerRoutes(ctx context.Context, db *sql.DB, searcher *platformopensearch.HTTPIndexer, migration storepostgres.MigrationResult, config ManagerConfig) (*managerapi.Server, error) {
+func composeManagerRoutes(ctx context.Context, db *sql.DB, searcher *platformopensearch.HTTPIndexer, migration postgresmigrations.MigrationResult, config ManagerConfig) (*managerapi.Server, error) {
 	server := managerapi.NewServerWithSearch(searcher)
 	if err := setManagerQueryRoutes(server, db, searcher, migration); err != nil {
 		return nil, err
@@ -98,7 +97,7 @@ func composeManagerRoutes(ctx context.Context, db *sql.DB, searcher *platformope
 	return server, nil
 }
 
-func setManagerQueryRoutes(server *managerapi.Server, db *sql.DB, searcher *platformopensearch.HTTPIndexer, migration storepostgres.MigrationResult) error {
+func setManagerQueryRoutes(server *managerapi.Server, db *sql.DB, searcher *platformopensearch.HTTPIndexer, migration postgresmigrations.MigrationResult) error {
 	resolve := managerapi.PolicyRequestContext
 	telemetry, err := NewManagerTelemetryHTTP(searcher, resolve)
 	if err != nil {
@@ -123,7 +122,7 @@ func setManagerQueryRoutes(server *managerapi.Server, db *sql.DB, searcher *plat
 	return setManagerOverviewRoutes(server, db, searcher, migration)
 }
 
-func setManagerOverviewRoutes(server *managerapi.Server, db *sql.DB, searcher *platformopensearch.HTTPIndexer, migration storepostgres.MigrationResult) error {
+func setManagerOverviewRoutes(server *managerapi.Server, db *sql.DB, searcher *platformopensearch.HTTPIndexer, migration postgresmigrations.MigrationResult) error {
 	resolve := managerapi.PolicyRequestContext
 	identity, err := NewManagerIdentityQueries(db)
 	if err != nil {
@@ -177,9 +176,9 @@ func setManagerCommandRoutes(ctx context.Context, server *managerapi.Server, db 
 	return nil
 }
 
-func managerStorageStatus(migration storepostgres.MigrationResult) ManagerStorageStatus {
+func managerStorageStatus(migration postgresmigrations.MigrationResult) ManagerStorageStatus {
 	return ManagerStorageStatus{Backend: "postgres", StateVersion: 1, MigrationVersion: migration.Version,
-		PostgresSchemaVersion: storemigrations.PostgresVersion}
+		PostgresSchemaVersion: postgresmigrations.PostgresVersion}
 }
 
 func managerHTTPServer(listen string, handler http.Handler) *http.Server {

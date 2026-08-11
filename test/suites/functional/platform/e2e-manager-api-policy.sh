@@ -21,7 +21,7 @@ trap cleanup EXIT
 echo "[e2e-policy-publish] building binaries"
 sa_build_go_bins sysarmor-manager sysarmorctl
 
-sa_start_memory_manager
+sa_start_postgres_manager
 
 sa_wait_url_contains "$MGR_URL/healthz" '"ok":true' "$TMP/health.json"
 

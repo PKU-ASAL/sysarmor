@@ -156,43 +156,22 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         expected = (
             "apps/manager/internal/api",
             "apps/manager/internal/auth",
-            "apps/manager/internal/store",
-            "apps/manager/internal/analytics",
-            "apps/manager/internal/ingest",
             "apps/manager/internal/platform",
-            "apps/manager/integration",
         )
 
         for path in expected:
             with self.subTest(path=path):
                 self.assertTrue((self.repo / path).is_dir(), f"missing {path}")
 
-    def test_manager_store_domain_files(self):
-        root = self.repo / "apps/manager/internal/store"
-        expected = (
-            "models.go",
-            "policy.go",
-            "control.go",
-            "artifact.go",
-            "telemetry.go",
-            "persistence.go",
-        )
-        for name in expected:
-            with self.subTest(name=name):
-                self.assertTrue((root / name).is_file(), f"missing store/{name}")
-
-    def test_postgres_store_domain_files(self):
-        root = self.repo / "apps/manager/internal/store/postgres"
-        expected = (
-            "policy.go",
-            "control.go",
-            "identity.go",
-            "artifact.go",
-            "telemetry.go",
-        )
-        for name in expected:
-            with self.subTest(name=name):
-                self.assertTrue((root / name).is_file(), f"missing postgres/{name}")
+    def test_manager_store_facades_are_absent(self):
+        for path in (
+            "apps/manager/internal/store",
+            "apps/manager/internal/store/backend",
+            "apps/manager/internal/store/postgres",
+            "apps/manager/internal/store/migrations",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse((self.repo / path).exists(), f"store facade remains: {path}")
 
     def test_tetragon_backend_responsibility_files(self):
         root = self.repo / "apps/agent/internal/sensors/linux/tetragon"

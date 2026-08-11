@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/lib/pq"
 	kafkain "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/kafka"
+	processing "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/kafka/processing"
 	kafkaout "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/kafka"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	identitypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/identity"
@@ -22,7 +23,6 @@ import (
 	workerpostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/worker"
 	managerpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/policy"
 	workerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker"
-	processing "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker/processing"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"

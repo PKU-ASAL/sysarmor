@@ -1,4 +1,4 @@
-package ingestworker
+package processing
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"time"
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
+	workerprocessing "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/worker/processing"
+	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
@@ -19,13 +21,11 @@ import (
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
-	policyv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/policy/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 
 type Processor struct {
-	engine    *Engine
+	engine    *workerprocessing.Engine
 	projector ports.DocumentProjector
 	history   ports.HistoryReader
 	rarity    RarityReader
@@ -54,7 +54,7 @@ func NewRemoteProcessor(projector ports.DocumentProjector, history ports.History
 	if projector == nil {
 		projector = ports.NoopDocumentProjector{}
 	}
-	return &Processor{engine: NewEngine(), projector: projector, history: history, rarity: rarityReader, batches: batches, policies: policies}
+	return &Processor{engine: workerprocessing.NewEngine(), projector: projector, history: history, rarity: rarityReader, batches: batches, policies: policies}
 }
 
 func (p *Processor) SetRarityReader(reader RarityReader)                       { p.rarity = reader }
@@ -224,7 +224,7 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 		if err != nil {
 			return 0, 0, nil, fmt.Errorf("read effective detection policy: %w", err)
 		}
-		analysis := p.engine.AnalyzeWithPolicy(events, endpointSignals, policy)
+		analysis := analyzeWire(p.engine, events, endpointSignals, policy)
 		firstObserved, lastObserved := incidentObservedRange(events)
 		for _, inc := range analysis.Incidents {
 			inc.TenantId = scope.agent.Normalized().TenantID
@@ -253,6 +253,35 @@ func (p *Processor) recomputeTouchedScopes(ctx context.Context, touchedScopes ma
 		totalIncidents += len(analysis.Incidents)
 	}
 	return totalCloud, totalIncidents, documents, nil
+}
+
+func analyzeWire(engine *workerprocessing.Engine, events []*eventv1.CanonicalEvent, signals []*signalv1.Signal, policy *domaindetection.Policy) AnalysisResult {
+	domainEvents := make([]domaintelemetry.Event, 0, len(events))
+	for _, event := range events {
+		if mapped, err := contractmapper.EventToDomain(event); err == nil {
+			domainEvents = append(domainEvents, mapped)
+		}
+	}
+	domainSignals := make([]domaintelemetry.Signal, 0, len(signals))
+	for _, signal := range signals {
+		if mapped, err := contractmapper.SignalToDomain(signal); err == nil {
+			domainSignals = append(domainSignals, mapped)
+		}
+	}
+	result := engine.AnalyzeWithPolicy(domainEvents, domainSignals, policy)
+	converted := AnalysisResult{}
+	for _, signal := range result.CloudSignals {
+		converted.CloudSignals = append(converted.CloudSignals, contractmapper.SignalFromDomain(signal))
+	}
+	for _, incident := range result.Incidents {
+		converted.Incidents = append(converted.Incidents, contractmapper.IncidentFromDomain(incident))
+	}
+	return converted
+}
+
+type AnalysisResult struct {
+	CloudSignals []*signalv1.Signal
+	Incidents    []*incidentv1.Incident
 }
 
 func incidentObservedRange(events []*eventv1.CanonicalEvent) (string, string) {
@@ -337,7 +366,7 @@ func signalProjectionKey(signal *signalv1.Signal) string {
 	return strings.Join([]string{signal.GetName(), signal.GetLineageId(), labelSelectorKey(analysisSelector(signal.GetLabels()))}, "\x00")
 }
 
-func (p *Processor) effectiveDetectionPolicyForAgent(ctx context.Context, agent agentIdentity) (*policyv1.DetectionPolicy, error) {
+func (p *Processor) effectiveDetectionPolicyForAgent(ctx context.Context, agent agentIdentity) (*domaindetection.Policy, error) {
 	agent = agent.Normalized()
 	tenantID, err := tenant.NewID(agent.TenantID)
 	if err != nil {
@@ -347,11 +376,23 @@ func (p *Processor) effectiveDetectionPolicyForAgent(ctx context.Context, agent 
 	if err != nil {
 		return nil, err
 	}
-	var wire policymodel.Policy
+	var wire struct {
+		EndpointRules []string `json:"endpoint_rules"`
+		CloudRules    []string `json:"cloud_rules"`
+		Converge      *struct {
+			Mode                  string `json:"mode"`
+			CrossLineage          bool   `json:"cross_lineage"`
+			AdditiveRiskThreshold uint32 `json:"additive_risk_threshold"`
+		} `json:"converge"`
+	}
 	if err := json.Unmarshal(policy.Document, &wire); err != nil {
 		return nil, fmt.Errorf("decode policy document: %w", err)
 	}
-	return wire.DetectionPolicy(), nil
+	result := &domaindetection.Policy{EndpointRules: wire.EndpointRules, CloudRules: wire.CloudRules}
+	if wire.Converge != nil {
+		result.Converge = &domaindetection.ConvergePolicy{Mode: wire.Converge.Mode, CrossLineage: wire.Converge.CrossLineage, AdditiveRiskThreshold: wire.Converge.AdditiveRiskThreshold}
+	}
+	return result, nil
 }
 
 func EndpointSignalDocumentID(tenantID, agentID, signalID string) string {

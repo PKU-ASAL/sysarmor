@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
 )
 
 type authenticatedTestServer struct {
@@ -12,22 +11,7 @@ type authenticatedTestServer struct {
 	principal managerauth.Principal
 }
 
-func newAdminTestServer(st *store.Store) *authenticatedTestServer {
-	server := NewServer()
-	setTestIdentityApplication(server, st)
-	setTestTelemetryApplication(server, st)
-	return &authenticatedTestServer{
-		Server: server,
-		principal: managerauth.Principal{
-			Subject: "test-admin", TenantID: "default", Roles: []string{"admin"},
-		},
-	}
-}
-
 func adminTestHandler(server *Server) http.Handler {
-	if _, unavailable := server.telemetryRoutes.(unavailableTelemetryRoutes); unavailable && server.searcher != nil {
-		setTestTelemetryApplication(server, nil)
-	}
 	return (&authenticatedTestServer{
 		Server: server,
 		principal: managerauth.Principal{

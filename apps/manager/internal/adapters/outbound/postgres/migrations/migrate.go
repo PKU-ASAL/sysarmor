@@ -1,11 +1,9 @@
-package postgres
+package migrations
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/migrations"
 )
 
 const migrationLockID = 786451001
@@ -46,7 +44,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) (MigrationResult, error) {
 			return MigrationResult{}, err
 		}
 	}
-	for _, migration := range migrations.Ordered() {
+	for _, migration := range Ordered() {
 		if applied[migration.Version] {
 			continue
 		}
@@ -54,7 +52,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) (MigrationResult, error) {
 			return MigrationResult{}, err
 		}
 	}
-	return MigrationResult{Version: migrations.PostgresVersion}, nil
+	return MigrationResult{Version: PostgresVersion}, nil
 }
 
 func schemaMigrationsExist(ctx context.Context, conn *sql.Conn) (bool, error) {
@@ -86,7 +84,7 @@ func loadAppliedMigrations(ctx context.Context, conn *sql.Conn) (map[int]bool, e
 	return applied, rows.Err()
 }
 
-func applyMigration(ctx context.Context, conn *sql.Conn, migration migrations.Migration) error {
+func applyMigration(ctx context.Context, conn *sql.Conn, migration Migration) error {
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin postgres migration v%d: %w", migration.Version, err)
