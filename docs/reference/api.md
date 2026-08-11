@@ -1,6 +1,6 @@
 # API 与协议参考
 
-本文说明 SysArmor 当前 API 边界、端点分类和版本演进规则。精确请求/响应字段以 `apps/manager/internal/api/` 的 handler 与测试、`packages/contracts/proto/` 的 protobuf 为准。
+本文说明 SysArmor 当前 API 边界、端点分类和版本演进规则。精确请求/响应字段以 `apps/manager/internal/adapters/inbound/http/manager/` 的 handler 与测试、`packages/contracts/proto/` 的 protobuf 为准。
 
 ## 信任边界
 

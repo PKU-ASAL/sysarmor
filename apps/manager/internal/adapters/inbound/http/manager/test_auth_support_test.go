@@ -3,7 +3,7 @@ package managerapi
 import (
 	"net/http"
 
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 )
 
 type authenticatedTestServer struct {

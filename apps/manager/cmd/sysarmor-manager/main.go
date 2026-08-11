@@ -11,7 +11,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 )
 

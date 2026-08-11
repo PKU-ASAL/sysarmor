@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
+	managerapi "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/manager"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
 	postgresmigrations "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/migrations"
-	managerapi "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 )
 
 type ManagerConfig struct {

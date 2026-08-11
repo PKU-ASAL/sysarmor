@@ -37,9 +37,6 @@ LEGACY_ROOTS = {
 	"apps/agent/internal/sensors",
 	"apps/agent/internal/tamper",
 	"apps/agent/internal/telemetry",
-	"apps/manager/internal/auth",
-	"apps/manager/internal/platform",
-	"apps/manager/internal/api",
 }
 STANDARD_LIBRARY = {
     "domain": {

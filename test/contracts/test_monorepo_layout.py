@@ -154,9 +154,8 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_manager_implementation_is_owned_by_manager_app(self):
         expected = (
-            "apps/manager/internal/api",
-            "apps/manager/internal/auth",
-            "apps/manager/internal/platform",
+            "apps/manager/internal/adapters/inbound/http/manager",
+            "apps/manager/internal/adapters/inbound/http/auth",
         )
 
         for path in expected:

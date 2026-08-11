@@ -3,8 +3,8 @@ package managerapi
 import (
 	"net/http"
 
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )

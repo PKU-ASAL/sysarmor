@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 )
 
 func TestIncidentMutationRoutesAreNotRegistered(t *testing.T) {

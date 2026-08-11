@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 )
 
 const maxAuthenticatedBody = 4 << 20

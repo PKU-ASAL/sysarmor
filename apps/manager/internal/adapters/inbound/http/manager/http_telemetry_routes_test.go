@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
+	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 )
 
 func TestTelemetryRoutesDelegateToApplicationAdapter(t *testing.T) {

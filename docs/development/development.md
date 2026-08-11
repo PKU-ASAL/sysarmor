@@ -32,7 +32,8 @@ make web-build
 | `apps/manager/internal/application/worker/processing/` | Worker 遥测处理应用服务 |
 | `apps/manager/internal/` | Operator API、鉴权和控制面流程 |
 | `apps/manager/internal/adapters/outbound/postgres/` | PostgreSQL 持久化 adapter |
-| `apps/manager/internal/platform/` | Kafka、Redis、OpenSearch adapter |
+| `apps/manager/internal/adapters/inbound/` | Kafka、HTTP、gRPC inbound adapter |
+| `apps/manager/internal/adapters/outbound/` | PostgreSQL、Kafka、OpenSearch、Redis outbound adapter |
 | `deployments/` | 安装器、镜像、Compose、PKI 和运行配置 |
 | `apps/console/` | Manager Console 与认证 BFF |
 | `configs/` | Policy/rule 元数据示例，不自动加载 |
@@ -112,7 +113,7 @@ make release-stable VERSION=1.0.0 RC=1
 4. 同步 producer、consumer、兼容性检查和契约测试。
 5. 按[API 参考](../reference/api.md)的 consumer-first 顺序规划发布。
 
-Manager HTTP 字段变化还必须同步 `apps/manager/internal/api/` handler 测试与 `apps/console/lib/api/` typed client。页面组件不拼接 Manager URL 或授权 header。
+Manager HTTP 字段变化还必须同步 `apps/manager/internal/adapters/inbound/http/manager/` handler 测试与 `apps/console/lib/api/` typed client。页面组件不拼接 Manager URL 或授权 header。
 
 ## 修改 Agent 配置
 
