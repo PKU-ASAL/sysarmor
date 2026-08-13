@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	contractadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
@@ -166,7 +168,7 @@ type cepRuleState struct {
 type cepGroupState struct {
 	StepIndex       int
 	Refs            []string
-	Entities        []*signalv1.EntityRef
+	Entities        []domaindetection.Entity
 	Values          map[string]map[string]string
 	ExpiresAt       uint64
 	WaitingBehavior string
@@ -344,9 +346,12 @@ func (e *Engine) Process(ev *eventv1.CanonicalEvent) []*signalv1.Signal {
 		e.metrics.EventsByBehavior = make(map[string]uint64)
 	}
 	e.metrics.EventsByBehavior[behavior]++
-	out := e.detectCEPRules(view)
-	out = compact(out)
-	e.metrics.EmittedSignals += uint64(len(out))
+	detected := compact(e.detectCEPRules(view))
+	var out []*signalv1.Signal
+	for _, signal := range detected {
+		out = append(out, contractadapter.Signal(*signal))
+	}
+	e.metrics.EmittedSignals += uint64(len(detected))
 	e.metrics.ProcessNanosTotal += uint64(time.Since(start).Nanoseconds())
 	return out
 }
@@ -409,32 +414,32 @@ func (e *Engine) rule(id string) (effectiveRule, bool) {
 	return rule, ok && rule.enabled
 }
 
-func (e *Engine) signal(ev *eventv1.CanonicalEvent, rule effectiveRule, refs []string, terminal bool, entities ...*signalv1.EntityRef) *signalv1.Signal {
+func (e *Engine) signal(ev *eventv1.CanonicalEvent, rule effectiveRule, refs []string, terminal bool, entities ...domaindetection.Entity) *domaindetection.Signal {
 	refs = appendRefs(nil, refs...)
 	if len(refs) == 0 {
 		refs = []string{ev.GetId()}
 	}
 	e.nextID++
-	sig := &signalv1.Signal{
-		Id:           fmt.Sprintf("sig-%020d", e.nextID),
+	sig := domaindetection.Signal{
+		ID:           fmt.Sprintf("sig-%020d", e.nextID),
 		Name:         rule.spec.RuleID,
-		RuleId:       rule.spec.RuleID,
+		RuleID:       rule.spec.RuleID,
 		RuleVersion:  rule.spec.Version,
-		RulesetRef:   rule.spec.RuleSetRef,
-		Where:        signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
+		RuleSetRef:   rule.spec.RuleSetRef,
+		Where:        domaindetection.SignalWhereEndpoint,
 		BaseRisk:     riskForSeverity(rule.severity),
 		Severity:     rule.severity,
 		Confidence:   confidenceForRule(rule),
 		Mode:         rule.mode,
 		LocalRarity:  1,
 		GlobalRarity: 1,
-		LineageId:    ev.GetLineageId(),
+		LineageID:    ev.GetLineageId(),
 		Entities:     entities,
 		EventRefs:    refs,
 		Terminal:     terminal,
 		Labels:       cloneLabels(ev.GetLabels()),
 		ContextRefs:  e.signalContentRefs(rule.spec.ContextRefs, e.refs.ContextRefs),
-		IocRefs:      e.signalContentRefs(rule.spec.IOCRefs, e.refs.IOCRefs),
+		IOCRefs:      e.signalContentRefs(rule.spec.IOCRefs, e.refs.IOCRefs),
 	}
 	if terminal || rule.intent != nil {
 		intent := rule.intent
@@ -442,24 +447,21 @@ func (e *Engine) signal(ev *eventv1.CanonicalEvent, rule effectiveRule, refs []s
 			intent = rule.spec.ResponseIntent
 		}
 		if intent != nil && intent.Action != "" {
-			sig.ResponseIntent = &signalv1.ResponseIntent{
-				ResponseIntent:    intent.Action,
-				RecommendedAction: intent.Action,
-				Confidence:        intent.Confidence,
-				Reason:            intent.Reason,
+			sig.ResponseIntent = &domaindetection.ResponseIntent{
+				Action: intent.Action, Confidence: intent.Confidence, Reason: intent.Reason,
 			}
 		}
 	}
 	if terminal {
-		sig.Evidence = &signalv1.EvidenceBundle{
-			Id:        "evb-" + sig.GetId(),
+		sig.Evidence = &domaindetection.Evidence{
+			ID:        "evb-" + sig.ID,
 			EventRefs: append([]string(nil), refs...),
 			RawRefs:   []string{ev.GetRawRef()},
 			Entities:  entities,
 			Summary:   fmt.Sprintf("rule=%s version=%d ruleset=%s severity=%s", rule.spec.RuleID, rule.spec.Version, rule.spec.RuleSetRef, rule.severity),
 		}
 	}
-	return sig
+	return &sig
 }
 
 func cloneLabels(in map[string]string) map[string]string {
@@ -480,20 +482,20 @@ func cloneLabels(in map[string]string) map[string]string {
 	return out
 }
 
-func (e *Engine) signalContentRefs(refs []string, resolved map[string]ContentRef) []*signalv1.ContentRef {
-	out := make([]*signalv1.ContentRef, 0, len(refs))
+func (e *Engine) signalContentRefs(refs []string, resolved map[string]ContentRef) []domaindetection.ContentRef {
+	out := make([]domaindetection.ContentRef, 0, len(refs))
 	for _, ref := range refs {
 		if strings.TrimSpace(ref) == "" {
 			continue
 		}
 		item := resolved[ref]
-		out = append(out, &signalv1.ContentRef{Ref: item.Ref, Version: item.Version, Digest: item.Digest})
+		out = append(out, domaindetection.ContentRef{Ref: item.Ref, Version: item.Version, Digest: item.Digest})
 	}
 	return out
 }
 
-func (e *Engine) detectCEPRules(view eventView) []*signalv1.Signal {
-	var out []*signalv1.Signal
+func (e *Engine) detectCEPRules(view eventView) []*domaindetection.Signal {
+	var out []*domaindetection.Signal
 	for _, rule := range e.compiled.rulesForBehavior(view.behavior) {
 		e.metrics.CEPRulesScanned++
 		if !rule.rule.enabled {
@@ -572,11 +574,11 @@ func (r effectiveRule) terminal(defaultValue bool) bool {
 	return *r.spec.Terminal
 }
 
-func (e *Engine) detectSequenceRule(view eventView, rule compiledRule) *signalv1.Signal {
+func (e *Engine) detectSequenceRule(view eventView, rule compiledRule) *domaindetection.Signal {
 	return e.detectSequenceCandidate(view, compiledSequenceCandidate{rule: rule, firstStep: true})
 }
 
-func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSequenceCandidate) *signalv1.Signal {
+func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSequenceCandidate) *domaindetection.Signal {
 	rule := candidate.rule
 	seq := rule.sequence
 	if len(seq.steps) == 0 {
@@ -958,8 +960,8 @@ func sudoFlagWithoutValue(arg string) bool {
 	}
 }
 
-func eventEntities(ev *eventv1.CanonicalEvent) []*signalv1.EntityRef {
-	entities := []*signalv1.EntityRef{processEntity(ev)}
+func eventEntities(ev *eventv1.CanonicalEvent) []domaindetection.Entity {
+	entities := []domaindetection.Entity{processEntity(ev)}
 	if eventBehavior(ev) == eventmodel.BehaviorProcessExec.String() && ev.GetSubjectProc().GetBinary() != "" {
 		entities = append(entities, fileEntity(ev.GetSubjectProc().GetBinary(), "subject"))
 	}
@@ -970,7 +972,7 @@ func eventEntities(ev *eventv1.CanonicalEvent) []*signalv1.EntityRef {
 		entities = append(entities, socketEntity(ev))
 	}
 	if containerID := ev.GetContainerId(); containerID != "" {
-		entities = append(entities, &signalv1.EntityRef{Kind: "container", Key: containerID, Role: "scope"})
+		entities = append(entities, domaindetection.Entity{Kind: "container", Key: containerID, Role: "scope"})
 	}
 	return entities
 }
@@ -1230,20 +1232,20 @@ func availableFieldsFromCapabilities(collection contract.CollectionIntent) map[s
 	return fields
 }
 
-func processEntity(ev *eventv1.CanonicalEvent) *signalv1.EntityRef {
+func processEntity(ev *eventv1.CanonicalEvent) domaindetection.Entity {
 	key := ""
 	if ev.GetSubjectProc() != nil {
 		key = ev.GetSubjectProc().GetStableId()
 	}
-	return &signalv1.EntityRef{Kind: "process", Key: key, Role: "subject"}
+	return domaindetection.Entity{Kind: "process", Key: key, Role: "subject"}
 }
 
-func socketEntity(ev *eventv1.CanonicalEvent) *signalv1.EntityRef {
-	return &signalv1.EntityRef{Kind: "socket", Key: ev.GetObject().GetSocketAddr(), Role: "object"}
+func socketEntity(ev *eventv1.CanonicalEvent) domaindetection.Entity {
+	return domaindetection.Entity{Kind: "socket", Key: ev.GetObject().GetSocketAddr(), Role: "object"}
 }
 
-func fileEntity(path, role string) *signalv1.EntityRef {
-	return &signalv1.EntityRef{Kind: "file", Key: path, Role: role}
+func fileEntity(path, role string) domaindetection.Entity {
+	return domaindetection.Entity{Kind: "file", Key: path, Role: role}
 }
 
 func riskForSeverity(severity string) uint32 {
@@ -1281,7 +1283,7 @@ func appendUnique(items []string, item string) []string {
 	return append(items, item)
 }
 
-func compact(in []*signalv1.Signal) []*signalv1.Signal {
+func compact(in []*domaindetection.Signal) []*domaindetection.Signal {
 	out := in[:0]
 	for _, sig := range in {
 		if sig != nil {

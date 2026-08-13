@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
+	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
 )
 
@@ -37,7 +37,7 @@ type correlateGroupState struct {
 
 type correlateFactMatch struct {
 	EventID  string
-	Entities []*signalv1.EntityRef
+	Entities []domaindetection.Entity
 }
 
 func compileCorrelateRuntime(rules []effectiveRule, content ContentSnapshot) compiledCorrelateRuntime {
@@ -95,7 +95,7 @@ func (runtime compiledCorrelateRuntime) rulesForBehavior(behavior string) []comp
 	return runtime.byBehavior[behavior]
 }
 
-func (e *Engine) detectCorrelateRule(view eventView, rule compiledCorrelateRule) *signalv1.Signal {
+func (e *Engine) detectCorrelateRule(view eventView, rule compiledCorrelateRule) *domaindetection.Signal {
 	state := e.correlate[rule.rule.spec.RuleID]
 	if state == nil {
 		state = &correlateRuleState{Groups: make(map[string]*correlateGroupState)}
@@ -145,9 +145,9 @@ func (e *Engine) matchCorrelateFacts(view eventView, facts []compiledFact) []com
 	return out
 }
 
-func (e *Engine) correlateEvidence(group *correlateGroupState, facts []compiledFact) ([]string, []*signalv1.EntityRef) {
+func (e *Engine) correlateEvidence(group *correlateGroupState, facts []compiledFact) ([]string, []domaindetection.Entity) {
 	var refs []string
-	var entities []*signalv1.EntityRef
+	var entities []domaindetection.Entity
 	for _, fact := range facts {
 		match := group.Facts[fact.id]
 		refs = appendUnique(refs, match.EventID)
@@ -160,14 +160,11 @@ func (e *Engine) correlateEvidence(group *correlateGroupState, facts []compiledF
 	return refs, entities
 }
 
-func appendUniqueEntities(out []*signalv1.EntityRef, values ...*signalv1.EntityRef) []*signalv1.EntityRef {
+func appendUniqueEntities(out []domaindetection.Entity, values ...domaindetection.Entity) []domaindetection.Entity {
 	for _, value := range values {
-		if value == nil {
-			continue
-		}
 		found := false
 		for _, current := range out {
-			if current.GetKind() == value.GetKind() && current.GetKey() == value.GetKey() && current.GetRole() == value.GetRole() {
+			if current == value {
 				found = true
 				break
 			}

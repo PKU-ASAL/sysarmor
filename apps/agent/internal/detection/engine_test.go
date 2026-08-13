@@ -508,6 +508,19 @@ func TestRuleValidationAcceptsValidCorrelate(t *testing.T) {
 	}
 }
 
+func TestProcessReturnsNilWhenNoRuleMatches(t *testing.T) {
+	engine, report := NewWithRuntime(cepPolicy(), contract.CollectionIntent{}, ContentSnapshot{Rules: []RuleSpec{{
+		RuleID: "file_only", RuleSetRef: "ruleset:cep", RuntimeType: "expr",
+		Expr: ExprSpec{Conditions: []ConditionSpec{{Field: "file.path", Op: "prefix", Value: "/restricted/"}}},
+	}}})
+	if report.Status != "applied" {
+		t.Fatalf("report = %+v", report)
+	}
+	if signals := engine.Process(openEvent("event", "lineage", "process", "/bin/cat", "/tmp/allowed")); signals != nil {
+		t.Fatalf("Process() = %#v, want nil", signals)
+	}
+}
+
 func neutralCorrelateSpec() CorrelateSpec {
 	return CorrelateSpec{
 		Within: 2 * time.Minute,
@@ -1160,7 +1173,7 @@ func TestSequenceEvidenceEntitiesIgnoreUnselectedAnyBranch(t *testing.T) {
 	entities := sequenceEvidenceEntities(newEventView(event), step, nil)
 
 	for _, entity := range entities {
-		if entity.GetKey() == "/opt/unselected/helper" {
+		if entity.Key == "/opt/unselected/helper" {
 			t.Fatalf("unselected any branch contributed evidence: %+v", entities)
 		}
 	}

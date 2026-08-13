@@ -4,14 +4,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
+	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 )
 
-func sequenceEvidenceEntities(view eventView, step compiledStep, state *cepGroupState) []*signalv1.EntityRef {
+func sequenceEvidenceEntities(view eventView, step compiledStep, state *cepGroupState) []domaindetection.Entity {
 	conditions := matchedPositiveConditions(view, step.conditions, state)
 	groupConditions, _ := matchedPositiveNodeConditions(view, step.conditionGroup, state)
 	conditions = append(conditions, groupConditions...)
-	var entities []*signalv1.EntityRef
+	var entities []domaindetection.Entity
 	for _, condition := range conditions {
 		if !positiveArgvCondition(condition) {
 			continue
@@ -87,8 +87,8 @@ func positiveArgvCondition(condition compiledCondition) bool {
 	}
 }
 
-func matchingArgumentEntities(view eventView, condition compiledCondition) []*signalv1.EntityRef {
-	var entities []*signalv1.EntityRef
+func matchingArgumentEntities(view eventView, condition compiledCondition) []domaindetection.Entity {
+	var entities []domaindetection.Entity
 	for _, argument := range view.ev.GetSubjectProc().GetArgv() {
 		argument = strings.Trim(argument, "'\"")
 		if filepath.IsAbs(argument) && condition.matcher.Match(argument) {

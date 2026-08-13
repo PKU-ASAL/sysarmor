@@ -174,6 +174,14 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertTrue((root / "domain/detection/compiler").is_dir())
         self.assertFalse((root / "detection/validation.go").exists())
 
+    def test_agent_detection_signal_contract_is_layered(self):
+        root = self.repo / "apps/agent/internal"
+        self.assertTrue((root / "domain/detection/signal.go").is_file())
+        self.assertTrue((root / "adapters/contracts/detection.go").is_file())
+        for name in ("correlate.go", "evidence_entities.go"):
+            source = (root / "detection" / name).read_text()
+            self.assertNotIn("packages/contracts/proto/signal", source)
+
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []
         for product in ("agent", "manager"):
