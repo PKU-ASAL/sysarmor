@@ -4,9 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 
 type recordingPolicyUseCase struct {
@@ -22,9 +19,7 @@ func (r *recordingPolicyUseCase) Apply(_ context.Context, command PolicyCommand)
 
 type recordingPolicyControllerRuntime struct {
 	identity       PolicyIdentity
-	active         policymodel.Policy
-	endpoint       agentpolicy.EndpointPolicy
-	pending        *PendingPolicy
+	snapshot       PolicySnapshot
 	beginMutations []bool
 }
 
@@ -36,14 +31,8 @@ func (r *recordingPolicyControllerRuntime) BeginLocalPolicyMutation(_ context.Co
 	r.beginMutations = append(r.beginMutations, mutation)
 	return func() {}, nil
 }
-func (r *recordingPolicyControllerRuntime) ActivePolicySnapshot() policymodel.Policy {
-	return r.active
-}
-func (r *recordingPolicyControllerRuntime) EndpointPolicySnapshot() agentpolicy.EndpointPolicy {
-	return r.endpoint
-}
-func (r *recordingPolicyControllerRuntime) PendingPolicySnapshot(context.Context) (*PendingPolicy, error) {
-	return r.pending, nil
+func (r *recordingPolicyControllerRuntime) CurrentPolicySnapshot(context.Context) (PolicySnapshot, error) {
+	return r.snapshot, nil
 }
 
 func TestPolicyControllerRoutesManagedSourceToManagedEndpoint(t *testing.T) {
@@ -92,8 +81,7 @@ func TestPolicyControllerUnsupportedTypeChecksAuthority(t *testing.T) {
 
 func TestCurrentPolicyUsesEndpointDocumentAndPendingProjection(t *testing.T) {
 	controller, _, runtime := newRecordingPolicyController()
-	runtime.endpoint = agentpolicy.EndpointPolicy{PolicyID: "endpoint-a", Version: 7}
-	runtime.pending = &PendingPolicy{PolicyID: "endpoint-b", Version: 8, Status: "pending", Source: PolicySourceManaged, Digest: "sha256:pending"}
+	runtime.snapshot = PolicySnapshot{PolicyID: "endpoint-a", Version: 7, RawJSON: `{"policy_id":"endpoint-a"}`, Pending: &PendingPolicy{PolicyID: "endpoint-b", Version: 8, Status: "pending", Source: PolicySourceManaged, Digest: "sha256:pending"}}
 
 	snapshot, err := controller.CurrentPolicy(t.Context())
 
@@ -106,9 +94,7 @@ func TestCurrentPolicyUsesEndpointDocumentAndPendingProjection(t *testing.T) {
 }
 
 func newRecordingPolicyController() (*ApplicationPolicyController, PolicyUseCases, *recordingPolicyControllerRuntime) {
-	runtime := &recordingPolicyControllerRuntime{
-		identity: PolicyIdentity{TenantID: "tenant-a", AgentID: "agent-a"}, active: policymodel.DefaultPolicy("tenant-a"),
-	}
+	runtime := &recordingPolicyControllerRuntime{identity: PolicyIdentity{TenantID: "tenant-a", AgentID: "agent-a"}}
 	cases := PolicyUseCases{
 		StandaloneEndpoint: &recordingPolicyUseCase{}, ManagedEndpoint: &recordingPolicyUseCase{},
 		Collection: &recordingPolicyUseCase{}, Detection: &recordingPolicyUseCase{}, Telemetry: &recordingPolicyUseCase{},

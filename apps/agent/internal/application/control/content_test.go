@@ -5,30 +5,25 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 )
 
 type recordingContentRuntime struct {
-	identity        ContentIdentity
-	beginErr        error
-	contextErr      error
-	validateErr     error
-	prepareErr      error
-	commitErr       error
-	record          agentcontent.Record
-	snapshot        agentcontent.Snapshot
-	build           detection.ApplyReport
-	beginMutations  []bool
-	validated       int
-	prepared        int
-	transactions    int
-	committed       int
-	activated       int
-	rejectedReports []detection.ApplyReport
-	listKind        string
-	getRef          string
+	identity       ContentIdentity
+	beginErr       error
+	contextErr     error
+	validateErr    error
+	prepareErr     error
+	commitErr      error
+	record         ContentRecord
+	build          ContentApplyReport
+	beginMutations []bool
+	validated      int
+	prepared       int
+	transactions   int
+	committed      int
+	activated      int
+	listKind       string
+	getRef         string
 }
 
 func (r *recordingContentRuntime) ContentIdentity() ContentIdentity { return r.identity }
@@ -51,12 +46,12 @@ func (r *recordingContentRuntime) ValidateContentContext(ctx RequestContext) err
 	return nil
 }
 
-func (r *recordingContentRuntime) ValidateContent(string, bool) (agentcontent.Record, error) {
+func (r *recordingContentRuntime) ValidateContent(string, bool) (ContentRecord, error) {
 	r.validated++
 	return r.record, r.validateErr
 }
 
-func (r *recordingContentRuntime) Activate(string, bool) (agentcontent.Record, detection.ApplyReport, error) {
+func (r *recordingContentRuntime) Activate(string, bool) (ContentRecord, ContentApplyReport, error) {
 	r.prepared++
 	if r.prepareErr != nil {
 		return r.record, r.build, r.prepareErr
@@ -72,12 +67,12 @@ func (r *recordingContentRuntime) Activate(string, bool) (agentcontent.Record, d
 	return r.record, r.build, nil
 }
 
-func (r *recordingContentRuntime) ListContent(kind string) []agentcontent.Record {
+func (r *recordingContentRuntime) ListContent(kind string) []ContentRecord {
 	r.listKind = kind
-	return []agentcontent.Record{r.record}
+	return []ContentRecord{r.record}
 }
 
-func (r *recordingContentRuntime) GetContent(ref string) (agentcontent.Record, bool) {
+func (r *recordingContentRuntime) GetContent(ref string) (ContentRecord, bool) {
 	r.getRef = ref
 	return r.record, true
 }
@@ -99,7 +94,7 @@ func TestContentControllerDryRunValidatesWithoutStartingTransaction(t *testing.T
 
 func TestContentControllerRejectedRebuildKeepsPreparedContentUncommitted(t *testing.T) {
 	runtime := newRecordingContentRuntime()
-	runtime.build = detection.ApplyReport{Status: "rejected", Details: []string{"unsupported runtime"}}
+	runtime.build = ContentApplyReport{Status: "rejected"}
 	result := NewContentController(runtime).ApplyContent(t.Context(), ContentCommand{
 		Context: RequestContext{RequestID: "request-a"}, Document: "{}", AllowUnsigned: true,
 	})
@@ -166,9 +161,9 @@ func TestContentControllerTrimsListAndGetKeys(t *testing.T) {
 func newRecordingContentRuntime() *recordingContentRuntime {
 	return &recordingContentRuntime{
 		identity: ContentIdentity{TenantID: "tenant-a", AgentID: "agent-a"},
-		record: agentcontent.Record{
+		record: ContentRecord{
 			Ref: "ioc:feed", Kind: "iocpack", Version: "v1", Digest: "sha256:feed", Status: "applied",
 		},
-		build: detection.ApplyReport{Status: "applied"},
+		build: ContentApplyReport{Status: "applied"},
 	}
 }

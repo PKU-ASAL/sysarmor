@@ -207,7 +207,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                 self.assertTrue((root / name).is_file(), f"missing sysarmorctl/{name}")
 
     def test_agent_control_contract_files(self):
-        root = self.repo / "apps/agent/internal/control"
+        root = self.repo / "apps/agent/internal/application/control"
         expected = ("types.go", "policy.go", "content.go")
         for name in expected:
             with self.subTest(name=name):
@@ -215,10 +215,10 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_agent_local_api_adapter_directory(self):
         root = self.repo / "apps/agent/internal"
-        self.assertTrue((root / "localapi").is_dir(), "missing agent localapi")
+        self.assertTrue((root / "adapters/inbound/unix").is_dir(), "missing agent Unix inbound adapter")
 
     def test_agent_local_api_uses_narrow_read_services(self):
-        localapi = self.repo / "apps/agent/internal/localapi"
+        localapi = self.repo / "apps/agent/internal/adapters/inbound/unix"
         sources = "\n".join(path.read_text() for path in localapi.glob("*.go"))
         for declaration in ("type StatusService interface", "type TelemetryReader interface"):
             with self.subTest(declaration=declaration):
@@ -230,21 +230,14 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_agent_remote_api_adapter_directory(self):
         root = self.repo / "apps/agent/internal"
-        self.assertTrue((root / "remoteapi").is_dir(), "missing agent remoteapi")
+        self.assertTrue((root / "adapters/inbound/grpc").is_dir(), "missing agent gRPC inbound adapter")
 
     def test_agent_control_dependency_direction(self):
         root = self.repo / "apps/agent/internal"
-        forbidden = {
-            "control": ("localapi", "remoteapi"),
-            "localapi": ("remoteapi",),
-            "remoteapi": ("localapi",),
-        }
-        for owner, targets in forbidden.items():
-            for source in (root / owner).rglob("*.go"):
-                text = source.read_text()
-                for target in targets:
-                    path = f"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/{target}"
-                    self.assertNotIn(path, text, f"{source} imports forbidden {target}")
+        for source in (root / "application/control").rglob("*.go"):
+            text = source.read_text()
+            self.assertNotIn("internal/adapters/", text, f"{source} imports adapter")
+            self.assertNotIn("packages/", text, f"{source} imports shared boundary model")
 
     def test_response_use_case_is_layered(self):
         root = self.repo / "apps/agent/internal"
@@ -258,7 +251,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_content_use_case_is_owned_by_control(self):
         root = self.repo / "apps/agent/internal"
-        content = (root / "control/content.go").read_text()
+        content = (root / "application/control/content.go").read_text()
         self.assertIn("func NewContentController", content)
         self.assertFalse((root / "daemon/content_controller.go").exists())
         self.assertFalse((root / "daemon/content_controller_runtime.go").exists())
@@ -276,13 +269,13 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_endpoint_policy_use_case_is_owned_by_control(self):
         root = self.repo / "apps/agent/internal"
-        endpoint = (root / "control/endpoint_policy.go").read_text()
+        endpoint = (root / "application/control/endpoint_policy.go").read_text()
         self.assertIn("func NewEndpointPolicyController", endpoint)
         self.assertFalse((root / "daemon/endpoint_policy_control.go").exists())
 
     def test_policy_orchestration_is_owned_by_control(self):
         root = self.repo / "apps/agent/internal"
-        controller = (root / "control/policy_controller.go").read_text()
+        controller = (root / "application/control/policy_controller.go").read_text()
         self.assertIn("func NewApplicationPolicyController", controller)
         self.assertFalse((root / "daemon/policy_controller.go").exists())
         self.assertFalse((root / "daemon/policy_controller_runtime.go").exists())

@@ -24,11 +24,8 @@ ALLOWED = {
 }
 AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/config",
-	"apps/agent/internal/control",
 	"apps/agent/internal/daemon",
-	"apps/agent/internal/localapi",
 	"apps/agent/internal/localstore",
-	"apps/agent/internal/remoteapi",
 	"apps/agent/internal/sensors",
 	"apps/agent/internal/tamper",
 }
@@ -128,6 +125,16 @@ class LayeredArchitectureContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.repo = Path(__file__).resolve().parents[2]
+
+    def test_task9_retires_agent_control_and_api_legacy_roots(self):
+        root = self.repo / "apps/agent/internal"
+        self.assertTrue((root / "application/control").is_dir())
+        self.assertTrue((root / "adapters/inbound/unix").is_dir())
+        self.assertTrue((root / "adapters/inbound/grpc").is_dir())
+        self.assertTrue((root / "adapters/outbound/grpc").is_dir())
+        self.assertFalse((root / "adapters/inbound/grpc/channel.go").exists())
+        for name in ("control", "localapi", "remoteapi"):
+            self.assertFalse((root / name).exists(), f"legacy agent root remains: {name}")
 
     def test_product_layer_roots_exist(self):
         for product in ("agent", "manager"):
@@ -233,7 +240,7 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             "DetectionPolicyRuntime",
             "TelemetryPolicyRuntime",
         )
-        for source in (root / "control").glob("*_policy.go"):
+        for source in (root / "application/control").glob("*_policy.go"):
             text = source.read_text()
             for symbol in legacy_types:
                 self.assertNotIn(symbol, text, f"legacy facade remains: {source}")
@@ -241,7 +248,7 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             self.assertFalse((root / "daemon" / f"{name}_policy_runtime.go").exists())
 
     def test_migrated_policy_controls_do_not_import_infrastructure(self):
-        root = self.repo / "apps/agent/internal/control"
+        root = self.repo / "apps/agent/internal/application/control"
         forbidden = ("internal/adapters/", "sensor-sdk/contract", "packages/policy")
         for name in ("endpoint", "collection", "detection", "telemetry"):
             source = (root / f"{name}_policy.go").read_text()

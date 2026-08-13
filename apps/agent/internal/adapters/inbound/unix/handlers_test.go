@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
 

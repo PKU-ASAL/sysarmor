@@ -1,10 +1,9 @@
 package localapi
 
 import (
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	appenrollment "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/enrollment"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/lifecycle"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
 
@@ -78,7 +77,7 @@ func enrollmentAck(result lifecycle.Result) *controlplanev1.ControlAck {
 	}
 }
 
-func contentRecordMessage(record agentcontent.Record) *controlplanev1.ContentRecord {
+func contentRecordMessage(record agentcontrol.ContentRecord) *controlplanev1.ContentRecord {
 	return &controlplanev1.ContentRecord{
 		Ref: record.Ref, Kind: record.Kind, Version: record.Version, Digest: record.Digest,
 		Signed: record.Signed, Status: record.Status, RawJson: record.RawJSON,

@@ -7,7 +7,7 @@ import (
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 )
 
 type contentApplicationAdapter struct {
@@ -34,11 +34,12 @@ func (r *contentApplicationAdapter) ValidateContentContext(ctx agentcontrol.Requ
 	return r.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
-func (r *contentApplicationAdapter) ValidateContent(document string, allowUnsigned bool) (agentcontent.Record, error) {
-	return r.runner.contentStore().Apply(document, allowUnsigned, true)
+func (r *contentApplicationAdapter) ValidateContent(document string, allowUnsigned bool) (agentcontrol.ContentRecord, error) {
+	record, err := r.runner.contentStore().Apply(document, allowUnsigned, true)
+	return contentApplicationRecord(record), err
 }
 
-func (r *contentApplicationAdapter) Activate(document string, allowUnsigned bool) (agentcontent.Record, detection.ApplyReport, error) {
+func (r *contentApplicationAdapter) Activate(document string, allowUnsigned bool) (agentcontrol.ContentRecord, agentcontrol.ContentApplyReport, error) {
 	var record agentcontent.Record
 	var report detection.ApplyReport
 	var activationErr error
@@ -61,13 +62,23 @@ func (r *contentApplicationAdapter) Activate(document string, allowUnsigned bool
 		r.runner.setDetection(engine)
 		r.runner.setDetectionStatus(r.runner.activePolicy(), buildReport, snapshot)
 	})
-	return record, report, activationErr
+	return contentApplicationRecord(record), agentcontrol.ContentApplyReport{Status: report.Status, Warnings: append([]string(nil), report.Warnings...)}, activationErr
 }
 
-func (r *contentApplicationAdapter) ListContent(kind string) []agentcontent.Record {
-	return r.runner.contentStore().List(kind)
+func (r *contentApplicationAdapter) ListContent(kind string) []agentcontrol.ContentRecord {
+	records := r.runner.contentStore().List(kind)
+	result := make([]agentcontrol.ContentRecord, 0, len(records))
+	for _, record := range records {
+		result = append(result, contentApplicationRecord(record))
+	}
+	return result
 }
 
-func (r *contentApplicationAdapter) GetContent(ref string) (agentcontent.Record, bool) {
-	return r.runner.contentStore().Get(ref)
+func (r *contentApplicationAdapter) GetContent(ref string) (agentcontrol.ContentRecord, bool) {
+	record, ok := r.runner.contentStore().Get(ref)
+	return contentApplicationRecord(record), ok
+}
+
+func contentApplicationRecord(record agentcontent.Record) agentcontrol.ContentRecord {
+	return agentcontrol.ContentRecord{Ref: record.Ref, Kind: record.Kind, Version: record.Version, Digest: record.Digest, Signed: record.Signed, Status: record.Status, RawJSON: record.RawJSON}
 }

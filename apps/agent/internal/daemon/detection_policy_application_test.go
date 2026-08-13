@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 )
 
 func TestDetectionProductionPathPersistsUnifiedEndpointBeforePublish(t *testing.T) {

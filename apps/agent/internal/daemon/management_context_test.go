@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"

@@ -5,8 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -39,12 +38,12 @@ func (r *recordingContentController) ApplyContent(_ context.Context, command age
 	return agentcontrol.Result{RequestID: command.Context.RequestID, Status: "applied"}
 }
 
-func (*recordingContentController) ListContent(context.Context, string) ([]agentcontent.Record, error) {
+func (*recordingContentController) ListContent(context.Context, string) ([]agentcontrol.ContentRecord, error) {
 	return nil, nil
 }
 
-func (*recordingContentController) GetContent(context.Context, string) (agentcontent.Record, bool, error) {
-	return agentcontent.Record{}, false, nil
+func (*recordingContentController) GetContent(context.Context, string) (agentcontrol.ContentRecord, bool, error) {
+	return agentcontrol.ContentRecord{}, false, nil
 }
 
 func TestDispatcherBuildsManagedPolicyCommand(t *testing.T) {

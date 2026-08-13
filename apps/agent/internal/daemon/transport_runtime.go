@@ -7,11 +7,12 @@ import (
 	"io"
 	"time"
 
+	grpcinbound "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/inbound/grpc"
+	grpcoutbound "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/outbound/grpc"
 	adapterresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/response"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/remoteapi"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 )
@@ -57,7 +58,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	runner := r.runner
 	connectCtx, cancel := context.WithTimeout(ctx, runner.Config.Local.Export.RequestTimeout)
 	defer cancel()
-	session := remoteapi.NewControlChannel(manager, token, tlsCfg)
+	session := grpcoutbound.NewControlChannel(manager, token, tlsCfg)
 	if err := session.OpenSession(connectCtx, ctx); err != nil {
 		return err
 	}
@@ -66,7 +67,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	if err != nil {
 		return err
 	}
-	dispatcher := remoteapi.NewDispatcher(remoteapi.Dependencies{
+	dispatcher := grpcinbound.NewDispatcher(grpcinbound.Dependencies{
 		Policy:  runner.policyController(runner, r.sensor, r.batcher),
 		Content: agentcontrol.NewContentController(newContentApplicationAdapter(runner)),
 		Response: appresponse.NewService(
@@ -74,7 +75,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 			adapterresponse.NewEnforcer(runner.Sensor),
 		),
 	}, runner.Out)
-	remoteIdentity := remoteapi.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
+	remoteIdentity := grpcinbound.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 	for _, frame := range frames {
 		if frame.GetType() == "policy_update" {
 			if err := dispatcher.HandleSnapshot(ctx, remoteIdentity, frame); err != nil {

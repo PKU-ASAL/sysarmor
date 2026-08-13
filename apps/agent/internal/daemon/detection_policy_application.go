@@ -8,8 +8,8 @@ import (
 
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 

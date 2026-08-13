@@ -1,4 +1,4 @@
-package remoteapi
+package grpc
 
 import (
 	"context"

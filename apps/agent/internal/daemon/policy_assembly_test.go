@@ -2,7 +2,7 @@ package daemon
 
 import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 )
 

@@ -5,14 +5,21 @@ import (
 	"fmt"
 	"io"
 
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
 
 type Identity struct {
 	TenantID string
 	AgentID  string
+}
+
+type Session interface {
+	SendControlAck(context.Context, *controlplanev1.ControlAck) error
+	SendResponseAck(context.Context, domainresponse.Ack) error
+	SendEvidenceResult(context.Context, appresponse.EvidenceResult) error
 }
 
 type Dependencies struct {
@@ -49,7 +56,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, identity Identity, frame *con
 	}
 }
 
-func (d *Dispatcher) Handle(ctx context.Context, session *ControlChannel, identity Identity, frame *controlplanev1.ControlFrame) error {
+func (d *Dispatcher) Handle(ctx context.Context, session Session, identity Identity, frame *controlplanev1.ControlFrame) error {
 	if result, handled, err := d.Dispatch(ctx, identity, frame); err != nil {
 		return err
 	} else if handled {
@@ -90,7 +97,7 @@ func (d *Dispatcher) HandleSnapshot(ctx context.Context, identity Identity, fram
 	return nil
 }
 
-func (d *Dispatcher) handleResponse(ctx context.Context, session *ControlChannel, frame *controlplanev1.ControlFrame) error {
+func (d *Dispatcher) handleResponse(ctx context.Context, session Session, frame *controlplanev1.ControlFrame) error {
 	if d.deps.Response == nil {
 		return fmt.Errorf("remote api response controller is unavailable")
 	}
@@ -108,7 +115,7 @@ func (d *Dispatcher) handleResponse(ctx context.Context, session *ControlChannel
 	return nil
 }
 
-func (d *Dispatcher) handleEvidence(ctx context.Context, session *ControlChannel, frame *controlplanev1.ControlFrame) error {
+func (d *Dispatcher) handleEvidence(ctx context.Context, session Session, frame *controlplanev1.ControlFrame) error {
 	if d.deps.Response == nil {
 		return fmt.Errorf("remote api response controller is unavailable")
 	}

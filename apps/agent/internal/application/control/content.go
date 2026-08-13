@@ -4,10 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 )
+
+type ContentRecord struct {
+	Ref, Kind, Version, Digest, Status, RawJSON string
+	Signed                                      bool
+}
+
+type ContentApplyReport struct {
+	Status   string
+	Warnings []string
+}
 
 type ContentCommand struct {
 	Context       RequestContext
@@ -19,8 +26,8 @@ type ContentCommand struct {
 
 type ContentController interface {
 	ApplyContent(context.Context, ContentCommand) Result
-	ListContent(context.Context, string) ([]agentcontent.Record, error)
-	GetContent(context.Context, string) (agentcontent.Record, bool, error)
+	ListContent(context.Context, string) ([]ContentRecord, error)
+	GetContent(context.Context, string) (ContentRecord, bool, error)
 }
 
 type ContentIdentity struct {
@@ -32,10 +39,10 @@ type ContentApplication interface {
 	ContentIdentity() ContentIdentity
 	BeginLocalContentMutation(context.Context, bool) (func(), error)
 	ValidateContentContext(RequestContext) error
-	ValidateContent(string, bool) (agentcontent.Record, error)
-	Activate(string, bool) (agentcontent.Record, detection.ApplyReport, error)
-	ListContent(string) []agentcontent.Record
-	GetContent(string) (agentcontent.Record, bool)
+	ValidateContent(string, bool) (ContentRecord, error)
+	Activate(string, bool) (ContentRecord, ContentApplyReport, error)
+	ListContent(string) []ContentRecord
+	GetContent(string) (ContentRecord, bool)
 }
 
 type contentController struct {
@@ -70,7 +77,7 @@ func (c *contentController) validateContent(command ContentCommand, identity Con
 		return rejectedContentResult(identity, command.Context.RequestID, err.Error())
 	}
 	record.Status = "validated"
-	return appliedContentResult(identity, command.Context.RequestID, record, detection.ApplyReport{})
+	return appliedContentResult(identity, command.Context.RequestID, record, ContentApplyReport{})
 }
 
 func (c *contentController) activateContent(ctx context.Context, command ContentCommand, identity ContentIdentity) Result {
@@ -81,11 +88,11 @@ func (c *contentController) activateContent(ctx context.Context, command Content
 	return appliedContentResult(identity, command.Context.RequestID, record, report)
 }
 
-func (c *contentController) ListContent(_ context.Context, kind string) ([]agentcontent.Record, error) {
+func (c *contentController) ListContent(_ context.Context, kind string) ([]ContentRecord, error) {
 	return c.application.ListContent(strings.TrimSpace(kind)), nil
 }
 
-func (c *contentController) GetContent(_ context.Context, ref string) (agentcontent.Record, bool, error) {
+func (c *contentController) GetContent(_ context.Context, ref string) (ContentRecord, bool, error) {
 	record, ok := c.application.GetContent(strings.TrimSpace(ref))
 	return record, ok, nil
 }
@@ -98,7 +105,7 @@ func rejectedContentResult(identity ContentIdentity, requestID, message string) 
 	}
 }
 
-func appliedContentResult(identity ContentIdentity, requestID string, record agentcontent.Record, report detection.ApplyReport) Result {
+func appliedContentResult(identity ContentIdentity, requestID string, record ContentRecord, report ContentApplyReport) Result {
 	status := record.Status
 	if report.Status == "degraded" {
 		status = "degraded"

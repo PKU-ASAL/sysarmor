@@ -6,8 +6,8 @@ import (
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 )
 
 func TestTelemetryProductionPathAcceptsNestedDocumentAndReconfiguresBatcher(t *testing.T) {

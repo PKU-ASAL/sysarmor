@@ -8,9 +8,9 @@ import (
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 

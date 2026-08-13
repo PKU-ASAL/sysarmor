@@ -2,10 +2,10 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
@@ -60,21 +60,28 @@ func (r *policyProjectionRuntime) BeginLocalPolicyMutation(ctx context.Context, 
 	return r.runner.beginLocalPolicyMutation(ctx, mutation)
 }
 
-func (r *policyProjectionRuntime) ActivePolicySnapshot() policymodel.Policy {
-	return r.runner.activePolicy()
-}
-
-func (r *policyProjectionRuntime) EndpointPolicySnapshot() agentpolicy.EndpointPolicy {
-	return r.runner.currentEndpointPolicy()
-}
-
-func (r *policyProjectionRuntime) PendingPolicySnapshot(ctx context.Context) (*agentcontrol.PendingPolicy, error) {
-	status, err := r.runner.pendingPolicyStatus(ctx)
-	if err != nil || status.Status == "" {
-		return nil, err
+func (r *policyProjectionRuntime) CurrentPolicySnapshot(ctx context.Context) (agentcontrol.PolicySnapshot, error) {
+	policy := policymodel.Normalize(r.runner.activePolicy())
+	document := any(policy)
+	if endpoint := r.runner.currentEndpointPolicy(); endpoint.PolicyID != "" {
+		document, policy.PolicyID, policy.Version = endpoint, endpoint.PolicyID, endpoint.Version
 	}
-	return &agentcontrol.PendingPolicy{
-		PolicyID: status.PolicyID, Version: status.Version, Status: status.Status,
-		Source: agentcontrol.PolicySource(status.Source), Digest: status.Digest,
-	}, nil
+	raw, err := json.Marshal(document)
+	if err != nil {
+		return agentcontrol.PolicySnapshot{}, err
+	}
+	status, err := r.runner.pendingPolicyStatus(ctx)
+	if err != nil {
+		return agentcontrol.PolicySnapshot{}, err
+	}
+	snapshot := agentcontrol.PolicySnapshot{
+		PolicyID: policy.PolicyID, Version: policy.Version, TenantID: policy.TenantID,
+		ScopeType: policy.Scope.Type, ScopeSelector: policy.Scope.Selector, Mode: policy.Mode,
+		EndpointRules: append([]string(nil), policy.EndpointRules...), CloudRules: append([]string(nil), policy.CloudRules...),
+		Published: policy.Published, RawJSON: string(raw),
+	}
+	if status.Status != "" {
+		snapshot.Pending = &agentcontrol.PendingPolicy{PolicyID: status.PolicyID, Version: status.Version, Status: status.Status, Source: agentcontrol.PolicySource(status.Source), Digest: status.Digest}
+	}
+	return snapshot, nil
 }

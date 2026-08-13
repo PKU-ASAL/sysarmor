@@ -3,7 +3,7 @@ package daemon
 import (
 	"context"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localapi"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/inbound/unix"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 )

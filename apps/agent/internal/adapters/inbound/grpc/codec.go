@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"

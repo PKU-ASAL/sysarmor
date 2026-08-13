@@ -7,8 +7,8 @@ import (
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 )
 
 func TestContentRuntimeUsesProjectedManagementIdentity(t *testing.T) {

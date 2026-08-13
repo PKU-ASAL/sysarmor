@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	grpcoutbound "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/outbound/grpc"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/remoteapi"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -25,7 +25,7 @@ func TestControlChannelKeepsLongLivedContract(t *testing.T) {
 	server := &healthControlContractServer{received: make(chan *controlplanev1.HealthResponse, 1)}
 	address := startControlContractServer(t, server)
 
-	session := remoteapi.NewControlChannel(address, "", tlsconfig.ClientConfig{})
+	session := grpcoutbound.NewControlChannel(address, "", tlsconfig.ClientConfig{})
 	defer session.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -84,7 +84,7 @@ func TestControlChannelHelloStopsWhenSessionContextIsCanceled(t *testing.T) {
 	go func() { _ = grpcServer.Serve(lis) }()
 	defer grpcServer.Stop()
 
-	session := remoteapi.NewControlChannel(lis.Addr().String(), "", tlsconfig.ClientConfig{})
+	session := grpcoutbound.NewControlChannel(lis.Addr().String(), "", tlsconfig.ClientConfig{})
 	defer session.Close()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)

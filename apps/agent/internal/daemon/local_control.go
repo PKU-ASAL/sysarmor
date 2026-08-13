@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/inbound/unix"
 	systemadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/system"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	appdiagnostics "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/diagnostics"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localapi"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 )
 
