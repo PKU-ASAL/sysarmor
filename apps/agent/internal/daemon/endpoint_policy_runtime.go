@@ -8,7 +8,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
+	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"

@@ -30,7 +30,6 @@ AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/daemon",
 	"apps/agent/internal/localapi",
 	"apps/agent/internal/localstore",
-	"apps/agent/internal/policy",
 	"apps/agent/internal/remoteapi",
 	"apps/agent/internal/sensors",
 	"apps/agent/internal/tamper",
@@ -56,6 +55,12 @@ STANDARD_LIBRARY = {
     "application": {"context", "errors", "fmt", "sort", "strings", "sync", "time"},
     "ports": {"context", "errors", "io", "time"},
 }
+ADAPTER_BRIDGE_IMPORTS = {
+    f"{MODULE}apps/agent/internal/localstore",
+    f"{MODULE}packages/policy",
+    f"{MODULE}packages/response",
+    f"{MODULE}packages/sensor-sdk/contract",
+}
 IMPORT_PATTERN = re.compile(r'^\s*(?:[._\w]+\s+)?"([^"]+)"', re.MULTILINE)
 
 
@@ -73,6 +78,8 @@ def import_allowed(owner, imported, product):
     target = target_layer(imported, product)
     if target is not None:
         return target in ALLOWED[owner]
+    if owner == "adapters" and imported in ADAPTER_BRIDGE_IMPORTS:
+        return True
     if imported.startswith(MODULE):
         return False
     if "." in imported.split("/", 1)[0]:
@@ -143,6 +150,18 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         ).read_text()
         self.assertNotIn("internal/adapters/contracts", source)
         self.assertNotIn("packages/contracts/proto/event", source)
+
+    def test_agent_policy_domain_is_layered(self):
+        root = self.repo / "apps/agent/internal"
+        self.assertTrue((root / "domain/policy").is_dir())
+        self.assertTrue((root / "adapters/policy").is_dir())
+        self.assertFalse((root / "policy").exists())
+        for source in (root / "domain/policy").glob("*.go"):
+            imports = IMPORT_PATTERN.findall(source.read_text())
+            self.assertFalse(
+                set(imports) & ADAPTER_BRIDGE_IMPORTS,
+                f"policy domain imports adapter bridge: {source}",
+            )
 
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []

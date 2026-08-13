@@ -187,7 +187,7 @@ func TestParseEndpointPolicyRequiresAllSections(t *testing.T) {
 }
 
 func TestRepositoryDefaultEndpointPolicyParses(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "deployments", "agent", "policy.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "deployments", "agent", "policy.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

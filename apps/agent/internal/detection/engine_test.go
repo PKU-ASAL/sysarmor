@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
+	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"

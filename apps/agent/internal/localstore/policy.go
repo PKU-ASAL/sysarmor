@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 type PolicyRecord struct {
@@ -265,10 +267,7 @@ func documentDigest(document []byte) string {
 }
 
 func validatePolicySource(source PolicySource) error {
-	if source != PolicySourceStandalone && source != PolicySourceManaged {
-		return fmt.Errorf("unsupported policy source %q", source)
-	}
-	return nil
+	return domainpolicy.ValidateSource(domainpolicy.Source(source))
 }
 
 func validatePolicyRecord(policy PolicyRecord) error {
@@ -331,11 +330,12 @@ func validatePolicyAgainstSlot(ctx context.Context, tx *sql.Tx, table string, so
 }
 
 func validatePolicyTransition(policy PolicyRecord, currentVersion uint64, currentDocument []byte, currentDigest string) error {
-	currentID, nextID := policyDocumentID(currentDocument), policyDocumentID(policy.Document)
-	if currentID != "" && nextID != "" && currentID != nextID {
-		return nil
-	}
-	return validatePolicyUpdate(policy, currentVersion, currentDocument, currentDigest)
+	return domainpolicy.ValidateVersionTransition(domainpolicy.VersionTransition{
+		Current:      domainpolicy.Identity{ID: policyDocumentID(currentDocument), Version: currentVersion},
+		Candidate:    domainpolicy.Identity{ID: policyDocumentID(policy.Document), Version: policy.Version},
+		SameDigest:   policy.Digest == currentDigest,
+		SameDocument: string(policy.Document) == string(currentDocument),
+	})
 }
 
 func policyDocumentID(document []byte) string {
@@ -346,19 +346,6 @@ func policyDocumentID(document []byte) string {
 		return ""
 	}
 	return strings.TrimSpace(value.PolicyID)
-}
-
-func validatePolicyUpdate(policy PolicyRecord, currentVersion uint64, currentDocument []byte, currentDigest string) error {
-	if policy.Version < currentVersion {
-		return fmt.Errorf("policy version rollback: current=%d requested=%d", currentVersion, policy.Version)
-	}
-	if policy.Version == currentVersion && policy.Digest != currentDigest {
-		return fmt.Errorf("policy digest conflict at version %d", policy.Version)
-	}
-	if policy.Version == currentVersion && string(policy.Document) != string(currentDocument) {
-		return fmt.Errorf("policy document conflict at version %d", policy.Version)
-	}
-	return nil
 }
 
 type rowScanner interface {

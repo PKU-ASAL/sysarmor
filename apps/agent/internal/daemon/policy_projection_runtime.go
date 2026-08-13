@@ -4,7 +4,7 @@ import (
 	"context"
 
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
+	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 

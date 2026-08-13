@@ -8,8 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
@@ -33,14 +34,19 @@ func ParseEndpointPolicy(document []byte) (EndpointPolicy, error) {
 	if err := decoder.Decode(&envelope); err != nil {
 		return EndpointPolicy{}, fmt.Errorf("decode endpoint policy: %w", err)
 	}
-	if strings.TrimSpace(envelope.PolicyID) == "" || envelope.Version == 0 {
-		return EndpointPolicy{}, fmt.Errorf("endpoint policy id and positive version are required")
-	}
-	if len(envelope.Collection) == 0 || envelope.Detection == nil || envelope.Telemetry == nil || envelope.Response == nil {
-		return EndpointPolicy{}, fmt.Errorf("endpoint policy requires collection, detection, telemetry, and response sections")
-	}
 	collection, err := ParseCollectionPolicyJSON(envelope.Collection, true)
 	if err != nil {
+		return EndpointPolicy{}, err
+	}
+	candidate := domainpolicy.ActivationCandidate{
+		Identity:   domainpolicy.Identity{ID: envelope.PolicyID, Version: envelope.Version},
+		Collection: contractmapper.DomainCollectionPolicy(collection),
+		Sections: domainpolicy.EndpointSections{
+			Collection: len(envelope.Collection) > 0, Detection: envelope.Detection != nil,
+			Telemetry: envelope.Telemetry != nil, Response: envelope.Response != nil,
+		},
+	}
+	if err := candidate.Validate(); err != nil {
 		return EndpointPolicy{}, err
 	}
 	response := *envelope.Response
