@@ -2,9 +2,7 @@ package control
 
 import (
 	"encoding/json"
-	"strings"
 
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
@@ -49,20 +47,18 @@ func telemetryPolicyResult(identity PolicyIdentity, requestID, status, message s
 	}
 }
 
-func detectionPolicyResult(identity PolicyIdentity, requestID string, policy policymodel.Policy, status, message string, report detection.ApplyReport) Result {
+func detectionApplicationResult(identity PolicyIdentity, requestID string, candidate applicationpolicy.DetectionCandidate, report applicationpolicy.DetectionReport) Result {
+	status, message := report.Status, report.Message
 	if status == "" {
 		status = "applied"
 	}
 	if message == "" {
 		message = "detection policy applied"
 	}
-	if len(report.Details) > 0 {
-		message += ": " + strings.Join(report.Details, "; ")
-	}
-	reportJSON, _ := json.Marshal(report)
 	return Result{
 		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
-		Status: status, Message: message, PolicyID: policy.PolicyID, Version: policy.Version, ReportJSON: string(reportJSON),
-		Sections: []SectionResult{{Name: "detection", Status: status, Message: message, ReportJSON: string(reportJSON)}},
+		Status: status, Message: message, PolicyID: candidate.PolicyID(), Version: candidate.PolicyVersion(),
+		Details: append([]string(nil), report.Details...), ReportJSON: report.ReportJSON,
+		Sections: []SectionResult{{Name: "detection", Status: status, Message: message, Details: append([]string(nil), report.Details...), ReportJSON: report.ReportJSON}},
 	}
 }

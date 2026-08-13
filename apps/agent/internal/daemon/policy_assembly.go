@@ -13,7 +13,7 @@ func newApplicationPolicyController(runner *AgentRuntime, runtime sensorruntime.
 			StandaloneEndpoint: agentcontrol.NewEndpointPolicyController(newEndpointPolicyApplication(runner, runtime, batcher)),
 			ManagedEndpoint:    agentcontrol.NewEndpointPolicyController(newEndpointPolicyApplication(runner, runtime, nil)),
 			Collection:         agentcontrol.NewCollectionPolicyController(newCollectionPolicyApplication(runner, runtime)),
-			Detection:          agentcontrol.NewDetectionPolicyController(newDetectionPolicyRuntime(runner)),
+			Detection:          agentcontrol.NewDetectionPolicyController(newDetectionPolicyApplication(runner)),
 			Telemetry:          agentcontrol.NewTelemetryPolicyController(newTelemetryPolicyRuntime(runner, batcher)),
 		},
 	)
