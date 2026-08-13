@@ -19,7 +19,7 @@ func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
 		PolicyIdentity() agentcontrol.PolicyIdentity
 	}{
 		newEndpointPolicyApplication(runner, nil, nil),
-		newCollectionPolicyRuntime(runner, nil),
+		newCollectionPolicyApplication(runner, nil),
 		newDetectionPolicyRuntime(runner),
 		newTelemetryPolicyRuntime(runner, nil),
 		newPolicyProjectionRuntime(runner),

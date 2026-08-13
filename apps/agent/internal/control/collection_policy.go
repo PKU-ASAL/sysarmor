@@ -2,95 +2,54 @@ package control
 
 import (
 	"context"
-	"strings"
 
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
+	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 )
 
-type CollectionPolicyRuntime interface {
+type CollectionApplication interface {
 	PolicyIdentity() PolicyIdentity
 	ValidatePolicyContext(RequestContext) error
 	BeginLocalPolicyMutation(context.Context, bool) (func(), error)
-	WithCollectionPolicyUpdate(func())
-	CollectionObserveOnly() bool
-	CollectionDefaultScope() Scope
-	CollectionContent() agentpolicy.CollectionContentSnapshot
-	ActiveCollectionDetectionPolicy() policymodel.Policy
-	CollectionCapabilities() []contract.CollectionBehaviorCapability
-	CollectionDetectionContent() detection.ContentSnapshot
-	CollectionDetectionLimits() detection.EngineLimits
-	CurrentCollectionIntent() contract.CollectionIntent
-	ApplyCollectionIntent(context.Context, contract.CollectionIntent) error
-	PersistCollectionPolicy(context.Context, agentpolicy.CollectionPolicy) error
-	ActivateCollectionPolicy(contract.CollectionIntent, *detection.Engine)
+	ValidateCollection(context.Context, string, applicationpolicy.CollectionScope) (applicationpolicy.CollectionCandidate, error)
+	ActivateCollection(context.Context, string, applicationpolicy.CollectionScope) (applicationpolicy.CollectionResult, error)
 }
 
 type CollectionPolicyController struct {
-	runtime CollectionPolicyRuntime
+	application CollectionApplication
 }
 
-func NewCollectionPolicyController(runtime CollectionPolicyRuntime) *CollectionPolicyController {
-	return &CollectionPolicyController{runtime: runtime}
+func NewCollectionPolicyController(application CollectionApplication) *CollectionPolicyController {
+	return &CollectionPolicyController{application: application}
 }
 
 func (c *CollectionPolicyController) Apply(ctx context.Context, command PolicyCommand) Result {
-	identity := c.runtime.PolicyIdentity()
-	if err := c.runtime.ValidatePolicyContext(command.Context); err != nil {
+	identity := c.application.PolicyIdentity()
+	if err := c.application.ValidatePolicyContext(command.Context); err != nil {
 		return rejectedPolicyResult(identity, command.Context.RequestID, "policy", err.Error())
 	}
-	release, err := c.runtime.BeginLocalPolicyMutation(ctx, !command.DryRun)
+	release, err := c.application.BeginLocalPolicyMutation(ctx, !command.DryRun)
 	if err != nil {
 		return rejectedPolicyResult(identity, command.Context.RequestID, "collection", err.Error())
 	}
 	defer release()
-	var result Result
-	c.runtime.WithCollectionPolicyUpdate(func() {
-		result = c.applyLocked(ctx, command, identity)
-	})
-	return result
-}
-
-func (c *CollectionPolicyController) applyLocked(ctx context.Context, command PolicyCommand, identity PolicyIdentity) Result {
-	prepared, err := c.prepare(command)
+	scope := collectionApplicationScope(command.Context.Scope)
+	if command.DryRun {
+		candidate, err := c.application.ValidateCollection(ctx, command.Document, scope)
+		if err != nil {
+			return rejectedPolicyResult(identity, command.Context.RequestID, "collection", err.Error())
+		}
+		return collectionApplicationResult(identity, command.Context.RequestID, candidate, candidate.ValidationReport())
+	}
+	result, err := c.application.ActivateCollection(ctx, command.Document, scope)
 	if err != nil {
 		return rejectedPolicyResult(identity, command.Context.RequestID, "collection", err.Error())
 	}
-	if len(prepared.Compile.UnsupportedSelectors) > 0 {
-		return collectionPolicyResult(identity, command.Context.RequestID, prepared, "rejected", "collection policy contains unsupported selectors", nil)
-	}
-	if command.DryRun {
-		return c.dryRunResult(command.Context.RequestID, identity, prepared)
-	}
-	previous := c.runtime.CurrentCollectionIntent()
-	if err := c.runtime.ApplyCollectionIntent(ctx, prepared.Intent); err != nil {
-		return rejectedPolicyResult(identity, command.Context.RequestID, "collection", "apply collection policy: "+err.Error())
-	}
-	if err := c.runtime.PersistCollectionPolicy(ctx, prepared.Policy); err != nil {
-		_ = c.runtime.ApplyCollectionIntent(ctx, previous)
-		return collectionPolicyResult(identity, command.Context.RequestID, prepared, "rejected", "persist collection policy: "+err.Error(), nil)
-	}
-	engine, report := detection.NewWithRuntimeLimits(c.runtime.ActiveCollectionDetectionPolicy().Detection, prepared.Intent, c.runtime.CollectionDetectionContent(), c.runtime.CollectionDetectionLimits())
-	c.runtime.ActivateCollectionPolicy(prepared.Intent, engine)
-	return appliedCollectionPolicyResult(identity, command.Context.RequestID, prepared, report)
+	return collectionApplicationResult(identity, command.Context.RequestID, result.Candidate, result.Report)
 }
 
-func (c *CollectionPolicyController) dryRunResult(requestID string, identity PolicyIdentity, prepared PreparedCollectionPolicy) Result {
-	status := "validated"
-	message := "collection policy accepted in dry-run"
-	if prepared.Detection.Status == "degraded" {
-		status = "degraded"
-		message += "; detection dependencies degraded: " + strings.Join(prepared.Detection.Warnings, "; ")
+func collectionApplicationScope(scope *Scope) applicationpolicy.CollectionScope {
+	if scope == nil {
+		return applicationpolicy.CollectionScope{}
 	}
-	return collectionPolicyResult(identity, requestID, prepared, status, message, &prepared.Detection.Coverage)
-}
-
-func appliedCollectionPolicyResult(identity PolicyIdentity, requestID string, prepared PreparedCollectionPolicy, report detection.ApplyReport) Result {
-	if report.Status == "degraded" {
-		message := "collection policy applied; detection dependencies degraded: " + strings.Join(report.Warnings, "; ")
-		return collectionPolicyResult(identity, requestID, prepared, "degraded", message, &report.Coverage)
-	}
-	return collectionPolicyResult(identity, requestID, prepared, "applied", "collection policy applied", &report.Coverage)
+	return applicationpolicy.CollectionScope{Type: scope.Type, Selector: scope.Selector}
 }

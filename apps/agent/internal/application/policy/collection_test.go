@@ -44,7 +44,7 @@ func (f *collectionRuntimeFake) RollbackCollection(context.Context, CollectionCa
 	*f.events = append(*f.events, "rollback")
 	return f.rollbackErr
 }
-func (f *collectionRuntimeFake) ActivateCollection(CollectionCandidate) {
+func (f *collectionRuntimeFake) PublishCollection(CollectionCandidate) {
 	*f.events = append(*f.events, "activate")
 }
 

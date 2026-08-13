@@ -36,7 +36,7 @@ type CollectionRepository interface {
 type CollectionRuntime interface {
 	ApplyCollection(context.Context, CollectionCandidate) error
 	RollbackCollection(context.Context, CollectionCandidate) error
-	ActivateCollection(CollectionCandidate)
+	PublishCollection(CollectionCandidate)
 }
 
 type CollectionService struct {
@@ -70,7 +70,7 @@ func (s *CollectionService) Activate(ctx context.Context, document string, scope
 		}
 		return CollectionResult{}, cause
 	}
-	s.runtime.ActivateCollection(candidate)
+	s.runtime.PublishCollection(candidate)
 	return CollectionResult{Candidate: candidate, Report: candidate.ValidationReport()}, nil
 }
 
