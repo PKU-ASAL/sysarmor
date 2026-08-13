@@ -24,7 +24,6 @@ ALLOWED = {
 }
 AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/config",
-	"apps/agent/internal/content",
 	"apps/agent/internal/control",
 	"apps/agent/internal/daemon",
 	"apps/agent/internal/localapi",
@@ -157,6 +156,13 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertTrue((root / "domain/policy").is_dir())
         self.assertTrue((root / "adapters/policy").is_dir())
         self.assertFalse((root / "policy").exists())
+
+    def test_agent_content_activation_is_layered(self):
+        root = self.repo / "apps/agent/internal"
+        self.assertTrue((root / "domain/content").is_dir())
+        self.assertTrue((root / "application/content").is_dir())
+        self.assertTrue((root / "adapters/content").is_dir())
+        self.assertFalse((root / "content").exists())
         for source in (root / "domain/policy").glob("*.go"):
             imports = IMPORT_PATTERN.findall(source.read_text())
             self.assertFalse(

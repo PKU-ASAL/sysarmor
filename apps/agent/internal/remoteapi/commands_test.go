@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
+	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	"google.golang.org/protobuf/proto"

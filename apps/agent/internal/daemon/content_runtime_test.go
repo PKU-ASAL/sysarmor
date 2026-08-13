@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 )
 

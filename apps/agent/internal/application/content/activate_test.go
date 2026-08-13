@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domaincontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/content"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 )
 
 type repositoryFake struct {
@@ -31,11 +32,13 @@ type runtimeFake struct {
 	buildErr         error
 }
 
-func (f *runtimeFake) BuildDetection(domaincontent.Snapshot) (any, error) {
+func (f *runtimeFake) BuildDetection(domaincontent.Snapshot) (ports.DetectionBuild, error) {
 	f.built = true
-	return struct{}{}, f.buildErr
+	return ports.DetectionBuild{Value: struct{}{}}, f.buildErr
 }
-func (f *runtimeFake) ActivateDetection(domaincontent.Snapshot, any) { f.activated = true }
+func (f *runtimeFake) ActivateDetection(domaincontent.Snapshot, ports.DetectionBuild) {
+	f.activated = true
+}
 
 type mutationFake struct{ released bool }
 

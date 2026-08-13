@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 

@@ -91,7 +91,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
     def test_agent_implementation_is_owned_by_agent_app(self):
         expected = (
             "apps/agent/internal/config",
-            "apps/agent/internal/content",
+            "apps/agent/internal/domain/content",
             "apps/agent/internal/daemon",
             "apps/agent/internal/domain/detection/runtime",
             "apps/agent/internal/domain/event",
@@ -116,6 +116,9 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "domain/event",
             "domain/detection/compiler",
             "domain/detection/matcher",
+            "domain/content",
+            "application/content",
+            "adapters/content",
             "adapters/contracts",
             "adapters/sensor/tetragon",
             "domain/detection/runtime",

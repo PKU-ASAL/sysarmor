@@ -15,9 +15,11 @@ type ContentRepository interface {
 }
 
 type ContentRuntime interface {
-	BuildDetection(snapshot domaincontent.Snapshot) (any, error)
-	ActivateDetection(snapshot domaincontent.Snapshot, built any)
+	BuildDetection(snapshot domaincontent.Snapshot) (DetectionBuild, error)
+	ActivateDetection(snapshot domaincontent.Snapshot, built DetectionBuild)
 }
+
+type DetectionBuild struct{ Value any }
 
 type ContentMutation interface {
 	Begin(context.Context, bool) (func(), error)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
 )
 
 type ContentCommand struct {

@@ -1,8 +1,8 @@
 package daemon
 
 import (
+	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
 )
 
 func collectionContentSnapshot(snapshot agentcontent.Snapshot) agentpolicy.CollectionContentSnapshot {
