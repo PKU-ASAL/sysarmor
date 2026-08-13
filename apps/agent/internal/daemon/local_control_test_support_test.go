@@ -37,14 +37,14 @@ func (u *recordingUploader) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev
 	return (&noopUploader{}).SendBatch(batch)
 }
 
-func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetry.Sender) {
+func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender) {
 	t.Helper()
 	runner.policyController = newApplicationPolicyController
 	ensureTestLocalStore(t, runner)
 	installTestDetection(t, runner)
 	bus := telemetry.NewBus(1024)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
-	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
+	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	return bus, batcher, sender
 }
 

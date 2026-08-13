@@ -110,69 +110,6 @@ func TestBatcherReconfigureSealsPendingBatchAndUsesNewLimits(t *testing.T) {
 	}
 }
 
-func TestSenderRecordsAcceptedBatch(t *testing.T) {
-	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 1)
-	appender := &recordingAppender{}
-	sender := &Sender{Appender: appender, Batcher: batcher}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		sender.Run(ctx)
-	}()
-	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{eventFrame(1, "ev-1")}})
-	batcher.Flush("test")
-	deadline := time.After(time.Second)
-	for {
-		if sender.Stats().SentBatches == 1 {
-			cancel()
-			<-done
-			return
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("sender stats = %+v appends=%d", sender.Stats(), appender.appends)
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-}
-
-func TestSenderDrainsClosedBatcher(t *testing.T) {
-	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 4)
-	appender := &recordingAppender{}
-	sender := &Sender{Appender: appender, Batcher: batcher}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		sender.Run(ctx)
-	}()
-	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{eventFrame(1, "ev-1")}})
-	batcher.CloseAndFlush("shutdown")
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for sender drain")
-	}
-	stats := sender.Stats()
-	if !stats.Drained || stats.SentBatches != 1 || appender.appends != 1 {
-		t.Fatalf("sender stats = %+v appends=%d", stats, appender.appends)
-	}
-	if !batcher.Stats().Closed {
-		t.Fatalf("batcher stats = %+v", batcher.Stats())
-	}
-}
-
-type recordingAppender struct {
-	appends int
-}
-
-func (r *recordingAppender) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev1.DataAck, error) {
-	r.appends++
-	return &dataplanev1.DataAck{Status: dataplanev1.DataAck_STATUS_ACCEPTED, Accepted: true, BatchId: batch.GetHeader().GetBatchId()}, nil
-}
-
 func eventFrame(seq uint64, id string) *dataplanev1.EventFrame {
 	return &dataplanev1.EventFrame{Sequence: seq, Event: &eventv1.CanonicalEvent{Id: id}}
 }

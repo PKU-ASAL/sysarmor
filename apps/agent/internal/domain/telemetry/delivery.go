@@ -1,5 +1,7 @@
 package telemetry
 
+import "time"
+
 type DeliveryOutcome uint8
 
 const (
@@ -8,6 +10,12 @@ const (
 	DeliveryRetryable
 	DeliveryRejected
 )
+
+type SendResult struct {
+	Outcome    DeliveryOutcome
+	RetryAfter time.Duration
+	Message    string
+}
 
 type Batch struct {
 	ID       string

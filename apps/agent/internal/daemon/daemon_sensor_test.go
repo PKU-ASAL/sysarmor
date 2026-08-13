@@ -169,7 +169,7 @@ func TestAgentRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T)
 	}
 	bus := telemetry.NewBus(1024)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
-	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
+	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	health, err := runner.collectHealth(context.Background(), rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatal(err)

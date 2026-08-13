@@ -239,17 +239,17 @@ func resolveSensorHealth(sensor contract.Health, healthErr error, status *sensor
 	return sensor, nil
 }
 
-func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetry.Sender, time.Time) {
+func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
 	bus, _ := source.(*telemetry.Bus)
 	var batcher *telemetryadapter.Batcher
-	var sender *telemetry.Sender
+	var sender *telemetryadapter.RuntimeSender
 	var startedAt time.Time
 	if bus != nil {
 		if len(rest) > 0 {
 			batcher, _ = rest[0].(*telemetryadapter.Batcher)
 		}
 		if len(rest) > 1 {
-			sender, _ = rest[1].(*telemetry.Sender)
+			sender, _ = rest[1].(*telemetryadapter.RuntimeSender)
 		}
 		if len(rest) > 2 {
 			startedAt, _ = rest[2].(time.Time)
@@ -262,10 +262,7 @@ func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetry.
 		batcher = telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 	}
 	if sender == nil {
-		sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
-	}
-	if sender.Batcher == nil {
-		sender.Batcher = batcher
+		sender = telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
 	}
 	if startedAt.IsZero() {
 		startedAt = time.Now().UTC()

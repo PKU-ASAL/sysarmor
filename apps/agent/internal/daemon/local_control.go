@@ -35,16 +35,16 @@ func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorrun
 	return localapi.New(socketPath, handler, r.Out).Start(ctx)
 }
 
-func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetry.Sender, time.Time) {
+func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
 	if bus, ok := source.(*telemetry.Bus); ok {
 		var batcher *telemetryadapter.Batcher
-		var sender *telemetry.Sender
+		var sender *telemetryadapter.RuntimeSender
 		var startedAt time.Time
 		if len(rest) > 0 {
 			batcher, _ = rest[0].(*telemetryadapter.Batcher)
 		}
 		if len(rest) > 1 {
-			sender, _ = rest[1].(*telemetry.Sender)
+			sender, _ = rest[1].(*telemetryadapter.RuntimeSender)
 		}
 		if len(rest) > 2 {
 			startedAt, _ = rest[2].(time.Time)
@@ -53,10 +53,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 			batcher = telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 		}
 		if sender == nil {
-			sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
-		}
-		if sender.Batcher == nil {
-			sender.Batcher = batcher
+			sender = telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
 		}
 		if startedAt.IsZero() {
 			startedAt = time.Now().UTC()
@@ -65,7 +62,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 	}
 	bus := telemetry.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
 	batcher := telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
-	sender := &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
+	sender := telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
 	startedAt := time.Now().UTC()
 	return bus, batcher, sender, startedAt
 }
@@ -75,7 +72,7 @@ type localStatusService struct {
 	runtime   sensorruntime.Runtime
 	bus       *telemetry.Bus
 	batcher   *telemetryadapter.Batcher
-	sender    *telemetry.Sender
+	sender    *telemetryadapter.RuntimeSender
 	startedAt time.Time
 }
 

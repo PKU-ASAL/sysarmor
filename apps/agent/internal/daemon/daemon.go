@@ -177,12 +177,7 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	batchBuilder := telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
 	batcher := telemetryadapter.NewBatcher(batchBuilder.NewBatch, effectiveTelemetry.MaxBatchItems, effectiveTelemetry.FlushInterval, r.Config.Local.Export.MaxInflight*64, effectiveTelemetry.MaxBatchBytes)
 	r.telemetryBatcher = batcher
-	sender := &telemetry.Sender{
-		Appender:     appender,
-		Batcher:      batcher,
-		RetryInitial: r.Config.Local.Export.RetryInitial,
-		RetryMax:     r.Config.Local.Export.RetryMax,
-	}
+	sender := telemetryadapter.NewRuntimeSender(batcher, appender, r.Config.Local.Export.RetryInitial, r.Config.Local.Export.RetryMax)
 	stopLocalControl, err := r.startLocalControlServer(ctx, rt, bus, batcher, sender, startedAt)
 	if err != nil {
 		return failStartup("local_control", err)

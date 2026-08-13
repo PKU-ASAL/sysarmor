@@ -244,7 +244,7 @@ func TestAgentRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
 	bus := telemetry.NewBus(16)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
 	uploader := newRecordingUploader()
-	sender := &telemetry.Sender{Appender: uploader, Batcher: batcher}
+	sender := telemetryadapter.NewRuntimeSender(batcher, uploader, 0, 0)
 	ctx, cancelSender := context.WithCancel(context.Background())
 	defer cancelSender()
 	go sender.Run(ctx)

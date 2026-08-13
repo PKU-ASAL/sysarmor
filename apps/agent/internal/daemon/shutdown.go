@@ -12,7 +12,7 @@ import (
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
-func (r *AgentRuntime) shutdownAndReport(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetryadapter.Batcher, sender *telemetry.Sender, reporter healthReporter, startedAt time.Time, cancelDataPlane func(), stopRuntime func()) error {
+func (r *AgentRuntime) shutdownAndReport(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, reporter healthReporter, startedAt time.Time, cancelDataPlane func(), stopRuntime func()) error {
 	stopRuntime()
 	grace := shutdownDrainTimeout(r.Config)
 	shutdownStarted := time.Now()
@@ -40,7 +40,7 @@ func (r *AgentRuntime) shutdownAndReport(ctx context.Context, rt sensorruntime.R
 	return nil
 }
 
-func (r *AgentRuntime) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetryadapter.Batcher, sender *telemetry.Sender, startedAt time.Time) (agenthealth.AgentHealth, error) {
+func (r *AgentRuntime) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) (agenthealth.AgentHealth, error) {
 	health, err := r.collectHealth(ctx, rt, bus, batcher, sender, startedAt)
 	if err != nil {
 		return agenthealth.AgentHealth{}, err
@@ -61,7 +61,7 @@ func shutdownDrainTimeout(cfg config.Config) time.Duration {
 	return timeout
 }
 
-func waitForSenderDrained(sender *telemetry.Sender, timeout time.Duration) bool {
+func waitForSenderDrained(sender *telemetryadapter.RuntimeSender, timeout time.Duration) bool {
 	if sender == nil {
 		return true
 	}

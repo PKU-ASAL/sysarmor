@@ -14,7 +14,7 @@ type TransportRuntime struct {
 	sensor        sensorruntime.Runtime
 	bus           *telemetry.Bus
 	batcher       *telemetryadapter.Batcher
-	sender        *telemetry.Sender
+	sender        *telemetryadapter.RuntimeSender
 	startedAt     time.Time
 	scopeType     string
 	scopeSelector string
@@ -34,10 +34,10 @@ func NewTransportRuntime(runner *AgentRuntime, sensor sensorruntime.Runtime, sou
 	}
 }
 
-func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetry.Sender, time.Time, string, string) {
+func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time, string, string) {
 	var bus *telemetry.Bus
 	var batcher *telemetryadapter.Batcher
-	var sender *telemetry.Sender
+	var sender *telemetryadapter.RuntimeSender
 	var startedAt time.Time
 	var scopeType, scopeSelector string
 	if b, ok := source.(*telemetry.Bus); ok {
@@ -46,7 +46,7 @@ func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bu
 			batcher, _ = rest[0].(*telemetryadapter.Batcher)
 		}
 		if len(rest) > 1 {
-			sender, _ = rest[1].(*telemetry.Sender)
+			sender, _ = rest[1].(*telemetryadapter.RuntimeSender)
 		}
 		if len(rest) > 2 {
 			startedAt, _ = rest[2].(time.Time)
@@ -60,7 +60,7 @@ func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bu
 	} else if b, ok := source.(*telemetryadapter.Batcher); ok {
 		batcher = b
 		if len(rest) > 0 {
-			sender, _ = rest[0].(*telemetry.Sender)
+			sender, _ = rest[0].(*telemetryadapter.RuntimeSender)
 		}
 		if len(rest) > 1 {
 			startedAt, _ = rest[1].(time.Time)
@@ -73,7 +73,8 @@ func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bu
 		}
 	}
 	if runner == nil {
-		return telemetry.NewBus(0), telemetryadapter.NewBatcher(nil, 0, 0, 0), &telemetry.Sender{Appender: localBatchSender{}}, time.Now().UTC(), "", ""
+		batcher := telemetryadapter.NewBatcher(nil, 0, 0, 0)
+		return telemetry.NewBus(0), batcher, telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0), time.Now().UTC(), "", ""
 	}
 	if bus == nil {
 		bus = telemetry.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
@@ -82,10 +83,7 @@ func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bu
 		batcher = telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, runner.Config.Telemetry.MaxBatchItems, runner.Config.Telemetry.FlushInterval, 64, runner.Config.Telemetry.MaxBatchBytes)
 	}
 	if sender == nil {
-		sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
-	}
-	if sender.Batcher == nil {
-		sender.Batcher = batcher
+		sender = telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
 	}
 	if startedAt.IsZero() {
 		startedAt = time.Now().UTC()
