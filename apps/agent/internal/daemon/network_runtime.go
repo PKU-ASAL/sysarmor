@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	applicationtelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
@@ -30,10 +32,14 @@ func (r *AgentRuntime) managerTLS() tlsconfig.ClientConfig {
 func (r *AgentRuntime) runManagedNetwork(ctx context.Context, enrollment localstore.Enrollment) {
 	tlsCfg := tlsconfig.ClientConfig{CAFile: enrollment.TLSCAPath, CertFile: enrollment.TLSCertPath, KeyFile: enrollment.TLSKeyPath, ServerName: enrollment.TLSServerName}
 	sender := dataappend.NewGRPCAppenderWithTLS(enrollment.GatewayAddress, r.Config.Local.Export.RequestTimeout, "", tlsCfg)
+	cloud := telemetryadapter.NewCloudSender(sender)
 	exportDone := make(chan struct{})
 	go func() {
 		defer close(exportDone)
-		(&exportPipeline{store: r.localStore, exporter: &cloudExporter{sender: sender}, fromSequence: enrollment.ManagedFromSequence, tenantID: enrollment.TenantID, agentID: enrollment.AgentID}).Run(ctx)
+		defer cloud.Close()
+		applicationtelemetry.NewDelivery(telemetryadapter.NewLocalSpool(r.localStore), cloud).Run(ctx, applicationtelemetry.DeliveryScope{
+			FromSequence: enrollment.ManagedFromSequence, TenantID: enrollment.TenantID, AgentID: enrollment.AgentID,
+		})
 	}()
 	if r.managedControl != nil {
 		r.managedControl.runControlFlowForEnrollment(ctx, enrollment, tlsCfg)

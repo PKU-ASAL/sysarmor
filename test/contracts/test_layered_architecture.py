@@ -347,6 +347,15 @@ import (
                 violations.append(str(source.relative_to(self.repo)))
         self.assertEqual([], violations, f"daemon owns policy assembly: {violations}")
 
+    def test_agent_daemon_does_not_own_telemetry_delivery(self):
+        daemon = self.repo / "apps" / "agent" / "internal" / "daemon"
+        for retired in ("export_pipeline.go", "exporter.go"):
+            with self.subTest(retired=retired):
+                self.assertFalse((daemon / retired).exists())
+        network = (daemon / "network_runtime.go").read_text()
+        self.assertIn("applicationtelemetry.NewDelivery", network)
+        self.assertNotIn("exportPipeline", network)
+
     def test_domain_does_not_import_protobuf(self):
         forbidden = f"{MODULE}packages/contracts/proto"
         violations = []
