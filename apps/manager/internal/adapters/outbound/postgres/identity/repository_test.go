@@ -39,15 +39,25 @@ func TestHealthRepositoryRejectsBlankTenant(t *testing.T) {
 
 func TestHealthRepositoryCanonicalizesIdentity(t *testing.T) {
 	db := newIdentityTestDB(t)
-	insertIdentityHealth(t, db, "tenant-a", "agent-a", `{"agent_id":"wrong","tenant_id":"tenant-b","status":"ok","scope":{"type":"host"},"policy_id":"policy-a","policy_version":3,"pending_policy":{"status":"pending","policy_id":"policy-b","version":4}}`)
+	insertIdentityHealth(t, db, "tenant-a", "agent-a", `{"agentId":"wrong","tenantId":"tenant-b","status":"ok","scope":{"type":"host"},"policyId":"policy-a","policyVersion":"3","observedAt":"2026-08-11T05:28:25Z","pendingPolicy":{"status":"pending","policyId":"policy-b","version":"4"}}`)
 	tenantA := mustIdentityTenant(t, "tenant-a")
 	health, err := NewRepositories(db).Health().Get(context.Background(), tenantA, "agent-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if health.TenantID != tenantA || health.AgentID != "agent-a" || health.AppliedPolicy.ID != "policy-a" || health.AppliedPolicy.Version != 3 ||
-		health.PendingPolicy.ID != "policy-b" || health.PendingPolicy.Version != 4 || !strings.Contains(string(health.Document), `"tenant_id":"tenant-a"`) {
+		health.PendingPolicy.ID != "policy-b" || health.PendingPolicy.Version != 4 || health.ReportedAt.IsZero() ||
+		!strings.Contains(string(health.Document), `"tenantId":"tenant-a"`) || strings.Contains(string(health.Document), `"tenant_id"`) {
 		t.Fatalf("health = %+v document=%s", health, health.Document)
+	}
+}
+
+func TestHealthRepositoryRejectsInvalidWireVersion(t *testing.T) {
+	db := newIdentityTestDB(t)
+	insertIdentityHealth(t, db, "tenant-a", "agent-a", `{"status":"ok","policyId":"policy-a","policyVersion":"invalid"}`)
+	_, err := NewRepositories(db).Health().Get(context.Background(), mustIdentityTenant(t, "tenant-a"), "agent-a")
+	if err == nil || !strings.Contains(err.Error(), "policyVersion") {
+		t.Fatalf("Get() error=%v, want invalid policyVersion", err)
 	}
 }
 
@@ -73,6 +83,35 @@ func TestHealthWriterUpsertsCanonicalProjection(t *testing.T) {
 	}
 }
 
+func TestHealthWriterStoresCurrentWireProjectionOnly(t *testing.T) {
+	db := newIdentityTestDB(t)
+	tenantA := mustIdentityTenant(t, "tenant-a")
+	reported := time.Date(2026, 8, 11, 5, 28, 25, 0, time.UTC)
+	health := domainidentity.Health{
+		TenantID: tenantA, AgentID: "agent-a", Status: "ok", ReportedAt: reported,
+		AppliedPolicy: domainidentity.PolicyRef{ID: "policy-a", Version: 3},
+		PendingPolicy: domainidentity.PendingPolicy{Status: "pending", ID: "policy-b", Version: 4},
+		Document:      []byte(`{"tenant_id":"stale","agent_id":"stale","policy_id":"stale","policy_version":1,"observed_at":"2020-01-01T00:00:00Z","pending_policy":{"policy_id":"stale"}}`),
+	}
+	if err := NewHealthWriter(db).Upsert(context.Background(), health); err != nil {
+		t.Fatal(err)
+	}
+	var document string
+	if err := db.QueryRow(`SELECT data FROM agent_health WHERE tenant_id = ? AND agent_id = ?`, "tenant-a", "agent-a").Scan(&document); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"tenantId":"tenant-a"`, `"agentId":"agent-a"`, `"policyId":"policy-a"`, `"policyVersion":"3"`, `"observedAt":"2026-08-11T05:28:25Z"`, `"pendingPolicy"`} {
+		if !strings.Contains(document, want) {
+			t.Fatalf("document missing %s: %s", want, document)
+		}
+	}
+	for _, legacy := range []string{`"tenant_id"`, `"agent_id"`, `"policy_id"`, `"policy_version"`, `"observed_at"`, `"pending_policy"`} {
+		if strings.Contains(document, legacy) {
+			t.Fatalf("document retains legacy field %s: %s", legacy, document)
+		}
+	}
+}
+
 func TestHealthWriterCanonicalizesDocumentIdentity(t *testing.T) {
 	db := newIdentityTestDB(t)
 	tenantA := mustIdentityTenant(t, "tenant-a")
@@ -93,7 +132,7 @@ func TestHealthRepositoryKeepsProjectedAndReportedObservationTimesSeparate(t *te
 	db := newIdentityTestDB(t)
 	projected := time.Date(2026, 8, 10, 1, 2, 3, 0, time.UTC)
 	if _, err := db.Exec(`INSERT INTO agent_health (tenant_id, agent_id, observed_at, data) VALUES (?, ?, ?, ?)`,
-		"tenant-a", "agent-a", projected, []byte(`{"tenant_id":"tenant-a","agent_id":"agent-a","observed_at":"0001-01-01T00:00:00Z"}`)); err != nil {
+		"tenant-a", "agent-a", projected, []byte(`{"tenantId":"tenant-a","agentId":"agent-a","observedAt":"0001-01-01T00:00:00Z"}`)); err != nil {
 		t.Fatal(err)
 	}
 	health, err := NewRepositories(db).Health().Get(context.Background(), mustIdentityTenant(t, "tenant-a"), "agent-a")
@@ -107,8 +146,8 @@ func TestHealthRepositoryKeepsProjectedAndReportedObservationTimesSeparate(t *te
 
 func TestSessionRepositoryReadsNullableProjection(t *testing.T) {
 	db := newIdentityTestDB(t)
-	if _, err := db.Exec(`INSERT INTO agent_sessions (tenant_id, session_id, agent_id, data) VALUES (?, ?, ?, ?)`,
-		"tenant-a", "session-a", "agent-a", []byte(`{"tenant_id":"wrong","session_id":"wrong","agent_id":"wrong","last_ack_cursor":"batch-7"}`)); err != nil {
+	if _, err := db.Exec(`INSERT INTO agent_sessions (tenant_id, session_id, agent_id, last_ack_cursor, data) VALUES (?, ?, ?, ?, ?)`,
+		"tenant-a", "session-a", "agent-a", "batch-7", []byte(`{"last_ack_cursor":"stale-document-value"}`)); err != nil {
 		t.Fatal(err)
 	}
 	tenantA := mustIdentityTenant(t, "tenant-a")
@@ -117,6 +156,27 @@ func TestSessionRepositoryReadsNullableProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(sessions) != 1 || sessions[0].ID != "session-a" || sessions[0].AgentID != "agent-a" || sessions[0].LastAckCursor != "batch-7" {
+		t.Fatalf("sessions = %+v", sessions)
+	}
+}
+
+func TestSessionRepositoryUsesPostgresProjectionColumns(t *testing.T) {
+	db := newIdentityTestDB(t)
+	now := time.Date(2026, 8, 11, 5, 20, 0, 0, time.UTC)
+	if _, err := db.Exec(`INSERT INTO agent_sessions (
+tenant_id, session_id, agent_id, status, data_transport, control_transport, last_ack_cursor,
+started_at, last_seen_at, last_data_seen_at, last_control_seen_at, data
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, "tenant-a", "session-a", "agent-a", "active",
+		"grpc_stream", "control", "batch-7", now, now, now, now, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := NewRepositories(db).Sessions().List(context.Background(), mustIdentityTenant(t, "tenant-a"), domainidentity.SessionFilter{AgentID: "agent-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].DataTransport != "grpc_stream" || sessions[0].ControlTransport != "control" ||
+		sessions[0].LastAckCursor != "batch-7" || !sessions[0].LastSeenAt.Equal(now) {
 		t.Fatalf("sessions = %+v", sessions)
 	}
 }

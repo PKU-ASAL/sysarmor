@@ -3,6 +3,7 @@ package identity
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
@@ -23,16 +24,16 @@ func decodeAgent(tenantID tenant.ID, id, host, version string, document []byte) 
 func decodeHealth(tenantID tenant.ID, agentID domainidentity.AgentID, host, scopeType, scopeSelector string, observed time.Time, document []byte) (domainidentity.Health, error) {
 	var fields struct {
 		Status        string    `json:"status"`
-		PolicyID      string    `json:"policy_id"`
-		PolicyVersion uint64    `json:"policy_version"`
-		ObservedAt    time.Time `json:"observed_at"`
+		PolicyID      string    `json:"policyId"`
+		PolicyVersion string    `json:"policyVersion"`
+		ObservedAt    time.Time `json:"observedAt"`
 		PendingPolicy struct {
 			Status   string `json:"status"`
 			Source   string `json:"source"`
-			PolicyID string `json:"policy_id"`
-			Version  uint64 `json:"version"`
+			PolicyID string `json:"policyId"`
+			Version  string `json:"version"`
 			Digest   string `json:"digest"`
-		} `json:"pending_policy"`
+		} `json:"pendingPolicy"`
 	}
 	if err := json.Unmarshal(document, &fields); err != nil {
 		return domainidentity.Health{}, fmt.Errorf("decode agent health: %w", err)
@@ -41,38 +42,36 @@ func decodeHealth(tenantID tenant.ID, agentID domainidentity.AgentID, host, scop
 	if err := json.Unmarshal(document, &canonical); err != nil {
 		return domainidentity.Health{}, fmt.Errorf("decode health document: %w", err)
 	}
-	canonical["tenant_id"], _ = json.Marshal(tenantID.String())
-	canonical["agent_id"], _ = json.Marshal(string(agentID))
+	canonical["tenantId"], _ = json.Marshal(tenantID.String())
+	canonical["agentId"], _ = json.Marshal(string(agentID))
+	delete(canonical, "tenant_id")
+	delete(canonical, "agent_id")
 	encoded, err := json.Marshal(canonical)
 	if err != nil {
 		return domainidentity.Health{}, fmt.Errorf("encode health document: %w", err)
 	}
+	policyVersion, err := parseWireVersion("policyVersion", fields.PolicyVersion)
+	if err != nil {
+		return domainidentity.Health{}, err
+	}
+	pendingVersion, err := parseWireVersion("pendingPolicy.version", fields.PendingPolicy.Version)
+	if err != nil {
+		return domainidentity.Health{}, err
+	}
 	return domainidentity.Health{TenantID: tenantID, AgentID: agentID, HostID: host, Status: fields.Status,
 		Scope: domainidentity.Scope{Type: scopeType, Selector: scopeSelector}, ObservedAt: observed, ReportedAt: fields.ObservedAt, Document: encoded,
-		AppliedPolicy: domainidentity.PolicyRef{ID: fields.PolicyID, Version: fields.PolicyVersion},
+		AppliedPolicy: domainidentity.PolicyRef{ID: fields.PolicyID, Version: policyVersion},
 		PendingPolicy: domainidentity.PendingPolicy{Status: fields.PendingPolicy.Status, Source: fields.PendingPolicy.Source,
-			ID: fields.PendingPolicy.PolicyID, Version: fields.PendingPolicy.Version, Digest: fields.PendingPolicy.Digest}}, nil
+			ID: fields.PendingPolicy.PolicyID, Version: pendingVersion, Digest: fields.PendingPolicy.Digest}}, nil
 }
 
-func decodeSession(tenantID tenant.ID, id, agentID string, document []byte) (domainidentity.Session, error) {
-	var wire struct {
-		StartedAt         time.Time `json:"started_at"`
-		LastSeenAt        time.Time `json:"last_seen_at"`
-		LastDataSeenAt    time.Time `json:"last_data_seen_at"`
-		LastControlSeenAt time.Time `json:"last_control_seen_at"`
-		ClosedAt          time.Time `json:"closed_at"`
-		LastAckCursor     string    `json:"last_ack_cursor"`
-		DataTransport     string    `json:"data_transport"`
-		ControlTransport  string    `json:"control_transport"`
-		Status            string    `json:"status"`
+func parseWireVersion(field, value string) (uint64, error) {
+	if value == "" {
+		return 0, nil
 	}
-	if err := json.Unmarshal(document, &wire); err != nil {
-		return domainidentity.Session{}, fmt.Errorf("decode agent session: %w", err)
+	version, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", field, err)
 	}
-	return domainidentity.Session{
-		TenantID: tenantID, ID: id, AgentID: domainidentity.AgentID(agentID),
-		StartedAt: wire.StartedAt, LastSeenAt: wire.LastSeenAt,
-		LastDataSeenAt: wire.LastDataSeenAt, LastControlSeenAt: wire.LastControlSeenAt, ClosedAt: wire.ClosedAt,
-		LastAckCursor: wire.LastAckCursor, DataTransport: wire.DataTransport, ControlTransport: wire.ControlTransport, Status: wire.Status,
-	}, nil
+	return version, nil
 }

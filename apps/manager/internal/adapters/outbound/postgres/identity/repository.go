@@ -109,19 +109,17 @@ func (repo sessionRepository) List(ctx context.Context, tenantID tenant.ID, filt
 	if err := requireTenant(tenantID); err != nil {
 		return nil, err
 	}
-	rows, err := repo.db.QueryContext(ctx, `SELECT session_id, agent_id, data FROM agent_sessions WHERE tenant_id = $1 AND ($2 = '' OR agent_id = $2) ORDER BY last_seen_at DESC, session_id ASC`, tenantID.String(), filter.AgentID)
+	rows, err := repo.db.QueryContext(ctx, `SELECT session_id,agent_id,status,data_transport,control_transport,last_ack_cursor,
+started_at,last_seen_at,last_data_seen_at,last_control_seen_at,closed_at
+FROM agent_sessions WHERE tenant_id = $1 AND ($2 = '' OR agent_id = $2)
+ORDER BY last_seen_at DESC, session_id ASC`, tenantID.String(), filter.AgentID)
 	if err != nil {
 		return nil, fmt.Errorf("query agent sessions: %w", err)
 	}
 	defer rows.Close()
 	result := []domainidentity.Session{}
 	for rows.Next() {
-		var id, agentID string
-		var document []byte
-		if err := rows.Scan(&id, &agentID, &document); err != nil {
-			return nil, fmt.Errorf("scan agent session: %w", err)
-		}
-		value, err := decodeSession(tenantID, id, agentID, document)
+		value, err := scanSession(rows, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -131,6 +129,22 @@ func (repo sessionRepository) List(ctx context.Context, tenantID tenant.ID, filt
 		return nil, fmt.Errorf("iterate agent sessions: %w", err)
 	}
 	return result, nil
+}
+
+func scanSession(row interface{ Scan(...any) error }, tenantID tenant.ID) (domainidentity.Session, error) {
+	var id, agentID string
+	var status, dataTransport, controlTransport, cursor sql.NullString
+	var started, seen, dataSeen, controlSeen, closed sql.NullTime
+	if err := row.Scan(&id, &agentID, &status, &dataTransport, &controlTransport, &cursor,
+		&started, &seen, &dataSeen, &controlSeen, &closed); err != nil {
+		return domainidentity.Session{}, fmt.Errorf("scan agent session: %w", err)
+	}
+	return domainidentity.Session{
+		TenantID: tenantID, ID: id, AgentID: domainidentity.AgentID(agentID), Status: status.String,
+		DataTransport: dataTransport.String, ControlTransport: controlTransport.String, LastAckCursor: cursor.String,
+		StartedAt: observedTime(started), LastSeenAt: observedTime(seen), LastDataSeenAt: observedTime(dataSeen),
+		LastControlSeenAt: observedTime(controlSeen), ClosedAt: observedTime(closed),
+	}, nil
 }
 
 type snapshotRepository struct{ db *sql.DB }

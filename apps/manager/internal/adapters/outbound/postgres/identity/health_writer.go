@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
@@ -44,18 +45,27 @@ func healthDocument(health domainidentity.Health) ([]byte, error) {
 			return nil, fmt.Errorf("decode agent health document: %w", err)
 		}
 	}
-	tenantID, err := json.Marshal(health.TenantID.String())
-	if err != nil {
-		return nil, fmt.Errorf("encode agent health tenant: %w", err)
-	}
-	agentID, err := json.Marshal(string(health.AgentID))
-	if err != nil {
-		return nil, fmt.Errorf("encode agent health agent: %w", err)
-	}
-	fields["tenant_id"], fields["agent_id"] = tenantID, agentID
+	setHealthProjection(fields, health)
 	document, err := json.Marshal(fields)
 	if err != nil {
 		return nil, fmt.Errorf("encode agent health document: %w", err)
 	}
 	return document, nil
+}
+
+func setHealthProjection(fields map[string]json.RawMessage, health domainidentity.Health) {
+	for _, key := range []string{"tenant_id", "agent_id", "policy_id", "policy_version", "observed_at", "pending_policy"} {
+		delete(fields, key)
+	}
+	fields["tenantId"], _ = json.Marshal(health.TenantID.String())
+	fields["agentId"], _ = json.Marshal(string(health.AgentID))
+	fields["status"], _ = json.Marshal(health.Status)
+	fields["policyId"], _ = json.Marshal(health.AppliedPolicy.ID)
+	fields["policyVersion"], _ = json.Marshal(strconv.FormatUint(health.AppliedPolicy.Version, 10))
+	if !health.ReportedAt.IsZero() {
+		fields["observedAt"], _ = json.Marshal(health.ReportedAt.UTC())
+	}
+	pending := map[string]any{"status": health.PendingPolicy.Status, "source": health.PendingPolicy.Source,
+		"policyId": health.PendingPolicy.ID, "version": strconv.FormatUint(health.PendingPolicy.Version, 10), "digest": health.PendingPolicy.Digest}
+	fields["pendingPolicy"], _ = json.Marshal(pending)
 }
