@@ -18,7 +18,6 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/tamper"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
@@ -170,7 +169,7 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return failStartup("data_plane", err)
 	}
-	bus := telemetry.NewBus(effectiveTelemetry.MaxBatchItems * 16)
+	bus := telemetryadapter.NewBus(effectiveTelemetry.MaxBatchItems * 16)
 	if local, ok := appender.(*localStoreBatchSender); ok {
 		local.onCommit = bus.PublishBatch
 	}

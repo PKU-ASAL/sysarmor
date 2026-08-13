@@ -14,7 +14,6 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/tamper"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -167,7 +166,7 @@ func TestAgentRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T)
 	if _, err := rt.Apply(context.Background(), contract.CollectionIntent{ObserveOnly: true}); err != nil {
 		t.Fatal(err)
 	}
-	bus := telemetry.NewBus(1024)
+	bus := telemetryadapter.NewBus(1024)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	health, err := runner.collectHealth(context.Background(), rt, bus, batcher, sender, time.Now())

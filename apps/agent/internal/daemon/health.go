@@ -7,7 +7,6 @@ import (
 
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -239,8 +238,8 @@ func resolveSensorHealth(sensor contract.Health, healthErr error, status *sensor
 	return sensor, nil
 }
 
-func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
-	bus, _ := source.(*telemetry.Bus)
+func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
+	bus, _ := source.(*telemetryadapter.Bus)
 	var batcher *telemetryadapter.Batcher
 	var sender *telemetryadapter.RuntimeSender
 	var startedAt time.Time
@@ -256,7 +255,7 @@ func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetry.
 		}
 	}
 	if bus == nil {
-		bus = telemetry.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
+		bus = telemetryadapter.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
 	}
 	if batcher == nil {
 		batcher = telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)

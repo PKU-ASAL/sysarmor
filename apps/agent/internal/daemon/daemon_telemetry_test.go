@@ -17,7 +17,6 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -241,7 +240,7 @@ func TestAgentRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
 		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
 		capability: contract.Capability{Backend: "fake", SupportsHealth: true},
 	}
-	bus := telemetry.NewBus(16)
+	bus := telemetryadapter.NewBus(16)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
 	uploader := newRecordingUploader()
 	sender := telemetryadapter.NewRuntimeSender(batcher, uploader, 0, 0)

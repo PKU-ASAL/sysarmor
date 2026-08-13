@@ -9,7 +9,6 @@ import (
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"google.golang.org/grpc"
@@ -37,12 +36,12 @@ func (u *recordingUploader) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev
 	return (&noopUploader{}).SendBatch(batch)
 }
 
-func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender) {
+func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender) {
 	t.Helper()
 	runner.policyController = newApplicationPolicyController
 	ensureTestLocalStore(t, runner)
 	installTestDetection(t, runner)
-	bus := telemetry.NewBus(1024)
+	bus := telemetryadapter.NewBus(1024)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	return bus, batcher, sender

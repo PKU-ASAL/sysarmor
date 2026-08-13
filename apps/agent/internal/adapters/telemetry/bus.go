@@ -18,22 +18,18 @@ type Bus struct {
 	eventWatchers  map[uint64]chan *dataplanev1.EventFrame
 	signalWatchers map[uint64]chan *dataplanev1.SignalFrame
 	nextWatcherID  uint64
-
-	publishedEvents  uint64
-	publishedSignals uint64
-	droppedEvents    uint64
-	droppedSignals   uint64
+	droppedEvents  uint64
+	droppedSignals uint64
 }
 
 type BusStats struct {
-	EventCapacity       uint64
-	EventBuffered       uint64
-	EventNextSequence   uint64
-	EventOldestSequence uint64
-	EventNewestSequence uint64
-	EventDropped        uint64
-	EventSubscribers    uint64
-
+	EventCapacity        uint64
+	EventBuffered        uint64
+	EventNextSequence    uint64
+	EventOldestSequence  uint64
+	EventNewestSequence  uint64
+	EventDropped         uint64
+	EventSubscribers     uint64
 	SignalCapacity       uint64
 	SignalBuffered       uint64
 	SignalNextSequence   uint64
@@ -48,8 +44,7 @@ func NewBus(capacity int) *Bus {
 		capacity = defaultBusCapacity
 	}
 	return &Bus{
-		capacity:       capacity,
-		eventWatchers:  make(map[uint64]chan *dataplanev1.EventFrame),
+		capacity: capacity, eventWatchers: make(map[uint64]chan *dataplanev1.EventFrame),
 		signalWatchers: make(map[uint64]chan *dataplanev1.SignalFrame),
 	}
 }
@@ -72,7 +67,6 @@ func (b *Bus) PublishEvent(frame *dataplanev1.EventFrame) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	atomic.AddUint64(&b.publishedEvents, 1)
 	if len(b.events) >= b.capacity {
 		copy(b.events, b.events[1:])
 		b.events[len(b.events)-1] = frame
@@ -96,7 +90,6 @@ func (b *Bus) PublishSignal(frame *dataplanev1.SignalFrame) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	atomic.AddUint64(&b.publishedSignals, 1)
 	if len(b.signals) >= b.capacity {
 		copy(b.signals, b.signals[1:])
 		b.signals[len(b.signals)-1] = frame
@@ -138,20 +131,8 @@ func (b *Bus) WatchEvents(ctx context.Context) <-chan *dataplanev1.EventFrame {
 		close(out)
 		return out
 	}
-	b.mu.Lock()
-	b.nextWatcherID++
-	id := b.nextWatcherID
-	b.eventWatchers[id] = out
-	b.mu.Unlock()
-	go func() {
-		<-ctx.Done()
-		b.mu.Lock()
-		if ch, ok := b.eventWatchers[id]; ok {
-			delete(b.eventWatchers, id)
-			close(ch)
-		}
-		b.mu.Unlock()
-	}()
+	id := b.addEventWatcher(out)
+	go b.removeEventWatcher(ctx, id)
 	return out
 }
 
@@ -161,21 +142,45 @@ func (b *Bus) WatchSignals(ctx context.Context) <-chan *dataplanev1.SignalFrame 
 		close(out)
 		return out
 	}
-	b.mu.Lock()
-	b.nextWatcherID++
-	id := b.nextWatcherID
-	b.signalWatchers[id] = out
-	b.mu.Unlock()
-	go func() {
-		<-ctx.Done()
-		b.mu.Lock()
-		if ch, ok := b.signalWatchers[id]; ok {
-			delete(b.signalWatchers, id)
-			close(ch)
-		}
-		b.mu.Unlock()
-	}()
+	id := b.addSignalWatcher(out)
+	go b.removeSignalWatcher(ctx, id)
 	return out
+}
+
+func (b *Bus) addEventWatcher(watcher chan *dataplanev1.EventFrame) uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextWatcherID++
+	b.eventWatchers[b.nextWatcherID] = watcher
+	return b.nextWatcherID
+}
+
+func (b *Bus) addSignalWatcher(watcher chan *dataplanev1.SignalFrame) uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextWatcherID++
+	b.signalWatchers[b.nextWatcherID] = watcher
+	return b.nextWatcherID
+}
+
+func (b *Bus) removeEventWatcher(ctx context.Context, id uint64) {
+	<-ctx.Done()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if watcher, ok := b.eventWatchers[id]; ok {
+		delete(b.eventWatchers, id)
+		close(watcher)
+	}
+}
+
+func (b *Bus) removeSignalWatcher(ctx context.Context, id uint64) {
+	<-ctx.Done()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if watcher, ok := b.signalWatchers[id]; ok {
+		delete(b.signalWatchers, id)
+		close(watcher)
+	}
 }
 
 func (b *Bus) Stats() BusStats {
@@ -185,14 +190,8 @@ func (b *Bus) Stats() BusStats {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	stats := BusStats{
-		EventCapacity:     uint64(b.capacity),
-		EventBuffered:     uint64(len(b.events)),
-		EventDropped:      atomic.LoadUint64(&b.droppedEvents),
-		EventSubscribers:  uint64(len(b.eventWatchers)),
-		SignalCapacity:    uint64(b.capacity),
-		SignalBuffered:    uint64(len(b.signals)),
-		SignalDropped:     atomic.LoadUint64(&b.droppedSignals),
-		SignalSubscribers: uint64(len(b.signalWatchers)),
+		EventCapacity: uint64(b.capacity), EventBuffered: uint64(len(b.events)), EventDropped: atomic.LoadUint64(&b.droppedEvents), EventSubscribers: uint64(len(b.eventWatchers)),
+		SignalCapacity: uint64(b.capacity), SignalBuffered: uint64(len(b.signals)), SignalDropped: atomic.LoadUint64(&b.droppedSignals), SignalSubscribers: uint64(len(b.signalWatchers)),
 	}
 	if len(b.events) > 0 {
 		stats.EventOldestSequence = b.events[0].GetSequence()

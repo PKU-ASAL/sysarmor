@@ -6,13 +6,12 @@ import (
 
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 )
 
 type TransportRuntime struct {
 	runner        *AgentRuntime
 	sensor        sensorruntime.Runtime
-	bus           *telemetry.Bus
+	bus           *telemetryadapter.Bus
 	batcher       *telemetryadapter.Batcher
 	sender        *telemetryadapter.RuntimeSender
 	startedAt     time.Time
@@ -34,13 +33,13 @@ func NewTransportRuntime(runner *AgentRuntime, sensor sensorruntime.Runtime, sou
 	}
 }
 
-func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time, string, string) {
-	var bus *telemetry.Bus
+func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time, string, string) {
+	var bus *telemetryadapter.Bus
 	var batcher *telemetryadapter.Batcher
 	var sender *telemetryadapter.RuntimeSender
 	var startedAt time.Time
 	var scopeType, scopeSelector string
-	if b, ok := source.(*telemetry.Bus); ok {
+	if b, ok := source.(*telemetryadapter.Bus); ok {
 		bus = b
 		if len(rest) > 0 {
 			batcher, _ = rest[0].(*telemetryadapter.Batcher)
@@ -74,10 +73,10 @@ func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bu
 	}
 	if runner == nil {
 		batcher := telemetryadapter.NewBatcher(nil, 0, 0, 0)
-		return telemetry.NewBus(0), batcher, telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0), time.Now().UTC(), "", ""
+		return telemetryadapter.NewBus(0), batcher, telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0), time.Now().UTC(), "", ""
 	}
 	if bus == nil {
-		bus = telemetry.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
+		bus = telemetryadapter.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
 	}
 	if batcher == nil {
 		batcher = telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, runner.Config.Telemetry.MaxBatchItems, runner.Config.Telemetry.FlushInterval, 64, runner.Config.Telemetry.MaxBatchBytes)

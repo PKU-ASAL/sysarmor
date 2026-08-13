@@ -8,7 +8,6 @@ import (
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localapi"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 )
 
 func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (func(), error) {
@@ -35,8 +34,8 @@ func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorrun
 	return localapi.New(socketPath, handler, r.Out).Start(ctx)
 }
 
-func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
-	if bus, ok := source.(*telemetry.Bus); ok {
+func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
+	if bus, ok := source.(*telemetryadapter.Bus); ok {
 		var batcher *telemetryadapter.Batcher
 		var sender *telemetryadapter.RuntimeSender
 		var startedAt time.Time
@@ -60,7 +59,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 		}
 		return bus, batcher, sender, startedAt
 	}
-	bus := telemetry.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
+	bus := telemetryadapter.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
 	batcher := telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 	sender := telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
 	startedAt := time.Now().UTC()
@@ -70,7 +69,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 type localStatusService struct {
 	runner    *AgentRuntime
 	runtime   sensorruntime.Runtime
-	bus       *telemetry.Bus
+	bus       *telemetryadapter.Bus
 	batcher   *telemetryadapter.Batcher
 	sender    *telemetryadapter.RuntimeSender
 	startedAt time.Time
@@ -78,7 +77,7 @@ type localStatusService struct {
 
 type localTelemetryService struct {
 	runner *AgentRuntime
-	bus    *telemetry.Bus
+	bus    *telemetryadapter.Bus
 }
 
 func (r *AgentRuntime) configureEnrollmentCoordinator(ctx context.Context, rt sensorruntime.Runtime) *enrollmentCoordinator {
