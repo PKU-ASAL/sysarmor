@@ -185,6 +185,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             self.assertNotIn("internal/adapters/", text)
             self.assertNotIn("any", text)
 
+    def test_policy_application_models_managed_pending(self):
+        source = (self.repo / "apps/agent/internal/application/policy/activate.go").read_text()
+        for symbol in ("PendingStore", "ActivateManaged", "ManagedResult"):
+            self.assertIn(symbol, source)
+
     def test_agent_detection_matcher_is_layered(self):
         root = self.repo / "apps/agent/internal"
         self.assertTrue((root / "domain/detection/matcher").is_dir())

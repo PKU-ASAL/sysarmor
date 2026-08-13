@@ -40,6 +40,21 @@ func (f *authorityFake) Begin(context.Context, Source, bool) (func(), error) {
 	return func() {}, nil
 }
 
+type pendingFake struct {
+	saved, activated, promoted       bool
+	saveErr, activateErr, promoteErr error
+}
+
+func (f *pendingFake) SaveDesired(context.Context, Candidate) error { f.saved = true; return f.saveErr }
+func (f *pendingFake) ActivateDesired(context.Context, Candidate) error {
+	f.activated = true
+	return f.activateErr
+}
+func (f *pendingFake) Promote(context.Context, Candidate) error {
+	f.promoted = true
+	return f.promoteErr
+}
+
 func TestActivateCommitsBeforeRuntimeActivation(t *testing.T) {
 	repo := &repositoryFake{candidate: Candidate{ID: "p1", Version: 2}}
 	runtime := &runtimeFake{report: Report{Status: "applied"}}
@@ -72,5 +87,31 @@ func TestActivatePropagatesPrepareFailure(t *testing.T) {
 	}
 	if repo.committed {
 		t.Fatal("committed after prepare failure")
+	}
+}
+
+func TestValidateDoesNotCommitOrActivate(t *testing.T) {
+	repo := &repositoryFake{candidate: Candidate{ID: "p1"}}
+	runtime := &runtimeFake{}
+	service := NewService(repo, runtime, &authorityFake{})
+	if _, err := service.Validate(context.Background(), "{}", SourceManaged); err != nil {
+		t.Fatal(err)
+	}
+	if repo.committed || runtime.applied || runtime.activated {
+		t.Fatalf("validation mutated state repo=%+v runtime=%+v", repo, runtime)
+	}
+}
+
+func TestActivateManagedPersistsPendingWhenSensorUnavailable(t *testing.T) {
+	repo := &repositoryFake{candidate: Candidate{ID: "p1"}}
+	runtime := &runtimeFake{applyErr: errors.New("sensor unavailable")}
+	pending := &pendingFake{}
+	service := NewService(repo, runtime, &authorityFake{})
+	result, err := service.ActivateManaged(context.Background(), "{}", pending, SourceManaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Pending || !pending.saved || pending.activated || pending.promoted || runtime.activated {
+		t.Fatalf("result=%+v pending=%+v runtime=%+v", result, pending, runtime)
 	}
 }

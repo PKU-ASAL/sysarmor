@@ -45,10 +45,57 @@ type Authority interface {
 	Begin(context.Context, Source, bool) (func(), error)
 }
 
+type PendingStore interface {
+	SaveDesired(context.Context, Candidate) error
+	ActivateDesired(context.Context, Candidate) error
+	Promote(context.Context, Candidate) error
+}
+
 type Service struct {
 	repository Repository
 	runtime    Runtime
 	authority  Authority
+}
+
+type ManagedResult struct {
+	Candidate Candidate
+	Report    Report
+	Pending   bool
+}
+
+func (s *Service) ActivateManaged(ctx context.Context, document string, pending PendingStore, source Source) (ManagedResult, error) {
+	if pending == nil {
+		return ManagedResult{}, fmt.Errorf("managed policy pending store is not initialized")
+	}
+	candidate, err := s.Validate(ctx, document, source)
+	if err != nil {
+		return ManagedResult{}, err
+	}
+	if err := pending.SaveDesired(ctx, candidate); err != nil {
+		return ManagedResult{}, err
+	}
+	report, err := s.runtime.Apply(ctx, candidate)
+	if err != nil {
+		return ManagedResult{Candidate: candidate, Pending: true}, nil
+	}
+	if report.Status == "rejected" {
+		return ManagedResult{Candidate: candidate, Report: report, Pending: true}, nil
+	}
+	if err := pending.ActivateDesired(ctx, candidate); err != nil {
+		return ManagedResult{Candidate: candidate, Report: report, Pending: true}, nil
+	}
+	if err := pending.Promote(ctx, candidate); err != nil {
+		return ManagedResult{Candidate: candidate, Report: report, Pending: true}, nil
+	}
+	s.runtime.Activate(candidate, report)
+	return ManagedResult{Candidate: candidate, Report: report}, nil
+}
+
+func (s *Service) Validate(ctx context.Context, document string, source Source) (Candidate, error) {
+	if s == nil || s.repository == nil {
+		return Candidate{}, fmt.Errorf("policy service is not initialized")
+	}
+	return s.repository.Prepare(ctx, document, source)
 }
 
 func NewService(repository Repository, runtime Runtime, authority Authority) *Service {
