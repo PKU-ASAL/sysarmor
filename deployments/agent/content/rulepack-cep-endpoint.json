@@ -125,6 +125,10 @@
                     {"not": {"any": [
                       {"all": [
                         {"condition": {"field": "process.binary", "op": "eq", "value": "/usr/bin/sudo"}},
+                        {"condition": {"field": "file.path", "op": "prefix", "value": "/etc/sudoers"}}
+                      ]},
+                      {"all": [
+                        {"condition": {"field": "process.binary", "op": "eq", "value": "/usr/bin/sudo"}},
                         {"condition": {"field": "process.sudo_command", "op": "eq", "value": "sysarmorctl"}}
                       ]},
                       {"all": [

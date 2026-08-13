@@ -661,6 +661,7 @@ func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSeque
 	}
 	st.Refs = appendUnique(st.Refs, view.eventID)
 	st.Entities = appendUniqueEntities(st.Entities, eventEntities(view.ev)...)
+	st.Entities = appendUniqueEntities(st.Entities, sequenceEvidenceEntities(view, step, st)...)
 	if len(st.Refs) > e.limits.MaxCEPRefs {
 		e.metrics.DroppedEventRefs += uint64(len(st.Refs) - e.limits.MaxCEPRefs)
 		st.Refs = st.Refs[len(st.Refs)-e.limits.MaxCEPRefs:]

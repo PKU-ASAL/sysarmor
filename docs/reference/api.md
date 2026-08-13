@@ -1,6 +1,6 @@
 # API 与协议参考
 
-本文说明 SysArmor 当前 API 边界、端点分类和版本演进规则。精确请求/响应字段以 `apps/manager/internal/api/` 的 handler 与测试、`packages/contracts/proto/` 的 protobuf 为准。
+本文说明 SysArmor 当前 API 边界、端点分类和版本演进规则。精确请求/响应字段以 `apps/manager/internal/adapters/inbound/http/manager/` 的 handler 与测试、`packages/contracts/proto/` 的 protobuf 为准。
 
 ## 信任边界
 
@@ -65,7 +65,7 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 | `GET` | `/api/v1/rarity-baseline` | rarity 基线 |
 | `GET` | `/api/v1/data-resume` | Agent 上传续传 cursor |
 
-测试和维护接口 `/api/v1/reset`、`/api/v1/recompute` 不应作为稳定产品集成契约。
+旧测试和维护接口 `/api/v1/reset`、`/api/v1/recompute` 已移除，不属于产品集成契约。
 
 创建 enrollment 会同时返回手工注册 token 和 `install_url`。`install_url` 中的 bootstrap ticket 只能读取一次；兑换时 Manager 轮换 enrollment token，因此创建响应中的手工 token 随即失效。安装脚本通过 `Authorization: Enrollment <token>` 获取受保护 artifact，并用 token 与 CSR 请求证书。相同 token 与相同公钥的证书请求幂等返回原证书，不同公钥返回冲突。tenant、Agent ID、Gateway 和 TLS server name 只取 Manager enrollment，CSR subject 不参与授权。
 

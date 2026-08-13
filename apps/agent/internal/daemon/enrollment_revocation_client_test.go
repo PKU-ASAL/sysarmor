@@ -94,7 +94,7 @@ func revocationClientEnrollment(t *testing.T) (localstore.Enrollment, grpc.Serve
 	serverKeyPath := writeRevocationECKey(t, dir, "server-key.pem", serverKey)
 	clientCertPath := writeRevocationPEM(t, dir, "agent.pem", "CERTIFICATE", clientCert.Raw)
 	clientKeyPath := writeRevocationECKey(t, dir, "agent-key.pem", clientKey)
-	serverOpt, err := tlsconfig.ServerOption(serverCertPath, serverKeyPath, caPath, true)
+	serverOpt, err := tlsconfig.MTLSServerOption(serverCertPath, serverKeyPath, caPath)
 	if err != nil {
 		t.Fatal(err)
 	}

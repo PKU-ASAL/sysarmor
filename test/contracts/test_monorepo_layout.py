@@ -144,51 +144,33 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                 violations.append(str(source.relative_to(self.repo)))
         self.assertEqual([], violations, f"agent imports manager implementation: {violations}")
 
+    def test_manager_does_not_import_agent_implementation(self):
+        manager = self.repo / "apps/manager"
+        violations = []
+        for source in manager.rglob("*.go"):
+            if "github.com/sysarmor/sysarmor-next-project/apps/agent/" in source.read_text():
+                violations.append(str(source.relative_to(self.repo)))
+        self.assertEqual([], violations, f"manager imports agent implementation: {violations}")
+
     def test_manager_implementation_is_owned_by_manager_app(self):
         expected = (
-            "apps/manager/internal/api",
-            "apps/manager/internal/auth",
-            "apps/manager/internal/gateway",
-            "apps/manager/internal/store",
-            "apps/manager/internal/analytics",
-            "apps/manager/internal/ingest",
-            "apps/manager/internal/platform",
-            "apps/manager/internal/distribution",
-            "apps/manager/integration",
+            "apps/manager/internal/adapters/inbound/http/manager",
+            "apps/manager/internal/adapters/inbound/http/auth",
         )
 
         for path in expected:
             with self.subTest(path=path):
                 self.assertTrue((self.repo / path).is_dir(), f"missing {path}")
 
-    def test_manager_store_domain_files(self):
-        root = self.repo / "apps/manager/internal/store"
-        expected = (
-            "models.go",
-            "policy.go",
-            "control.go",
-            "enrollment.go",
-            "artifact.go",
-            "telemetry.go",
-            "persistence.go",
-        )
-        for name in expected:
-            with self.subTest(name=name):
-                self.assertTrue((root / name).is_file(), f"missing store/{name}")
-
-    def test_postgres_store_domain_files(self):
-        root = self.repo / "apps/manager/internal/store/postgres"
-        expected = (
-            "policy.go",
-            "control.go",
-            "identity.go",
-            "enrollment.go",
-            "artifact.go",
-            "telemetry.go",
-        )
-        for name in expected:
-            with self.subTest(name=name):
-                self.assertTrue((root / name).is_file(), f"missing postgres/{name}")
+    def test_manager_store_facades_are_absent(self):
+        for path in (
+            "apps/manager/internal/store",
+            "apps/manager/internal/store/backend",
+            "apps/manager/internal/store/postgres",
+            "apps/manager/internal/store/migrations",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse((self.repo / path).exists(), f"store facade remains: {path}")
 
     def test_tetragon_backend_responsibility_files(self):
         root = self.repo / "apps/agent/internal/sensors/linux/tetragon"
@@ -259,6 +241,39 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                     path = f"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/{target}"
                     self.assertNotIn(path, text, f"{source} imports forbidden {target}")
 
+    def test_response_use_case_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        response = (root / "control/response.go").read_text()
+        self.assertIn("func NewResponseController", response)
+        self.assertFalse((root / "daemon/response_controller.go").exists())
+
+    def test_content_use_case_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        content = (root / "control/content.go").read_text()
+        self.assertIn("func NewContentController", content)
+        self.assertFalse((root / "daemon/content_controller.go").exists())
+        self.assertFalse((root / "daemon/content_controller_runtime.go").exists())
+
+    def test_enrollment_use_case_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        enrollment = (root / "control/enrollment.go").read_text()
+        self.assertIn("func NewEnrollmentCoordinator", enrollment)
+        self.assertFalse((root / "daemon/enrollment_controller.go").exists())
+        self.assertFalse((root / "daemon/enrollment_coordinator.go").exists())
+
+    def test_endpoint_policy_use_case_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        endpoint = (root / "control/endpoint_policy.go").read_text()
+        self.assertIn("func NewEndpointPolicyController", endpoint)
+        self.assertFalse((root / "daemon/endpoint_policy_control.go").exists())
+
+    def test_policy_orchestration_is_owned_by_control(self):
+        root = self.repo / "apps/agent/internal"
+        controller = (root / "control/policy_controller.go").read_text()
+        self.assertIn("func NewApplicationPolicyController", controller)
+        self.assertFalse((root / "daemon/policy_controller.go").exists())
+        self.assertFalse((root / "daemon/policy_controller_runtime.go").exists())
+
     def test_agent_daemon_does_not_own_local_api_watch_streams(self):
         daemon = self.repo / "apps/agent/internal/daemon"
         violations = []
@@ -274,6 +289,35 @@ class MonorepoLayoutContractTest(unittest.TestCase):
     def test_agent_daemon_composition_root_is_bounded(self):
         path = self.repo / "apps/agent/internal/daemon/daemon.go"
         self.assertLessEqual(len(path.read_text().splitlines()), 500)
+
+    def test_agent_daemon_tests_are_grouped_by_behavior(self):
+        root = self.repo / "apps/agent/internal/daemon"
+        expected = (
+            "daemon_detection_test.go",
+            "daemon_identity_test.go",
+            "daemon_config_test.go",
+            "daemon_telemetry_test.go",
+            "daemon_transport_test.go",
+            "daemon_sensor_test.go",
+            "daemon_test_support_test.go",
+        )
+        for name in expected:
+            with self.subTest(name=name):
+                self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
+
+    def test_agent_local_control_tests_are_grouped_by_behavior(self):
+        root = self.repo / "apps/agent/internal/daemon"
+        expected = (
+            "local_control_status_test.go",
+            "local_control_policy_test.go",
+            "local_control_content_test.go",
+            "local_control_watch_test.go",
+            "local_control_detection_test.go",
+            "local_control_test_support_test.go",
+        )
+        for name in expected:
+            with self.subTest(name=name):
+                self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
 
     def test_legacy_manager_implementation_paths_are_absent(self):
         legacy = (
@@ -320,6 +364,31 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             if "./cmd/" in content or "$REPO_ROOT/cmd/" in content:
                 violations.append(path)
         self.assertEqual([], violations, f"legacy command paths in build inputs: {violations}")
+
+    def test_platform_functional_path_does_not_reference_removed_manager_integration(self):
+        script = self.repo / "test/suites/functional/platform/e2e-agent-gateway-manager-local.sh"
+        content = script.read_text()
+        self.assertNotIn("./apps/manager/integration", content)
+        for package in (
+            "./apps/manager/internal/application/gateway/...",
+            "./apps/manager/internal/adapters/inbound/kafka",
+            "./apps/manager/internal/application/worker/...",
+            "./apps/manager/internal/adapters/outbound/opensearch/worker",
+        ):
+            self.assertIn(package, content)
+
+        platform = self.repo / "test/suites/functional/platform"
+        for functional_script in platform.glob("*.sh"):
+            with self.subTest(script=functional_script.name):
+                self.assertNotIn('"backend":"memory"', functional_script.read_text())
+
+    def test_functional_paths_do_not_call_removed_manager_reset(self):
+        functional = self.repo / "test/suites/functional"
+        violations = []
+        for script in functional.rglob("*.sh"):
+            if "/api/v1/reset" in script.read_text():
+                violations.append(script.relative_to(self.repo).as_posix())
+        self.assertEqual([], violations, f"removed manager reset endpoint remains in: {violations}")
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ trap cleanup EXIT
 echo "[e2e-store-status] building binaries"
 sa_build_go_bins sysarmor-manager sysarmorctl
 
-sa_start_memory_manager
+sa_start_postgres_manager
 
 wait_contains() {
   sa_wait_contains "$@"
@@ -27,13 +27,16 @@ wait_contains() {
 sa_wait_url_contains "$MGR_URL/healthz" '"ok":true' "$RESULTS/e2e-store-status.health.json"
 
 "$BIN/sysarmorctl" --manager-url "$MGR_URL" --json manager store status > "$RESULTS/e2e-store-status.store.json"
-for want in '"backend":"memory"' '"state_version":1' '"migration_version":1' '"postgres_schema_version":2'; do
-  if ! grep -Fq "$want" "$RESULTS/e2e-store-status.store.json"; then
-    echo "[e2e-store-status][ERROR] store status missing $want" >&2
-    cat "$RESULTS/e2e-store-status.store.json" >&2
-    exit 1
-  fi
-done
+if ! jq -e '
+  .backend == "postgres" and
+  .state_version == 1 and
+  .migration_version >= 1 and
+  .postgres_schema_version == .migration_version
+' "$RESULTS/e2e-store-status.store.json" >/dev/null; then
+  echo "[e2e-store-status][ERROR] invalid PostgreSQL store status" >&2
+  cat "$RESULTS/e2e-store-status.store.json" >&2
+  exit 1
+fi
 
 cp "$TMP/manager.log" "$RESULTS/e2e-store-status.manager.log"
 echo "[e2e-store-status] ok"

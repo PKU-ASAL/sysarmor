@@ -27,7 +27,7 @@ func TestEnrollmentControllerKeepsManagedAuthorityUntilRevocation(t *testing.T) 
 	runner.revokeEnrollment = func(context.Context, localstore.Enrollment, string) (string, time.Time, error) {
 		return "", time.Time{}, context.DeadlineExceeded
 	}
-	controller := newEnrollmentController(newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)))
+	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 	result := controller.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{})
 	enrollment, err := store.Enrollment(t.Context())
 	_, source, ok, activeErr := store.ActivePolicy(t.Context(), "endpoint")
@@ -57,9 +57,10 @@ func TestUnenrollDoesNotWaitForManagedFlowWhileHoldingPolicyAuthority(t *testing
 		runner.policyAuthorityMu.Lock()
 		runner.policyAuthorityMu.Unlock()
 	})
-	runner.network.ApplyEnrollment(localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a"})
+	enrollment := localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a"}
+	runner.network.ApplyEnrollment(enrollment, managementContextForTest(t, enrollment.State))
 	<-flowStarted
-	controller := newEnrollmentController(newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)))
+	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 	done := make(chan agentcontrol.Result, 1)
 	go func() {
 		done <- controller.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{})
@@ -85,7 +86,7 @@ func TestUnenrollRemainsManagedWhenManagerRevocationIsUnconfirmed(t *testing.T) 
 	runner.revokeEnrollment = func(context.Context, localstore.Enrollment, string) (string, time.Time, error) {
 		return "", time.Time{}, context.DeadlineExceeded
 	}
-	controller := newEnrollmentController(newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor)))
+	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
 	result := controller.Unenroll(t.Context(), agentcontrol.UnenrollmentCommand{})
 	got, readErr := store.Enrollment(t.Context())
 	if result.Status != "pending" || readErr != nil || got.State != localstore.StateUnenrolling || got.RevocationConfirmed {
@@ -108,7 +109,7 @@ func TestEnrollReturnsPendingWithoutRequestingAnotherCertificate(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &AgentRuntime{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, localStore: store}
-	controller := newEnrollmentController(newEnrollmentCoordinator(t.Context(), runner, nil))
+	controller := newEnrollmentCoordinator(t.Context(), runner, nil)
 	result := controller.Enroll(t.Context(), agentcontrol.EnrollmentCommand{ManagerURL: "://invalid"})
 	if result.Status != "pending" || !strings.Contains(result.Message, "already waiting") {
 		t.Fatalf("result=%+v", result)
@@ -123,7 +124,7 @@ func TestEnrollRejectsManagedAgentWithoutRequestingAnotherCertificate(t *testing
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
 	runner := &AgentRuntime{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, localStore: store}
-	controller := newEnrollmentController(newEnrollmentCoordinator(t.Context(), runner, nil))
+	controller := newEnrollmentCoordinator(t.Context(), runner, nil)
 	result := controller.Enroll(t.Context(), agentcontrol.EnrollmentCommand{ManagerURL: "://invalid"})
 	if result.Status != "rejected" || !strings.Contains(result.Message, "already managed") {
 		t.Fatalf("result=%+v", result)

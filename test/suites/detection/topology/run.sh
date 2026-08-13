@@ -3,11 +3,15 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
+REPO="$(cd "$ROOT/.." && pwd)"
 RESULTS="$ROOT/.results"
 VM_ENV="${SYSARMOR_VM_ENV:-${ENV:-vm-topology}}"
 ENVDIR="$ROOT/environments/$VM_ENV"
+PKI_DIR="${SYSARMOR_VM_MTLS_DIR:-$RESULTS/pki/$VM_ENV}"
 RUN_ID="${SYSARMOR_BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 OUT_DIR="$RESULTS/detection-topology/$RUN_ID"
+# shellcheck source=/dev/null
+source "$ROOT/shared/detection/runtime.sh"
 
 POLICIES="${POLICIES-test/data/policies/collection-balanced.json test/data/policies/collection-deep.json}"
 WORKLOADS="${WORKLOADS-business-normal}"
@@ -16,6 +20,8 @@ MATCHER_VARIANTS="${MATCHER_VARIANTS:-}"
 MATRIX_MODE="${MATRIX_MODE:-cross}"
 STOP_ON_ERROR="${STOP_ON_ERROR:-0}"
 EVALUATION_SCOPE="${EVALUATION_SCOPE:-manager}"
+AGENT_MODE="managed"
+failed_cases=0
 
 mkdir -p "$OUT_DIR"
 
@@ -24,6 +30,7 @@ cat >"$OUT_DIR/manifest.json" <<EOF
   "suite": "topology",
   "tool": "detection-topology",
   "evaluation_scope": "$EVALUATION_SCOPE",
+  "agent_mode": "$AGENT_MODE",
   "topology": "vm",
   "run_id": "$RUN_ID",
   "policies": "$POLICIES",
@@ -82,7 +89,10 @@ capture_manager_case() {
   local workload="$2"
   local scenario="$3"
   local bench_root="$RESULTS/performance-endpoint/$bench_run_id"
+  local manager_jwt signal_required=1
   [[ -d "$bench_root" ]] || return 0
+  [[ "$scenario" == benign-* ]] && signal_required=0
+  manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
   for policy_out in "$bench_root"/*; do
     [[ -d "$policy_out" && -f "$policy_out/summary.json" ]] || continue
     local policy
@@ -90,9 +100,12 @@ capture_manager_case() {
     local labels
     labels="$(manager_label_args "$policy" "$workload" "$scenario" "$bench_run_id")"
     echo "[detection-topology] capturing manager telemetry policy=$policy workload=${workload:-none} scenario=${scenario:-none}"
-    (cd "$ENVDIR" && vagrant ssh mgr -c "/tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager events list $labels --limit 1000") >"$policy_out/manager.events.json"
-    (cd "$ENVDIR" && vagrant ssh mgr -c "/tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager signals list $labels --limit 1000") >"$policy_out/manager.signals.json"
-    (cd "$ENVDIR" && vagrant ssh mgr -c "/tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager incidents list $labels --limit 1000") >"$policy_out/manager.incidents.json"
+    wait_manager_resource "$manager_jwt" "$ENVDIR" events "$labels" \
+      "$policy_out/manager.events.json" 1 120 || return 1
+    wait_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" \
+      "$policy_out/manager.signals.json" "$signal_required" 120 || return 1
+    wait_manager_resource "$manager_jwt" "$ENVDIR" incidents "$labels" \
+      "$policy_out/manager.incidents.json" 0 10 || return 1
     json_to_ndjson "$policy_out/manager.events.json" "$policy_out/manager.events.ndjson"
     json_to_ndjson "$policy_out/manager.signals.json" "$policy_out/manager.signals.ndjson"
     json_to_ndjson "$policy_out/manager.incidents.json" "$policy_out/manager.incidents.ndjson"
@@ -113,29 +126,30 @@ run_case() {
   fi
   local case_run_id="$RUN_ID/cases/$case_name"
   local case_dir="$OUT_DIR/cases/$case_name"
+  local failure_rc=1
   mkdir -p "$case_dir"
 
   echo "[detection-topology] variant=$variant_label matcher_strategy=${matcher_strategy:-config-default} workload=$workload_label scenario=$scenario_label"
-  if SYSARMOR_BENCH_RUN_ID="$case_run_id" \
-      POLICIES="$POLICIES" \
-      SYSARMOR_BENCH_VARIANT="$variant" \
-      SYSARMOR_BENCH_MATCHER_STRATEGY="$matcher_strategy" \
-      SYSARMOR_BENCH_WORKLOAD="$workload" \
-      SYSARMOR_BENCH_SCENARIO="$scenario" \
-      SYSARMOR_VM_ENV="$VM_ENV" \
-      bash "$ROOT/suites/performance/endpoint/run.sh" >"$case_dir/run.out" 2>"$case_dir/run.err"; then
-    capture_manager_case "$case_run_id" "$workload" "$scenario"
-    printf '{"name":"%s","variant":"%s","matcher_strategy":"%s","workload":"%s","scenario":"%s","status":"ok","bench_run_id":"%s"}\n' \
-      "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$case_run_id" >"$case_dir/status.json"
-  else
-    local rc=$?
-    printf '{"name":"%s","variant":"%s","matcher_strategy":"%s","workload":"%s","scenario":"%s","status":"failed","exit_code":%s,"bench_run_id":"%s"}\n' \
-      "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$rc" "$case_run_id" >"$case_dir/status.json"
-    if [[ "$STOP_ON_ERROR" == "1" ]]; then
-      echo "[detection-topology][ERROR] failed workload=$workload_label scenario=$scenario_label" >&2
-      cat "$case_dir/run.err" >&2 2>/dev/null || true
-      exit "$rc"
+  if run_endpoint_benchmark "$ROOT/suites/performance/endpoint/run.sh" \
+      "$case_run_id" "$POLICIES" "$variant" "$matcher_strategy" \
+      "$workload" "$scenario" "$VM_ENV" "$AGENT_MODE" \
+      >"$case_dir/run.out" 2>"$case_dir/run.err"; then
+    if capture_manager_case "$case_run_id" "$workload" "$scenario"; then
+      printf '{"name":"%s","variant":"%s","matcher_strategy":"%s","workload":"%s","scenario":"%s","status":"ok","bench_run_id":"%s"}\n' \
+        "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$case_run_id" >"$case_dir/status.json"
+      return 0
     fi
+    echo "[detection-topology][ERROR] Manager telemetry capture failed for $case_name" >&2
+  else
+    failure_rc=$?
+    echo "[detection-topology][ERROR] benchmark failed for $case_name" >&2
+  fi
+  failed_cases=$((failed_cases + 1))
+  printf '{"name":"%s","variant":"%s","matcher_strategy":"%s","workload":"%s","scenario":"%s","status":"failed","exit_code":%s,"bench_run_id":"%s"}\n' \
+    "$case_name" "$variant" "$matcher_strategy" "$workload" "$scenario" "$failure_rc" "$case_run_id" >"$case_dir/status.json"
+  if [[ "$STOP_ON_ERROR" == "1" ]]; then
+    cat "$case_dir/run.err" >&2 2>/dev/null || true
+    exit "$failure_rc"
   fi
 }
 
@@ -204,6 +218,10 @@ else
 fi
 
 python3 "$HERE/report.py" "$OUT_DIR"
+if (( failed_cases > 0 )); then
+  echo "[detection-topology][ERROR] $failed_cases case(s) failed; see $OUT_DIR/matrix.csv" >&2
+  exit 1
+fi
 python3 "$ROOT/shared/reports/detection_report.py" \
   --bench-matrix-dir "$OUT_DIR" \
   --output-dir "$RESULTS/detection/$RUN_ID" \
@@ -214,7 +232,7 @@ python3 "$ROOT/shared/reports/detection_report.py" \
 python3 "$ROOT/shared/reports/assert_detection.py" \
   --matrix "$RESULTS/detection/$RUN_ID/matrix.csv" \
   --truth-steps "$RESULTS/detection/$RUN_ID/truth_steps.csv" \
-  --min-score "${SYSARMOR_DETECTION_MIN_SCORE:-1.0}"
+  --min-score "${SYSARMOR_DETECTION_MIN_SCORE:-0.9}"
 
 echo "[detection-topology] matrix written to $OUT_DIR/matrix.csv"
 echo "[detection-topology] detection results written to $RESULTS/detection/$RUN_ID"

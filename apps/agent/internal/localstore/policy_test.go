@@ -418,11 +418,30 @@ func TestActivatePolicyPromotesDesiredAndClearsPending(t *testing.T) {
 	}
 }
 
+func TestManagedPolicyAllowsDifferentIdentityAtSameVersion(t *testing.T) {
+	store := openStore(t, t.TempDir())
+	defer store.Close()
+	balanced := policyRecord("endpoint", 2, `{"policy_id":"balanced"}`)
+	deep := policyRecord("endpoint", 2, `{"policy_id":"deep"}`)
+	activateManagedPolicyForTest(t, store, balanced)
+
+	if err := store.PutDesiredManagedPolicy(t.Context(), deep); err != nil {
+		t.Fatalf("put desired policy: %v", err)
+	}
+	if err := store.ActivateManagedPolicy(t.Context(), deep); err != nil {
+		t.Fatalf("activate policy: %v", err)
+	}
+	active, source, ok, err := store.ActivePolicy(t.Context(), "endpoint")
+	if err != nil || !ok || source != PolicySourceManaged || !bytes.Equal(active.Document, deep.Document) {
+		t.Fatalf("active=%+v source=%q ok=%t err=%v", active, source, ok, err)
+	}
+}
+
 func TestDesiredPolicyRejectsRollbackFromAppliedSlot(t *testing.T) {
 	store := openStore(t, t.TempDir())
 	defer store.Close()
-	applied := policyRecord("endpoint", 5, `{"policy_id":"applied"}`)
-	rollback := policyRecord("endpoint", 4, `{"policy_id":"rollback"}`)
+	applied := policyRecord("endpoint", 5, `{"policy_id":"managed"}`)
+	rollback := policyRecord("endpoint", 4, `{"policy_id":"managed"}`)
 	activateManagedPolicyForTest(t, store, applied)
 	if err := store.PutDesiredManagedPolicy(t.Context(), rollback); err == nil {
 		t.Fatal("expected desired policy rollback rejection")

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -286,10 +287,10 @@ func putPolicySlot(ctx context.Context, tx *sql.Tx, source PolicySource, policy 
 	var currentDocument []byte
 	err := tx.QueryRowContext(ctx, `SELECT version, document_json, digest FROM policy_slots WHERE kind=? AND source=?`, policy.Kind, source).Scan(&currentVersion, &currentDocument, &currentDigest)
 	if err == nil {
-		if err := validatePolicyUpdate(policy, currentVersion, currentDocument, currentDigest); err != nil {
+		if err := validatePolicyTransition(policy, currentVersion, currentDocument, currentDigest); err != nil {
 			return err
 		}
-		if policy.Version == currentVersion {
+		if policy.Version == currentVersion && policy.Digest == currentDigest && string(policy.Document) == string(currentDocument) {
 			return nil
 		}
 	} else if err != sql.ErrNoRows {
@@ -321,12 +322,30 @@ func validatePolicyAgainstSlot(ctx context.Context, tx *sql.Tx, table string, so
 	query := fmt.Sprintf("SELECT version, document_json, digest FROM %s WHERE kind=? AND source=?", table)
 	err := tx.QueryRowContext(ctx, query, policy.Kind, source).Scan(&currentVersion, &currentDocument, &currentDigest)
 	if err == nil {
-		return validatePolicyUpdate(policy, currentVersion, currentDocument, currentDigest)
+		return validatePolicyTransition(policy, currentVersion, currentDocument, currentDigest)
 	}
 	if err != sql.ErrNoRows {
 		return err
 	}
 	return nil
+}
+
+func validatePolicyTransition(policy PolicyRecord, currentVersion uint64, currentDocument []byte, currentDigest string) error {
+	currentID, nextID := policyDocumentID(currentDocument), policyDocumentID(policy.Document)
+	if currentID != "" && nextID != "" && currentID != nextID {
+		return nil
+	}
+	return validatePolicyUpdate(policy, currentVersion, currentDocument, currentDigest)
+}
+
+func policyDocumentID(document []byte) string {
+	var value struct {
+		PolicyID string `json:"policy_id"`
+	}
+	if json.Unmarshal(document, &value) != nil {
+		return ""
+	}
+	return strings.TrimSpace(value.PolicyID)
 }
 
 func validatePolicyUpdate(policy PolicyRecord, currentVersion uint64, currentDocument []byte, currentDigest string) error {

@@ -2,6 +2,7 @@ package remoteapi
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
@@ -12,11 +13,17 @@ import (
 
 type recordingPolicyController struct {
 	command agentcontrol.PolicyCommand
+	status  string
+	message string
 }
 
 func (r *recordingPolicyController) ApplyPolicy(_ context.Context, command agentcontrol.PolicyCommand) agentcontrol.Result {
 	r.command = command
-	return agentcontrol.Result{RequestID: command.Context.RequestID, Status: "applied"}
+	status := r.status
+	if status == "" {
+		status = "applied"
+	}
+	return agentcontrol.Result{RequestID: command.Context.RequestID, Status: status, Message: r.message}
 }
 
 func (*recordingPolicyController) CurrentPolicy(context.Context) (agentcontrol.PolicySnapshot, error) {
@@ -57,6 +64,42 @@ func TestDispatcherBuildsManagedPolicyCommand(t *testing.T) {
 	if !handled || controller.command.Source != agentcontrol.PolicySourceManaged || result.Status != "applied" || result.TenantID != "tenant-a" || result.AgentID != "agent-a" ||
 		controller.command.Context.Scope == nil || controller.command.Context.Scope.Type != "container" || controller.command.Context.Scope.Selector != "container-a" {
 		t.Fatalf("command=%+v result=%+v handled=%t", controller.command, result, handled)
+	}
+}
+
+func TestDispatcherAppliesHandshakePolicySnapshot(t *testing.T) {
+	controller := &recordingPolicyController{}
+	dispatcher := NewDispatcher(Dependencies{Policy: controller}, nil)
+	identity := Identity{TenantID: "tenant-a", AgentID: "agent-a"}
+	frame := &controlplanev1.ControlFrame{
+		Type:      "policy_update",
+		RequestId: "policy-hello-a",
+		Context:   &controlplanev1.RequestContext{TenantId: "tenant-a", AgentId: "agent-a"},
+		PolicyUpdate: &controlplanev1.CurrentPolicyResponse{
+			RawJson: `{"policy_id":"policy-a"}`,
+		},
+	}
+
+	if err := dispatcher.HandleSnapshot(t.Context(), identity, frame); err != nil {
+		t.Fatal(err)
+	}
+	if controller.command.Context.RequestID != "policy-hello-a" || controller.command.Context.TenantID != "tenant-a" || controller.command.Context.AgentID != "agent-a" {
+		t.Fatalf("command = %+v", controller.command)
+	}
+}
+
+func TestDispatcherReportsRejectedHandshakePolicySnapshot(t *testing.T) {
+	controller := &recordingPolicyController{status: "rejected", message: "invalid policy"}
+	dispatcher := NewDispatcher(Dependencies{Policy: controller}, nil)
+	frame := &controlplanev1.ControlFrame{
+		Type: "policy_update", RequestId: "policy-hello-a",
+		PolicyUpdate: &controlplanev1.CurrentPolicyResponse{RawJson: `{}`},
+	}
+
+	err := dispatcher.HandleSnapshot(t.Context(), Identity{}, frame)
+
+	if err == nil || !strings.Contains(err.Error(), "invalid policy") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

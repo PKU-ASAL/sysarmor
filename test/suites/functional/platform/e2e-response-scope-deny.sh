@@ -19,7 +19,7 @@ trap cleanup EXIT
 echo "[e2e-response-scope-deny] building binaries"
 sa_build_go_bins sysarmor-manager sysarmorctl
 
-sa_start_memory_manager
+sa_start_postgres_manager
 
 wait_contains() {
   sa_wait_contains "$@"

@@ -1,0 +1,137 @@
+package enrollment
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	domainenrollment "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/enrollment"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
+)
+
+type enrollmentRecord struct {
+	ID                string                    `json:"enrollment_id"`
+	TenantID          string                    `json:"tenant_id"`
+	AgentID           string                    `json:"agent_id,omitempty"`
+	HostID            string                    `json:"host_id,omitempty"`
+	TokenHash         string                    `json:"token_hash,omitempty"`
+	TokenPreview      string                    `json:"token_preview,omitempty"`
+	BootstrapHash     string                    `json:"bootstrap_token_hash,omitempty"`
+	BootstrapPreview  string                    `json:"bootstrap_token_preview,omitempty"`
+	BootstrapFetched  time.Time                 `json:"bootstrap_fetched_at,omitempty"`
+	GatewayAddress    string                    `json:"gateway_addr,omitempty"`
+	GatewayServerName string                    `json:"gateway_sni,omitempty"`
+	Profile           string                    `json:"profile,omitempty"`
+	Channel           string                    `json:"channel,omitempty"`
+	ArtifactID        string                    `json:"artifact_id,omitempty"`
+	ArtifactSHA256    string                    `json:"artifact_sha256,omitempty"`
+	ArtifactURL       string                    `json:"artifact_url,omitempty"`
+	Labels            map[string]string         `json:"labels,omitempty"`
+	CreatedBy         string                    `json:"created_by,omitempty"`
+	Status            domainenrollment.Status   `json:"status"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	ExpiresAt         time.Time                 `json:"expires_at,omitempty"`
+	UsedAt            time.Time                 `json:"used_at,omitempty"`
+	IssuedAt          time.Time                 `json:"issued_at,omitempty"`
+	Issuance          domainenrollment.Issuance `json:"issuance,omitempty"`
+}
+
+type certificateRecord struct {
+	TenantID             string    `json:"tenant_id"`
+	AgentID              string    `json:"agent_id"`
+	EnrollmentID         string    `json:"enrollment_id"`
+	SerialNumber         string    `json:"serial_number"`
+	UnenrollmentProtocol string    `json:"unenrollment_protocol,omitempty"`
+	Subject              string    `json:"subject,omitempty"`
+	NotBefore            time.Time `json:"not_before"`
+	NotAfter             time.Time `json:"not_after"`
+	CreatedAt            time.Time `json:"created_at"`
+	CertificatePEM       string    `json:"certificate_pem,omitempty"`
+}
+
+type unenrollmentRecord struct {
+	TenantID            string                              `json:"tenant_id"`
+	AgentID             string                              `json:"agent_id"`
+	EnrollmentID        string                              `json:"enrollment_id"`
+	CertificateSerial   string                              `json:"certificate_serial"`
+	Receipt             string                              `json:"revocation_receipt"`
+	CompletionTokenHash string                              `json:"completion_token_hash,omitempty"`
+	Status              domainenrollment.UnenrollmentStatus `json:"status"`
+	RevokedAt           time.Time                           `json:"revoked_at"`
+	CompletedAt         time.Time                           `json:"endpoint_completed_at,omitempty"`
+}
+
+func encodeEnrollment(value domainenrollment.Enrollment) ([]byte, error) {
+	record := enrollmentRecord{ID: value.ID, TenantID: value.TenantID.String(), AgentID: value.AgentID, HostID: value.HostID,
+		TokenHash: value.TokenHash, TokenPreview: value.TokenPreview, BootstrapHash: value.BootstrapTokenHash,
+		BootstrapPreview: value.BootstrapTokenPreview, BootstrapFetched: value.BootstrapFetchedAt,
+		GatewayAddress: value.GatewayAddress, GatewayServerName: value.GatewayServerName,
+		Profile: value.Profile, Channel: value.Channel, ArtifactID: value.ArtifactID,
+		ArtifactSHA256: value.ArtifactSHA256, ArtifactURL: value.ArtifactURL,
+		Labels: value.Labels, CreatedBy: value.CreatedBy,
+		Status: value.Status, CreatedAt: value.CreatedAt, ExpiresAt: value.ExpiresAt,
+		UsedAt: value.UsedAt, IssuedAt: value.IssuedAt, Issuance: value.Issuance}
+	return json.Marshal(record)
+}
+
+func decodeEnrollment(raw []byte) (domainenrollment.Enrollment, error) {
+	var record enrollmentRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return domainenrollment.Enrollment{}, fmt.Errorf("decode enrollment record: %w", err)
+	}
+	tenantID, err := tenant.NewID(record.TenantID)
+	if err != nil {
+		return domainenrollment.Enrollment{}, err
+	}
+	return domainenrollment.NewEnrollment(domainenrollment.Enrollment{ID: record.ID, TenantID: tenantID,
+		AgentID: record.AgentID, HostID: record.HostID, TokenHash: record.TokenHash, TokenPreview: record.TokenPreview,
+		BootstrapTokenHash: record.BootstrapHash, BootstrapTokenPreview: record.BootstrapPreview,
+		BootstrapFetchedAt: record.BootstrapFetched, GatewayAddress: record.GatewayAddress,
+		GatewayServerName: record.GatewayServerName, Status: record.Status, CreatedAt: record.CreatedAt,
+		Profile: record.Profile, Channel: record.Channel, ArtifactID: record.ArtifactID,
+		ArtifactSHA256: record.ArtifactSHA256, ArtifactURL: record.ArtifactURL,
+		Labels: record.Labels, CreatedBy: record.CreatedBy, ExpiresAt: record.ExpiresAt,
+		UsedAt: record.UsedAt, IssuedAt: record.IssuedAt, Issuance: record.Issuance})
+}
+
+func encodeCertificate(value domainenrollment.Certificate) ([]byte, error) {
+	record := certificateRecord{TenantID: value.TenantID.String(), AgentID: value.AgentID, EnrollmentID: value.EnrollmentID,
+		SerialNumber: value.SerialNumber, UnenrollmentProtocol: value.UnenrollmentProtocol, Subject: value.Subject,
+		NotBefore: value.NotBefore, NotAfter: value.NotAfter, CreatedAt: value.CreatedAt, CertificatePEM: value.CertificatePEM}
+	return json.Marshal(record)
+}
+
+func encodeUnenrollment(value domainenrollment.Unenrollment) ([]byte, error) {
+	record := unenrollmentRecord{TenantID: value.Identity.TenantID.String(), AgentID: value.Identity.AgentID,
+		EnrollmentID: value.Identity.EnrollmentID, CertificateSerial: value.Identity.CertificateSerial,
+		Receipt: value.Receipt, CompletionTokenHash: value.CompletionTokenHash, Status: value.Status,
+		RevokedAt: value.RevokedAt, CompletedAt: value.CompletedAt}
+	return json.Marshal(record)
+}
+
+func decodeUnenrollment(raw []byte) (domainenrollment.Unenrollment, error) {
+	var record unenrollmentRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return domainenrollment.Unenrollment{}, fmt.Errorf("decode unenrollment record: %w", err)
+	}
+	tenantID, err := tenant.NewID(record.TenantID)
+	if err != nil {
+		return domainenrollment.Unenrollment{}, err
+	}
+	identity := domainenrollment.UnenrollmentIdentity{TenantID: tenantID, AgentID: record.AgentID,
+		EnrollmentID: record.EnrollmentID, CertificateSerial: record.CertificateSerial}
+	var value domainenrollment.Unenrollment
+	if record.Status == domainenrollment.UnenrollmentLegacy {
+		value, err = domainenrollment.NewLegacyUnenrollment(identity, record.Receipt, record.RevokedAt)
+	} else {
+		value, err = domainenrollment.NewPendingUnenrollment(identity, record.Receipt, record.CompletionTokenHash, record.RevokedAt)
+	}
+	if err != nil {
+		return domainenrollment.Unenrollment{}, err
+	}
+	if record.Status == domainenrollment.UnenrollmentCompleted {
+		return value.Complete(domainenrollment.UnenrollmentCompletion{Identity: value.Identity,
+			Receipt: value.Receipt, TokenHash: value.CompletionTokenHash}, record.CompletedAt)
+	}
+	return value, nil
+}

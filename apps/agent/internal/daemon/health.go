@@ -31,10 +31,11 @@ func (r *AgentRuntime) reportStartupFailure(reporter healthReporter, startedAt t
 	if reporter == nil || startupErr == nil {
 		return
 	}
+	identity := r.currentIdentity()
 	health := agenthealth.AgentHealth{
-		AgentID:       r.Config.Agent.ID,
-		HostID:        r.Config.Agent.HostID,
-		TenantID:      r.Config.Agent.TenantID,
+		AgentID:       identity.AgentID,
+		HostID:        identity.HostID,
+		TenantID:      identity.TenantID,
 		Scope:         r.runtimeScope(),
 		Status:        "degraded",
 		PolicyID:      r.activePolicy().PolicyID,

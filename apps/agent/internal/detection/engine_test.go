@@ -846,6 +846,15 @@ func TestCredentialReadUsesExactSystemCommandBaselines(t *testing.T) {
 	}
 }
 
+func TestCredentialReadIgnoresSudoAuthorizationFileReads(t *testing.T) {
+	engine, _ := NewWithRuntime(testDetectionPolicy(), contract.CollectionIntent{}, testContentSnapshot(t))
+	event := readEvent("sudoers", "lineage", "process", "/usr/bin/sudo", "/etc/sudoers")
+	event.SubjectProc.Argv = []string{"/usr/bin/sudo", "bash", "-c", "echo workload"}
+	if got := countSignals(engine.Process(event), "credential_file_read"); got != 0 {
+		t.Fatalf("credential signals = %d, want 0 for sudo authorization file", got)
+	}
+}
+
 func TestCredentialReadUsesDynamicExprSemantics(t *testing.T) {
 	enabled := true
 	policy := testDetectionPolicy()
@@ -1105,6 +1114,69 @@ func TestSuspiciousExecConnectSequencePreservesAssociations(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSuspiciousExecConnectPreservesPayloadPathFromInterpreterArgv(t *testing.T) {
+	policy := testDetectionPolicy()
+	content := ContentSnapshot{
+		ContextRefs: map[string]ContentRef{
+			"ctx:payload-path-prefixes": {Ref: "ctx:payload-path-prefixes", Values: []string{"/opt/payloads/"}},
+		},
+		IOCRefs: map[string]ContentRef{
+			"ioc:c2-control-port-feed": {Ref: "ioc:c2-control-port-feed", Values: []string{"9443"}},
+		},
+	}
+	engine, report := NewWithRuntime(policy, contract.CollectionIntent{}, mergeTestContent(t, content))
+	if report.Status != "applied" {
+		t.Fatalf("report = %+v", report)
+	}
+	exec := execEvent("exec", "lin-a", "shell", "init", "/usr/bin/bash", []string{"/usr/bin/bash", "/opt/payloads/helper"})
+	connect := connectEventWithParent("connect", "lin-a", "curl", "shell", "/usr/bin/curl", "10.0.0.1:9443")
+	engine.Process(exec)
+
+	for _, signal := range engine.Process(connect) {
+		if signal.GetName() != "suspicious_exec_connect" {
+			continue
+		}
+		for _, entity := range signal.GetEntities() {
+			if entity.GetKind() == "file" && entity.GetKey() == "/opt/payloads/helper" {
+				return
+			}
+		}
+		t.Fatalf("signal entities = %+v, want payload path", signal.GetEntities())
+	}
+	t.Fatal("suspicious_exec_connect signal not emitted")
+}
+
+func TestSequenceEvidenceEntitiesIgnoreUnselectedAnyBranch(t *testing.T) {
+	event := execEvent("exec", "lin-a", "shell", "init", "/usr/bin/bash", []string{"/usr/bin/bash", "/opt/unselected/helper"})
+	group := ConditionNodeSpec{Any: []ConditionNodeSpec{
+		conditionLeaf(ConditionSpec{Field: "process.binary", Op: "eq", Value: "/usr/bin/bash"}),
+		conditionLeaf(ConditionSpec{Field: "process.argv", Op: "contains", Value: "/opt/unselected/"}),
+	}}
+	step := compiledStep{conditionGroup: compileConditionNode(&group, ContentSnapshot{})}
+
+	entities := sequenceEvidenceEntities(newEventView(event), step, nil)
+
+	for _, entity := range entities {
+		if entity.GetKey() == "/opt/unselected/helper" {
+			t.Fatalf("unselected any branch contributed evidence: %+v", entities)
+		}
+	}
+}
+
+func TestSequenceEvidenceEntitiesIgnoreNotBranches(t *testing.T) {
+	event := execEvent("exec", "lin-a", "shell", "init", "/usr/bin/bash", []string{"/usr/bin/bash", "/opt/payload/helper"})
+	leaf := conditionLeaf(ConditionSpec{Field: "process.argv", Op: "contains", Value: "/opt/payload/"})
+	inner := ConditionNodeSpec{Not: &leaf}
+	group := ConditionNodeSpec{Not: &inner}
+	step := compiledStep{conditionGroup: compileConditionNode(&group, ContentSnapshot{})}
+
+	entities := sequenceEvidenceEntities(newEventView(event), step, nil)
+
+	if len(entities) != 0 {
+		t.Fatalf("not branch contributed evidence: %+v", entities)
 	}
 }
 

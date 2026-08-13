@@ -183,11 +183,16 @@ func TestContainerTopologyUsesProtectedContainerInstaller(t *testing.T) {
 		"/sys/kernel/btf/vmlinux:/var/lib/tetragon/btf:ro",
 		"/sys/fs/bpf:/sys/fs/bpf",
 		"SYSARMOR_AGENT_CA_CERT:",
-		"SYSARMOR_GRPC_REQUIRE_CLIENT_CERT: true",
+		"SYSARMOR_GRPC_TLS_CERT:",
+		"SYSARMOR_GRPC_TLS_KEY:",
+		"SYSARMOR_GRPC_CLIENT_CA:",
 	} {
 		if !strings.Contains(document, want) {
 			t.Errorf("container topology missing %q", want)
 		}
+	}
+	if strings.Contains(document, "SYSARMOR_GRPC_REQUIRE_CLIENT_CERT") {
+		t.Error("container topology still configures optional Gateway client certificate verification")
 	}
 	if strings.Contains(document, "  tetragon:\n") {
 		t.Error("container topology still defines a Tetragon sidecar")

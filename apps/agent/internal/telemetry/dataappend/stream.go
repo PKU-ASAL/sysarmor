@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
@@ -27,6 +28,8 @@ type StreamOptions struct {
 	AgentID       string
 	HostID        string
 	TenantID      string
+	PolicyID      string
+	PolicyVersion uint64
 	Labels        map[string]string
 	Version       string
 	BatchSize     int
@@ -40,9 +43,14 @@ type StreamStats struct {
 	Batches int
 }
 
+var batchSequence atomic.Uint64
+
 func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOptions) (StreamStats, error) {
 	if up == nil {
 		return StreamStats{}, fmt.Errorf("batch appender is nil")
+	}
+	if err := validateReplayPolicy(opts.PolicyID, opts.PolicyVersion); err != nil {
+		return StreamStats{}, err
 	}
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = 128
@@ -53,6 +61,7 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 	if opts.RawRing == nil {
 		opts.RawRing = ringbuffer.New(4096)
 	}
+	opts.Labels = replayLabels(opts.Labels, opts.PolicyID, opts.PolicyVersion)
 
 	norm := normalize.New(opts.AgentID, opts.HostID, nil)
 	detector, _ := detection.New(policymodel.DefaultDetectionPolicy())
@@ -142,13 +151,32 @@ func newBatch(opts StreamOptions) *dataplanev1.DataBatch {
 	if tenantID == "" {
 		tenantID = "default"
 	}
+	now := time.Now().UTC()
 	return &dataplanev1.DataBatch{SchemaVersion: schema.DataPlaneCurrent, Header: &dataplanev1.BatchHeader{
+		BatchId:           fmt.Sprintf("batch-jsonl-%d-%d", now.UnixNano(), batchSequence.Add(1)),
 		AgentId:           opts.AgentID,
 		HostId:            opts.HostID,
 		TenantId:          tenantID,
-		CreatedAtUnixNano: time.Now().UTC().UnixNano(),
-		Labels:            cloneLabels(opts.Labels),
+		PolicyId:          opts.PolicyID,
+		PolicyVersion:     opts.PolicyVersion,
+		PolicyMode:        "observe",
+		CreatedAtUnixNano: now.UnixNano(),
+		Labels:            replayLabels(opts.Labels, opts.PolicyID, opts.PolicyVersion),
 	}}
+}
+
+func replayLabels(labels map[string]string, policyID string, policyVersion uint64) map[string]string {
+	return mergeLabels(labels, map[string]string{
+		"policy_id":      policyID,
+		"policy_version": fmt.Sprint(policyVersion),
+	})
+}
+
+func validateReplayPolicy(policyID string, policyVersion uint64) error {
+	if policyID == "" || policyVersion == 0 {
+		return fmt.Errorf("replay policy_id and policy_version are required")
+	}
+	return nil
 }
 
 func appendFrames(batch *dataplanev1.DataBatch, events []*eventv1.CanonicalEvent, signals []*signalv1.Signal) {

@@ -115,7 +115,7 @@ Functional Suite 证明“系统通不通”。
 | `functional-endpoint-local` | 本地状态和容器入口运行行为 | fake binary/本地契约 |
 | `functional-endpoint` | 安装 standalone Agent，验证真实 Event、Signal、关联引用和重启恢复 | owned real Tetragon |
 | `functional-endpoint-container` | 容器 Agent 的 `namespace/self` 隔离 | Manager 分发的容器 Agent |
-| `functional-platform` | Manager、Gateway、Worker、Store、Policy、Response 合约 | 构造或 fake 输入 |
+| `functional-platform` | Manager、Gateway、Worker、PostgreSQL、Policy、Response 合约 | 构造或 fake 输入 |
 | `functional-platform-full` | 容器内 Event、Signal、Incident 产品路径 | Tetragon container |
 | `functional-topology` | 三 VM 分发、注册、证书和接入链路 | Manager 分发真实 Agent |
 
@@ -143,6 +143,21 @@ signed artifact -> channel -> one-time enrollment -> verified install
 运行 Performance。
 
 ## Detection 测试
+
+### Agent 模式边界
+
+测试中的 `sensor.mode: managed` 只表示 Agent 管理 Tetragon sensor，不表示 Agent 已注册到 Manager。
+Agent enrollment 模式按测试目标明确区分：
+
+| 目标 | Agent enrollment 模式 | 数据验收源 |
+|---|---|---|
+| Endpoint functional/performance | `standalone` | Agent 本地 Event、Signal 和资源指标 |
+| Topology functional | `managed` | Manager health/session 和接入状态 |
+| Detection topology | `managed` | Gateway -> Kafka -> Worker -> PostgreSQL/OpenSearch -> Manager 查询 |
+
+Detection topology 的每个 fresh VM case 会先创建一次性 enrollment，并通过 `sysarmorctl enroll` 切换 Agent 到 managed；collection/detection 策略通过 Manager publish/assign 下发，benchmark 内容在安装阶段签名进入 Agent 默认内容。这样 `EVALUATION_SCOPE=manager` 验收的是实际云端 Worker 链路，而不是 standalone 本地 spool。Standalone 端点能力由 Endpoint functional/performance 单独验收。
+
+Detection 的默认 `alert_score`/`evidence_score` 门槛为 `0.9`，同时仍要求所有真值文件中的 required Event/Signal 全部命中。可通过 `SYSARMOR_DETECTION_MIN_SCORE` 临时提高或降低分数门槛；降低门槛不会放宽 required 标签检查。
 
 Detection Suite 在真实端云链路上判断恶意和良性行为是否产生预期 Event 和
 Signal：

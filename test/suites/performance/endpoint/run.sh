@@ -9,10 +9,25 @@ ENVDIR="$(cd "$ROOT/environments/$VM_ENV" && pwd)"
 RESULTS="$ROOT/.results"
 RUN_ID="${SYSARMOR_BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 OUT_DIR="$RESULTS/performance-endpoint/$RUN_ID"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/policy_runtime.sh"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/managed_enrollment.sh"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/managed_policy.sh"
 BENCH_PROFILE="${SYSARMOR_BENCH_PROFILE:-quick}"
 AGENT_SOCK="${SYSARMOR_AGENT_SOCK:-/run/sysarmor/agent/control.sock}"
+AGENT_MODE="${SYSARMOR_BENCH_AGENT_MODE:-standalone}"
 AGENT_ID=""
 TENANT_ID=""
+PKI_DIR="${SYSARMOR_VM_MTLS_DIR:-$RESULTS/pki/$VM_ENV}"
+case "$AGENT_MODE" in
+  standalone|managed) ;;
+  *)
+    echo "[performance-endpoint][ERROR] unsupported Agent mode: $AGENT_MODE" >&2
+    exit 1
+    ;;
+esac
 if [[ -v SYSARMOR_BENCH_WORKLOAD ]]; then
   WORKLOAD="$SYSARMOR_BENCH_WORKLOAD"
 else
@@ -73,6 +88,7 @@ cat >"$OUT_DIR/manifest.json" <<EOF
   "run_id": "$RUN_ID",
   "workload": "$WORKLOAD",
   "scenario": "$SCENARIO",
+  "agent_mode": "$AGENT_MODE",
   "policies": "$POLICIES_RAW",
   "host_baseline_seconds": $HOST_BASELINE_SECONDS,
   "agent_idle_seconds": $AGENT_IDLE_SECONDS,
@@ -113,6 +129,22 @@ wait_agent_socket() {
     fi
     sleep 1
   done
+}
+
+enroll_managed_agent() {
+  [[ "$AGENT_MODE" == "managed" ]] || return 0
+  [[ "$VM_ENV" == "vm-topology" ]] || {
+    echo "[performance-endpoint][ERROR] managed benchmark requires vm-topology" >&2
+    exit 1
+  }
+  sa_agent_enroll_managed_topology "$REPO" "$ENVDIR" "$PKI_DIR" \
+    "$AGENT_SOCK" "$AGENT_ID"
+}
+
+apply_managed_policy() {
+  local policy_out="$1" policy="$2"
+  sa_agent_apply_managed_policy "$REPO" "$ENVDIR" "$PKI_DIR" "$AGENT_SOCK" \
+    "$AGENT_ID" "$REPO/$policy" "$REPO/$DETECTION_POLICY" "$policy_out"
 }
 
 resolve_agent_identity() {
@@ -502,7 +534,10 @@ else
   echo "[performance-endpoint] reusing existing VM environment: $VM_ENV"
 fi
 if [[ "$SYNC_VM_AGENT" == "1" ]]; then
-  SYSARMOR_VM_ENV="$VM_ENV" bash "$ROOT/shared/vm/sync-agent.sh"
+  include_bench_content=0
+  [[ "$AGENT_MODE" == "managed" ]] && include_bench_content=1
+  SYSARMOR_VM_ENV="$VM_ENV" SYSARMOR_VM_INCLUDE_BENCH_CONTENT="$include_bench_content" \
+    bash "$ROOT/shared/vm/sync-agent.sh"
   cd "$ENVDIR"
   vagrant rsync node-a >/dev/null 2>&1 || true
 else
@@ -510,11 +545,12 @@ else
 fi
 wait_agent_socket
 resolve_agent_identity
+enroll_managed_agent
+resolve_agent_identity
 set_runtime_feature_flags "$MATCHER_STRATEGY"
 
 echo "[performance-endpoint] uploading content packs and policies"
 vagrant upload "$REPO/$CONTENT_DIR" /tmp/sysarmor-bench-content node-a >/dev/null
-vagrant upload "$REPO/deployments/agent/policy.json" /tmp/sysarmor-bench-baseline.policy node-a >/dev/null
 if [[ "$APPLY_DETECTION" == "1" && ! -f "$REPO/$DETECTION_POLICY" ]]; then
   echo "[performance-endpoint][ERROR] detection policy not found: $DETECTION_POLICY" >&2
   exit 1
@@ -536,36 +572,6 @@ apply_content() {
         exit 1
       }
   done
-}
-
-reset_endpoint_policy() {
-  local policy_out="$1"
-  echo "[performance-endpoint] restoring baseline endpoint policy"
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply --file /tmp/sysarmor-bench-baseline.policy --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
-    > "$policy_out/baseline-apply.json" \
-    2>"$policy_out/baseline-apply.err" || {
-      echo "[performance-endpoint][ERROR] baseline endpoint policy apply failed" >&2
-      cat "$policy_out/baseline-apply.err" >&2 2>/dev/null || true
-      exit 1
-    }
-  if ! jq -e '.status == "applied" or .status == "degraded"' "$policy_out/baseline-apply.json" >/dev/null; then
-    echo "[performance-endpoint][ERROR] baseline endpoint policy was rejected" >&2
-    cat "$policy_out/baseline-apply.json" >&2 2>/dev/null || true
-    exit 1
-  fi
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy current" \
-    > "$policy_out/baseline-current.json" \
-    2>"$policy_out/baseline-current.err" || {
-      echo "[performance-endpoint][ERROR] failed to read current baseline endpoint policy" >&2
-      cat "$policy_out/baseline-current.err" >&2 2>/dev/null || true
-      exit 1
-    }
-  if ! jq -e '.policyId == "standalone-default" and (.version | tostring) == "1"' "$policy_out/baseline-current.json" >/dev/null; then
-    echo "[performance-endpoint][ERROR] current endpoint policy does not match the baseline" >&2
-    cat "$policy_out/baseline-current.json" >&2 2>/dev/null || true
-    exit 1
-  fi
-  sleep "$POLICY_SETTLE_SECONDS"
 }
 
 apply_detection() {
@@ -715,8 +721,10 @@ EOF
 
   echo "[performance-endpoint] recording policy=$name workload=${case_workload:-none} scenario=${case_scenario:-none}"
   set_agent_labels "$RUN_ID" "$name" "$case_workload" "$case_scenario"
-  reset_endpoint_policy "$policy_out"
-  apply_content "$policy_out"
+  if [[ "$AGENT_MODE" == "standalone" ]]; then
+    reset_endpoint_policy "$policy_out"
+    apply_content "$policy_out"
+  fi
   SYSARMOR_RECORDER_DURATION="$RECORDER_DURATION_SECONDS" recorder "$rec_run_id" "$rec_labels" start
   ACTIVE_REC_RUN_ID="$rec_run_id"
   ACTIVE_REC_LABELS="$rec_labels"
@@ -733,26 +741,32 @@ EOF
 
   echo "[performance-endpoint] applying policy: $policy"
   mark "$rec_run_id" policy_apply_start "$policy"
-  vagrant upload "$REPO/$policy" "/tmp/sysarmor-bench-$name.policy" node-a >/dev/null
   start_agent_profile_window "$policy_out" policy_apply "$((POLICY_SETTLE_SECONDS + 5))"
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply collection --file '/tmp/sysarmor-bench-$name.policy' --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
-    > "$policy_out/collection-apply.json" \
-    2>"$policy_out/collection-apply.err" || {
-      echo "[performance-endpoint][ERROR] policy apply failed: $policy" >&2
-      cat "$policy_out/collection-apply.err" >&2 2>/dev/null || true
+  if [[ "$AGENT_MODE" == "managed" ]]; then
+    apply_managed_policy "$policy_out" "$policy"
+  else
+    vagrant upload "$REPO/$policy" "/tmp/sysarmor-bench-$name.policy" node-a >/dev/null
+    vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply collection --file '/tmp/sysarmor-bench-$name.policy' --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
+      > "$policy_out/collection-apply.json" \
+      2>"$policy_out/collection-apply.err" || {
+        echo "[performance-endpoint][ERROR] policy apply failed: $policy" >&2
+        cat "$policy_out/collection-apply.err" >&2 2>/dev/null || true
+        exit 1
+      }
+    if ! grep -Fq 'generated_policy_hash' "$policy_out/collection-apply.json" && ! grep -Fq 'resolved_refs' "$policy_out/collection-apply.json"; then
+      echo "[performance-endpoint][ERROR] policy apply did not report generated policy details: $policy" >&2
+      cat "$policy_out/collection-apply.json" >&2 2>/dev/null || true
       exit 1
-    }
-  mark "$rec_run_id" policy_apply_done "$policy"
-  if ! grep -Fq 'generated_policy_hash' "$policy_out/collection-apply.json" && ! grep -Fq 'resolved_refs' "$policy_out/collection-apply.json"; then
-    echo "[performance-endpoint][ERROR] policy apply did not report generated policy details: $policy" >&2
-    cat "$policy_out/collection-apply.json" >&2 2>/dev/null || true
-    exit 1
+    fi
   fi
+  mark "$rec_run_id" policy_apply_done "$policy"
 
   echo "[performance-endpoint] waiting ${POLICY_SETTLE_SECONDS}s for sensor BPF reload"
   sleep "$POLICY_SETTLE_SECONDS"
   finish_agent_profile_window "$policy_out" policy_apply "$rec_run_id"
-  apply_detection "$policy_out" "$name"
+  if [[ "$AGENT_MODE" == "standalone" ]]; then
+    apply_detection "$policy_out" "$name"
+  fi
 
   mark "$rec_run_id" settle_start "$name"
   sleep "$SETTLE_SECONDS"

@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/remoteapi"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -64,12 +65,18 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 		return err
 	}
 	dispatcher := remoteapi.NewDispatcher(remoteapi.Dependencies{
-		Policy:   newPolicyController(runner, r.sensor, r.batcher),
-		Content:  newContentController(runner),
-		Response: newResponseController(runner),
+		Policy:   newApplicationPolicyController(runner, r.sensor, r.batcher),
+		Content:  agentcontrol.NewContentController(newContentRuntime(runner)),
+		Response: agentcontrol.NewResponseController(newResponseRuntime(runner)),
 	}, runner.Out)
 	remoteIdentity := remoteapi.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 	for _, frame := range frames {
+		if frame.GetType() == "policy_update" {
+			if err := dispatcher.HandleSnapshot(ctx, remoteIdentity, frame); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := dispatcher.Handle(ctx, session, remoteIdentity, frame); err != nil {
 			return err
 		}

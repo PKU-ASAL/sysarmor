@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -30,11 +31,11 @@ func (s *localStatusService) Health(ctx context.Context, req *controlplanev1.Hea
 }
 
 func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1.CapabilityRequest) (*controlplanev1.CapabilityResponse, error) {
-	cfg := s.runner.Config
+	identity := s.runner.currentIdentity()
 	return &controlplanev1.CapabilityResponse{
-		AgentId:  cfg.Agent.ID,
-		HostId:   cfg.Agent.HostID,
-		TenantId: cfg.Agent.TenantID,
+		AgentId:  identity.AgentID,
+		HostId:   identity.HostID,
+		TenantId: identity.TenantID,
 		Scope:    scopeMessage(s.runner.runtimeScope()),
 		Sensor:   capabilityMessage(s.runner.runtimeCapability()),
 		SupportedPolicySections: []string{
@@ -80,8 +81,12 @@ func (r *AgentRuntime) managementLifecycleStatus(ctx context.Context) (*controlp
 	if err != nil {
 		return nil, err
 	}
+	mode, err := management.Resolve(enrollment.State)
+	if err != nil {
+		return nil, err
+	}
 	status := &controlplanev1.ManagementLifecycleStatus{
-		Mode:                string(enrollment.State),
+		Mode:                string(mode.State),
 		TransitionPhase:     enrollment.TransitionPhase,
 		RevocationConfirmed: enrollment.RevocationConfirmed,
 		LastTransitionError: enrollment.LastTransitionError,

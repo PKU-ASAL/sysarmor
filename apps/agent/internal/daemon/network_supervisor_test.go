@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 )
 
 func TestNetworkSupervisorSwitchesStandaloneAndManagedFlowsWithoutOverlap(t *testing.T) {
@@ -26,11 +27,11 @@ func TestNetworkSupervisorSwitchesStandaloneAndManagedFlowsWithoutOverlap(t *tes
 	supervisor := newNetworkSupervisor(t.Context(), start("standalone"), func(ctx context.Context, _ localstore.Enrollment) {
 		start("managed")(ctx)
 	})
-	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateStandalone})
+	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateStandalone}, managementContextForTest(t, localstore.StateStandalone))
 	waitNetworkMode(t, starts, "standalone")
-	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateEnrolling, AgentID: "agent-a", GatewayAddress: "gateway"})
+	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateEnrolling, AgentID: "agent-a", GatewayAddress: "gateway"}, managementContextForTest(t, localstore.StateEnrolling))
 	waitNetworkMode(t, starts, "managed")
-	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateStandalone})
+	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateStandalone}, managementContextForTest(t, localstore.StateStandalone))
 	waitNetworkMode(t, starts, "standalone")
 	supervisor.Stop()
 	if overlap.Load() || active.Load() != 0 {
@@ -45,16 +46,17 @@ func TestNetworkSupervisorAppliesEnrollmentIdempotently(t *testing.T) {
 		<-ctx.Done()
 	})
 	enrollment := localstore.Enrollment{State: localstore.StateManaged, AgentID: "a", GatewayAddress: "g"}
-	supervisor.ApplyEnrollment(enrollment)
+	mode := managementContextForTest(t, enrollment.State)
+	supervisor.ApplyEnrollment(enrollment, mode)
 	waitStart(t, starts)
-	supervisor.ApplyEnrollment(enrollment)
+	supervisor.ApplyEnrollment(enrollment, mode)
 	select {
 	case <-starts:
 		t.Fatal("identical enrollment restarted network")
 	case <-time.After(10 * time.Millisecond):
 	}
 	enrollment.GatewayAddress = "g2"
-	supervisor.ApplyEnrollment(enrollment)
+	supervisor.ApplyEnrollment(enrollment, mode)
 	waitStart(t, starts)
 	supervisor.Stop()
 	if supervisor.Managed() {
@@ -68,7 +70,7 @@ func TestNetworkSupervisorStartsWhileEnrollmentAwaitsPolicy(t *testing.T) {
 		starts <- struct{}{}
 		<-ctx.Done()
 	})
-	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateEnrolling, AgentID: "agent-a", GatewayAddress: "gateway"})
+	supervisor.ApplyEnrollment(localstore.Enrollment{State: localstore.StateEnrolling, AgentID: "agent-a", GatewayAddress: "gateway"}, managementContextForTest(t, localstore.StateEnrolling))
 	waitStart(t, starts)
 	supervisor.Stop()
 }
@@ -80,10 +82,12 @@ func TestNetworkSupervisorPromotesWithoutRestartingConnection(t *testing.T) {
 		<-ctx.Done()
 	})
 	enrollment := localstore.Enrollment{State: localstore.StateEnrolling, AgentID: "agent-a", GatewayAddress: "gateway"}
-	supervisor.ApplyEnrollment(enrollment)
+	supervisor.ApplyEnrollment(enrollment, managementContextForTest(t, enrollment.State))
 	waitStart(t, starts)
 	enrollment.State = localstore.StateManaged
-	supervisor.PromoteEnrollment(enrollment)
+	if !supervisor.PromoteEnrollment(enrollment, managementContextForTest(t, enrollment.State)) {
+		t.Fatal("managed enrollment promotion was not accepted")
+	}
 	select {
 	case <-starts:
 		t.Fatal("promotion restarted active connection")
@@ -93,6 +97,15 @@ func TestNetworkSupervisorPromotesWithoutRestartingConnection(t *testing.T) {
 		t.Fatal("promotion stopped active connection")
 	}
 	supervisor.Stop()
+}
+
+func managementContextForTest(t *testing.T, state localstore.EnrollmentState) management.Context {
+	t.Helper()
+	mode, err := management.Resolve(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mode
 }
 
 func waitStart(t *testing.T, starts <-chan struct{}) {

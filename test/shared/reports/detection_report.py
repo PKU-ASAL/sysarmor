@@ -65,7 +65,7 @@ def parse_time(value):
 def frame_time(row):
     if not isinstance(row, dict):
         return None
-    ts = parse_time(row.get("observedAt") or row.get("observed_at"))
+    ts = parse_time(row.get("observedAt") or row.get("observed_at") or row.get("@timestamp"))
     if ts:
         return ts
     body = row.get("event") or row.get("signal") or {}
@@ -655,15 +655,11 @@ def build_rows(args):
         all_signals = load_ndjson(signals_path) if signals_path else []
         bench_summary = load_json(case["bench_case_dir"] / "summary.json")
         window_start, window_end, window_name = detection_window(bench_summary)
+        events = filter_frames_by_window(all_events, window_start, window_end)
+        auxiliary_events = filter_frames_by_window(auxiliary_events, window_start, window_end)
+        signals = filter_frames_by_window(all_signals, window_start, window_end)
         if args.scope in ("manager", "full", "control"):
-            events = all_events
-            auxiliary_events = auxiliary_events
-            signals = all_signals
             window_name = "manager_query"
-        else:
-            events = filter_frames_by_window(all_events, window_start, window_end)
-            auxiliary_events = filter_frames_by_window(auxiliary_events, window_start, window_end)
-            signals = filter_frames_by_window(all_signals, window_start, window_end)
         evaluation = evaluate_case(labels_doc, events, signals, bench_summary, auxiliary_events)
         metrics = evaluation["metrics"]
         base = {
