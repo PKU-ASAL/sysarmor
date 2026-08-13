@@ -22,7 +22,7 @@ ALLOWED = {
         "contracts",
     },
 }
-LEGACY_ROOTS = {
+AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/config",
 	"apps/agent/internal/content",
 	"apps/agent/internal/control",
@@ -31,13 +31,13 @@ LEGACY_ROOTS = {
 	"apps/agent/internal/event",
 	"apps/agent/internal/localapi",
 	"apps/agent/internal/localstore",
-	"apps/agent/internal/management",
 	"apps/agent/internal/policy",
 	"apps/agent/internal/remoteapi",
 	"apps/agent/internal/sensors",
 	"apps/agent/internal/tamper",
 	"apps/agent/internal/telemetry",
 }
+LEGACY_ROOTS = AGENT_LEGACY_ROOTS
 STANDARD_LIBRARY = {
     "domain": {
         "crypto/sha256",
@@ -46,6 +46,7 @@ STANDARD_LIBRARY = {
         "encoding/binary",
         "encoding/hex",
         "errors",
+        "fmt",
         "math",
         "sort",
         "strconv",
@@ -121,6 +122,12 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         for relative in LEGACY_ROOTS:
             with self.subTest(relative=relative):
                 self.assertTrue((self.repo / relative).is_dir())
+
+    def test_agent_management_domain_is_layered(self):
+        self.assertTrue(
+            (self.repo / "apps/agent/internal/domain/management").is_dir()
+        )
+        self.assertFalse((self.repo / "apps/agent/internal/management").exists())
 
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []

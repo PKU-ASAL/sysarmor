@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )

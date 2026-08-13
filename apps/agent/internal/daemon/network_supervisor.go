@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
 )
 
 type networkSupervisor struct {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/management"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
 )
 
