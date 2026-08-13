@@ -175,6 +175,16 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             source = (self.repo / relative).read_text()
             self.assertNotIn("any", source, f"untyped content contract remains: {relative}")
 
+    def test_policy_application_contract_is_typed_and_inner(self):
+        root = self.repo / "apps/agent/internal/application/policy"
+        self.assertTrue(root.is_dir())
+        for source in root.glob("*.go"):
+            text = source.read_text()
+            self.assertNotIn("packages/policy", text)
+            self.assertNotIn("sensor-sdk/contract", text)
+            self.assertNotIn("internal/adapters/", text)
+            self.assertNotIn("any", text)
+
     def test_agent_detection_matcher_is_layered(self):
         root = self.repo / "apps/agent/internal"
         self.assertTrue((root / "domain/detection/matcher").is_dir())
