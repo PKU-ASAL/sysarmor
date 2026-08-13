@@ -29,12 +29,8 @@ func (service *OpenSessionService) Open(ctx context.Context, tenantID, agentID, 
 	if err != nil {
 		return domaingateway.OpenSession{}, err
 	}
-	for _, message := range result.Messages {
-		if message.Type == "control_command" {
-			if err := service.delivery.MarkSent(ctx, tenantID, agentID, message.ID); err != nil {
-				return domaingateway.OpenSession{}, fmt.Errorf("mark control command sent: %w", err)
-			}
-		}
+	if err := markControlMessagesSent(ctx, service.delivery, tenantID, agentID, result.Messages); err != nil {
+		return domaingateway.OpenSession{}, err
 	}
 	return result, nil
 }

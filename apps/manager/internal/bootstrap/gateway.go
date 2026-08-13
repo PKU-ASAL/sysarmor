@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -60,12 +61,13 @@ func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, func() error, e
 	acceptor := gatewayapp.NewBatchAcceptor(publisher, sessions, hot)
 	server := datagrpc.NewServer(acceptor, identitypostgres.NewCertificateAuthorizer(cfg.DB), cfg.AgentToken)
 	return server, func() error {
+		var errs []error
 		for index := len(closers) - 1; index >= 0; index-- {
 			if err := closers[index](); err != nil {
-				return err
+				errs = append(errs, err)
 			}
 		}
-		return nil
+		return errors.Join(errs...)
 	}, nil
 }
 
@@ -74,14 +76,15 @@ func NewGatewayControlPlane(cfg ControlPlaneConfig) (*controlgrpc.Server, error)
 		return nil, fmt.Errorf("gateway control database is required")
 	}
 	sessions := controlpostgres.NewSessionRepository(cfg.DB)
-	legacyState := controlpostgres.NewStateWriter(cfg.DB)
-	state := gatewayControlStateWriter{legacy: legacyState,
+	stateWriter := controlpostgres.NewStateWriter(cfg.DB)
+	state := gatewayControlStateWriter{state: stateWriter,
 		results:   controlapp.NewResultService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{}),
 		responses: responseapp.NewService(responsepostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})}
 	delivery := controlapp.NewDeliveryService(controlpostgres.NewUnitOfWork(cfg.DB), systemClock{}, uuidGenerator{})
+	pending := gatewayapp.NewPendingControlService(sessions, delivery)
 	dispatcher := gatewayapp.NewDispatcher(map[string]ports.ControlHandler{
 		"hello":                    handlers.NewHelloHandler(gatewayapp.NewOpenSessionService(sessions, delivery)),
-		"health_report":            handlers.NewStateHandler("health_report", state),
+		"health_report":            handlers.NewHealthHandler(state, pending),
 		"capability_report":        handlers.NewStateHandler("capability_report", state),
 		"response_ack":             handlers.NewStateHandler("response_ack", state),
 		"ack":                      handlers.NewStateHandler("ack", state),

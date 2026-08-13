@@ -1,9 +1,64 @@
 package bootstrap
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestNewGatewayRejectsMissingRuntimeDependencies(t *testing.T) {
+	_, _, err := NewGateway(context.Background(), GatewayRuntimeConfig{Listen: "127.0.0.1:9444"})
+	if err == nil || !strings.Contains(err.Error(), "postgres dsn") {
+		t.Fatalf("NewGateway() error = %v, want missing postgres dsn", err)
+	}
+}
+
+func TestGatewayRuntimeConfigRequiresKafkaBrokers(t *testing.T) {
+	config := validGatewayRuntimeConfig()
+	config.KafkaBrokers = nil
+	if err := config.validate(); err == nil || !strings.Contains(err.Error(), "kafka brokers") {
+		t.Fatalf("validate() error = %v, want missing kafka brokers", err)
+	}
+}
+
+func TestGatewayRunCoordinatesListenerFailures(t *testing.T) {
+	source, err := os.ReadFile("gateway_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, required := range []string{"grpcErrors", "healthErrors", "runtime.stop()"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Gateway Run must coordinate listener failures through %q", required)
+		}
+	}
+	if !strings.Contains(text, "select {") {
+		t.Fatal("Gateway Run must coordinate gRPC and health listener errors")
+	}
+}
+
+func TestGatewayStopHasGracefulShutdownDeadline(t *testing.T) {
+	source, err := os.ReadFile("gateway_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "GracefulStop()") || !strings.Contains(text, "runtime.grpcServer.Stop()") {
+		t.Fatal("Gateway stop must force-stop after graceful shutdown deadline")
+	}
+	if !strings.Contains(text, "3*time.Second") {
+		t.Fatal("Gateway stop must define a bounded graceful shutdown deadline")
+	}
+}
+
+func validGatewayRuntimeConfig() GatewayRuntimeConfig {
+	return GatewayRuntimeConfig{
+		Listen: "127.0.0.1:9444", Development: true,
+		PostgresDriver: "postgres", PostgresDSN: "postgres://database",
+		KafkaBrokers: []string{"kafka:9092"},
+	}
+}
 
 func TestProductionGatewayRejectsMissingMTLS(t *testing.T) {
 	_, err := NewProductionGateway(GatewayConfig{Listen: ":9444"})

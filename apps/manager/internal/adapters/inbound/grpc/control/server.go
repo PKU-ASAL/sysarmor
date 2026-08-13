@@ -184,11 +184,11 @@ func mapReply(request *controlplanev1.ControlFrame, reply ports.ControlFrame) (*
 		if !ok {
 			return nil, fmt.Errorf("policy update payload is invalid")
 		}
-		frame.PolicyUpdate = &controlplanev1.CurrentPolicyResponse{}
-		if err := protojson.Unmarshal(raw, frame.PolicyUpdate); err != nil {
+		policy, err := decodePolicyUpdate(raw)
+		if err != nil {
 			return nil, fmt.Errorf("decode policy update: %w", err)
 		}
-		frame.PolicyUpdate.RawJson = string(raw)
+		frame.PolicyUpdate = policy
 	case "resume":
 		state, ok := reply.Payload.(domaingateway.OpenSession)
 		if !ok {
@@ -241,17 +241,26 @@ func mapControlCommand(frame *controlplanev1.ControlFrame, payload any) error {
 	frame.PayloadJson = append([]byte(nil), command.PayloadJSON...)
 	switch command.Type {
 	case "policy_update":
-		frame.PolicyUpdate = &controlplanev1.CurrentPolicyResponse{}
-		if err := protojson.Unmarshal(command.PayloadJSON, frame.PolicyUpdate); err != nil {
+		var err error
+		frame.PolicyUpdate, err = decodePolicyUpdate(command.PayloadJSON)
+		if err != nil {
 			return fmt.Errorf("decode policy command: %w", err)
 		}
-		frame.PolicyUpdate.RawJson = string(command.PayloadJSON)
 	case "content_update":
 		frame.ContentUpdate = &controlplanev1.ApplyContentRequest{Context: frame.Context, ContentJson: string(command.PayloadJSON)}
 	default:
 		return fmt.Errorf("unsupported control command type %q", command.Type)
 	}
 	return nil
+}
+
+func decodePolicyUpdate(raw []byte) (*controlplanev1.CurrentPolicyResponse, error) {
+	policy := &controlplanev1.CurrentPolicyResponse{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, policy); err != nil {
+		return nil, err
+	}
+	policy.RawJson = string(raw)
+	return policy, nil
 }
 
 func dispatchError(err error) error {

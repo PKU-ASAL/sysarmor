@@ -48,3 +48,16 @@ func TestStateHandlersDelegateByFrameType(t *testing.T) {
 		})
 	}
 }
+
+func TestStateHandlerDelegatesSessionPolicyAckAsCommand(t *testing.T) {
+	writer := &fakeWriter{}
+	result, err := NewStateHandler("ack", writer).Handle(context.Background(), ports.ControlFrame{
+		Type: "ack", Payload: domaingateway.Ack{ID: "policy-hello-20260811T045506Z", Status: "applied"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if writer.called != "command" || len(result.Frames) != 1 || result.Frames[0].Type != "ack" {
+		t.Fatalf("called=%q result=%+v", writer.called, result)
+	}
+}

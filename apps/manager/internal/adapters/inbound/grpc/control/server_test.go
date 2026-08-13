@@ -97,6 +97,17 @@ func TestMapReplyBuildsSessionFrames(t *testing.T) {
 	}
 }
 
+func TestMapReplyPreservesCompletePolicyDocument(t *testing.T) {
+	raw := []byte(`{"policy_id":"default-edr-policy","version":1,"collection":{"observe_only":true},"detection":{"mode":"observe"}}`)
+	frame, err := mapReply(controlRequest(), ports.ControlFrame{Type: "policy_update", Payload: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame.GetPolicyUpdate().GetPolicyId() != "default-edr-policy" || frame.GetPolicyUpdate().GetRawJson() != string(raw) {
+		t.Fatalf("policy update = %+v", frame.GetPolicyUpdate())
+	}
+}
+
 func controlRequest() *controlplanev1.ControlFrame {
 	return &controlplanev1.ControlFrame{Type: "hello", RequestId: "hello-a", Context: &controlplanev1.RequestContext{TenantId: "tenant-a", AgentId: "agent-a"}}
 }

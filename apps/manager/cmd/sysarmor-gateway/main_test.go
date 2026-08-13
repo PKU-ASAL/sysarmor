@@ -1,20 +1,38 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
-func TestPrepareGatewayDefaultsToProduction(t *testing.T) {
-	_, err := prepareGateway(gatewaySecurityConfig{listen: "127.0.0.1:9444"}, false)
-	if err == nil {
-		t.Fatal("prepareGateway() accepted missing production mTLS")
+func TestGatewayCommandDependsOnBootstrapOnly(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{
+		"github.com/lib/pq",
+		"/internal/adapters/",
+		"/packages/contracts/",
+		"google.golang.org/grpc",
+		"bootstrap.OpenPostgres",
+		"bootstrap.NewGatewayDataPlane",
+		"bootstrap.NewGatewayControlPlane",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("gateway command owns technical dependency %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "bootstrap.NewGateway") {
+		t.Fatal("gateway command must use bootstrap.NewGateway")
 	}
 }
 
-func TestPrepareGatewayUsesDevelopmentOnlyWhenExplicit(t *testing.T) {
-	prepared, err := prepareGateway(gatewaySecurityConfig{listen: "127.0.0.1:9444"}, true)
-	if err != nil {
-		t.Fatalf("prepareGateway() error = %v", err)
-	}
-	if prepared.MTLSEnabled() {
-		t.Fatal("explicit development gateway unexpectedly enabled mTLS")
+func TestSplitCSVTrimsAndDropsEmptyValues(t *testing.T) {
+	got := splitCSV(" broker-a, ,broker-b ")
+	if len(got) != 2 || got[0] != "broker-a" || got[1] != "broker-b" {
+		t.Fatalf("splitCSV() = %#v", got)
 	}
 }

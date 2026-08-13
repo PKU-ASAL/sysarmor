@@ -28,6 +28,10 @@ type ControlSessionRepository interface {
 	Open(context.Context, string, string, string, string) (domaingateway.OpenSession, error)
 }
 
+type ControlMessageRepository interface {
+	Pending(context.Context, string, string) ([]domaingateway.Message, error)
+}
+
 type ControlDelivery interface {
 	MarkSent(context.Context, string, string, string) error
 }

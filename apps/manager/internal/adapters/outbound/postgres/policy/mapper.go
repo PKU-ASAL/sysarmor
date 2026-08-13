@@ -41,7 +41,7 @@ func decodePolicy(tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.V
 	if err != nil {
 		return domainpolicy.Policy{}, err
 	}
-	downlink, err := endpointPolicyDocument(canonical, id, version)
+	downlink, err := EndpointDocument(canonical, id, version)
 	if err != nil {
 		return domainpolicy.Policy{}, err
 	}
@@ -67,7 +67,7 @@ func canonicalPolicyDocument(document []byte, tenantID tenant.ID, id domainpolic
 	return canonical, nil
 }
 
-func endpointPolicyDocument(document []byte, id domainpolicy.ID, version domainpolicy.Version) ([]byte, error) {
+func EndpointDocument(document []byte, id domainpolicy.ID, version domainpolicy.Version) ([]byte, error) {
 	var source map[string]json.RawMessage
 	if err := json.Unmarshal(document, &source); err != nil {
 		return nil, fmt.Errorf("decode endpoint policy source: %w", err)

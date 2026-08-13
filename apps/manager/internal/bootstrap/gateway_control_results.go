@@ -13,7 +13,7 @@ import (
 )
 
 type gatewayControlStateWriter struct {
-	legacy    controlpostgres.StateWriter
+	state     controlpostgres.StateWriter
 	results   *controlapp.ResultService
 	responses responseResults
 }
@@ -23,11 +23,11 @@ type responseResults interface {
 }
 
 func (writer gatewayControlStateWriter) RecordHealth(ctx context.Context, value domainidentity.Health) error {
-	return writer.legacy.RecordHealth(ctx, value)
+	return writer.state.RecordHealth(ctx, value)
 }
 
 func (writer gatewayControlStateWriter) RecordCapability(ctx context.Context, value domaingateway.Capability) error {
-	return writer.legacy.RecordCapability(ctx, value)
+	return writer.state.RecordCapability(ctx, value)
 }
 
 func (writer gatewayControlStateWriter) AckResponse(ctx context.Context, value domaingateway.Ack) error {

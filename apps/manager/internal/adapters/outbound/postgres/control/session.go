@@ -9,15 +9,25 @@ import (
 	"fmt"
 	"time"
 
+	policypostgres "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/postgres/policy"
 	domaingateway "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/gateway"
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 )
 
 type SessionRepository struct {
 	db *sql.DB
 }
 
+type messageQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 func NewSessionRepository(db *sql.DB) SessionRepository {
 	return SessionRepository{db: db}
+}
+
+func (repository SessionRepository) Pending(ctx context.Context, tenantID, agentID string) ([]domaingateway.Message, error) {
+	return pendingMessages(ctx, repository.db, tenantID, agentID)
 }
 
 func (repository SessionRepository) Open(ctx context.Context, tenantID, agentID, scopeType, scopeSelector string) (domaingateway.OpenSession, error) {
@@ -48,8 +58,11 @@ func (repository SessionRepository) Open(ctx context.Context, tenantID, agentID,
 func effectivePolicy(ctx context.Context, tx *sql.Tx, tenantID, agentID, scopeType, scopeSelector string) ([]byte, error) {
 	assigned := `SELECT p.data FROM policy_assignments a JOIN policies p ON p.tenant_id=a.tenant_id AND p.policy_id=a.policy_id AND p.version=a.policy_version WHERE a.tenant_id=$1 AND (a.agent_id=$2 OR (a.agent_id='' AND a.scope_type=$3 AND (a.scope_selector='' OR a.scope_selector=$4))) ORDER BY CASE WHEN a.agent_id=$2 THEN 0 ELSE 1 END,a.updated_at DESC`
 	document, found, err := firstPublished(ctx, tx, assigned, tenantID, agentID, scopeType, scopeSelector)
-	if err != nil || found {
-		return document, err
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return endpointPolicyDocument(document)
 	}
 	fallback := `SELECT data FROM policies WHERE tenant_id=$1 ORDER BY version DESC`
 	document, found, err = firstPublished(ctx, tx, fallback, tenantID)
@@ -59,7 +72,18 @@ func effectivePolicy(ctx context.Context, tx *sql.Tx, tenantID, agentID, scopeTy
 	if !found {
 		return nil, fmt.Errorf("read effective policy: %w", sql.ErrNoRows)
 	}
-	return document, nil
+	return endpointPolicyDocument(document)
+}
+
+func endpointPolicyDocument(document []byte) ([]byte, error) {
+	var identity struct {
+		PolicyID string `json:"policy_id"`
+		Version  uint64 `json:"version"`
+	}
+	if err := json.Unmarshal(document, &identity); err != nil {
+		return nil, fmt.Errorf("decode effective policy identity: %w", err)
+	}
+	return policypostgres.EndpointDocument(document, domainpolicy.ID(identity.PolicyID), domainpolicy.Version(identity.Version))
 }
 
 func firstPublished(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]byte, bool, error) {
@@ -96,11 +120,11 @@ func openControlSession(ctx context.Context, tx *sql.Tx, tenantID, agentID strin
 	}
 	return sessionID, cursor, nil
 }
-func pendingMessages(ctx context.Context, tx *sql.Tx, tenantID, agentID string) ([]domaingateway.Message, error) {
+func pendingMessages(ctx context.Context, queryer messageQueryer, tenantID, agentID string) ([]domaingateway.Message, error) {
 	queries := []struct{ kind, query string }{{"response_command", `SELECT response_id,command FROM response_audit WHERE tenant_id=$1 AND agent_id=$2 AND status IN ('pending','pending_approval') ORDER BY created_at`}, {"evidence_pullback", `SELECT request_id,data FROM evidence_pullbacks WHERE tenant_id=$1 AND agent_id=$2 AND status='pending' ORDER BY created_at`}, {"control_command", `SELECT command_id,data FROM control_commands WHERE tenant_id=$1 AND agent_id=$2 AND status IN ('pending','sent') ORDER BY created_at`}}
 	result := []domaingateway.Message{}
 	for _, item := range queries {
-		rows, err := tx.QueryContext(ctx, item.query, tenantID, agentID)
+		rows, err := queryer.QueryContext(ctx, item.query, tenantID, agentID)
 		if err != nil {
 			return nil, err
 		}
