@@ -43,6 +43,10 @@ func newPolicyProjectionRuntime(runner *AgentRuntime) *policyProjectionRuntime {
 	return &policyProjectionRuntime{runner: runner}
 }
 
+func NewPolicyProjectionRuntime(runner *AgentRuntime) agentcontrol.PolicyControllerRuntime {
+	return newPolicyProjectionRuntime(runner)
+}
+
 func (r *policyProjectionRuntime) PolicyIdentity() agentcontrol.PolicyIdentity {
 	identity := r.runner.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}

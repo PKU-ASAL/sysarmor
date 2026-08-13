@@ -38,6 +38,7 @@ func (u *recordingUploader) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev
 
 func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *telemetry.Batcher, *telemetry.Sender) {
 	t.Helper()
+	runner.policyController = newApplicationPolicyController
 	ensureTestLocalStore(t, runner)
 	installTestDetection(t, runner)
 	bus := telemetry.NewBus(1024)

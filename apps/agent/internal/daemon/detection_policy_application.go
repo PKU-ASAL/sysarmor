@@ -46,6 +46,10 @@ func newDetectionPolicyApplication(runner *AgentRuntime) *detectionPolicyApplica
 	return application
 }
 
+func NewDetectionPolicyApplication(runner *AgentRuntime) agentcontrol.DetectionApplication {
+	return newDetectionPolicyApplication(runner)
+}
+
 func (a *detectionPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
 	identity := a.runner.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}

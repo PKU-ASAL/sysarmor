@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
@@ -21,8 +22,10 @@ import (
 )
 
 type Agent struct {
-	runtime *daemon.AgentRuntime
-	store   *localstore.Store
+	runtime   *daemon.AgentRuntime
+	store     *localstore.Store
+	closeOnce sync.Once
+	closeErr  error
 }
 
 type ConfigSummary struct {
@@ -66,12 +69,19 @@ func NewAgent(ctx context.Context, cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load startup content: %w", err)
 	}
-	dependencies := daemon.Dependencies{Config: cfg, Sensor: sensor, Content: contentStore, FeatureFlags: featureFlags}
+	dependencies := daemon.Dependencies{Config: cfg, Sensor: sensor, Content: contentStore, FeatureFlags: featureFlags, Policy: newPolicyController}
 	store, err := configureLocalState(ctx, &dependencies)
 	if err != nil {
 		return nil, err
 	}
-	return &Agent{runtime: daemon.NewRuntime(dependencies), store: store}, nil
+	runtime, err := daemon.NewRuntime(dependencies)
+	if err != nil {
+		if store != nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+	return &Agent{runtime: runtime, store: store}, nil
 }
 
 func (agent *Agent) Run(ctx context.Context, out io.Writer) error {
@@ -79,10 +89,15 @@ func (agent *Agent) Run(ctx context.Context, out io.Writer) error {
 }
 
 func (agent *Agent) Close() error {
-	if agent == nil || agent.store == nil {
+	if agent == nil {
 		return nil
 	}
-	return agent.store.Close()
+	agent.closeOnce.Do(func() {
+		if agent.store != nil {
+			agent.closeErr = agent.store.Close()
+		}
+	})
+	return agent.closeErr
 }
 
 func configureLocalState(ctx context.Context, dependencies *daemon.Dependencies) (*localstore.Store, error) {

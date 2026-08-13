@@ -48,6 +48,10 @@ func newEndpointPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Ru
 	return application
 }
 
+func NewEndpointPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetry.Batcher) agentcontrol.EndpointApplication {
+	return newEndpointPolicyApplication(runner, runtime, batcher)
+}
+
 func (a *endpointPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
 	identity := a.runner.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}

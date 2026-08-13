@@ -39,6 +39,10 @@ func newTelemetryPolicyApplication(runner *AgentRuntime, batcher *telemetry.Batc
 	return application
 }
 
+func NewTelemetryPolicyApplication(runner *AgentRuntime, batcher *telemetry.Batcher) agentcontrol.TelemetryApplication {
+	return newTelemetryPolicyApplication(runner, batcher)
+}
+
 func (a *telemetryPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
 	identity := a.runner.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}

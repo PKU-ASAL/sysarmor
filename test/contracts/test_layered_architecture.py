@@ -336,6 +336,17 @@ import (
                     violations.append(f"{command}: {imported}")
         self.assertEqual([], violations, "command bypasses bootstrap:\n" + "\n".join(violations))
 
+    def test_agent_daemon_does_not_own_policy_assembly(self):
+        daemon = self.repo / "apps" / "agent" / "internal" / "daemon"
+        self.assertFalse((daemon / "policy_assembly.go").exists())
+        violations = []
+        for source in daemon.glob("*.go"):
+            if source.name.endswith("_test.go"):
+                continue
+            if "newApplicationPolicyController" in source.read_text():
+                violations.append(str(source.relative_to(self.repo)))
+        self.assertEqual([], violations, f"daemon owns policy assembly: {violations}")
+
     def test_domain_does_not_import_protobuf(self):
         forbidden = f"{MODULE}packages/contracts/proto"
         violations = []

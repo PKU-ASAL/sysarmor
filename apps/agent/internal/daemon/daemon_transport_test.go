@@ -140,6 +140,7 @@ func TestAgentRuntimeControlChannelProcessesPendingResponse(t *testing.T) {
 			SupportsHealth: true,
 		},
 	}
+	runner.policyController = newApplicationPolicyController
 	rt := sensorruntime.New(runner.Sensor)
 	batcher := telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 16)
 	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}

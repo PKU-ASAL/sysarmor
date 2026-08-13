@@ -44,6 +44,10 @@ func newCollectionPolicyApplication(runner *AgentRuntime, runtime sensorruntime.
 	return application
 }
 
+func NewCollectionPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Runtime) agentcontrol.CollectionApplication {
+	return newCollectionPolicyApplication(runner, runtime)
+}
+
 func (a *collectionPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
 	identity := a.runner.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}

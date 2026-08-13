@@ -13,6 +13,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/tamper"
@@ -59,6 +60,7 @@ type AgentRuntime struct {
 	eventSeq                uint64
 	signalSeq               uint64
 	telemetrySeq            uint64
+	policyController        PolicyControllerFactory
 }
 
 type Dependencies struct {
@@ -69,7 +71,10 @@ type Dependencies struct {
 	FeatureFlags agenthealth.RuntimeFeatureFlags
 	EventSeq     uint64
 	SignalSeq    uint64
+	Policy       PolicyControllerFactory
 }
+
+type PolicyControllerFactory func(*AgentRuntime, sensorruntime.Runtime, *telemetry.Batcher) *agentcontrol.ApplicationPolicyController
 
 func (r *AgentRuntime) withDetectionUpdateTransaction(fn func()) {
 	r.detectionUpdateMu.Lock()
@@ -77,18 +82,28 @@ func (r *AgentRuntime) withDetectionUpdateTransaction(fn func()) {
 	fn()
 }
 
-func NewRuntime(dependencies Dependencies) *AgentRuntime {
+func NewRuntime(dependencies Dependencies) (*AgentRuntime, error) {
+	if dependencies.Sensor == nil {
+		return nil, fmt.Errorf("daemon sensor dependency is required")
+	}
+	if dependencies.Content == nil {
+		return nil, fmt.Errorf("daemon content dependency is required")
+	}
+	if dependencies.Policy == nil {
+		return nil, fmt.Errorf("daemon policy controller factory is required")
+	}
 	runtime := &AgentRuntime{
 		Config: dependencies.Config, Sensor: dependencies.Sensor, content: dependencies.Content,
 		featureFlags: dependencies.FeatureFlags, localStore: dependencies.LocalStore,
 		eventSeq: dependencies.EventSeq, signalSeq: dependencies.SignalSeq,
 	}
+	runtime.policyController = dependencies.Policy
 	runtime.setRuntimeIdentity(runtimeIdentity{
 		AgentID:  dependencies.Config.Agent.ID,
 		HostID:   dependencies.Config.Agent.HostID,
 		TenantID: dependencies.Config.Agent.TenantID,
 	})
-	return runtime
+	return runtime, nil
 }
 
 func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {

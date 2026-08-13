@@ -40,7 +40,7 @@ func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *AgentRuntime {
 	default:
 		t.Fatalf("unsupported test sensor backend %q", cfg.Sensor.Backend)
 	}
-	dependencies := Dependencies{Config: cfg, Sensor: sensor, Content: agentcontent.NewStore()}
+	dependencies := Dependencies{Config: cfg, Sensor: sensor, Content: agentcontent.NewStore(), Policy: newApplicationPolicyController}
 	if cfg.Manager.Transport == "" {
 		store, err := localstore.Open(context.Background(), localstore.Options{
 			RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes, MinFreeBytes: cfg.Local.Storage.MinFreeBytes,
@@ -69,7 +69,11 @@ func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *AgentRuntime {
 		}
 		dependencies.LocalStore, dependencies.EventSeq, dependencies.SignalSeq = store, cursor.Event, cursor.Signal
 	}
-	return NewRuntime(dependencies)
+	runtime, err := NewRuntime(dependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtime
 }
 
 type healthOnlySensor struct {
@@ -192,6 +196,7 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 			SupportsHealth: true,
 		},
 	}
+	runner.policyController = newApplicationPolicyController
 	installTestDetection(t, runner)
 	if server.initialContentJSON != "" {
 		if _, err := runner.contentStore().Apply(server.initialContentJSON, true, false); err != nil {

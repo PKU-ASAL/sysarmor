@@ -88,6 +88,9 @@ func TestNewAgentOwnsStandaloneLocalState(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := agent.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
 }
 
 func TestNewAgentDoesNotCreateManagedLocalState(t *testing.T) {
