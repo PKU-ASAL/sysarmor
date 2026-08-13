@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	systemadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/system"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	appdiagnostics "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/diagnostics"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localapi"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -24,12 +26,13 @@ func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorrun
 	}
 	telemetryService := &localTelemetryService{runner: r, bus: bus}
 	handler := localapi.NewHandler(localapi.Dependencies{
-		Status:     statusService,
-		Telemetry:  telemetryService,
-		Policy:     r.policyController(r, rt, batcher),
-		Content:    agentcontrol.NewContentController(newContentApplicationAdapter(r)),
-		Enrollment: coordinator,
-		Validate:   r.validateControlContext,
+		Status:      statusService,
+		Telemetry:   telemetryService,
+		Policy:      r.policyController(r, rt, batcher),
+		Content:     agentcontrol.NewContentController(newContentApplicationAdapter(r)),
+		Enrollment:  coordinator,
+		Diagnostics: appdiagnostics.NewService(systemadapter.NewProfileCapturer()),
+		Validate:    r.validateControlContext,
 	})
 	return localapi.New(socketPath, handler, r.Out).Start(ctx)
 }

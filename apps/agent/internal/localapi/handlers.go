@@ -3,8 +3,8 @@ package localapi
 import (
 	"context"
 	"fmt"
-	"sync"
 
+	appdiagnostics "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/diagnostics"
 	appenrollment "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/enrollment"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -15,19 +15,23 @@ type StatusService interface {
 	Capability(context.Context, *controlplanev1.CapabilityRequest) (*controlplanev1.CapabilityResponse, error)
 }
 
+type DiagnosticsService interface {
+	Capture(context.Context, appdiagnostics.Request) (appdiagnostics.Result, error)
+}
+
 type Dependencies struct {
-	Status     StatusService
-	Telemetry  TelemetryReader
-	Policy     agentcontrol.PolicyController
-	Content    agentcontrol.ContentController
-	Enrollment appenrollment.Controller
-	Validate   func(*controlplanev1.RequestContext) error
+	Status      StatusService
+	Telemetry   TelemetryReader
+	Policy      agentcontrol.PolicyController
+	Content     agentcontrol.ContentController
+	Enrollment  appenrollment.Controller
+	Diagnostics DiagnosticsService
+	Validate    func(*controlplanev1.RequestContext) error
 }
 
 type Handler struct {
 	controlplanev1.UnimplementedAgentControlPlaneServiceServer
-	deps      Dependencies
-	profileMu sync.Mutex
+	deps Dependencies
 }
 
 func NewHandler(deps Dependencies) *Handler {

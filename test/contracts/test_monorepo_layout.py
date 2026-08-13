@@ -220,14 +220,12 @@ class MonorepoLayoutContractTest(unittest.TestCase):
     def test_agent_local_api_uses_narrow_read_services(self):
         localapi = self.repo / "apps/agent/internal/localapi"
         sources = "\n".join(path.read_text() for path in localapi.glob("*.go"))
-        for declaration in (
-            "type StatusService interface",
-            "type TelemetryReader interface",
-            "Status     StatusService",
-            "Telemetry  TelemetryReader",
-        ):
+        for declaration in ("type StatusService interface", "type TelemetryReader interface"):
             with self.subTest(declaration=declaration):
                 self.assertIn(declaration, sources)
+        for declaration in (r"\bStatus\s+StatusService\b", r"\bTelemetry\s+TelemetryReader\b"):
+            with self.subTest(declaration=declaration):
+                self.assertRegex(sources, declaration)
         self.assertNotIn("Legacy", sources)
 
     def test_agent_remote_api_adapter_directory(self):
