@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,6 +132,9 @@ func TestAgentRuntimeProcessesTamperSignalFromHealth(t *testing.T) {
 	sig = batch.GetSignals()[0].GetSignal()
 	if sig.GetName() != tamper.SignalName || !sig.GetTerminal() || sig.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT {
 		t.Fatalf("tamper signal = %+v", sig)
+	}
+	if sig.GetLabels()["policy_id"] != runner.activePolicy().PolicyID || sig.GetLabels()["policy_version"] != fmt.Sprint(runner.activePolicy().Version) {
+		t.Fatalf("tamper policy labels = %+v", sig.GetLabels())
 	}
 }
 

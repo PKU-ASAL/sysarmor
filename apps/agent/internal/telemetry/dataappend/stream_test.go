@@ -32,6 +32,8 @@ func TestStreamJSONLBatchesAndAssignsRawRefs(t *testing.T) {
 	stats, err := StreamJSONL(context.Background(), strings.NewReader(input), rec, StreamOptions{
 		AgentID:       "agent-a",
 		HostID:        "host-a",
+		PolicyID:      "policy-a",
+		PolicyVersion: 3,
 		Labels:        map[string]string{"scenario": "scenario-a"},
 		Version:       "test",
 		BatchSize:     2,
@@ -53,6 +55,13 @@ func TestStreamJSONLBatchesAndAssignsRawRefs(t *testing.T) {
 	if rec.batches[0].GetHeader().GetTenantId() != "default" {
 		t.Fatalf("tenant metadata missing: %#v", rec.batches[0].GetHeader())
 	}
+	if rec.batches[0].GetHeader().GetBatchId() == "" || rec.batches[0].GetHeader().GetPolicyId() != "policy-a" || rec.batches[0].GetHeader().GetPolicyVersion() != 3 {
+		t.Fatalf("batch identity missing: %#v", rec.batches[0].GetHeader())
+	}
+	labels := rec.batches[0].GetEvents()[0].GetEvent().GetLabels()
+	if labels["policy_id"] != "policy-a" || labels["policy_version"] != "3" {
+		t.Fatalf("event policy labels = %+v", labels)
+	}
 	if rec.batches[0].GetSchemaVersion() != schema.DataPlaneCurrent {
 		t.Fatalf("schema version = %q", rec.batches[0].GetSchemaVersion())
 	}
@@ -73,6 +82,8 @@ func TestStreamJSONLStoresTetragonRawLineBehindRef(t *testing.T) {
 	stats, err := StreamJSONL(context.Background(), strings.NewReader(input), rec, StreamOptions{
 		AgentID:       "agent-a",
 		HostID:        "host-a",
+		PolicyID:      "policy-a",
+		PolicyVersion: 3,
 		Labels:        map[string]string{"scenario": "scenario-a"},
 		Version:       "test",
 		BatchSize:     10,

@@ -71,6 +71,12 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	}, runner.Out)
 	remoteIdentity := remoteapi.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 	for _, frame := range frames {
+		if frame.GetType() == "policy_update" {
+			if err := dispatcher.HandleSnapshot(ctx, remoteIdentity, frame); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := dispatcher.Handle(ctx, session, remoteIdentity, frame); err != nil {
 			return err
 		}

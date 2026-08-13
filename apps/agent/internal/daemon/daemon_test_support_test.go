@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
@@ -31,11 +32,13 @@ type healthOnlySensor struct {
 
 type contentUpdateControlServer struct {
 	controlplanev1.UnimplementedAgentControlPlaneServiceServer
-	tenantID    string
-	agentID     string
-	contentJSON string
-	policy      policymodel.Policy
-	acks        chan *controlplanev1.ControlAck
+	tenantID           string
+	agentID            string
+	initialContentJSON string
+	contentJSON        string
+	policy             policymodel.Policy
+	acks               chan *controlplanev1.ControlAck
+	snapshotAcks       chan *controlplanev1.ControlAck
 }
 
 func (s *contentUpdateControlServer) Connect(stream controlplanev1.AgentControlPlaneService_ConnectServer) error {
@@ -50,11 +53,12 @@ func (s *contentUpdateControlServer) Connect(stream controlplanev1.AgentControlP
 	agentID := firstNonEmptyString(s.agentID, hello.GetContext().GetAgentId())
 	policy := s.policy
 	if policy.PolicyID == "" {
-		policy = policymodel.DefaultPolicy(tenantID)
+		policy = policymodel.ManagerDefaultPolicy(tenantID)
 	}
 	policy.TenantID = tenantID
-	endpointPolicy := agentpolicy.EndpointPolicy{PolicyID: policy.PolicyID, Version: policy.Version,
-		Collection: agentpolicy.CollectionPolicy{Behaviors: []string{"process.exec"}}, Detection: *policy.Detection,
+	endpoint := policy.EndpointPolicy()
+	endpointPolicy := agentpolicy.EndpointPolicy{PolicyID: endpoint.PolicyID, Version: endpoint.Version,
+		Collection: endpoint.Collection, Detection: endpoint.Detection,
 		Telemetry: policymodel.TelemetryPolicy{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: "1s"}, Response: policy.Response}
 	rawPolicy, _ := json.Marshal(endpointPolicy)
 	for _, frame := range []*controlplanev1.ControlFrame{{
@@ -98,6 +102,10 @@ func (s *contentUpdateControlServer) Connect(stream controlplanev1.AgentControlP
 		if err != nil {
 			return err
 		}
+		if frame.GetType() == "ack" && frame.GetAck().GetRequestId() == hello.GetRequestId() {
+			s.snapshotAcks <- frame.GetAck()
+			continue
+		}
 		if frame.GetType() == "ack" && frame.GetAck().GetRequestId() == "content-update-1" {
 			s.acks <- frame.GetAck()
 			return nil
@@ -109,6 +117,9 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 	t.Helper()
 	if server.acks == nil {
 		server.acks = make(chan *controlplanev1.ControlAck, 1)
+	}
+	if server.snapshotAcks == nil {
+		server.snapshotAcks = make(chan *controlplanev1.ControlAck, 1)
 	}
 	grpcServer := grpc.NewServer()
 	controlplanev1.RegisterAgentControlPlaneServiceServer(grpcServer, server)
@@ -136,6 +147,19 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 		},
 	}
 	installTestDetection(t, runner)
+	if server.initialContentJSON != "" {
+		if _, err := runner.contentStore().Apply(server.initialContentJSON, true, false); err != nil {
+			t.Fatalf("install valid runtime content: %v", err)
+		}
+	}
+	ensureTestLocalStore(t, runner)
+	if err := runner.localStore.SetEnrolling(context.Background(), localstore.Enrollment{
+		TenantID: "default", AgentID: agentID, EnrollmentID: "test-enrollment-" + agentID,
+		CertificateSerial: "test-serial", ManagerURL: "https://manager.test", GatewayAddress: "gateway",
+		TLSCAPath: "/test/ca", TLSCertPath: "/test/cert", TLSKeyPath: "/test/key",
+	}); err != nil {
+		t.Fatalf("initialize managed enrollment: %v", err)
+	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
 	batcher := telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 16)
@@ -163,12 +187,16 @@ func waitForControlAck(t *testing.T, server *contentUpdateControlServer, request
 }
 
 func badRuntimeCandidatePolicy(tenantID string) policymodel.Policy {
-	policy := policymodel.DefaultPolicy(tenantID)
+	policy := policymodel.ManagerDefaultPolicy(tenantID)
 	policy.PolicyID = "bad-runtime-candidate"
 	policy.Version = 2
 	enabled := true
 	policy.Detection.RuleSets = append(policy.Detection.RuleSets, policymodel.RuleSetRef{Ref: "ruleset:bad-runtime", Enabled: &enabled})
 	return policy
+}
+
+func validBadRuntimeRulePackJSON() string {
+	return `{"api_version":"sysarmor.content/v1","kind":"rulepack","metadata":{"id":"rulepack:bad-runtime","version":"v1"},"spec":{"rulesets":[{"id":"ruleset:bad-runtime","version":"v1","rules":[{"rule_id":"valid_runtime_rule","version":1,"severity":"low","runtime":{"type":"sequence","sequence":{"within":"10s","steps":[{"id":"exit","event":"process.exit"}]}}}]}]}}`
 }
 
 type safeBuffer struct {

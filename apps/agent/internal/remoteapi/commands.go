@@ -75,6 +75,20 @@ func (d *Dispatcher) Handle(ctx context.Context, session *ControlChannel, identi
 	return nil
 }
 
+func (d *Dispatcher) HandleSnapshot(ctx context.Context, identity Identity, frame *controlplanev1.ControlFrame) error {
+	if frame.GetType() != "policy_update" {
+		return fmt.Errorf("unsupported control snapshot type %q", frame.GetType())
+	}
+	result, _, err := d.Dispatch(ctx, identity, frame)
+	if err != nil {
+		return err
+	}
+	if result.Status == "rejected" {
+		return fmt.Errorf("control policy snapshot rejected: %s", result.Message)
+	}
+	return nil
+}
+
 func (d *Dispatcher) handleResponse(ctx context.Context, session *ControlChannel, frame *controlplanev1.ControlFrame) error {
 	if d.deps.Response == nil {
 		return fmt.Errorf("remote api response controller is unavailable")

@@ -201,11 +201,38 @@ func TestAgentRuntimeControlChannelAppliesContentUpdate(t *testing.T) {
 	}
 }
 
+func TestAgentRuntimeAppliesHandshakePolicyWithoutCommandAck(t *testing.T) {
+	server := &contentUpdateControlServer{
+		tenantID: "default",
+		agentID:  "agent-handshake-policy",
+		contentJSON: `{
+			"api_version":"sysarmor.content/v1",
+			"kind":"iocpack",
+			"metadata":{"id":"ioc:handshake-test","version":"v1"},
+			"spec":{"value_type":"port","values":["9443"]}
+		}`,
+	}
+	_, done, cancel := runTestControlChannel(t, t.TempDir(), server, "agent-handshake-policy")
+	defer cancel()
+
+	waitForControlAck(t, server, "content-update-1")
+	select {
+	case ack := <-server.snapshotAcks:
+		t.Fatalf("handshake policy snapshot sent command ack: %+v", ack)
+	default:
+	}
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunControlChannel() error = %v", err)
+	}
+}
+
 func TestAgentRuntimeControlChannelRejectsBadContentUpdateWithoutReplacingDetection(t *testing.T) {
 	dir := t.TempDir()
 	server := &contentUpdateControlServer{
-		tenantID: "default",
-		agentID:  "agent-bad-content-update",
+		tenantID:           "default",
+		agentID:            "agent-bad-content-update",
+		initialContentJSON: validBadRuntimeRulePackJSON(),
 		contentJSON: `{
 			"api_version":"sysarmor.content/v1",
 			"kind":"rulepack",
@@ -230,8 +257,8 @@ func TestAgentRuntimeControlChannelRejectsBadContentUpdateWithoutReplacingDetect
 	if ack.GetStatus() != "rejected" || !strings.Contains(ack.GetMessage(), "detection rebuild failed") {
 		t.Fatalf("bad content ack = %+v", ack)
 	}
-	if _, ok := runner.contentStore().Get("rulepack:bad-runtime"); ok {
-		t.Fatalf("rejected content update was committed")
+	if record, ok := runner.contentStore().Get("rulepack:bad-runtime"); !ok || record.Version != "v1" {
+		t.Fatalf("content after rejected update = %+v ok=%t, want previous v1", record, ok)
 	}
 	batch := appendEndpointEventForTest(t, runner, nil, normalize.New("agent-bad-content-update", "host-bad-content-update", nil), sensorEventEnvelope("file.write", 101, "/usr/bin/curl", "/dev/shm/kept-control.sh", ""))
 	if len(batch.GetSignals()) != 1 || batch.GetSignals()[0].GetSignal().GetName() != "payload_dropped" {

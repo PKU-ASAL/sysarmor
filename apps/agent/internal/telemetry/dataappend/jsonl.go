@@ -16,15 +16,19 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func ReadProtoJSONL(r io.Reader, agentID, hostID string, labels map[string]string) (*dataplanev1.DataBatch, error) {
-	return ReadProtoJSONLWithRing(r, agentID, hostID, labels, ringbuffer.New(4096))
+func ReadProtoJSONL(r io.Reader, agentID, hostID, policyID string, policyVersion uint64, labels map[string]string) (*dataplanev1.DataBatch, error) {
+	return ReadProtoJSONLWithRing(r, agentID, hostID, policyID, policyVersion, labels, ringbuffer.New(4096))
 }
 
-func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID string, labels map[string]string, rawRing *ringbuffer.Buffer) (*dataplanev1.DataBatch, error) {
+func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, policyVersion uint64, labels map[string]string, rawRing *ringbuffer.Buffer) (*dataplanev1.DataBatch, error) {
+	if err := validateReplayPolicy(policyID, policyVersion); err != nil {
+		return nil, err
+	}
 	if rawRing == nil {
 		rawRing = ringbuffer.New(4096)
 	}
-	batch := newBatch(StreamOptions{AgentID: agentID, HostID: hostID, TenantID: "default", Labels: labels})
+	labels = replayLabels(labels, policyID, policyVersion)
+	batch := newBatch(StreamOptions{AgentID: agentID, HostID: hostID, TenantID: "default", PolicyID: policyID, PolicyVersion: policyVersion, Labels: labels})
 	norm := normalize.New(agentID, hostID, nil)
 	detector, _ := detection.New(policymodel.DefaultDetectionPolicy())
 	scanner := bufio.NewScanner(r)

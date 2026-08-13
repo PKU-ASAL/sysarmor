@@ -45,6 +45,8 @@ func main() {
 	agentID := flag.String("agent-id", "agent-dev", "agent identifier")
 	hostID := flag.String("host-id", "host-dev", "host identifier")
 	tenantID := flag.String("tenant-id", "default", "tenant identifier")
+	policyID := flag.String("policy-id", "", "published policy identifier for replayed data")
+	policyVersion := flag.Uint64("policy-version", 0, "published policy version for replayed data")
 	labels := labelFlags{}
 	tlsCA := flag.String("tls-ca", "", "CA bundle used to verify manager gRPC")
 	tlsCert := flag.String("tls-cert", "", "agent client certificate for mTLS")
@@ -64,7 +66,7 @@ func main() {
 	}
 
 	if *input != "" {
-		if err := appendJSONL(*manager, *transport, *agentID, *hostID, *tenantID, labels.Map(), *input, cliTLS(*tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure)); err != nil {
+		if err := appendJSONL(*manager, *transport, *agentID, *hostID, *tenantID, *policyID, *policyVersion, labels.Map(), *input, cliTLS(*tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure)); err != nil {
 			fmt.Fprintf(os.Stderr, "sysarmor-agent: %v\n", err)
 			os.Exit(1)
 		}
@@ -72,7 +74,7 @@ func main() {
 	}
 
 	if *stream != "" {
-		stats, err := streamJSONL(*manager, *transport, *agentID, *hostID, *tenantID, labels.Map(), *stream, *batchSize, *flushInterval, cliTLS(*tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure))
+		stats, err := streamJSONL(*manager, *transport, *agentID, *hostID, *tenantID, *policyID, *policyVersion, labels.Map(), *stream, *batchSize, *flushInterval, cliTLS(*tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "sysarmor-agent: %v\n", err)
 			os.Exit(1)
@@ -177,13 +179,13 @@ func (f labelFlags) Map() map[string]string {
 	return out
 }
 
-func appendJSONL(manager, transport, agentID, hostID, tenantID string, labels map[string]string, input string, tlsCfg tlsconfig.ClientConfig) error {
+func appendJSONL(manager, transport, agentID, hostID, tenantID, policyID string, policyVersion uint64, labels map[string]string, input string, tlsCfg tlsconfig.ClientConfig) error {
 	f, err := os.Open(input)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	batch, err := dataappend.ReadProtoJSONL(f, agentID, hostID, labels)
+	batch, err := dataappend.ReadProtoJSONL(f, agentID, hostID, policyID, policyVersion, labels)
 	if err != nil {
 		return err
 	}
@@ -205,7 +207,7 @@ func appendJSONL(manager, transport, agentID, hostID, tenantID string, labels ma
 	return err
 }
 
-func streamJSONL(manager, transport, agentID, hostID, tenantID string, labels map[string]string, input string, batchSize int, flushInterval time.Duration, tlsCfg tlsconfig.ClientConfig) (dataappend.StreamStats, error) {
+func streamJSONL(manager, transport, agentID, hostID, tenantID, policyID string, policyVersion uint64, labels map[string]string, input string, batchSize int, flushInterval time.Duration, tlsCfg tlsconfig.ClientConfig) (dataappend.StreamStats, error) {
 	r := os.Stdin
 	if input != "-" {
 		f, err := os.Open(input)
@@ -223,6 +225,8 @@ func streamJSONL(manager, transport, agentID, hostID, tenantID string, labels ma
 		AgentID:       agentID,
 		HostID:        hostID,
 		TenantID:      tenantID,
+		PolicyID:      policyID,
+		PolicyVersion: policyVersion,
 		Labels:        labels,
 		Version:       version,
 		BatchSize:     batchSize,

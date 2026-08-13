@@ -643,30 +643,34 @@ func (e *Engine) matchCompiledConditions(view eventView, conditions []compiledCo
 
 func (e *Engine) matchCompiledCondition(view eventView, cond compiledCondition, st *cepGroupState) bool {
 	e.metrics.ConditionsEvaluated++
-	actual := view.field(cond.field)
 	e.metrics.FieldReads++
+	return e.recordConditionResult(compiledConditionMatches(view, cond, st))
+}
+
+func compiledConditionMatches(view eventView, cond compiledCondition, st *cepGroupState) bool {
+	actual := view.field(cond.field)
 	switch cond.op {
 	case opEq, opIn:
-		return e.recordConditionResult(cond.matcher != nil && cond.matcher.Match(actual))
+		return cond.matcher != nil && cond.matcher.Match(actual)
 	case opNeq, opNotIn:
-		return e.recordConditionResult(cond.matcher == nil || !cond.matcher.Match(actual))
+		return cond.matcher == nil || !cond.matcher.Match(actual)
 	case opContains, opPrefix, opSuffix:
-		return e.recordConditionResult(cond.matcher != nil && cond.matcher.Match(actual))
+		return cond.matcher != nil && cond.matcher.Match(actual)
 	case opSameAs:
 		if st == nil || cond.step == "" {
-			return e.recordConditionResult(false)
+			return false
 		}
 		stepValues := st.Values[cond.step]
 		if stepValues == nil {
-			return e.recordConditionResult(false)
+			return false
 		}
-		return e.recordConditionResult(actual != "" && actual == stepValues[fieldName(cond.stepField)])
+		return actual != "" && actual == stepValues[fieldName(cond.stepField)]
 	case opExists:
-		return e.recordConditionResult(actual != "")
+		return actual != ""
 	case opGT, opGTE, opLT, opLTE:
-		return e.recordConditionResult(compareNumber(actual, firstValue(cond.values), opString(cond.op)))
+		return compareNumber(actual, firstValue(cond.values), opString(cond.op))
 	default:
-		return e.recordConditionResult(false)
+		return false
 	}
 }
 

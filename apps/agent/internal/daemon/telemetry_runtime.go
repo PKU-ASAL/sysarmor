@@ -152,7 +152,11 @@ func setEndpointSignalID(signal *signalv1.Signal, sequence uint64) {
 func (r *AgentRuntime) dataBatchForSignals(signals []*signalv1.Signal) *dataplanev1.DataBatch {
 	now := time.Now().UTC()
 	batch := r.newDataBatch(now)
+	policyLabels := r.policyLabels()
 	for _, sig := range signals {
+		if sig != nil {
+			sig.Labels = mergeLabels(sig.GetLabels(), policyLabels)
+		}
 		batch.Signals = append(batch.Signals, &dataplanev1.SignalFrame{
 			Sequence:   r.nextSignalSequence(),
 			ObservedAt: now.Format(time.RFC3339Nano),
