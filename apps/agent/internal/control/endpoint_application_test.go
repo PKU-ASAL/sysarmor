@@ -68,7 +68,7 @@ func TestEndpointControlMapsManagedPending(t *testing.T) {
 		pending:   true,
 	}
 	result := NewEndpointPolicyController(application).Apply(t.Context(), PolicyCommand{Document: "{}", Source: PolicySourceManaged})
-	if result.Status != "pending" || !application.managed || application.begun {
+	if result.Status != "pending" || !result.RequiresRestart || !collectionSectionRequiresRestart(result) || !application.managed || application.begun {
 		t.Fatalf("result=%+v application=%+v", result, application)
 	}
 }
@@ -78,9 +78,18 @@ func TestEndpointControlDryRunOnlyValidates(t *testing.T) {
 	result := NewEndpointPolicyController(application).Apply(t.Context(), PolicyCommand{
 		Document: "{}", Source: PolicySourceStandalone, DryRun: true,
 	})
-	if result.Status != "validated" || application.standalone || application.managed {
+	if result.Status != "validated" || !result.RequiresRestart || !collectionSectionRequiresRestart(result) || application.standalone || application.managed {
 		t.Fatalf("result=%+v application=%+v", result, application)
 	}
+}
+
+func collectionSectionRequiresRestart(result Result) bool {
+	for _, section := range result.Sections {
+		if section.Name == "collection" {
+			return section.RequiresRestart
+		}
+	}
+	return false
 }
 
 func TestEndpointControlMapsApplicationFailure(t *testing.T) {

@@ -14,13 +14,13 @@ func endpointApplicationResult(identity PolicyIdentity, requestID string, candid
 	return Result{
 		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
 		Status: status, Message: message, PolicyID: candidate.PolicyID(), Version: candidate.PolicyVersion(),
-		RequiresRestart: report.RequiresRestart,
+		RequiresRestart: true,
 		Sections: []SectionResult{
 			{Name: "detection", Status: status, Message: "endpoint rules updated"},
 			{Name: "response", Status: status, Message: "response policy updated"},
 			{Name: "resource", Status: "unsupported", Message: "resource policy contract is reserved for the next phase", RequiresRestart: report.RequiresRestart},
 			{Name: "telemetry", Status: status, Message: "telemetry policy accepted"},
-			{Name: "collection", Status: status, Message: "collection policy accepted", RequiresRestart: report.RequiresRestart},
+			{Name: "collection", Status: status, Message: "collection policy accepted", RequiresRestart: true},
 		},
 	}
 }
