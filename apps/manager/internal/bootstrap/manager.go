@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/lib/pq"
 	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/auth"
 	managerapi "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/http/manager"
 	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/outbound/opensearch"
@@ -23,9 +24,15 @@ type ManagerConfig struct {
 	OpenSearchURL      string
 	OpenSearchUsername string
 	OpenSearchPassword string
-	JWT                managerauth.Config
+	JWT                JWTConfig
 	Enrollment         EnrollmentHTTPConfig
 	Artifact           ArtifactConfig
+}
+
+type JWTConfig struct {
+	PublicKeyFile string
+	Issuer        string
+	Audience      string
 }
 
 func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Closer, error) {
@@ -58,7 +65,11 @@ func OpenPostgres(ctx context.Context, driver, dsn string) (*sql.DB, postgresmig
 	if strings.TrimSpace(driver) == "" {
 		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres driver is required")
 	}
-	db, err := sql.Open(strings.TrimSpace(driver), dsn)
+	driver = strings.TrimSpace(driver)
+	if driver != "postgres" {
+		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres driver must be postgres")
+	}
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("open postgres: %w", err)
 	}
@@ -75,7 +86,11 @@ func buildManagerServer(ctx context.Context, db *sql.DB, migration postgresmigra
 	if err != nil {
 		return nil, fmt.Errorf("open opensearch searcher: %w", err)
 	}
-	verifier, err := managerauth.NewVerifier(ctx, config.JWT)
+	verifier, err := managerauth.NewVerifier(ctx, managerauth.Config{
+		PublicKeyFile: config.JWT.PublicKeyFile,
+		Issuer:        config.JWT.Issuer,
+		Audience:      config.JWT.Audience,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("configure JWT verifier: %w", err)
 	}

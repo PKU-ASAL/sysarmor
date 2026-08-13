@@ -22,6 +22,37 @@ func TestManagerCommandUsesPostgresBootstrap(t *testing.T) {
 	}
 }
 
+func TestManagerCommandDependsOnBootstrapOnly(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{
+		"github.com/lib/pq",
+		"/internal/adapters/",
+		"/packages/contracts/",
+		"google.golang.org/grpc",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("manager command imports technical dependency %q", forbidden)
+		}
+	}
+}
+
+func TestManagerCommandOwnsGracefulShutdown(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, required := range []string{"signal.NotifyContext", "server.Shutdown"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("manager command missing graceful shutdown operation %q", required)
+		}
+	}
+}
+
 func TestEnvDefault(t *testing.T) {
 	t.Setenv("SYSARMOR_TEST_DEFAULT", " value ")
 	if got := envDefault("SYSARMOR_TEST_DEFAULT", "fallback"); got != "value" {
