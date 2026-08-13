@@ -5,6 +5,7 @@ import (
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	applicationpipeline "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/pipeline"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -13,10 +14,11 @@ import (
 type EndpointRuntime struct {
 	runner     *AgentRuntime
 	normalizer *eventadapter.EventNormalizer
+	pipeline   *applicationpipeline.Service
 }
 
 func NewEndpointRuntime(runner *AgentRuntime, normalizer *eventadapter.EventNormalizer) *EndpointRuntime {
-	return &EndpointRuntime{runner: runner, normalizer: normalizer}
+	return &EndpointRuntime{runner: runner, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{runner: runner})}
 }
 
 func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.DataBatch, error) {
@@ -30,11 +32,13 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 		ev.SensorEvent.RawRef = ev.RawRef
 	}
 	domainEvent := r.normalizer.NormalizeDomain(ev.SensorEvent)
-	domainEvent.Labels = mergeLabels(domainEvent.Labels, r.runner.policyLabels())
-	canonical := contractmapper.CanonicalEvent(domainEvent)
-	domainSignals := r.runner.currentDetection().Process(domainEvent)
-	signals := make([]*signalv1.Signal, 0, len(domainSignals))
-	for _, signal := range domainSignals {
+	result, err := r.pipeline.Process(domainEvent, r.runner.policyLabels())
+	if err != nil {
+		return nil, err
+	}
+	canonical := contractmapper.CanonicalEvent(result.Event)
+	signals := make([]*signalv1.Signal, 0, len(result.Signals))
+	for _, signal := range result.Signals {
 		signals = append(signals, contractmapper.Signal(*signal))
 	}
 	return r.runner.dataBatchForEvent(canonical, signals), nil

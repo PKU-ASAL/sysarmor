@@ -356,6 +356,15 @@ import (
         self.assertIn("applicationtelemetry.NewDelivery", network)
         self.assertNotIn("exportPipeline", network)
 
+    def test_agent_endpoint_runtime_uses_pipeline_application(self):
+        source = (
+            self.repo / "apps" / "agent" / "internal" / "daemon" / "endpoint_runtime.go"
+        ).read_text()
+        self.assertIn("applicationpipeline.New", source)
+        self.assertIn("pipeline.Process", source)
+        self.assertNotIn("currentDetection().Process", source)
+        self.assertNotIn("domainEvent.Labels = mergeLabels", source)
+
     def test_domain_does_not_import_protobuf(self):
         forbidden = f"{MODULE}packages/contracts/proto"
         violations = []
