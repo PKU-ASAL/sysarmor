@@ -2,21 +2,23 @@ package daemon
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 )
 
-type contentRuntime struct {
+type contentApplicationAdapter struct {
 	runner *AgentRuntime
 }
 
-func newContentRuntime(runner *AgentRuntime) *contentRuntime {
-	return &contentRuntime{runner: runner}
+func newContentApplicationAdapter(runner *AgentRuntime) *contentApplicationAdapter {
+	return &contentApplicationAdapter{runner: runner}
 }
 
-func (r *contentRuntime) ContentIdentity() agentcontrol.ContentIdentity {
+func (r *contentApplicationAdapter) ContentIdentity() agentcontrol.ContentIdentity {
 	identity := r.runner.currentIdentity()
 	return agentcontrol.ContentIdentity{
 		TenantID: identity.TenantID,
@@ -24,48 +26,48 @@ func (r *contentRuntime) ContentIdentity() agentcontrol.ContentIdentity {
 	}
 }
 
-func (r *contentRuntime) BeginLocalContentMutation(ctx context.Context, mutation bool) (func(), error) {
+func (r *contentApplicationAdapter) BeginLocalContentMutation(ctx context.Context, mutation bool) (func(), error) {
 	return r.runner.beginLocalPolicyMutation(ctx, mutation)
 }
 
-func (r *contentRuntime) ValidateContentContext(ctx agentcontrol.RequestContext) error {
+func (r *contentApplicationAdapter) ValidateContentContext(ctx agentcontrol.RequestContext) error {
 	return r.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
-func (r *contentRuntime) ValidateContent(document string, allowUnsigned bool) (agentcontent.Record, error) {
+func (r *contentApplicationAdapter) ValidateContent(document string, allowUnsigned bool) (agentcontent.Record, error) {
 	return r.runner.contentStore().Apply(document, allowUnsigned, true)
 }
 
-func (r *contentRuntime) WithContentTransaction(run func()) {
-	r.runner.withDetectionUpdateTransaction(run)
+func (r *contentApplicationAdapter) Activate(document string, allowUnsigned bool) (agentcontent.Record, detection.ApplyReport, error) {
+	var record agentcontent.Record
+	var report detection.ApplyReport
+	var activationErr error
+	r.runner.withDetectionUpdateTransaction(func() {
+		var snapshot agentcontent.Snapshot
+		record, snapshot, activationErr = r.runner.contentStore().Prepare(document, allowUnsigned)
+		if activationErr != nil {
+			return
+		}
+		engine, buildReport := r.runner.buildDetectionWithSnapshot(snapshot)
+		report = buildReport
+		if buildReport.Status == "rejected" {
+			r.runner.setDetectionStatus(r.runner.activePolicy(), buildReport, r.runner.contentStore().Snapshot())
+			activationErr = fmt.Errorf("content rejected; detection rebuild failed: %s", strings.Join(buildReport.Details, "; "))
+			return
+		}
+		if activationErr = r.runner.contentStore().Commit(record); activationErr != nil {
+			return
+		}
+		r.runner.setDetection(engine)
+		r.runner.setDetectionStatus(r.runner.activePolicy(), buildReport, snapshot)
+	})
+	return record, report, activationErr
 }
 
-func (r *contentRuntime) PrepareContent(document string, allowUnsigned bool) (agentcontent.Record, agentcontent.Snapshot, error) {
-	return r.runner.contentStore().Prepare(document, allowUnsigned)
-}
-
-func (r *contentRuntime) BuildContentDetection(snapshot agentcontent.Snapshot) agentcontrol.ContentDetectionBuild {
-	engine, report := r.runner.buildDetectionWithSnapshot(snapshot)
-	return agentcontrol.ContentDetectionBuild{Engine: engine, Report: report}
-}
-
-func (r *contentRuntime) RecordRejectedContentDetection(report detection.ApplyReport) {
-	r.runner.setDetectionStatus(r.runner.activePolicy(), report, r.runner.contentStore().Snapshot())
-}
-
-func (r *contentRuntime) CommitContent(record agentcontent.Record) error {
-	return r.runner.contentStore().Commit(record)
-}
-
-func (r *contentRuntime) ActivateContentDetection(snapshot agentcontent.Snapshot, build agentcontrol.ContentDetectionBuild) {
-	r.runner.setDetection(build.Engine)
-	r.runner.setDetectionStatus(r.runner.activePolicy(), build.Report, snapshot)
-}
-
-func (r *contentRuntime) ListContent(kind string) []agentcontent.Record {
+func (r *contentApplicationAdapter) ListContent(kind string) []agentcontent.Record {
 	return r.runner.contentStore().List(kind)
 }
 
-func (r *contentRuntime) GetContent(ref string) (agentcontent.Record, bool) {
+func (r *contentApplicationAdapter) GetContent(ref string) (agentcontent.Record, bool) {
 	return r.runner.contentStore().Get(ref)
 }

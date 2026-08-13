@@ -14,7 +14,7 @@ import (
 func TestContentRuntimeUsesProjectedManagementIdentity(t *testing.T) {
 	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
-	runtime := newContentRuntime(runner)
+	runtime := newContentApplicationAdapter(runner)
 
 	if identity := runtime.ContentIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 		t.Fatalf("result identity=%+v", identity)
@@ -43,7 +43,7 @@ func TestContentControllerPersistenceFailureKeepsPreviousDetection(t *testing.T)
 		t.Fatal(err)
 	}
 
-	result := agentcontrol.NewContentController(newContentRuntime(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
+	result := agentcontrol.NewContentController(newContentApplicationAdapter(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
 		Context: agentcontrol.RequestContext{TenantID: "tenant-a", AgentID: "agent-a"},
 		Document: `{
 			"api_version":"sysarmor.content/v1",

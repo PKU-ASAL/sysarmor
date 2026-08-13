@@ -19,7 +19,7 @@ type recordingContentRuntime struct {
 	commitErr       error
 	record          agentcontent.Record
 	snapshot        agentcontent.Snapshot
-	build           ContentDetectionBuild
+	build           detection.ApplyReport
 	beginMutations  []bool
 	validated       int
 	prepared        int
@@ -56,31 +56,20 @@ func (r *recordingContentRuntime) ValidateContent(string, bool) (agentcontent.Re
 	return r.record, r.validateErr
 }
 
-func (r *recordingContentRuntime) WithContentTransaction(run func()) {
-	r.transactions++
-	run()
-}
-
-func (r *recordingContentRuntime) PrepareContent(string, bool) (agentcontent.Record, agentcontent.Snapshot, error) {
+func (r *recordingContentRuntime) Activate(string, bool) (agentcontent.Record, detection.ApplyReport, error) {
 	r.prepared++
-	return r.record, r.snapshot, r.prepareErr
-}
-
-func (r *recordingContentRuntime) BuildContentDetection(agentcontent.Snapshot) ContentDetectionBuild {
-	return r.build
-}
-
-func (r *recordingContentRuntime) RecordRejectedContentDetection(report detection.ApplyReport) {
-	r.rejectedReports = append(r.rejectedReports, report)
-}
-
-func (r *recordingContentRuntime) CommitContent(agentcontent.Record) error {
+	if r.prepareErr != nil {
+		return r.record, r.build, r.prepareErr
+	}
+	if r.build.Status == "rejected" {
+		return r.record, r.build, errors.New("detection rebuild failed")
+	}
 	r.committed++
-	return r.commitErr
-}
-
-func (r *recordingContentRuntime) ActivateContentDetection(agentcontent.Snapshot, ContentDetectionBuild) {
+	if r.commitErr != nil {
+		return r.record, r.build, r.commitErr
+	}
 	r.activated++
+	return r.record, r.build, nil
 }
 
 func (r *recordingContentRuntime) ListContent(kind string) []agentcontent.Record {
@@ -110,7 +99,7 @@ func TestContentControllerDryRunValidatesWithoutStartingTransaction(t *testing.T
 
 func TestContentControllerRejectedRebuildKeepsPreparedContentUncommitted(t *testing.T) {
 	runtime := newRecordingContentRuntime()
-	runtime.build.Report = detection.ApplyReport{Status: "rejected", Details: []string{"unsupported runtime"}}
+	runtime.build = detection.ApplyReport{Status: "rejected", Details: []string{"unsupported runtime"}}
 	result := NewContentController(runtime).ApplyContent(t.Context(), ContentCommand{
 		Context: RequestContext{RequestID: "request-a"}, Document: "{}", AllowUnsigned: true,
 	})
@@ -118,7 +107,7 @@ func TestContentControllerRejectedRebuildKeepsPreparedContentUncommitted(t *test
 	if result.Status != "rejected" || !strings.Contains(result.Message, "detection rebuild failed") {
 		t.Fatalf("result=%+v", result)
 	}
-	if runtime.prepared != 1 || runtime.committed != 0 || len(runtime.rejectedReports) != 1 {
+	if runtime.prepared != 1 || runtime.committed != 0 {
 		t.Fatalf("runtime=%+v", runtime)
 	}
 }
@@ -180,6 +169,6 @@ func newRecordingContentRuntime() *recordingContentRuntime {
 		record: agentcontent.Record{
 			Ref: "ioc:feed", Kind: "iocpack", Version: "v1", Digest: "sha256:feed", Status: "applied",
 		},
-		build: ContentDetectionBuild{Report: detection.ApplyReport{Status: "applied"}},
+		build: detection.ApplyReport{Status: "applied"},
 	}
 }

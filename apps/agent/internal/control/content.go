@@ -28,54 +28,44 @@ type ContentIdentity struct {
 	AgentID  string
 }
 
-type ContentDetectionBuild struct {
-	Engine *detection.Engine
-	Report detection.ApplyReport
-}
-
-type ContentRuntime interface {
+type ContentApplication interface {
 	ContentIdentity() ContentIdentity
 	BeginLocalContentMutation(context.Context, bool) (func(), error)
 	ValidateContentContext(RequestContext) error
 	ValidateContent(string, bool) (agentcontent.Record, error)
-	WithContentTransaction(func())
-	PrepareContent(string, bool) (agentcontent.Record, agentcontent.Snapshot, error)
-	BuildContentDetection(agentcontent.Snapshot) ContentDetectionBuild
-	RecordRejectedContentDetection(detection.ApplyReport)
-	CommitContent(agentcontent.Record) error
-	ActivateContentDetection(agentcontent.Snapshot, ContentDetectionBuild)
+	Activate(string, bool) (agentcontent.Record, detection.ApplyReport, error)
 	ListContent(string) []agentcontent.Record
 	GetContent(string) (agentcontent.Record, bool)
 }
 
 type contentController struct {
-	runtime ContentRuntime
+	application ContentApplication
 }
 
-func NewContentController(runtime ContentRuntime) ContentController {
-	return &contentController{runtime: runtime}
+func NewContentController(application ContentApplication) ContentController {
+	return &contentController{application: application}
 }
 
 func (c *contentController) ApplyContent(ctx context.Context, command ContentCommand) Result {
-	identity := c.runtime.ContentIdentity()
+	identity := c.application.ContentIdentity()
 	if command.Source != PolicySourceManaged {
-		release, err := c.runtime.BeginLocalContentMutation(ctx, !command.DryRun)
+		release, err := c.application.BeginLocalContentMutation(ctx, !command.DryRun)
 		if err != nil {
 			return rejectedContentResult(identity, command.Context.RequestID, err.Error())
 		}
 		defer release()
 	}
-	if err := c.runtime.ValidateContentContext(command.Context); err != nil {
+	if err := c.application.ValidateContentContext(command.Context); err != nil {
 		return rejectedContentResult(identity, command.Context.RequestID, err.Error())
 	}
 	if command.DryRun {
 		return c.validateContent(command, identity)
 	}
-	return c.applyContentTransaction(command, identity)
+	return c.activateContent(ctx, command, identity)
 }
 
 func (c *contentController) validateContent(command ContentCommand, identity ContentIdentity) Result {
-	record, err := c.runtime.ValidateContent(command.Document, command.AllowUnsigned)
+	record, err := c.application.ValidateContent(command.Document, command.AllowUnsigned)
 	if err != nil {
 		return rejectedContentResult(identity, command.Context.RequestID, err.Error())
 	}
@@ -83,37 +73,20 @@ func (c *contentController) validateContent(command ContentCommand, identity Con
 	return appliedContentResult(identity, command.Context.RequestID, record, detection.ApplyReport{})
 }
 
-func (c *contentController) applyContentTransaction(command ContentCommand, identity ContentIdentity) Result {
-	var result Result
-	c.runtime.WithContentTransaction(func() {
-		record, snapshot, err := c.runtime.PrepareContent(command.Document, command.AllowUnsigned)
-		if err != nil {
-			result = rejectedContentResult(identity, command.Context.RequestID, err.Error())
-			return
-		}
-		build := c.runtime.BuildContentDetection(snapshot)
-		if build.Report.Status == "rejected" {
-			c.runtime.RecordRejectedContentDetection(build.Report)
-			message := "content rejected; detection rebuild failed: " + strings.Join(build.Report.Details, "; ")
-			result = rejectedContentResult(identity, command.Context.RequestID, message)
-			return
-		}
-		if err := c.runtime.CommitContent(record); err != nil {
-			result = rejectedContentResult(identity, command.Context.RequestID, err.Error())
-			return
-		}
-		c.runtime.ActivateContentDetection(snapshot, build)
-		result = appliedContentResult(identity, command.Context.RequestID, record, build.Report)
-	})
-	return result
+func (c *contentController) activateContent(ctx context.Context, command ContentCommand, identity ContentIdentity) Result {
+	record, report, err := c.application.Activate(command.Document, command.AllowUnsigned)
+	if err != nil {
+		return rejectedContentResult(identity, command.Context.RequestID, err.Error())
+	}
+	return appliedContentResult(identity, command.Context.RequestID, record, report)
 }
 
 func (c *contentController) ListContent(_ context.Context, kind string) ([]agentcontent.Record, error) {
-	return c.runtime.ListContent(strings.TrimSpace(kind)), nil
+	return c.application.ListContent(strings.TrimSpace(kind)), nil
 }
 
 func (c *contentController) GetContent(_ context.Context, ref string) (agentcontent.Record, bool, error) {
-	record, ok := c.runtime.GetContent(strings.TrimSpace(ref))
+	record, ok := c.application.GetContent(strings.TrimSpace(ref))
 	return record, ok, nil
 }
 

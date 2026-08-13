@@ -66,7 +66,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	}
 	dispatcher := remoteapi.NewDispatcher(remoteapi.Dependencies{
 		Policy:   newApplicationPolicyController(runner, r.sensor, r.batcher),
-		Content:  agentcontrol.NewContentController(newContentRuntime(runner)),
+		Content:  agentcontrol.NewContentController(newContentApplicationAdapter(runner)),
 		Response: agentcontrol.NewResponseController(newResponseRuntime(runner)),
 	}, runner.Out)
 	remoteIdentity := remoteapi.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
