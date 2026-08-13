@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -108,6 +109,27 @@ func TestHealthResponseIncludesDefaultManifestVersion(t *testing.T) {
 	}
 }
 
+func TestHealthResponseMapsStorageAndLifecycleFromDomainSnapshot(t *testing.T) {
+	response := healthResponseSnapshot(domainhealth.Snapshot{
+		Status:    domainhealth.StatusDegraded,
+		Storage:   domainhealth.Storage{Available: true, Mode: "managed", DeviceID: "device-a", UploadSegmentID: 7},
+		Lifecycle: domainhealth.Lifecycle{Mode: "unenrolling", TransitionPhase: "revocation_pending", TransitionPending: true},
+	})
+	if response.GetLocalStore().GetDeviceId() != "device-a" || response.GetLocalStore().GetUploadSegmentId() != 7 {
+		t.Fatalf("local store=%+v", response.GetLocalStore())
+	}
+	if response.GetManagementLifecycle().GetTransitionPhase() != "revocation_pending" || response.GetStatus() != "degraded" {
+		t.Fatalf("lifecycle=%+v status=%q", response.GetManagementLifecycle(), response.GetStatus())
+	}
+}
+
+func TestHealthResponseOmitsUnavailableStorage(t *testing.T) {
+	response := healthResponseSnapshot(domainhealth.Snapshot{})
+	if response.GetLocalStore() != nil {
+		t.Fatalf("local store=%+v", response.GetLocalStore())
+	}
+}
+
 func TestManagementLifecycleStatusRejectsInvalidState(t *testing.T) {
 	root := t.TempDir()
 	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: root})
@@ -128,7 +150,7 @@ func TestManagementLifecycleStatusRejectsInvalidState(t *testing.T) {
 	}
 
 	runner := &AgentRuntime{localStore: store}
-	_, err = runner.managementLifecycleStatus(t.Context())
+	_, err = (&runtimeHealthSource{runner: runner}).Lifecycle(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "unsupported management state") {
 		t.Fatalf("error=%v", err)
 	}

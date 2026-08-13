@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -197,14 +196,14 @@ func TestHealthReportsCompletionOutboxLifecycle(t *testing.T) {
 
 func assertManagerCompletionStatus(t *testing.T, runner *AgentRuntime, wantStatus, wantError string) {
 	t.Helper()
-	status, err := runner.managementLifecycleStatus(t.Context())
+	status, err := (&runtimeHealthSource{runner: runner}).Lifecycle(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.GetManagerCompletionStatus() != wantStatus || status.GetLastTransitionError() != wantError || status.GetUpdatedAt() == "" {
-		t.Fatalf("management lifecycle=%s", fmt.Sprint(status))
+	if status.ManagerCompletionStatus != wantStatus || status.LastError != wantError || status.UpdatedAt.IsZero() {
+		t.Fatalf("management lifecycle=%+v", status)
 	}
-	if !managementLifecycleDegraded(status) {
+	if !status.TransitionPending && status.LastError == "" {
 		t.Fatal("management lifecycle is not degraded")
 	}
 }

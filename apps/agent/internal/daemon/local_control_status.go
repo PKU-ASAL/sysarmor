@@ -4,30 +4,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	contractadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
 
 func (s *localStatusService) Health(ctx context.Context, req *controlplanev1.HealthRequest) (*controlplanev1.HealthResponse, error) {
-	health, err := s.runner.collectHealth(ctx, s.runtime, s.bus, s.batcher, s.sender, s.startedAt)
-	if err != nil {
-		return nil, err
-	}
-	response := healthResponse(health)
-	if s.runner.localStore != nil {
-		if response.LocalStore, err = s.runner.localStoreHealth(ctx); err != nil {
-			return nil, err
-		}
-		if response.ManagementLifecycle, err = s.runner.managementLifecycleStatus(ctx); err != nil {
-			return nil, err
-		}
-		if managementLifecycleDegraded(response.ManagementLifecycle) {
-			response.Status = "degraded"
-		}
-	}
-	return response, nil
+	snapshot := s.runner.collectHealthSnapshot(ctx, s.runtime, s.bus, s.batcher, s.sender, s.startedAt)
+	return healthResponseSnapshot(snapshot), nil
 }
 
 func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1.CapabilityRequest) (*controlplanev1.CapabilityResponse, error) {
@@ -52,69 +37,26 @@ func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1
 	}, nil
 }
 
-func (r *AgentRuntime) localStoreHealth(ctx context.Context) (*controlplanev1.LocalStoreHealth, error) {
-	stats, err := r.localStore.Stats(ctx)
-	if err != nil {
-		return nil, err
-	}
-	identity, err := r.localStore.DeviceIdentity(ctx)
-	if err != nil {
-		return nil, err
-	}
-	enrollment, err := r.localStore.Enrollment(ctx)
-	if err != nil {
-		return nil, err
-	}
-	checkpoint, err := r.localStore.Checkpoint(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &controlplanev1.LocalStoreHealth{Mode: string(enrollment.State), DeviceId: identity.DeviceID, StorageBytes: stats.StorageBytes,
-		StorageMaxBytes: stats.StorageMaxBytes, OldestEventSequence: stats.OldestEventSequence, LatestEventSequence: stats.LatestEventSequence,
-		SignalCount: stats.SignalCount, SealedSegmentCount: stats.SealedSegmentCount, OpenSegmentBytes: stats.OpenSegmentBytes,
-		UploadSegmentId: checkpoint.SegmentID, UploadRecordOffset: checkpoint.RecordOffset, DroppedBatchesStorage: stats.DroppedBatchesStorage,
-		DroppedEventsStorage: stats.DroppedEventsStorage}, nil
-}
-
-func (r *AgentRuntime) managementLifecycleStatus(ctx context.Context) (*controlplanev1.ManagementLifecycleStatus, error) {
-	enrollment, err := r.localStore.Enrollment(ctx)
-	if err != nil {
-		return nil, err
-	}
-	mode, err := management.Resolve(enrollment.State)
-	if err != nil {
-		return nil, err
-	}
-	status := &controlplanev1.ManagementLifecycleStatus{
-		Mode:                string(mode.State),
-		TransitionPhase:     enrollment.TransitionPhase,
-		RevocationConfirmed: enrollment.RevocationConfirmed,
-		LastTransitionError: enrollment.LastTransitionError,
-		UpdatedAt:           timestampString(enrollment.UpdatedAt),
-	}
-	completion, ok, err := r.localStore.UnenrollmentCompletion(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if ok {
-		if completion.Status == localstore.CompletionPrepared {
-			status.ManagerCompletionStatus = "revocation_pending"
-		} else if completion.Status == localstore.CompletionReady {
-			status.ManagerCompletionStatus = "endpoint_completion_pending"
-		}
-		status.UpdatedAt = timestampString(completion.UpdatedAt)
-		if completion.LastError != "" {
-			status.LastTransitionError = completion.LastError
+func healthResponseSnapshot(snapshot domainhealth.Snapshot) *controlplanev1.HealthResponse {
+	response := healthResponse(contractadapter.AgentHealth(snapshot))
+	if snapshot.Storage.Available {
+		response.LocalStore = &controlplanev1.LocalStoreHealth{
+			Mode: snapshot.Storage.Mode, DeviceId: snapshot.Storage.DeviceID,
+			StorageBytes: int64(snapshot.Storage.StorageBytes), StorageMaxBytes: int64(snapshot.Storage.StorageMaxBytes),
+			OldestEventSequence: snapshot.Storage.OldestEventSequence, LatestEventSequence: snapshot.Storage.LatestEventSequence,
+			SignalCount: snapshot.Storage.SignalCount, SealedSegmentCount: snapshot.Storage.SealedSegmentCount,
+			OpenSegmentBytes: int64(snapshot.Storage.OpenSegmentBytes), UploadSegmentId: snapshot.Storage.UploadSegmentID,
+			UploadRecordOffset: snapshot.Storage.UploadRecordOffset, DroppedBatchesStorage: snapshot.Storage.DroppedBatches,
+			DroppedEventsStorage: snapshot.Storage.DroppedEvents,
 		}
 	}
-	return status, nil
-}
-
-func managementLifecycleDegraded(status *controlplanev1.ManagementLifecycleStatus) bool {
-	if status == nil {
-		return false
+	response.ManagementLifecycle = &controlplanev1.ManagementLifecycleStatus{
+		Mode: snapshot.Lifecycle.Mode, TransitionPhase: snapshot.Lifecycle.TransitionPhase,
+		RevocationConfirmed:     snapshot.Lifecycle.RevocationConfirmed,
+		ManagerCompletionStatus: snapshot.Lifecycle.ManagerCompletionStatus,
+		LastTransitionError:     snapshot.Lifecycle.LastError, UpdatedAt: timestampString(snapshot.Lifecycle.UpdatedAt),
 	}
-	return status.GetTransitionPhase() != "" || status.GetManagerCompletionStatus() != "" || status.GetLastTransitionError() != ""
+	return response
 }
 
 func healthResponse(health agenthealth.AgentHealth) *controlplanev1.HealthResponse {

@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	contractadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	applicationhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/health"
+	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -68,142 +71,13 @@ func (r *AgentRuntime) healthReporter() healthReporter {
 }
 
 func (r *AgentRuntime) collectHealth(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (agenthealth.AgentHealth, error) {
+	snapshot := r.collectHealthSnapshot(ctx, rt, source, rest...)
+	return contractadapter.AgentHealth(snapshot), nil
+}
+
+func (r *AgentRuntime) collectHealthSnapshot(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) domainhealth.Snapshot {
 	bus, batcher, sender, startedAt := r.healthTelemetryArgs(source, rest...)
-	supervisor := r.currentSensorSupervisor()
-	var supervisorStatus *sensorruntime.SupervisorStatus
-	if supervisor != nil {
-		status := supervisor.Status()
-		supervisorStatus = &status
-	}
-	sensor, healthErr := rt.Health(ctx)
-	sensor, err := resolveSensorHealth(sensor, healthErr, supervisorStatus, r.Config.Sensor.Backend)
-	if err != nil {
-		return agenthealth.AgentHealth{}, err
-	}
-	busStats := bus.Stats()
-	batcherStats := batcher.Stats()
-	senderStats := sender.Stats()
-	status := "ok"
-	if !sensor.Running || sensor.LastError != "" || batcherStats.LastError != "" || senderStats.LastError != "" {
-		status = "degraded"
-	}
-	if batcherStats.DroppedBatches > 0 || busStats.EventDropped > 0 || busStats.SignalDropped > 0 {
-		status = "degraded"
-	}
-	if r.Config.Sensor.MaxParseErrors > 0 && sensor.ParseErrors > r.Config.Sensor.MaxParseErrors {
-		status = "degraded"
-	}
-	if r.Config.Sensor.MaxDroppedEvents > 0 && sensor.EventsDropped > r.Config.Sensor.MaxDroppedEvents {
-		status = "degraded"
-	}
-	cepMetrics := r.currentDetection().Metrics()
-	cepDegraded := cepMetrics.EvictedCEPGroups > 0 || cepMetrics.DroppedEventRefs > 0 || cepMetrics.CEPEvalErrors > 0
-	if cepDegraded {
-		status = "degraded"
-	}
-	pendingPolicy, err := r.pendingPolicyStatus(ctx)
-	if err != nil {
-		return agenthealth.AgentHealth{}, err
-	}
-	if pendingPolicy.Status != "" {
-		status = "degraded"
-	}
-	now := time.Now().UTC()
-	identity := r.currentIdentity()
-	return agenthealth.AgentHealth{
-		AgentID:       identity.AgentID,
-		HostID:        identity.HostID,
-		TenantID:      identity.TenantID,
-		Scope:         r.runtimeScope(),
-		Status:        status,
-		PolicyID:      r.activePolicy().PolicyID,
-		PolicyVersion: r.activePolicy().Version,
-		PolicyMode:    r.policyMode(),
-		PendingPolicy: pendingPolicy,
-		UptimeSeconds: int64(time.Since(startedAt).Seconds()),
-		ObservedAt:    now,
-		Sensor: agenthealth.SensorHealth{
-			Backend:        sensor.Backend,
-			Installed:      sensor.Installed,
-			Running:        sensor.Running,
-			Version:        sensor.Version,
-			PolicyLoaded:   sensor.PolicyLoaded,
-			EventsSeen:     sensor.EventsSeen,
-			EventsDropped:  sensor.EventsDropped,
-			ParseErrors:    sensor.ParseErrors,
-			RestartCount:   sensor.RestartCount,
-			LastEventAt:    sensor.LastEventAt,
-			LastExitReason: sensor.LastExitReason,
-			LastError:      sensor.LastError,
-		},
-		Capability: r.runtimeCapability(),
-		TelemetryBus: agenthealth.TelemetryBusHealth{
-			EventCapacity:     busStats.EventCapacity,
-			EventBuffered:     busStats.EventBuffered,
-			EventDropped:      busStats.EventDropped,
-			EventSubscribers:  busStats.EventSubscribers,
-			SignalCapacity:    busStats.SignalCapacity,
-			SignalBuffered:    busStats.SignalBuffered,
-			SignalDropped:     busStats.SignalDropped,
-			SignalSubscribers: busStats.SignalSubscribers,
-		},
-		TelemetryBatcher: agenthealth.TelemetryBatcherHealth{
-			PendingEvents:     batcherStats.PendingEvents,
-			PendingSignals:    batcherStats.PendingSignals,
-			QueuedBatches:     batcherStats.QueuedBatches,
-			QueueCapacity:     batcherStats.QueueCapacity,
-			DroppedBatches:    batcherStats.DroppedBatches,
-			DroppedEvents:     batcherStats.DroppedEvents,
-			DroppedSignals:    batcherStats.DroppedSignals,
-			FlushedBatches:    batcherStats.FlushedBatches,
-			FlushedEvents:     batcherStats.FlushedEvents,
-			FlushedSignals:    batcherStats.FlushedSignals,
-			PendingBytes:      batcherStats.PendingBytes,
-			MaxBytes:          batcherStats.MaxBytes,
-			FlushedByCount:    batcherStats.FlushedByCount,
-			FlushedByBytes:    batcherStats.FlushedByBytes,
-			FlushedByInterval: batcherStats.FlushedByInterval,
-			FlushedByShutdown: batcherStats.FlushedByShutdown,
-			LastFlushReason:   batcherStats.LastFlushReason,
-			Closed:            batcherStats.Closed,
-			LastError:         batcherStats.LastError,
-		},
-		TelemetrySender: agenthealth.TelemetrySenderHealth{
-			SentBatches:     senderStats.SentBatches,
-			SentEvents:      senderStats.SentEvents,
-			SentSignals:     senderStats.SentSignals,
-			RejectedBatches: senderStats.RejectedBatches,
-			RetriedBatches:  senderStats.RetriedBatches,
-			Drained:         senderStats.Drained,
-			LastError:       senderStats.LastError,
-		},
-		Detection: r.detectionHealth(),
-		CEP: agenthealth.CEPHealth{
-			ActiveGroups:     cepMetrics.ActiveCEPGroups,
-			EvictedGroups:    cepMetrics.EvictedCEPGroups,
-			ExpiredGroups:    cepMetrics.ExpiredCEPGroups,
-			DroppedEventRefs: cepMetrics.DroppedEventRefs,
-			EvalErrors:       cepMetrics.CEPEvalErrors,
-			EmittedSignals:   cepMetrics.EmittedSignals,
-			Degraded:         cepDegraded,
-		},
-		Streams: agenthealth.LocalStreamHealth{
-			EventCapacity:        busStats.EventCapacity,
-			EventBuffered:        busStats.EventBuffered,
-			EventNextSequence:    busStats.EventNextSequence,
-			EventOldestSequence:  busStats.EventOldestSequence,
-			EventNewestSequence:  busStats.EventNewestSequence,
-			EventEvicted:         busStats.EventDropped,
-			EventSubscribers:     busStats.EventSubscribers,
-			SignalCapacity:       busStats.SignalCapacity,
-			SignalBuffered:       busStats.SignalBuffered,
-			SignalNextSequence:   busStats.SignalNextSequence,
-			SignalOldestSequence: busStats.SignalOldestSequence,
-			SignalNewestSequence: busStats.SignalNewestSequence,
-			SignalEvicted:        busStats.SignalDropped,
-			SignalSubscribers:    busStats.SignalSubscribers,
-		},
-	}, nil
+	return applicationhealth.NewService(newRuntimeHealthSource(r, rt, bus, batcher, sender, startedAt)).Snapshot(ctx)
 }
 
 func (r *AgentRuntime) currentSensorSupervisor() *sensorruntime.SubscriptionSupervisor {
