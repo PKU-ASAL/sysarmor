@@ -4,21 +4,27 @@ import (
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
+	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-func TestResponseRuntimeExposesIdentityAndDelegatesEnforcement(t *testing.T) {
+func TestResponseContextProjectsIdentityPolicyAndScope(t *testing.T) {
 	runner := &AgentRuntime{
 		Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}
+	runner.setPolicy(runner.activePolicy())
+	runner.policy.Response = responsemodel.Policy{AllowedActions: []string{"kill"}, AllowedModes: []string{"enforce"}, AllowDestructive: true}
 	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
-	runtime := newResponseRuntime(runner)
-	if identity := runtime.ResponseIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
+	responseContext := newResponseContext(runner, "container", "abc123")
+	if identity := responseContext.Identity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 		t.Fatalf("identity=%+v", identity)
 	}
-	ack, err := runtime.EnforceResponse(t.Context(), contract.EnforcementCmd{ID: "response-a", Action: "kill"})
-	if err != nil || !ack.Unsupported || ack.ID != "response-a" {
-		t.Fatalf("ack=%+v err=%v", ack, err)
+	if policy := responseContext.Policy(); !policy.AllowDestructive || policy.AllowedModes[0] != domainresponse.ModeEnforce {
+		t.Fatalf("policy=%+v", policy)
+	}
+	if scope, ok := responseContext.Scope(); !ok || scope.Type != "container" || scope.Selector != "abc123" {
+		t.Fatalf("scope=%+v ok=%t", scope, ok)
 	}
 }

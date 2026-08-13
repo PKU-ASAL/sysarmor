@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -17,7 +18,7 @@ type Identity struct {
 type Dependencies struct {
 	Policy   agentcontrol.PolicyController
 	Content  agentcontrol.ContentController
-	Response agentcontrol.ResponseController
+	Response appresponse.Controller
 }
 
 type Dispatcher struct {
@@ -97,7 +98,7 @@ func (d *Dispatcher) handleResponse(ctx context.Context, session *ControlChannel
 	if err != nil {
 		return err
 	}
-	ack := d.deps.Response.ExecuteResponse(ctx, cmd)
+	ack := d.deps.Response.Execute(ctx, cmd)
 	if err := session.SendResponseAck(ctx, ack); err != nil {
 		return err
 	}

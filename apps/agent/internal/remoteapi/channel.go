@@ -8,12 +8,14 @@ import (
 	"strings"
 	"time"
 
-	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
+	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
+	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
+	incidentv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type ControlChannel struct {
@@ -122,7 +124,7 @@ func (s *ControlChannel) SendHealth(ctx context.Context, health *controlplanev1.
 	})
 }
 
-func (s *ControlChannel) SendResponseAck(ctx context.Context, ack responsemodel.Ack) error {
+func (s *ControlChannel) SendResponseAck(ctx context.Context, ack domainresponse.Ack) error {
 	return s.Send(ctx, &controlplanev1.ControlFrame{
 		Type:      "response_ack",
 		RequestId: ack.ResponseID,
@@ -141,7 +143,11 @@ func (s *ControlChannel) SendResponseAck(ctx context.Context, ack responsemodel.
 	})
 }
 
-func (s *ControlChannel) SendEvidenceResult(ctx context.Context, result controlmodel.EvidencePullbackResult) error {
+func (s *ControlChannel) SendEvidenceResult(ctx context.Context, result appresponse.EvidenceResult) error {
+	evidence, err := evidenceJSON(result.Evidence)
+	if err != nil {
+		return err
+	}
 	return s.Send(ctx, &controlplanev1.ControlFrame{
 		Type:      "evidence_pullback_result",
 		RequestId: result.RequestID,
@@ -152,10 +158,22 @@ func (s *ControlChannel) SendEvidenceResult(ctx context.Context, result controlm
 			AgentId:      result.AgentID,
 			Ok:           result.OK,
 			Message:      result.Message,
-			EvidenceJson: append([]byte(nil), result.Evidence...),
+			EvidenceJson: evidence,
 			ObservedAt:   result.ObservedAt.UTC().Format(time.RFC3339Nano),
 		},
 	})
+}
+
+func evidenceJSON(evidence domainresponse.EvidenceSubgraph) ([]byte, error) {
+	message := &incidentv1.EvidenceSubgraph{Nodes: make([]*incidentv1.GraphNode, 0, len(evidence.Nodes))}
+	for _, node := range evidence.Nodes {
+		message.Nodes = append(message.Nodes, &incidentv1.GraphNode{Id: node.ID, Kind: node.Kind, Label: node.Label})
+	}
+	data, err := protojson.Marshal(message)
+	if err != nil {
+		return nil, fmt.Errorf("encode evidence: %w", err)
+	}
+	return data, nil
 }
 
 func (s *ControlChannel) SendControlAck(ctx context.Context, ack *controlplanev1.ControlAck) error {

@@ -7,6 +7,8 @@ import (
 	"io"
 	"time"
 
+	adapterresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/response"
+	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/remoteapi"
@@ -65,9 +67,12 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 		return err
 	}
 	dispatcher := remoteapi.NewDispatcher(remoteapi.Dependencies{
-		Policy:   runner.policyController(runner, r.sensor, r.batcher),
-		Content:  agentcontrol.NewContentController(newContentApplicationAdapter(runner)),
-		Response: agentcontrol.NewResponseController(newResponseRuntime(runner)),
+		Policy:  runner.policyController(runner, r.sensor, r.batcher),
+		Content: agentcontrol.NewContentController(newContentApplicationAdapter(runner)),
+		Response: appresponse.NewService(
+			newResponseContext(runner, r.scopeType, r.scopeSelector),
+			adapterresponse.NewEnforcer(runner.Sensor),
+		),
 	}, runner.Out)
 	remoteIdentity := remoteapi.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 	for _, frame := range frames {

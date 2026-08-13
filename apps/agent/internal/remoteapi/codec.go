@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	controlmodel "github.com/sysarmor/sysarmor-next-project/packages/contracts/controlmodel"
+	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 	"google.golang.org/protobuf/proto"
@@ -90,42 +91,58 @@ func controlAck(result agentcontrol.Result) *controlplanev1.ControlAck {
 	return ack
 }
 
-func responseCommand(in *controlplanev1.ResponseCommand) (responsemodel.Command, error) {
+func responseCommand(in *controlplanev1.ResponseCommand) (domainresponse.Command, error) {
 	if in == nil {
-		return responsemodel.Command{}, fmt.Errorf("control frame missing response_command")
+		return domainresponse.Command{}, fmt.Errorf("control frame missing response_command")
 	}
 	if in.GetRawJson() != "" {
 		var cmd responsemodel.Command
 		if err := json.Unmarshal([]byte(in.GetRawJson()), &cmd); err != nil {
-			return responsemodel.Command{}, fmt.Errorf("decode control frame response command raw_json: %w", err)
+			return domainresponse.Command{}, fmt.Errorf("decode control frame response command raw_json: %w", err)
 		}
-		return cmd, nil
+		return domainResponseCommand(cmd), nil
 	}
-	return responsemodel.Command{
-		ResponseID: in.GetResponseId(), TenantID: in.GetTenantId(), AgentID: in.GetAgentId(),
+	return domainresponse.Command{
+		ID: in.GetResponseId(), TenantID: in.GetTenantId(), AgentID: in.GetAgentId(),
 		PolicyID: in.GetPolicyId(), PolicyVersion: in.GetPolicyVersion(), SignalID: in.GetSignalId(),
-		Labels: cloneLabels(in.GetLabels()), Scope: responsemodel.Scope{Type: in.GetScope().GetType(), Selector: in.GetScope().GetSelector()},
-		Action: in.GetAction(), Mode: in.GetMode(), Target: in.GetTarget(), Reason: in.GetReason(), Status: in.GetStatus(), Actor: in.GetActor(),
+		Labels: cloneLabels(in.GetLabels()), Scope: domainresponse.Scope{Type: in.GetScope().GetType(), Selector: in.GetScope().GetSelector()},
+		Action: in.GetAction(), Mode: domainresponse.Mode(in.GetMode()), Target: in.GetTarget(), Reason: in.GetReason(), Status: in.GetStatus(), Actor: in.GetActor(),
 		ApprovalRequired: in.GetApprovalRequired(), ApprovalStatus: in.GetApprovalStatus(), ApprovalThreshold: in.GetApprovalThreshold(),
 		ApprovalRoles: append([]string(nil), in.GetApprovalRoles()...),
 	}, nil
 }
 
-func evidencePullback(in *controlplanev1.EvidencePullbackRequest) (controlmodel.EvidencePullbackRequest, error) {
+func domainResponseCommand(command responsemodel.Command) domainresponse.Command {
+	approvals := make([]domainresponse.Approval, 0, len(command.Approvals))
+	for _, approval := range command.Approvals {
+		approvals = append(approvals, domainresponse.Approval{Actor: approval.Actor, Role: approval.Role, Approved: approval.Approved})
+	}
+	return domainresponse.Command{
+		ID: command.ResponseID, TenantID: command.TenantID, AgentID: command.AgentID,
+		PolicyID: command.PolicyID, PolicyVersion: command.PolicyVersion, SignalID: command.SignalID,
+		Labels: cloneLabels(command.Labels), Scope: domainresponse.Scope{Type: command.Scope.Type, Selector: command.Scope.Selector},
+		Action: command.Action, Mode: domainresponse.Mode(command.Mode), Target: command.Target, Reason: command.Reason,
+		Status: command.Status, Actor: command.Actor, ApprovalRequired: command.ApprovalRequired,
+		ApprovalStatus: command.ApprovalStatus, ApprovalThreshold: command.ApprovalThreshold,
+		ApprovalRoles: append([]string(nil), command.ApprovalRoles...), Approvals: approvals,
+	}
+}
+
+func evidencePullback(in *controlplanev1.EvidencePullbackRequest) (appresponse.EvidenceRequest, error) {
 	if in == nil {
-		return controlmodel.EvidencePullbackRequest{}, fmt.Errorf("control frame missing evidence_pullback")
+		return appresponse.EvidenceRequest{}, fmt.Errorf("control frame missing evidence_pullback")
 	}
 	if in.GetRawJson() != "" {
-		var req controlmodel.EvidencePullbackRequest
-		if err := json.Unmarshal([]byte(in.GetRawJson()), &req); err != nil {
-			return controlmodel.EvidencePullbackRequest{}, fmt.Errorf("decode control frame evidence pullback raw_json: %w", err)
+		var req struct {
+			RequestID string `json:"request_id"`
+			Target    string `json:"target"`
 		}
-		return req, nil
+		if err := json.Unmarshal([]byte(in.GetRawJson()), &req); err != nil {
+			return appresponse.EvidenceRequest{}, fmt.Errorf("decode control frame evidence pullback raw_json: %w", err)
+		}
+		return appresponse.EvidenceRequest{RequestID: req.RequestID, Target: req.Target}, nil
 	}
-	return controlmodel.EvidencePullbackRequest{
-		RequestID: in.GetRequestId(), TenantID: in.GetTenantId(), AgentID: in.GetAgentId(), IncidentID: in.GetIncidentId(),
-		Labels: cloneLabels(in.GetLabels()), Target: in.GetTarget(), Reason: in.GetReason(), Status: in.GetStatus(), Actor: in.GetActor(),
-	}, nil
+	return appresponse.EvidenceRequest{RequestID: in.GetRequestId(), Target: in.GetTarget()}, nil
 }
 
 func cloneLabels(in map[string]string) map[string]string {

@@ -208,7 +208,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_agent_control_contract_files(self):
         root = self.repo / "apps/agent/internal/control"
-        expected = ("types.go", "policy.go", "content.go", "response.go")
+        expected = ("types.go", "policy.go", "content.go")
         for name in expected:
             with self.subTest(name=name):
                 self.assertTrue((root / name).is_file(), f"missing control/{name}")
@@ -248,10 +248,14 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                     path = f"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/{target}"
                     self.assertNotIn(path, text, f"{source} imports forbidden {target}")
 
-    def test_response_use_case_is_owned_by_control(self):
+    def test_response_use_case_is_layered(self):
         root = self.repo / "apps/agent/internal"
-        response = (root / "control/response.go").read_text()
-        self.assertIn("func NewResponseController", response)
+        response = (root / "application/response/service.go").read_text()
+        self.assertIn("func NewService", response)
+        self.assertTrue((root / "domain/response/model.go").is_file())
+        self.assertTrue((root / "ports/response.go").is_file())
+        self.assertTrue((root / "adapters/response/enforcer.go").is_file())
+        self.assertFalse((root / "control/response.go").exists())
         self.assertFalse((root / "daemon/response_controller.go").exists())
 
     def test_content_use_case_is_owned_by_control(self):

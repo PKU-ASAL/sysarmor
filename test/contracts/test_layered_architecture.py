@@ -207,6 +207,15 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             self.assertNotIn("legacy_mtls", text)
             self.assertNotIn("UnenrollmentProtocol", text)
 
+    def test_response_inner_layers_hide_transport_contracts(self):
+        root = self.repo / "apps/agent/internal"
+        for relative in ("domain/response", "application/response", "ports"):
+            for source in (root / relative).glob("*.go"):
+                text = source.read_text()
+                self.assertNotIn("packages/response", text)
+                self.assertNotIn("sensor-sdk/contract", text)
+                self.assertNotIn("packages/contracts/proto", text)
+
     def test_policy_application_uses_typed_services_only(self):
         root = self.repo / "apps/agent/internal/application/policy"
         self.assertFalse((root / "activate.go").exists())

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
+	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"google.golang.org/grpc"
 )
 
@@ -129,6 +130,7 @@ func responseCommandFrame(hello *controlplanev1.ControlFrame) *controlplanev1.Co
 		Context: hello.GetContext(),
 		ResponseCommand: &controlplanev1.ResponseCommand{
 			ResponseId: "resp-runner-long", TenantId: "default", AgentId: "agent-runner-long",
+			PolicyId: policymodel.DefaultPolicyID, PolicyVersion: policymodel.DefaultPolicyVersion,
 			Action: "collect", Target: "process:p1", Status: "pending",
 		},
 	}
