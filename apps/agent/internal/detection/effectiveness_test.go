@@ -79,7 +79,7 @@ func TestRuleEngineEffectivenessScenarios(t *testing.T) {
 func processAll(engine *Engine, events []*eventv1.CanonicalEvent) []*signalv1.Signal {
 	var out []*signalv1.Signal
 	for _, ev := range events {
-		out = append(out, engine.Process(ev)...)
+		out = append(out, processWire(engine, ev)...)
 	}
 	return out
 }

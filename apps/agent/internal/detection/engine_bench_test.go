@@ -15,7 +15,7 @@ func BenchmarkEngineProcessDefaultContentMixed(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		engine.Process(events[i%len(events)])
+		processWire(engine, events[i%len(events)])
 	}
 	b.ReportMetric(float64(engine.Metrics().CEPRulesScanned)/float64(b.N), "cep_scans/op")
 	b.ReportMetric(float64(engine.Metrics().ConditionsEvaluated)/float64(b.N), "conds/op")
@@ -29,7 +29,7 @@ func BenchmarkEngineProcessCEPRuleCount(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				engine.Process(events[i%len(events)])
+				processWire(engine, events[i%len(events)])
 			}
 			metrics := engine.Metrics()
 			b.ReportMetric(float64(metrics.CEPRulesScanned)/float64(b.N), "cep_scans/op")
@@ -67,7 +67,7 @@ func BenchmarkEngineProcessContentPrefixCount(b *testing.B) {
 					b.ReportAllocs()
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						engine.Process(events[i%len(events)])
+						processWire(engine, events[i%len(events)])
 					}
 					metrics := engine.Metrics()
 					b.ReportMetric(float64(metrics.CEPRulesScanned)/float64(b.N), "cep_scans/op")
@@ -90,7 +90,7 @@ func BenchmarkEngineProcessSequenceHeavy(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				engine.Process(events[i%len(events)])
+				processWire(engine, events[i%len(events)])
 			}
 			metrics := engine.Metrics()
 			b.ReportMetric(float64(metrics.CEPRulesScanned)/float64(b.N), "cep_scans/op")

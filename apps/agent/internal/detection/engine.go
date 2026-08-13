@@ -10,7 +10,7 @@ import (
 	contractadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
-	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
+	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
@@ -334,8 +334,8 @@ func (e *Engine) Metrics() Metrics {
 	return metrics
 }
 
-func (e *Engine) Process(ev *eventv1.CanonicalEvent) []*signalv1.Signal {
-	if e == nil || ev == nil || ev.GetSubjectProc() == nil {
+func (e *Engine) Process(ev domainevent.Event) []*signalv1.Signal {
+	if e == nil || !ev.SubjectPresent {
 		return nil
 	}
 	start := time.Now()
@@ -364,22 +364,19 @@ func cloneMetricsMap(in map[string]uint64) map[string]uint64 {
 	return out
 }
 
-func eventBehavior(ev *eventv1.CanonicalEvent) string {
-	if ev == nil {
-		return ""
-	}
-	if behavior := strings.TrimSpace(ev.GetBehavior()); behavior != "" {
+func eventBehavior(ev domainevent.Event) string {
+	if behavior := strings.TrimSpace(ev.Behavior); behavior != "" {
 		return strings.ToLower(behavior)
 	}
 	return ""
 }
 
-func eventWallTime(ev *eventv1.CanonicalEvent) time.Time {
-	if ev.GetOccurredAtNs() > 0 {
-		return time.Unix(0, int64(ev.GetOccurredAtNs())).UTC()
+func eventWallTime(ev domainevent.Event) time.Time {
+	if ev.OccurredAtNS > 0 {
+		return time.Unix(0, int64(ev.OccurredAtNS)).UTC()
 	}
-	if ev.GetMonoNs() > 0 {
-		return time.Unix(0, int64(ev.GetMonoNs())).UTC()
+	if ev.MonoNS > 0 {
+		return time.Unix(0, int64(ev.MonoNS)).UTC()
 	}
 	return time.Now().UTC()
 }
@@ -414,10 +411,10 @@ func (e *Engine) rule(id string) (effectiveRule, bool) {
 	return rule, ok && rule.enabled
 }
 
-func (e *Engine) signal(ev *eventv1.CanonicalEvent, rule effectiveRule, refs []string, terminal bool, entities ...domaindetection.Entity) *domaindetection.Signal {
+func (e *Engine) signal(ev domainevent.Event, rule effectiveRule, refs []string, terminal bool, entities ...domaindetection.Entity) *domaindetection.Signal {
 	refs = appendRefs(nil, refs...)
 	if len(refs) == 0 {
-		refs = []string{ev.GetId()}
+		refs = []string{ev.ID}
 	}
 	e.nextID++
 	sig := domaindetection.Signal{
@@ -433,11 +430,11 @@ func (e *Engine) signal(ev *eventv1.CanonicalEvent, rule effectiveRule, refs []s
 		Mode:         rule.mode,
 		LocalRarity:  1,
 		GlobalRarity: 1,
-		LineageID:    ev.GetLineageId(),
+		LineageID:    ev.LineageID,
 		Entities:     entities,
 		EventRefs:    refs,
 		Terminal:     terminal,
-		Labels:       cloneLabels(ev.GetLabels()),
+		Labels:       cloneLabels(ev.Labels),
 		ContextRefs:  e.signalContentRefs(rule.spec.ContextRefs, e.refs.ContextRefs),
 		IOCRefs:      e.signalContentRefs(rule.spec.IOCRefs, e.refs.IOCRefs),
 	}
@@ -456,7 +453,7 @@ func (e *Engine) signal(ev *eventv1.CanonicalEvent, rule effectiveRule, refs []s
 		sig.Evidence = &domaindetection.Evidence{
 			ID:        "evb-" + sig.ID,
 			EventRefs: append([]string(nil), refs...),
-			RawRefs:   []string{ev.GetRawRef()},
+			RawRefs:   []string{ev.RawRef},
 			Entities:  entities,
 			Summary:   fmt.Sprintf("rule=%s version=%d ruleset=%s severity=%s", rule.spec.RuleID, rule.spec.Version, rule.spec.RuleSetRef, rule.severity),
 		}
@@ -707,84 +704,6 @@ func (e *Engine) evictCEPGroups(ruleID string, ruleState *cepRuleState, now uint
 	}
 }
 
-func (e *Engine) matchStep(ev *eventv1.CanonicalEvent, step StepSpec, st *cepGroupState) bool {
-	if behavior := strings.TrimSpace(step.Behavior); behavior != "" && eventBehavior(ev) != eventmodel.NormalizeBehavior(behavior).String() {
-		return false
-	}
-	return e.matchConditions(ev, step.Conditions, st)
-}
-
-func (e *Engine) matchConditions(ev *eventv1.CanonicalEvent, conditions []ConditionSpec, st *cepGroupState) bool {
-	for _, cond := range conditions {
-		if !e.matchCondition(ev, cond, st) {
-			return false
-		}
-	}
-	return true
-}
-
-func (e *Engine) matchCondition(ev *eventv1.CanonicalEvent, cond ConditionSpec, st *cepGroupState) bool {
-	e.metrics.ConditionsEvaluated++
-	actual := eventField(ev, cond.Field)
-	e.metrics.FieldReads++
-	values := append([]string(nil), cond.Values...)
-	if cond.Value != "" {
-		values = append(values, cond.Value)
-	}
-	if cond.Ref != "" {
-		values = append(values, e.contentValues(cond.Ref)...)
-	}
-	op := detectioncompiler.ParseOperator(cond.Op)
-	switch op {
-	case detectioncompiler.OperatorEqual:
-		return e.recordConditionResult(containsString(values, actual))
-	case detectioncompiler.OperatorNotEqual:
-		return e.recordConditionResult(!containsString(values, actual))
-	case detectioncompiler.OperatorContains:
-		for _, value := range values {
-			if value != "" && strings.Contains(actual, value) {
-				return e.recordConditionResult(true)
-			}
-		}
-		return e.recordConditionResult(false)
-	case detectioncompiler.OperatorPrefix:
-		for _, value := range values {
-			if value != "" && strings.HasPrefix(actual, value) {
-				return e.recordConditionResult(true)
-			}
-		}
-		return e.recordConditionResult(false)
-	case detectioncompiler.OperatorSuffix:
-		for _, value := range values {
-			if value != "" && strings.HasSuffix(actual, value) {
-				return e.recordConditionResult(true)
-			}
-		}
-		return e.recordConditionResult(false)
-	case detectioncompiler.OperatorIn:
-		return e.recordConditionResult(containsString(values, actual))
-	case detectioncompiler.OperatorNotIn:
-		return e.recordConditionResult(!containsString(values, actual))
-	case detectioncompiler.OperatorSameAs:
-		if st == nil || cond.Step == "" {
-			return e.recordConditionResult(false)
-		}
-		stepValues := st.Values[cond.Step]
-		if stepValues == nil {
-			return e.recordConditionResult(false)
-		}
-		stepField := fieldName(detectioncompiler.ParseField(firstNonEmpty(cond.StepField, cond.Field)))
-		return e.recordConditionResult(actual != "" && actual == stepValues[stepField])
-	case detectioncompiler.OperatorExists:
-		return e.recordConditionResult(actual != "")
-	case detectioncompiler.OperatorGreaterThan, detectioncompiler.OperatorGreaterThanOrEqual,
-		detectioncompiler.OperatorLessThan, detectioncompiler.OperatorLessThanOrEqual:
-		return e.recordConditionResult(compareNumber(actual, firstValue(values), opString(op)))
-	default:
-		return e.recordConditionResult(false)
-	}
-}
-
 func (e *Engine) recordConditionResult(matched bool) bool {
 	if matched {
 		e.metrics.ConditionsMatched++
@@ -800,103 +719,6 @@ func (e *Engine) contentValues(ref string) []string {
 		return item.Values
 	}
 	return nil
-}
-
-func (e *Engine) sequenceGroupKey(ev *eventv1.CanonicalEvent, fields []string) string {
-	if len(fields) == 0 {
-		fields = []string{"lineage_id"}
-	}
-	parts := make([]string, 0, len(fields))
-	for _, field := range fields {
-		parts = append(parts, strings.TrimSpace(field)+"="+eventField(ev, field))
-	}
-	return strings.Join(parts, "|")
-}
-
-func eventTime(ev *eventv1.CanonicalEvent) uint64 {
-	if ev.GetOccurredAtNs() != 0 {
-		return ev.GetOccurredAtNs()
-	}
-	return ev.GetMonoNs()
-}
-
-func eventFieldMap(ev *eventv1.CanonicalEvent) map[string]string {
-	fields := []string{
-		"event.id", "event.kind", "lineage_id", "process.stable_id", "process.binary",
-		"process.argv", "process.uid", "process.pid", "parent.stable_id", "file.path", "socket.addr",
-		"socket.port", "scope.type", "scope.selector", "container.id", "cgroup",
-	}
-	out := make(map[string]string, len(fields))
-	for _, field := range fields {
-		out[field] = eventField(ev, field)
-	}
-	return out
-}
-
-func eventField(ev *eventv1.CanonicalEvent, field string) string {
-	return eventFieldByID(ev, detectioncompiler.ParseField(field))
-}
-
-func eventFieldByID(ev *eventv1.CanonicalEvent, field detectioncompiler.Field) string {
-	if ev == nil {
-		return ""
-	}
-	switch field {
-	case detectioncompiler.FieldEventID:
-		return ev.GetId()
-	case detectioncompiler.FieldBehavior:
-		return ev.GetBehavior()
-	case detectioncompiler.FieldLineageID:
-		return ev.GetLineageId()
-	case detectioncompiler.FieldProcessStableID:
-		return ev.GetSubjectProc().GetStableId()
-	case detectioncompiler.FieldProcessBinary:
-		return ev.GetSubjectProc().GetBinary()
-	case detectioncompiler.FieldProcessBinaryName:
-		return filepath.Base(ev.GetSubjectProc().GetBinary())
-	case detectioncompiler.FieldProcessArgv:
-		return strings.Join(ev.GetSubjectProc().GetArgv(), " ")
-	case detectioncompiler.FieldProcessSudoCommand:
-		if filepath.Base(ev.GetSubjectProc().GetBinary()) != "sudo" || !ev.GetSubjectProc().GetArgvBoundariesTrusted() {
-			return ""
-		}
-		return sudoCommand(ev.GetSubjectProc().GetArgv())
-	case detectioncompiler.FieldProcessUID:
-		return strconv.FormatUint(uint64(ev.GetSubjectProc().GetUid()), 10)
-	case detectioncompiler.FieldProcessPID:
-		if ev.GetSubjectProc().GetPid() == 0 {
-			return ""
-		}
-		return strconv.FormatUint(uint64(ev.GetSubjectProc().GetPid()), 10)
-	case detectioncompiler.FieldParentStableID:
-		return ev.GetParentStableId()
-	case detectioncompiler.FieldFilePath:
-		return ev.GetObject().GetFilePath()
-	case detectioncompiler.FieldSocketAddr:
-		addr, _, ok := strings.Cut(ev.GetObject().GetSocketAddr(), ":")
-		if ok {
-			return addr
-		}
-		return ev.GetObject().GetSocketAddr()
-	case detectioncompiler.FieldSocketPort:
-		_, port, ok := strings.Cut(ev.GetObject().GetSocketAddr(), ":")
-		if ok {
-			return port
-		}
-		return ""
-	case detectioncompiler.FieldSocket:
-		return ev.GetObject().GetSocketAddr()
-	case detectioncompiler.FieldScopeType:
-		return ev.GetScope().GetType()
-	case detectioncompiler.FieldScopeSelector:
-		return ev.GetScope().GetSelector()
-	case detectioncompiler.FieldContainerID:
-		return ev.GetContainerId()
-	case detectioncompiler.FieldCgroup:
-		return ev.GetCgroup()
-	default:
-		return ""
-	}
 }
 
 func sudoCommand(argv []string) string {
@@ -960,18 +782,18 @@ func sudoFlagWithoutValue(arg string) bool {
 	}
 }
 
-func eventEntities(ev *eventv1.CanonicalEvent) []domaindetection.Entity {
+func eventEntities(ev domainevent.Event) []domaindetection.Entity {
 	entities := []domaindetection.Entity{processEntity(ev)}
-	if eventBehavior(ev) == eventmodel.BehaviorProcessExec.String() && ev.GetSubjectProc().GetBinary() != "" {
-		entities = append(entities, fileEntity(ev.GetSubjectProc().GetBinary(), "subject"))
+	if eventBehavior(ev) == eventmodel.BehaviorProcessExec.String() && ev.Subject.Binary != "" {
+		entities = append(entities, fileEntity(ev.Subject.Binary, "subject"))
 	}
-	if path := ev.GetObject().GetFilePath(); path != "" {
+	if path := ev.Object.FilePath; path != "" {
 		entities = append(entities, fileEntity(path, "object"))
 	}
-	if socket := ev.GetObject().GetSocketAddr(); socket != "" {
+	if socket := ev.Object.SocketAddress; socket != "" {
 		entities = append(entities, socketEntity(ev))
 	}
-	if containerID := ev.GetContainerId(); containerID != "" {
+	if containerID := ev.ContainerID; containerID != "" {
 		entities = append(entities, domaindetection.Entity{Kind: "container", Key: containerID, Role: "scope"})
 	}
 	return entities
@@ -1232,16 +1054,12 @@ func availableFieldsFromCapabilities(collection contract.CollectionIntent) map[s
 	return fields
 }
 
-func processEntity(ev *eventv1.CanonicalEvent) domaindetection.Entity {
-	key := ""
-	if ev.GetSubjectProc() != nil {
-		key = ev.GetSubjectProc().GetStableId()
-	}
-	return domaindetection.Entity{Kind: "process", Key: key, Role: "subject"}
+func processEntity(ev domainevent.Event) domaindetection.Entity {
+	return domaindetection.Entity{Kind: "process", Key: ev.Subject.StableID, Role: "subject"}
 }
 
-func socketEntity(ev *eventv1.CanonicalEvent) domaindetection.Entity {
-	return domaindetection.Entity{Kind: "socket", Key: ev.GetObject().GetSocketAddr(), Role: "object"}
+func socketEntity(ev domainevent.Event) domaindetection.Entity {
+	return domaindetection.Entity{Kind: "socket", Key: ev.Object.SocketAddress, Role: "object"}
 }
 
 func fileEntity(path, role string) domaindetection.Entity {

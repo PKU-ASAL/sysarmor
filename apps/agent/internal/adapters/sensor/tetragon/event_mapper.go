@@ -56,7 +56,7 @@ func (normalizer *EventNormalizer) NormalizeDomain(raw *sensorv1.SensorEvent) do
 		ID: domainevent.EventID(identity.AgentID, sequence), Sequence: sequence,
 		AgentID: identity.AgentID, HostID: identity.HostID, TenantID: identity.TenantID,
 		MonoNS: raw.GetMonoNs(), OccurredAtNS: raw.GetMonoNs(), Behavior: domainevent.NormalizeBehavior(raw.GetBehavior()),
-		Subject: process, Object: eventObject(raw), ParentStableID: parentID, LineageID: lineageID,
+		Subject: process, SubjectPresent: raw.GetProc() != nil, Object: eventObject(raw), ParentStableID: parentID, LineageID: lineageID,
 		RawRef: raw.GetRawRef(), Scope: normalizer.scope, ContainerID: raw.GetContainerId(), Cgroup: raw.GetProc().GetCgroup(),
 		Labels: cloneLabels(normalizer.labels),
 	}

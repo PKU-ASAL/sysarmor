@@ -89,7 +89,7 @@ func positiveArgvCondition(condition compiledCondition) bool {
 
 func matchingArgumentEntities(view eventView, condition compiledCondition) []domaindetection.Entity {
 	var entities []domaindetection.Entity
-	for _, argument := range view.ev.GetSubjectProc().GetArgv() {
+	for _, argument := range view.ev.Subject.Argv {
 		argument = strings.Trim(argument, "'\"")
 		if filepath.IsAbs(argument) && condition.matcher.Match(argument) {
 			entities = append(entities, fileEntity(argument, "subject"))

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
@@ -123,10 +124,10 @@ func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
 	}}}
 	firstEngine, _ := detection.NewWithRuntime(policy, contract.CollectionIntent{}, content)
 	secondEngine, _ := detection.NewWithRuntime(policy, contract.CollectionIntent{}, content)
-	firstEngine.Process(parent)
-	secondEngine.Process(parent)
-	first := runner.dataBatchForEvent(event, firstEngine.Process(event)).GetSignals()[0]
-	second := runner.dataBatchForEvent(event, secondEngine.Process(event)).GetSignals()[0]
+	firstEngine.Process(contractmapper.DomainEvent(parent))
+	secondEngine.Process(contractmapper.DomainEvent(parent))
+	first := runner.dataBatchForEvent(event, firstEngine.Process(contractmapper.DomainEvent(event))).GetSignals()[0]
+	second := runner.dataBatchForEvent(event, secondEngine.Process(contractmapper.DomainEvent(event))).GetSignals()[0]
 	if first.GetSequence() != 18 || first.GetSignal().GetId() != "sig-00000000000000000018" {
 		t.Fatalf("first signal=%+v", first)
 	}

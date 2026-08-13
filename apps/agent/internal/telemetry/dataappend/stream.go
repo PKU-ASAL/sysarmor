@@ -216,7 +216,7 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 	}
 	if ev, ok := decodeEvent(data); ok {
 		ev.Labels = mergeLabels(ev.GetLabels(), labels)
-		signals := detector.Process(ev)
+		signals := detector.Process(contractmapper.DomainEvent(ev))
 		for _, sig := range signals {
 			sig.Labels = mergeLabels(sig.GetLabels(), labels)
 		}
@@ -224,9 +224,10 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 	}
 	if sev, ok := decodeSensorEvent(data); ok {
 		sev.RawRef = rawRing.Remember(sev.GetRawRef(), data)
-		ev := contractmapper.CanonicalEvent(norm.NormalizeDomain(sev))
-		ev.Labels = mergeLabels(ev.GetLabels(), labels)
-		signals := detector.Process(ev)
+		domainEvent := norm.NormalizeDomain(sev)
+		domainEvent.Labels = mergeLabels(domainEvent.Labels, labels)
+		ev := contractmapper.CanonicalEvent(domainEvent)
+		signals := detector.Process(domainEvent)
 		for _, sig := range signals {
 			sig.Labels = mergeLabels(sig.GetLabels(), labels)
 		}
@@ -242,10 +243,11 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 			} else {
 				rawRing.Remember(sev.GetRawRef(), data)
 			}
-			ev := contractmapper.CanonicalEvent(norm.NormalizeDomain(sev))
-			ev.Labels = mergeLabels(ev.GetLabels(), labels)
+			domainEvent := norm.NormalizeDomain(sev)
+			domainEvent.Labels = mergeLabels(domainEvent.Labels, labels)
+			ev := contractmapper.CanonicalEvent(domainEvent)
 			events = append(events, ev)
-			detected := detector.Process(ev)
+			detected := detector.Process(domainEvent)
 			for _, sig := range detected {
 				sig.Labels = mergeLabels(sig.GetLabels(), labels)
 			}

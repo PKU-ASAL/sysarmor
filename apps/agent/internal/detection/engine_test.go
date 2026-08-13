@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
@@ -100,7 +102,7 @@ func TestContentRuleSetEmitsMultiEventPayloadLifecycle(t *testing.T) {
 	var lifecycleRuleVersion uint64
 	var lifecycleRuleSet string
 	for _, ev := range events {
-		for _, sig := range engine.Process(ev) {
+		for _, sig := range processWire(engine, ev) {
 			if sig.GetName() == "payload_lifecycle" {
 				lifecycleRefs = sig.GetEventRefs()
 				lifecycleRuleVersion = sig.GetRuleVersion()
@@ -155,7 +157,7 @@ func TestPayloadLifecycleCorrelateUsesDynamicContent(t *testing.T) {
 	}
 	var signals []*signalv1.Signal
 	for _, event := range events {
-		signals = append(signals, engine.Process(event)...)
+		signals = append(signals, processWire(engine, event)...)
 	}
 	var signal *signalv1.Signal
 	for _, candidate := range signals {
@@ -188,7 +190,7 @@ func TestContentRuleSetTreatsShellScriptArgAsPayloadExec(t *testing.T) {
 	}
 	var lifecycleRefs []string
 	for _, ev := range events {
-		for _, sig := range engine.Process(ev) {
+		for _, sig := range processWire(engine, ev) {
 			if sig.GetName() == "payload_lifecycle" {
 				lifecycleRefs = sig.GetEventRefs()
 			}
@@ -214,7 +216,7 @@ func TestContentRuleSetPayloadLifecycleToleratesShellReexecParentMismatch(t *tes
 	}
 	var lifecycleRefs []string
 	for _, ev := range events {
-		for _, sig := range engine.Process(ev) {
+		for _, sig := range processWire(engine, ev) {
 			if sig.GetName() == "payload_lifecycle" {
 				lifecycleRefs = sig.GetEventRefs()
 			}
@@ -235,7 +237,7 @@ func TestRuleOverrideDisablesContentRule(t *testing.T) {
 	policy := testDetectionPolicy()
 	policy.RuleOverrides = append(policy.RuleOverrides, policymodel.RuleOverride{RuleID: "payload_dropped", Enabled: &disabled})
 	engine, _ := NewWithRuntime(policy, contract.CollectionIntent{}, testContentSnapshot(t))
-	signals := engine.Process(writeEvent("e1", "lin-a", "p1", "/usr/bin/curl", "/dev/shm/x.sh"))
+	signals := processWire(engine, writeEvent("e1", "lin-a", "p1", "/usr/bin/curl", "/dev/shm/x.sh"))
 	for _, sig := range signals {
 		if sig.GetName() == "payload_dropped" {
 			t.Fatalf("payload_dropped emitted despite override: %+v", sig)
@@ -460,7 +462,7 @@ func TestExprRuleEvaluatesGenericConditionTree(t *testing.T) {
 		want  int
 	}{name: "argv branch", event: argvEvent, want: 1})
 	for _, tt := range tests {
-		if got := countSignals(engine.Process(tt.event), "neutral_boolean_rule"); got != tt.want {
+		if got := countSignals(processWire(engine, tt.event), "neutral_boolean_rule"); got != tt.want {
 			t.Fatalf("%s signals = %d, want %d", tt.name, got, tt.want)
 		}
 	}
@@ -516,8 +518,24 @@ func TestProcessReturnsNilWhenNoRuleMatches(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	if signals := engine.Process(openEvent("event", "lineage", "process", "/bin/cat", "/tmp/allowed")); signals != nil {
+	if signals := processWire(engine, openEvent("event", "lineage", "process", "/bin/cat", "/tmp/allowed")); signals != nil {
 		t.Fatalf("Process() = %#v, want nil", signals)
+	}
+}
+
+func TestProcessRejectsEventWithoutSubject(t *testing.T) {
+	engine, report := NewWithRuntime(cepPolicy(), contract.CollectionIntent{}, ContentSnapshot{Rules: []RuleSpec{{
+		RuleID: "file_only", RuleSetRef: "ruleset:cep", RuntimeType: "expr",
+		Expr: ExprSpec{Conditions: []ConditionSpec{{Field: "file.path", Op: "prefix", Value: "/restricted/"}}},
+	}}})
+	if report.Status != "applied" {
+		t.Fatalf("report = %+v", report)
+	}
+	if signals := engine.Process(domainevent.Event{Behavior: "file.read", SubjectPresent: false, Object: domainevent.Object{FilePath: "/restricted/secret"}}); signals != nil {
+		t.Fatalf("Process() = %#v, want nil", signals)
+	}
+	if metrics := engine.Metrics(); metrics.EventsProcessed != 0 {
+		t.Fatalf("Metrics().EventsProcessed = %d, want 0", metrics.EventsProcessed)
 	}
 }
 
@@ -544,7 +562,7 @@ func TestCorrelateRuntimeMatchesAllFactPermutations(t *testing.T) {
 			events := neutralCorrelateEvents("lin-a", 1)
 			var signals []*signalv1.Signal
 			for _, index := range order {
-				signals = append(signals, engine.Process(events[index])...)
+				signals = append(signals, processWire(engine, events[index])...)
 			}
 			if got := countSignals(signals, "neutral_three_fact"); got != 1 {
 				t.Fatalf("signals = %d, want 1; all=%+v", got, signals)
@@ -560,10 +578,10 @@ func TestCorrelateRuntimeMatchesAllFactPermutations(t *testing.T) {
 
 func TestCorrelateRuntimeReplacesDuplicateFactEvidence(t *testing.T) {
 	engine, _ := newNeutralCorrelateEngine(EngineLimits{})
-	engine.Process(writeEventAt("change-old", "lin-a", "p1", "/bin/tool", "/tmp/test/item", 1))
-	engine.Process(writeEventAt("change-new", "lin-a", "p1", "/bin/tool", "/tmp/test/item", 2))
-	engine.Process(execEventAt("run", "lin-a", "p2", "parent", "/tmp/test/item", nil, 3))
-	signals := engine.Process(connectEventAt("access", "lin-a", "p2", "parent", "/tmp/test/item", "10.0.0.1:9443", 4))
+	processWire(engine, writeEventAt("change-old", "lin-a", "p1", "/bin/tool", "/tmp/test/item", 1))
+	processWire(engine, writeEventAt("change-new", "lin-a", "p1", "/bin/tool", "/tmp/test/item", 2))
+	processWire(engine, execEventAt("run", "lin-a", "p2", "parent", "/tmp/test/item", nil, 3))
+	signals := processWire(engine, connectEventAt("access", "lin-a", "p2", "parent", "/tmp/test/item", "10.0.0.1:9443", 4))
 	if len(signals) != 1 || contains(signals[0].GetEventRefs(), "change-old") || !contains(signals[0].GetEventRefs(), "change-new") {
 		t.Fatalf("signals = %+v, want latest fact evidence", signals)
 	}
@@ -571,13 +589,13 @@ func TestCorrelateRuntimeReplacesDuplicateFactEvidence(t *testing.T) {
 
 func TestCorrelateRuntimeExpiresAndIsolatesGroups(t *testing.T) {
 	engine, _ := newNeutralCorrelateEngine(EngineLimits{})
-	engine.Process(writeEventAt("change-a", "lin-a", "p1", "/bin/tool", "/tmp/test/a", 1))
-	engine.Process(execEventAt("run-b", "lin-b", "p2", "parent", "/tmp/test/b", nil, 2))
-	if signals := engine.Process(connectEventAt("access-a", "lin-a", "p1", "parent", "/tmp/test/a", "10.0.0.1:9443", 3)); len(signals) != 0 {
+	processWire(engine, writeEventAt("change-a", "lin-a", "p1", "/bin/tool", "/tmp/test/a", 1))
+	processWire(engine, execEventAt("run-b", "lin-b", "p2", "parent", "/tmp/test/b", nil, 2))
+	if signals := processWire(engine, connectEventAt("access-a", "lin-a", "p1", "parent", "/tmp/test/a", "10.0.0.1:9443", 3)); len(signals) != 0 {
 		t.Fatalf("cross-group signals = %+v", signals)
 	}
 	late := uint64((3 * time.Minute).Nanoseconds())
-	if signals := engine.Process(execEventAt("run-a-late", "lin-a", "p1", "parent", "/tmp/test/a", nil, late)); len(signals) != 0 {
+	if signals := processWire(engine, execEventAt("run-a-late", "lin-a", "p1", "parent", "/tmp/test/a", nil, late)); len(signals) != 0 {
 		t.Fatalf("expired signals = %+v", signals)
 	}
 	if engine.Metrics().ExpiredCEPGroups == 0 {
@@ -588,13 +606,13 @@ func TestCorrelateRuntimeExpiresAndIsolatesGroups(t *testing.T) {
 func TestCorrelateRuntimeEnforcesGroupAndRefLimits(t *testing.T) {
 	engine, _ := newNeutralCorrelateEngine(EngineLimits{MaxCEPGroups: 2, MaxCEPRefs: 2})
 	for _, lineage := range []string{"lin-a", "lin-b", "lin-c"} {
-		engine.Process(writeEventAt("change-"+lineage, lineage, "p1", "/bin/tool", "/tmp/test/"+lineage, 1))
+		processWire(engine, writeEventAt("change-"+lineage, lineage, "p1", "/bin/tool", "/tmp/test/"+lineage, 1))
 	}
 	if engine.Metrics().EvictedCEPGroups == 0 {
 		t.Fatalf("metrics = %+v, want correlate eviction", engine.Metrics())
 	}
 	for _, event := range neutralCorrelateEvents("lin-c", 2)[1:] {
-		signals := engine.Process(event)
+		signals := processWire(engine, event)
 		if len(signals) == 1 {
 			if len(signals[0].GetEventRefs()) != 2 || engine.Metrics().DroppedEventRefs == 0 {
 				t.Fatalf("signal=%+v metrics=%+v, want bounded refs", signals[0], engine.Metrics())
@@ -653,7 +671,7 @@ func TestExprRuleSuppressesByDeclaredFieldsWithinWindow(t *testing.T) {
 		{event: openEventAt("expired", "lin-a", "proc-a", "/bin/cat", "/secrets/token", 6*time.Minute), want: 1},
 	}
 	for _, item := range events {
-		if got := countSignals(engine.Process(item.event), "suppressed_read"); got != item.want {
+		if got := countSignals(processWire(engine, item.event), "suppressed_read"); got != item.want {
 			t.Fatalf("%s signals = %d, want %d", item.event.GetId(), got, item.want)
 		}
 	}
@@ -690,7 +708,7 @@ func TestSignalCarriesContextAndIOCRefs(t *testing.T) {
 	engine, _ := newTestEngine(t)
 	var gotContext bool
 	var gotIOC bool
-	for _, sig := range engine.Process(writeEvent("e1", "lin-a", "p1", "/usr/bin/curl", "/dev/shm/x.sh")) {
+	for _, sig := range processWire(engine, writeEvent("e1", "lin-a", "p1", "/usr/bin/curl", "/dev/shm/x.sh")) {
 		if sig.GetName() != "payload_dropped" {
 			continue
 		}
@@ -698,7 +716,7 @@ func TestSignalCarriesContextAndIOCRefs(t *testing.T) {
 			gotContext = gotContext || ref.GetRef() == "ctx:payload-path-prefixes"
 		}
 	}
-	for _, sig := range engine.Process(connectEventWithParent("e2", "lin-a", "p2", "parent", "/bin/bash", "10.66.0.99:443")) {
+	for _, sig := range processWire(engine, connectEventWithParent("e2", "lin-a", "p2", "parent", "/bin/bash", "10.66.0.99:443")) {
 		if sig.GetName() != "reverse_shell_pattern" {
 			continue
 		}
@@ -735,14 +753,14 @@ func TestPayloadDroppedUsesDynamicExprSemantics(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	if got := countSignals(engine.Process(writeEvent("default", "lin-default", "p1", "/usr/bin/curl", "/dev/shm/x")), "payload_dropped"); got != 0 {
+	if got := countSignals(processWire(engine, writeEvent("default", "lin-default", "p1", "/usr/bin/curl", "/dev/shm/x")), "payload_dropped"); got != 0 {
 		t.Fatalf("default path signals = %d, want none under dynamic expr", got)
 	}
 	for _, event := range []*eventv1.CanonicalEvent{
 		writeEvent("write", "lin-write", "p2", "/usr/bin/curl", "/opt/payloads/write.sh"),
 		chmodEvent("chmod", "lin-chmod", "p3", "/usr/bin/chmod", "/opt/payloads/chmod.sh"),
 	} {
-		signals := engine.Process(event)
+		signals := processWire(engine, event)
 		if got := countSignals(signals, "payload_dropped"); got != 1 {
 			t.Fatalf("%s signals = %d, want 1", event.GetId(), got)
 		}
@@ -769,18 +787,18 @@ func TestCredentialReadSuppressesDuplicateProcessPathSignals(t *testing.T) {
 	engine, _ := NewWithRuntime(policy, contract.CollectionIntent{}, testContentSnapshot(t))
 	first := readEvent("e1", "lin-a", "proc-a", "/tmp/cat", "/etc/shadow")
 	second := readEvent("e2", "lin-a", "proc-b", "/tmp/cat", "/etc/shadow")
-	if got := countSignals(engine.Process(first), "credential_file_read"); got != 1 {
+	if got := countSignals(processWire(engine, first), "credential_file_read"); got != 1 {
 		t.Fatalf("first credential signal count = %d, want 1", got)
 	}
-	if got := countSignals(engine.Process(second), "credential_file_read"); got != 0 {
+	if got := countSignals(processWire(engine, second), "credential_file_read"); got != 0 {
 		t.Fatalf("duplicate credential signal count = %d, want 0", got)
 	}
 	third := readEvent("e3", "lin-a", "proc-a", "/tmp/cat", "/etc/sudoers")
-	if got := countSignals(engine.Process(third), "credential_file_read"); got != 1 {
+	if got := countSignals(processWire(engine, third), "credential_file_read"); got != 1 {
 		t.Fatalf("different path credential signal count = %d, want 1", got)
 	}
 	fourth := readEvent("e4", "lin-b", "proc-c", "/tmp/cat", "/etc/shadow")
-	if got := countSignals(engine.Process(fourth), "credential_file_read"); got != 1 {
+	if got := countSignals(processWire(engine, fourth), "credential_file_read"); got != 1 {
 		t.Fatalf("different lineage credential signal count = %d, want 1", got)
 	}
 }
@@ -801,7 +819,7 @@ func TestAccountDatabaseReadRequiresSuspiciousReader(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine, _ := NewWithRuntime(testDetectionPolicy(), contract.CollectionIntent{}, testContentSnapshot(t))
-			signals := engine.Process(readEvent("passwd-read", "lineage", "process", tt.bin, "/etc/passwd"))
+			signals := processWire(engine, readEvent("passwd-read", "lineage", "process", tt.bin, "/etc/passwd"))
 			if got := countSignals(signals, "account_database_read"); got != tt.want {
 				t.Fatalf("account database signals = %d, want %d", got, tt.want)
 			}
@@ -852,7 +870,7 @@ func TestCredentialReadUsesExactSystemCommandBaselines(t *testing.T) {
 			event := readEvent("read", "lineage", "process", tt.bin, "/etc/shadow")
 			event.SubjectProc.Argv = tt.argv
 			event.SubjectProc.ArgvBoundariesTrusted = !tt.untrustedArgv
-			if got := countSignals(engine.Process(event), "credential_file_read"); got != tt.want {
+			if got := countSignals(processWire(engine, event), "credential_file_read"); got != tt.want {
 				t.Fatalf("credential signals = %d, want %d", got, tt.want)
 			}
 		})
@@ -863,7 +881,7 @@ func TestCredentialReadIgnoresSudoAuthorizationFileReads(t *testing.T) {
 	engine, _ := NewWithRuntime(testDetectionPolicy(), contract.CollectionIntent{}, testContentSnapshot(t))
 	event := readEvent("sudoers", "lineage", "process", "/usr/bin/sudo", "/etc/sudoers")
 	event.SubjectProc.Argv = []string{"/usr/bin/sudo", "bash", "-c", "echo workload"}
-	if got := countSignals(engine.Process(event), "credential_file_read"); got != 0 {
+	if got := countSignals(processWire(engine, event), "credential_file_read"); got != 0 {
 		t.Fatalf("credential signals = %d, want 0 for sudo authorization file", got)
 	}
 }
@@ -895,13 +913,13 @@ func TestCredentialReadUsesDynamicExprSemantics(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	if got := countSignals(engine.Process(readEvent("default", "lin-default", "p1", "/bin/cat", "/root/.ssh/id_rsa")), "credential_file_read"); got != 0 {
+	if got := countSignals(processWire(engine, readEvent("default", "lin-default", "p1", "/bin/cat", "/root/.ssh/id_rsa")), "credential_file_read"); got != 0 {
 		t.Fatalf("default path signals = %d, want none under dynamic expr", got)
 	}
-	if got := countSignals(engine.Process(readEvent("trusted", "lin-trusted", "p2", "/opt/admin", "/opt/secrets/token")), "credential_file_read"); got != 0 {
+	if got := countSignals(processWire(engine, readEvent("trusted", "lin-trusted", "p2", "/opt/admin", "/opt/secrets/token")), "credential_file_read"); got != 0 {
 		t.Fatalf("trusted binary signals = %d, want none", got)
 	}
-	signals := engine.Process(readEvent("read", "lin-read", "p3", "/bin/cat", "/opt/secrets/token"))
+	signals := processWire(engine, readEvent("read", "lin-read", "p3", "/bin/cat", "/opt/secrets/token"))
 	if got := countSignals(signals, "credential_file_read"); got != 1 {
 		t.Fatalf("credential signals = %d, want 1", got)
 	}
@@ -929,9 +947,9 @@ func countSignals(signals []*signalv1.Signal, name string) int {
 
 func TestWebRuntimeShellUsesObservedParentBinary(t *testing.T) {
 	engine, _ := newTestEngine(t)
-	engine.Process(execEvent("node", "lin-web", "stable-runtime", "init", "/usr/bin/node", []string{"/usr/bin/node", "/srv/server.js"}))
+	processWire(engine, execEvent("node", "lin-web", "stable-runtime", "init", "/usr/bin/node", []string{"/usr/bin/node", "/srv/server.js"}))
 	shell := execEvent("shell", "lin-web", "stable-shell", "stable-runtime", "/bin/sh", []string{"/bin/sh", "-c", "id"})
-	signals := engine.Process(shell)
+	signals := processWire(engine, shell)
 	if got := countSignals(signals, "web_runtime_spawns_shell"); got != 1 {
 		t.Fatalf("web runtime shell signals = %d, want 1", got)
 	}
@@ -971,8 +989,8 @@ func TestCredentialReadDeclaresCollectedReadBehavior(t *testing.T) {
 
 func TestWebRuntimeShellKeepsAshCompatibility(t *testing.T) {
 	engine, _ := newTestEngine(t)
-	engine.Process(execEvent("node", "lin-ash", "runtime", "init", "/usr/bin/node", nil))
-	signals := engine.Process(execEvent("ash", "lin-ash", "shell", "runtime", "/bin/ash", nil))
+	processWire(engine, execEvent("node", "lin-ash", "runtime", "init", "/usr/bin/node", nil))
+	signals := processWire(engine, execEvent("ash", "lin-ash", "shell", "runtime", "/bin/ash", nil))
 	if got := countSignals(signals, "web_runtime_spawns_shell"); got != 1 {
 		t.Fatalf("ash web runtime shell signals = %d, want 1", got)
 	}
@@ -981,16 +999,16 @@ func TestWebRuntimeShellKeepsAshCompatibility(t *testing.T) {
 func TestWebRuntimeShellRejectsRuntimeTokenOnlyInArgv(t *testing.T) {
 	engine, _ := newTestEngine(t)
 	shell := execEvent("shell", "lin-fake", "stable-shell", "opaque-parent", "/bin/sh", []string{"/bin/sh", "-c", ": # node marker"})
-	if got := countSignals(engine.Process(shell), "web_runtime_spawns_shell"); got != 0 {
+	if got := countSignals(processWire(engine, shell), "web_runtime_spawns_shell"); got != 0 {
 		t.Fatalf("forged argv web runtime signals = %d, want 0", got)
 	}
 }
 
 func TestWebRuntimeShellRejectsObservedNonWebParent(t *testing.T) {
 	engine, _ := newTestEngine(t)
-	engine.Process(execEvent("worker", "lin-worker", "stable-worker", "init", "/usr/bin/sleep", []string{"/usr/bin/sleep", "infinity"}))
+	processWire(engine, execEvent("worker", "lin-worker", "stable-worker", "init", "/usr/bin/sleep", []string{"/usr/bin/sleep", "infinity"}))
 	shell := execEvent("shell", "lin-worker", "stable-shell", "stable-worker", "/bin/sh", []string{"/bin/sh", "-c", "id"})
-	if got := countSignals(engine.Process(shell), "web_runtime_spawns_shell"); got != 0 {
+	if got := countSignals(processWire(engine, shell), "web_runtime_spawns_shell"); got != 0 {
 		t.Fatalf("non-web parent signals = %d, want 0", got)
 	}
 }
@@ -1007,11 +1025,11 @@ func TestRuntimeContentSnapshotOverridesIOC(t *testing.T) {
 			},
 		},
 	}))
-	if signals := engine.Process(connectEventWithParent("e1", "lin-a", "p1", "parent", "/bin/bash", "10.66.0.99:443")); len(signals) != 0 {
+	if signals := processWire(engine, connectEventWithParent("e1", "lin-a", "p1", "parent", "/bin/bash", "10.66.0.99:443")); len(signals) != 0 {
 		t.Fatalf("443 signals = %+v, want none after IOC override", signals)
 	}
 	var gotVersion string
-	for _, sig := range engine.Process(connectEventWithParent("e2", "lin-a", "p1", "parent", "/bin/bash", "10.66.0.99:9443")) {
+	for _, sig := range processWire(engine, connectEventWithParent("e2", "lin-a", "p1", "parent", "/bin/bash", "10.66.0.99:9443")) {
 		if sig.GetName() != "reverse_shell_pattern" {
 			continue
 		}
@@ -1040,11 +1058,11 @@ func TestReverseShellExprUsesDynamicContentAndPreciseEvidence(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	engine.Process(connectEventWithParent("download", "lin-a", "curl", "parent", "/usr/bin/curl", "10.0.0.1:8080"))
-	if got := countSignals(engine.Process(connectEventWithParent("bash", "lin-a", "bash", "parent", "/bin/bash", "10.0.0.1:9443")), "reverse_shell_pattern"); got != 0 {
+	processWire(engine, connectEventWithParent("download", "lin-a", "curl", "parent", "/usr/bin/curl", "10.0.0.1:8080"))
+	if got := countSignals(processWire(engine, connectEventWithParent("bash", "lin-a", "bash", "parent", "/bin/bash", "10.0.0.1:9443")), "reverse_shell_pattern"); got != 0 {
 		t.Fatalf("bash signals = %d, want none after shell context replacement", got)
 	}
-	signals := engine.Process(connectEventWithParent("connect", "lin-a", "custom", "parent", "/opt/custom-shell", "10.0.0.1:9443"))
+	signals := processWire(engine, connectEventWithParent("connect", "lin-a", "custom", "parent", "/opt/custom-shell", "10.0.0.1:9443"))
 	if got := countSignals(signals, "reverse_shell_pattern"); got != 1 {
 		t.Fatalf("custom shell signals = %d, want 1", got)
 	}
@@ -1110,8 +1128,8 @@ func TestSuspiciousExecConnectSequencePreservesAssociations(t *testing.T) {
 				exec.SubjectProc.Pid = 42
 				connect.SubjectProc.Pid = 42
 			}
-			engine.Process(exec)
-			signals := engine.Process(connect)
+			processWire(engine, exec)
+			signals := processWire(engine, connect)
 			if got := countSignals(signals, "suspicious_exec_connect"); got != tt.want {
 				t.Fatalf("signals = %d, want %d; all=%+v", got, tt.want, signals)
 			}
@@ -1146,9 +1164,9 @@ func TestSuspiciousExecConnectPreservesPayloadPathFromInterpreterArgv(t *testing
 	}
 	exec := execEvent("exec", "lin-a", "shell", "init", "/usr/bin/bash", []string{"/usr/bin/bash", "/opt/payloads/helper"})
 	connect := connectEventWithParent("connect", "lin-a", "curl", "shell", "/usr/bin/curl", "10.0.0.1:9443")
-	engine.Process(exec)
+	processWire(engine, exec)
 
-	for _, signal := range engine.Process(connect) {
+	for _, signal := range processWire(engine, connect) {
 		if signal.GetName() != "suspicious_exec_connect" {
 			continue
 		}
@@ -1170,7 +1188,7 @@ func TestSequenceEvidenceEntitiesIgnoreUnselectedAnyBranch(t *testing.T) {
 	}}
 	step := compiledStep{conditionGroup: compileConditionNode(&group, ContentSnapshot{})}
 
-	entities := sequenceEvidenceEntities(newEventView(event), step, nil)
+	entities := sequenceEvidenceEntities(newEventView(contractmapper.DomainEvent(event)), step, nil)
 
 	for _, entity := range entities {
 		if entity.Key == "/opt/unselected/helper" {
@@ -1186,7 +1204,7 @@ func TestSequenceEvidenceEntitiesIgnoreNotBranches(t *testing.T) {
 	group := ConditionNodeSpec{Not: &inner}
 	step := compiledStep{conditionGroup: compileConditionNode(&group, ContentSnapshot{})}
 
-	entities := sequenceEvidenceEntities(newEventView(event), step, nil)
+	entities := sequenceEvidenceEntities(newEventView(contractmapper.DomainEvent(event)), step, nil)
 
 	if len(entities) != 0 {
 		t.Fatalf("not branch contributed evidence: %+v", entities)
@@ -1207,8 +1225,8 @@ func TestC2SocketRequiresConfiguredControlPort(t *testing.T) {
 			},
 		},
 	}))
-	engine.Process(writeEvent("drop", "lin-a", "payload-proc", "/usr/bin/curl", "/var/lib/app/plugins/helper"))
-	for _, sig := range engine.Process(connectEventWithParent("download", "lin-a", "curl-proc", "payload-proc", "/usr/bin/curl", "10.66.0.99:8080")) {
+	processWire(engine, writeEvent("drop", "lin-a", "payload-proc", "/usr/bin/curl", "/var/lib/app/plugins/helper"))
+	for _, sig := range processWire(engine, connectEventWithParent("download", "lin-a", "curl-proc", "payload-proc", "/usr/bin/curl", "10.66.0.99:8080")) {
 		if sig.GetName() == "suspicious_exec_connect" || sig.GetName() == "payload_lifecycle" || sig.GetName() == "reverse_shell_pattern" {
 			t.Fatalf("download port emitted control-channel signal: %+v", sig)
 		}
@@ -1217,10 +1235,10 @@ func TestC2SocketRequiresConfiguredControlPort(t *testing.T) {
 
 func TestDownloadByLOLBinRequiresDownloadSocket(t *testing.T) {
 	engine, _ := newTestEngine(t)
-	if got := countSignals(engine.Process(connectEventWithParent("download", "lin-a", "curl-proc", "parent", "/usr/bin/curl", "10.66.0.99:8080")), "download_by_lolbin"); got != 1 {
+	if got := countSignals(processWire(engine, connectEventWithParent("download", "lin-a", "curl-proc", "parent", "/usr/bin/curl", "10.66.0.99:8080")), "download_by_lolbin"); got != 1 {
 		t.Fatalf("download_by_lolbin on download port = %d, want 1", got)
 	}
-	if got := countSignals(engine.Process(connectEventWithParent("benign", "lin-b", "curl-proc", "parent", "/usr/bin/curl", "198.51.100.25:80")), "download_by_lolbin"); got != 0 {
+	if got := countSignals(processWire(engine, connectEventWithParent("benign", "lin-b", "curl-proc", "parent", "/usr/bin/curl", "198.51.100.25:80")), "download_by_lolbin"); got != 0 {
 		t.Fatalf("download_by_lolbin on benign port = %d, want 0", got)
 	}
 }
@@ -1239,10 +1257,10 @@ func TestDownloadByLOLBinUsesDynamicClientContext(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	if got := countSignals(engine.Process(connectEventWithParent("curl", "lin-curl", "curl-proc", "parent", "/usr/bin/curl", "10.66.0.99:8080")), "download_by_lolbin"); got != 0 {
+	if got := countSignals(processWire(engine, connectEventWithParent("curl", "lin-curl", "curl-proc", "parent", "/usr/bin/curl", "10.66.0.99:8080")), "download_by_lolbin"); got != 0 {
 		t.Fatalf("curl signals = %d, want none after dynamic context replacement", got)
 	}
-	signals := engine.Process(connectEventWithParent("fetch", "lin-fetch", "fetch-proc", "parent", "/opt/fetcher", "10.66.0.99:8080"))
+	signals := processWire(engine, connectEventWithParent("fetch", "lin-fetch", "fetch-proc", "parent", "/opt/fetcher", "10.66.0.99:8080"))
 	if got := countSignals(signals, "download_by_lolbin"); got != 1 {
 		t.Fatalf("fetcher signals = %d, want 1", got)
 	}
@@ -1290,7 +1308,7 @@ func TestRuntimeRulePackMetadataOverridesDefaultRule(t *testing.T) {
 		}},
 	}}
 	engine, _ := NewWithRuntime(policy, contract.CollectionIntent{}, content)
-	for _, sig := range engine.Process(connectEventWithParent("e1", "lin-a", "p1", "parent", "/bin/bash", "10.66.0.99:443")) {
+	for _, sig := range processWire(engine, connectEventWithParent("e1", "lin-a", "p1", "parent", "/bin/bash", "10.66.0.99:443")) {
 		if sig.GetName() == "reverse_shell_pattern" && sig.GetRuleVersion() == 7 && sig.GetRulesetRef() == "ruleset:test" {
 			return
 		}
@@ -1327,7 +1345,7 @@ func TestCEPRuntimeExprRuleUsesContentRef(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	signals := engine.Process(openEvent("e1", "lin-a", "p1", "/bin/cat", "/run/secrets/token"))
+	signals := processWire(engine, openEvent("e1", "lin-a", "p1", "/bin/cat", "/run/secrets/token"))
 	if len(signals) != 1 || signals[0].GetName() != "cep_credential_read" {
 		t.Fatalf("signals = %+v", signals)
 	}
@@ -1356,10 +1374,10 @@ func TestRuntimeUsesExplicitProcessBinaryContext(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	if got := countSignals(engine.Process(execEvent("node", "lin-node", "node-stable", "init", "/usr/bin/node", nil)), "process_binary_context"); got != 0 {
+	if got := countSignals(processWire(engine, execEvent("node", "lin-node", "node-stable", "init", "/usr/bin/node", nil)), "process_binary_context"); got != 0 {
 		t.Fatalf("default context signals = %d, want dynamic context replacement", got)
 	}
-	if got := countSignals(engine.Process(execEvent("custom", "lin-custom", "custom-stable", "init", "/opt/custom-web", nil)), "process_binary_context"); got != 1 {
+	if got := countSignals(processWire(engine, execEvent("custom", "lin-custom", "custom-stable", "init", "/opt/custom-web", nil)), "process_binary_context"); got != 1 {
 		t.Fatalf("custom context signals = %d, want 1", got)
 	}
 }
@@ -1382,8 +1400,8 @@ func TestDynamicWebRuntimeSequenceUsesContentContexts(t *testing.T) {
 	if report.Status != "applied" {
 		t.Fatalf("report = %+v", report)
 	}
-	engine.Process(execEvent("runtime", "lin-web", "runtime-stable", "init", "/opt/custom-web", nil))
-	signals := engine.Process(execEvent("shell", "lin-web", "shell-stable", "runtime-stable", "/opt/custom-shell", nil))
+	processWire(engine, execEvent("runtime", "lin-web", "runtime-stable", "init", "/opt/custom-web", nil))
+	signals := processWire(engine, execEvent("shell", "lin-web", "shell-stable", "runtime-stable", "/opt/custom-shell", nil))
 	if len(signals) != 1 || signals[0].GetName() != "web_runtime_spawns_shell" {
 		t.Fatalf("signals = %+v", signals)
 	}
@@ -1453,7 +1471,7 @@ func TestCEPRuntimeSequenceRuleEmitsMultipleEventRefs(t *testing.T) {
 	}
 	var got []*signalv1.Signal
 	for _, ev := range events {
-		got = append(got, engine.Process(ev)...)
+		got = append(got, processWire(engine, ev)...)
 	}
 	var refs []string
 	for _, sig := range got {
@@ -1470,10 +1488,10 @@ func TestCEPRuntimeSequenceRuleEmitsMultipleEventRefs(t *testing.T) {
 
 func TestCEPRuntimeSequenceExpiresWindow(t *testing.T) {
 	engine, _ := NewWithRuntimeLimits(cepPolicy(), contract.CollectionIntent{}, ContentSnapshot{Rules: []RuleSpec{cepSequenceRule()}}, EngineLimits{})
-	if signals := engine.Process(writeEventAt("e1", "lin-a", "p1", "/bin/curl", "/dev/shm/x", 1)); len(signals) != 0 {
+	if signals := processWire(engine, writeEventAt("e1", "lin-a", "p1", "/bin/curl", "/dev/shm/x", 1)); len(signals) != 0 {
 		t.Fatalf("signals after first step = %+v", signals)
 	}
-	if signals := engine.Process(chmodEventAt("e2", "lin-a", "p2", "/bin/chmod", "/dev/shm/x", uint64(120*1_000_000_000))); len(signals) != 0 {
+	if signals := processWire(engine, chmodEventAt("e2", "lin-a", "p2", "/bin/chmod", "/dev/shm/x", uint64(120*1_000_000_000))); len(signals) != 0 {
 		t.Fatalf("signals after expired step = %+v", signals)
 	}
 	metrics := engine.Metrics()
@@ -1485,7 +1503,7 @@ func TestCEPRuntimeSequenceExpiresWindow(t *testing.T) {
 func TestCEPRuntimeEvictsGroupsAtLimit(t *testing.T) {
 	engine, _ := NewWithRuntimeLimits(cepPolicy(), contract.CollectionIntent{}, ContentSnapshot{Rules: []RuleSpec{cepSequenceRule()}}, EngineLimits{MaxCEPGroups: 2, MaxCEPRefs: 8})
 	for _, lineage := range []string{"lin-a", "lin-b", "lin-c"} {
-		engine.Process(writeEventAt("drop-"+lineage, lineage, "p1", "/bin/curl", "/dev/shm/"+lineage, 1))
+		processWire(engine, writeEventAt("drop-"+lineage, lineage, "p1", "/bin/curl", "/dev/shm/"+lineage, 1))
 	}
 	metrics := engine.Metrics()
 	if metrics.EvictedCEPGroups == 0 || metrics.ActiveCEPGroups > 2 {
@@ -1503,7 +1521,7 @@ func TestCEPRuntimeDropsRefsAtLimit(t *testing.T) {
 	}
 	var refs []string
 	for _, ev := range events {
-		for _, sig := range engine.Process(ev) {
+		for _, sig := range processWire(engine, ev) {
 			if sig.GetName() == "cep_payload_lifecycle" {
 				refs = sig.GetEventRefs()
 			}

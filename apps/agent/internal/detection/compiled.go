@@ -9,7 +9,7 @@ import (
 
 	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
-	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
+	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
 )
 
@@ -123,7 +123,7 @@ const (
 )
 
 type eventView struct {
-	ev                 *eventv1.CanonicalEvent
+	ev                 domainevent.Event
 	eventID            string
 	behavior           string
 	lineageID          string
@@ -461,46 +461,37 @@ func compileOp(op string) conditionOp {
 	return detectioncompiler.ParseOperator(op)
 }
 
-func newEventView(ev *eventv1.CanonicalEvent) eventView {
+func newEventView(ev domainevent.Event) eventView {
 	view := eventView{ev: ev}
-	if ev == nil {
-		return view
+	view.eventID = ev.ID
+	view.behavior = strings.ToLower(strings.TrimSpace(ev.Behavior))
+	view.lineageID = ev.LineageID
+	view.parentStableID = ev.ParentStableID
+	view.containerID = ev.ContainerID
+	view.cgroup = ev.Cgroup
+	view.occurredAtNs = ev.OccurredAtNS
+	view.monoNs = ev.MonoNS
+	view.processStableID = ev.Subject.StableID
+	view.processBinary = ev.Subject.Binary
+	view.processBinaryName = filepath.Base(ev.Subject.Binary)
+	view.processArgv = strings.Join(ev.Subject.Argv, " ")
+	if filepath.Base(ev.Subject.Binary) == "sudo" && ev.Subject.ArgvBoundariesTrusted {
+		view.processSudoCommand = sudoCommand(ev.Subject.Argv)
 	}
-	view.eventID = ev.GetId()
-	view.behavior = eventBehavior(ev)
-	view.lineageID = ev.GetLineageId()
-	view.parentStableID = ev.GetParentStableId()
-	view.containerID = ev.GetContainerId()
-	view.cgroup = ev.GetCgroup()
-	view.occurredAtNs = ev.GetOccurredAtNs()
-	view.monoNs = ev.GetMonoNs()
-	if proc := ev.GetSubjectProc(); proc != nil {
-		view.processStableID = proc.GetStableId()
-		view.processBinary = proc.GetBinary()
-		view.processBinaryName = filepath.Base(proc.GetBinary())
-		view.processArgv = strings.Join(proc.GetArgv(), " ")
-		if filepath.Base(proc.GetBinary()) == "sudo" && proc.GetArgvBoundariesTrusted() {
-			view.processSudoCommand = sudoCommand(proc.GetArgv())
-		}
-		view.processUID = strconv.FormatUint(uint64(proc.GetUid()), 10)
-		if proc.GetPid() != 0 {
-			view.processPID = strconv.FormatUint(uint64(proc.GetPid()), 10)
-		}
+	view.processUID = strconv.FormatUint(uint64(ev.Subject.UID), 10)
+	if ev.Subject.PID != 0 {
+		view.processPID = strconv.FormatUint(uint64(ev.Subject.PID), 10)
 	}
-	if obj := ev.GetObject(); obj != nil {
-		view.filePath = obj.GetFilePath()
-		view.socket = obj.GetSocketAddr()
-		if addr, port, ok := strings.Cut(view.socket, ":"); ok {
-			view.socketAddr = addr
-			view.socketPort = port
-		} else {
-			view.socketAddr = view.socket
-		}
+	view.filePath = ev.Object.FilePath
+	view.socket = ev.Object.SocketAddress
+	if addr, port, ok := strings.Cut(view.socket, ":"); ok {
+		view.socketAddr = addr
+		view.socketPort = port
+	} else {
+		view.socketAddr = view.socket
 	}
-	if scope := ev.GetScope(); scope != nil {
-		view.scopeType = scope.GetType()
-		view.scopeSelector = scope.GetSelector()
-	}
+	view.scopeType = ev.Scope.Type
+	view.scopeSelector = ev.Scope.Selector
 	return view
 }
 

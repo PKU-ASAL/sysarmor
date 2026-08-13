@@ -29,9 +29,10 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 	if ev.SensorEvent.RawRef == "" {
 		ev.SensorEvent.RawRef = ev.RawRef
 	}
-	canonical := contractmapper.CanonicalEvent(r.normalizer.NormalizeDomain(ev.SensorEvent))
-	canonical.Labels = mergeLabels(canonical.GetLabels(), r.runner.policyLabels())
-	signals := r.runner.currentDetection().Process(canonical)
+	domainEvent := r.normalizer.NormalizeDomain(ev.SensorEvent)
+	domainEvent.Labels = mergeLabels(domainEvent.Labels, r.runner.policyLabels())
+	canonical := contractmapper.CanonicalEvent(domainEvent)
+	signals := r.runner.currentDetection().Process(domainEvent)
 	return r.runner.dataBatchForEvent(canonical, signals), nil
 }
 

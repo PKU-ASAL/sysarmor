@@ -6,12 +6,19 @@ import (
 	"testing"
 	"time"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
+	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
+	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
 const testRuleSetRef = "ruleset:cep-endpoint"
+
+func processWire(engine *Engine, event *eventv1.CanonicalEvent) []*signalv1.Signal {
+	return engine.Process(contractmapper.DomainEvent(event))
+}
 
 func testDetectionPolicy() *policymodel.DetectionPolicy {
 	policy := policymodel.DefaultDetectionPolicy()

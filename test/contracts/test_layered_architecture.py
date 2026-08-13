@@ -182,6 +182,13 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             source = (root / "detection" / name).read_text()
             self.assertNotIn("packages/contracts/proto/signal", source)
 
+    def test_agent_detection_runtime_uses_domain_events(self):
+        root = self.repo / "apps/agent/internal/detection"
+        for source in root.glob("*.go"):
+            if source.name.endswith("_test.go"):
+                continue
+            self.assertNotIn("packages/contracts/proto/event", source.read_text())
+
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []
         for product in ("agent", "manager"):

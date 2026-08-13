@@ -22,6 +22,7 @@ type Event struct {
 	OccurredAtNS   uint64
 	Behavior       string
 	Subject        Process
+	SubjectPresent bool
 	Object         Object
 	ParentStableID string
 	LineageID      string
