@@ -155,6 +155,11 @@ sudo sysarmorctl policy apply --file /path/to/policy.json --dry-run
 
 示例值位于 `deployments/{manager,gateway,worker,manager-ui}/*.env.example`。示例中的数据库密码只适用于隔离的本地 Compose；生产环境必须从环境或机密管理系统注入。
 
+Manager 与 Worker 的生产启动路径要求 PostgreSQL，`SYSARMOR_POSTGRES_DRIVER` 默认是
+`postgres`，`SYSARMOR_POSTGRES_DSN` 必须非空；不存在 memory/file backend 配置或自动回退。
+Worker 还要求非空 Kafka brokers/topic/group 与 OpenSearch URL。OpenSearch 基本认证可通过
+`SYSARMOR_OPENSEARCH_USERNAME` 和 `SYSARMOR_OPENSEARCH_PASSWORD` 注入，禁止写入仓库配置。
+
 ## `configs/` 的边界
 
 `configs/` 保存策略和规则元数据示例，运行时不会自动发现或加载该目录。Agent 默认值在 `deployments/agent/`，wire contract 在 `packages/contracts/proto/`，可执行测试内容在 `test/data/`。没有显式 loader 或 apply 流程时，不要把 `configs/` 中的文件视为已部署策略。

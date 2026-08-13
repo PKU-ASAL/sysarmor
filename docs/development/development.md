@@ -23,13 +23,17 @@ make web-build
 
 | 目录 | 负责内容 |
 |---|---|
-| `apps/*/cmd/` | 各产品的薄可执行入口和依赖组装 |
+| `apps/*/cmd/` | 参数解析、signal context、Bootstrap 生命周期和顶层退出码 |
 | `packages/contracts/proto/` | Agent 数据面与控制面 wire contract |
 | `apps/agent/internal/` | 配置、本地状态、注册、Policy 和 daemon 生命周期 |
 | `apps/agent/internal/endpoint/` | 事件规范化、匹配和端侧检测 |
 | `apps/agent/internal/sensors/` | Sensor 运行时与平台适配器实现 |
 | `apps/manager/internal/adapters/inbound/grpc/` | Agent-facing mTLS Data/Control gRPC adapters |
-| `apps/manager/internal/application/worker/processing/` | Worker 遥测处理应用服务 |
+| `apps/manager/internal/bootstrap/` | Manager、Gateway、Worker 的技术资源创建与依赖装配 |
+| `apps/manager/internal/application/worker/` | Worker 批次编排、重试处置与检测策略解析 |
+| `apps/manager/internal/application/worker/processing/` | Protobuf-free Domain 分析引擎入口 |
+| `apps/manager/internal/domain/` | 不依赖传输、数据库和搜索引擎的模型与算法 |
+| `apps/manager/internal/ports/` | Application 使用的 tenant-scoped 输入输出契约 |
 | `apps/manager/internal/` | Operator API、鉴权和控制面流程 |
 | `apps/manager/internal/adapters/outbound/postgres/` | PostgreSQL 持久化 adapter |
 | `apps/manager/internal/adapters/inbound/` | Kafka、HTTP、gRPC inbound adapter |
@@ -42,6 +46,9 @@ make web-build
 边界规则：
 
 - `apps/*/cmd/` 只组装服务，业务逻辑进入所属应用的 `internal/` package。
+- Manager、Gateway 和 Worker 的 `cmd` 只调用 `internal/bootstrap`，不得直接创建 Adapter。
+- Application 只能依赖 Domain、Application、Ports 和标准库；Adapter 负责 wire、SQL 和文档映射。
+- Manager 与 Worker 生产路径只使用 PostgreSQL，不增加 memory/file Store 或 fallback。
 - Endpoint 不直接读取平台数据库；端云交互只经过已定义协议。
 - 浏览器调用同源 BFF，不直接调用 Manager。
 - protobuf 是 Agent wire contract 的事实来源。

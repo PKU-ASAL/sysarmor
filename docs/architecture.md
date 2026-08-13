@@ -158,6 +158,30 @@ flowchart LR
 
 查询边界取决于运行范围：端点测试可以通过 Agent 本地流验证端点行为；包含 Manager 和 Gateway 的拓扑必须通过 Manager API 查询，并显式提供 tenant 上下文。内部数据库格式不是用户接口。
 
+### 平台分层与启动路径
+
+Manager、Gateway 和 Worker 的生产入口统一采用以下依赖方向：
+
+```text
+cmd -> bootstrap -> application + ports <- adapters
+                         |
+                         v
+                       domain
+```
+
+`cmd` 只解析参数、建立 signal context、调用 Bootstrap 并管理顶层退出码。Bootstrap 创建
+PostgreSQL、Kafka、OpenSearch 等技术资源并注入端口；Application 编排用例与事务语义；
+Domain 只包含确定性模型和算法。Protobuf、SQL、Kafka 和 OpenSearch 类型不得进入 Domain，
+Application 也不直接导入技术 Adapter。
+
+Worker 的 Kafka inbound Adapter 将 wire batch 校验并映射为 Domain Event/Signal；
+`ProcessBatch` Application Service 负责 claim、history、rarity、policy、分析、projection 和
+commit/abandon；OpenSearch outbound Adapter 负责历史文档解码、稳定文档 ID 和批量投影。
+重复批次视为成功，busy 或依赖失败保持可重试；永久错误仅在 DLQ 发布成功后提交 offset。
+
+Manager 与 Worker 的生产持久化仅支持 PostgreSQL。缺失 DSN、迁移失败或数据库不可用时启动
+失败，不回退到 memory/file Store。
+
 ## 失败边界
 
 系统遵循以下不变量：
