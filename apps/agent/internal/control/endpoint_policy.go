@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )

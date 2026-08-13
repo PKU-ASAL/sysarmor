@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"

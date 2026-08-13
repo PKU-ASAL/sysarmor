@@ -1,4 +1,4 @@
-package detection
+package runtime
 
 import (
 	"fmt"
@@ -7,14 +7,9 @@ import (
 	"strings"
 	"time"
 
-	contractadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
-	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
-	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
 const defaultMaxCEPGroups = 4096
@@ -77,7 +72,7 @@ type effectiveRule struct {
 	enabled  bool
 	mode     string
 	severity string
-	intent   *policymodel.ResponseIntentRef
+	intent   *domaindetection.ResponseIntent
 	params   map[string]string
 }
 
@@ -97,9 +92,26 @@ type RuleSpec struct {
 	RequiredBehaviors []string
 	ContextRefs       []string
 	IOCRefs           []string
-	ResponseIntent    *policymodel.ResponseIntentRef
+	ResponseIntent    *domaindetection.ResponseIntent
 	Terminal          *bool
+	Mode              string
 }
+
+type ProgramInput struct {
+	Rules   []RuleSpec
+	Content ContentSnapshot
+}
+
+type Program struct {
+	rules       map[string]effectiveRule
+	refs        ContentSnapshot
+	compiled    compiledRuntime
+	sequence    compiledSequenceRuntime
+	correlation compiledCorrelateRuntime
+}
+
+type Limits = EngineLimits
+type State = Engine
 
 type RequiredEventSpec struct {
 	Behavior string
@@ -198,72 +210,40 @@ type RuleCoverage struct {
 	MissingFields     []string `json:"missing_fields,omitempty"`
 }
 
-func New(policy *policymodel.DetectionPolicy) (*Engine, ApplyReport) {
-	return NewWithInputs(policy, contract.CollectionIntent{})
-}
-
-func NewWithInputs(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent) (*Engine, ApplyReport) {
-	return NewWithRuntime(policy, collection, ContentSnapshot{})
-}
-
-func NewWithRuntime(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content ContentSnapshot) (*Engine, ApplyReport) {
-	return NewWithRuntimeLimits(policy, collection, content, EngineLimits{})
-}
-
-func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content ContentSnapshot, limits EngineLimits) (*Engine, ApplyReport) {
-	normalized := policymodel.DefaultDetectionPolicy()
-	if policy != nil {
-		tmp := policymodel.NormalizeDetectionPolicy(*policy)
-		normalized = &tmp
-	}
-	limits = normalizeLimits(limits)
-	engine := &Engine{
-		rules:       make(map[string]effectiveRule),
-		cep:         make(map[string]*cepRuleState),
-		cepActive:   make(map[string]map[string]int),
-		correlate:   make(map[string]*correlateRuleState),
-		suppression: make(map[string]time.Time),
-		limits:      limits,
-		refs:        content,
-	}
+func Compile(input ProgramInput) (Program, ApplyReport) {
+	program := Program{rules: make(map[string]effectiveRule), refs: input.Content}
 	report := ApplyReport{Status: "applied", Message: "detection policy applied"}
-	if len(normalized.RuleSets) == 0 {
+	if len(input.Rules) == 0 {
 		report.Status = "rejected"
-		report.Message = "detection policy rejected: explicit ruleset is required"
-		report.Details = []string{"detection policy requires at least one explicit ruleset"}
-		return engine, report
+		report.Message = "detection program rejected: explicit rules are required"
+		report.Details = []string{"detection program requires at least one explicit rule"}
+		return program, report
 	}
-	if errs := validateRuleSelection(normalized, content); len(errs) > 0 {
-		report.Status = "rejected"
-		report.Message = "detection policy rejected"
-		report.Details = errs
-		return engine, report
-	}
-	rules := resolveRules(normalized, content)
-	for _, rule := range rules {
-		engine.rules[rule.spec.RuleID] = rule
+	rules := make([]effectiveRule, 0, len(input.Rules))
+	for _, spec := range input.Rules {
+		rule := effectiveRule{spec: spec, enabled: true, mode: firstNonEmpty(spec.Mode, "observe"), severity: spec.Severity, intent: spec.ResponseIntent}
+		rules = append(rules, rule)
+		program.rules[spec.RuleID] = rule
 		report.RuleIDs = append(report.RuleIDs, rule.spec.RuleID)
 	}
 	errs := detectioncompiler.Validate(domainRules(rules))
-	errs = append(errs, validateContentRefs(rules, content)...)
+	errs = append(errs, validateContentRefs(rules, input.Content)...)
 	if len(errs) > 0 {
 		report.Status = "rejected"
 		report.Message = "detection policy rejected"
 		report.Details = append(report.Details, errs...)
 		report.Warnings = append(report.Warnings, errs...)
-		return engine, report
+		return program, report
 	}
-	engine.compiled = compileRuntime(rules, content)
-	engine.sequence = compileSequenceRuntime(rules, content)
-	engine.correlation = compileCorrelateRuntime(rules, content)
-	report.Coverage = CheckCoverageWithContent(normalized, collection, content)
-	report.Warnings = append(report.Warnings, report.Coverage.Warnings...)
-	if len(report.Warnings) > 0 {
-		report.Status = "degraded"
-		report.Message = "detection policy applied with missing collection inputs"
-		report.Details = append(report.Details, report.Warnings...)
-	}
-	return engine, report
+	program.compiled = compileRuntime(rules, input.Content)
+	program.sequence = compileSequenceRuntime(rules, input.Content)
+	program.correlation = compileCorrelateRuntime(rules, input.Content)
+	return program, report
+}
+
+func NewState(program Program, limits Limits) *State {
+	limits = normalizeLimits(limits)
+	return &Engine{rules: program.rules, cep: make(map[string]*cepRuleState), cepActive: make(map[string]map[string]int), correlate: make(map[string]*correlateRuleState), suppression: make(map[string]time.Time), limits: limits, refs: program.refs, compiled: program.compiled, sequence: program.sequence, correlation: program.correlation}
 }
 
 func validateContentRefs(rules []effectiveRule, content ContentSnapshot) []string {
@@ -279,28 +259,6 @@ func validateContentRefs(rules []effectiveRule, content ContentSnapshot) []strin
 				errs = append(errs, fmt.Sprintf("rule %s requires missing IOC ref %s", rule.spec.RuleID, ref))
 			}
 		}
-	}
-	return errs
-}
-
-func validateRuleSelection(policy *policymodel.DetectionPolicy, content ContentSnapshot) []string {
-	specs := content.Rules
-	available := make(map[string]bool)
-	for _, spec := range specs {
-		available[spec.RuleSetRef] = true
-	}
-	var errs []string
-	for _, ref := range policy.RuleSets {
-		if ref.Ref != "" && (ref.Enabled == nil || *ref.Enabled) && !available[ref.Ref] {
-			errs = append(errs, fmt.Sprintf("ruleset %s is not available", ref.Ref))
-		}
-	}
-	seen := make(map[string]bool)
-	for _, rule := range resolveRules(policy, content) {
-		if seen[rule.spec.RuleID] {
-			errs = append(errs, fmt.Sprintf("duplicate rule id %s", rule.spec.RuleID))
-		}
-		seen[rule.spec.RuleID] = true
 	}
 	return errs
 }
@@ -334,7 +292,7 @@ func (e *Engine) Metrics() Metrics {
 	return metrics
 }
 
-func (e *Engine) Process(ev domainevent.Event) []*signalv1.Signal {
+func (e *Engine) Process(ev domainevent.Event) []*domaindetection.Signal {
 	if e == nil || !ev.SubjectPresent {
 		return nil
 	}
@@ -347,13 +305,9 @@ func (e *Engine) Process(ev domainevent.Event) []*signalv1.Signal {
 	}
 	e.metrics.EventsByBehavior[behavior]++
 	detected := compact(e.detectCEPRules(view))
-	var out []*signalv1.Signal
-	for _, signal := range detected {
-		out = append(out, contractadapter.Signal(*signal))
-	}
 	e.metrics.EmittedSignals += uint64(len(detected))
 	e.metrics.ProcessNanosTotal += uint64(time.Since(start).Nanoseconds())
-	return out
+	return detected
 }
 
 func cloneMetricsMap(in map[string]uint64) map[string]uint64 {
@@ -784,7 +738,7 @@ func sudoFlagWithoutValue(arg string) bool {
 
 func eventEntities(ev domainevent.Event) []domaindetection.Entity {
 	entities := []domaindetection.Entity{processEntity(ev)}
-	if eventBehavior(ev) == eventmodel.BehaviorProcessExec.String() && ev.Subject.Binary != "" {
+	if eventBehavior(ev) == "process_exec" && ev.Subject.Binary != "" {
 		entities = append(entities, fileEntity(ev.Subject.Binary, "subject"))
 	}
 	if path := ev.Object.FilePath; path != "" {
@@ -857,201 +811,6 @@ func confidenceForRule(rule effectiveRule) uint32 {
 	default:
 		return 40
 	}
-}
-
-func resolveRules(policy *policymodel.DetectionPolicy, content ContentSnapshot) []effectiveRule {
-	specs := content.Rules
-	enabledRuleSets := map[string]bool{}
-	for _, ref := range policy.RuleSets {
-		if ref.Ref == "" {
-			continue
-		}
-		enabled := true
-		if ref.Enabled != nil {
-			enabled = *ref.Enabled
-		}
-		enabledRuleSets[ref.Ref] = enabled
-	}
-	overrides := map[string]policymodel.RuleOverride{}
-	for _, override := range policy.RuleOverrides {
-		if override.RuleID != "" {
-			overrides[override.RuleID] = override
-		}
-	}
-	var out []effectiveRule
-	for _, spec := range specs {
-		if !enabledRuleSets[spec.RuleSetRef] {
-			continue
-		}
-		rule := effectiveRule{
-			spec:     spec,
-			enabled:  true,
-			mode:     firstNonEmpty(policy.Mode, "observe"),
-			severity: spec.Severity,
-			intent:   spec.ResponseIntent,
-		}
-		if override, ok := overrides[spec.RuleID]; ok {
-			if override.Enabled != nil {
-				rule.enabled = *override.Enabled
-			}
-			if override.Mode != "" {
-				rule.mode = override.Mode
-			}
-			if override.Severity != "" {
-				rule.severity = override.Severity
-			}
-			if override.ResponseIntent != nil {
-				rule.intent = override.ResponseIntent
-			}
-			rule.params = override.Params
-		}
-		if rule.enabled {
-			out = append(out, rule)
-		}
-	}
-	return out
-}
-
-func CheckDependencies(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent) []string {
-	return CheckDependenciesWithContent(policy, collection, ContentSnapshot{})
-}
-
-func CheckDependenciesWithContent(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content ContentSnapshot) []string {
-	return CheckCoverageWithContent(policy, collection, content).Warnings
-}
-
-func CheckCoverage(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent) CoverageReport {
-	return CheckCoverageWithContent(policy, collection, ContentSnapshot{})
-}
-
-func CheckCoverageWithContent(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content ContentSnapshot) CoverageReport {
-	if policy == nil {
-		tmp := policymodel.DefaultDetectionPolicy()
-		policy = tmp
-	}
-	collectedBehaviors := map[string]bool{}
-	for _, behavior := range collection.Behaviors {
-		behavior = eventmodel.NormalizeBehavior(behavior).String()
-		if behavior != "" {
-			collectedBehaviors[behavior] = true
-		}
-	}
-	if len(collectedBehaviors) == 0 {
-		return CoverageReport{Status: "unknown"}
-	}
-	report := CoverageReport{Status: "covered"}
-	for _, rule := range resolveRules(policy, content) {
-		coverage := RuleCoverage{RuleID: rule.spec.RuleID, Status: "covered"}
-		for _, behavior := range rule.spec.RequiredBehaviors {
-			behavior = eventmodel.NormalizeBehavior(behavior).String()
-			if behavior == "" {
-				continue
-			}
-			coverage.RequiredBehaviors = appendUnique(coverage.RequiredBehaviors, behavior)
-			if !collectedBehaviors[behavior] {
-				coverage.MissingBehaviors = appendUnique(coverage.MissingBehaviors, behavior)
-			}
-		}
-		availableFields := availableFieldsForCollection(collection)
-		for _, req := range rule.spec.RequiredEvents {
-			behavior := eventmodel.NormalizeBehavior(req.Behavior).String()
-			if behavior != "" {
-				coverage.RequiredBehaviors = appendUnique(coverage.RequiredBehaviors, behavior)
-				if !collectedBehaviors[behavior] {
-					coverage.MissingBehaviors = appendUnique(coverage.MissingBehaviors, behavior)
-				}
-			}
-			for _, field := range req.Fields {
-				if field == "" {
-					continue
-				}
-				requiredField := fmt.Sprintf("%s:%s", firstNonEmpty(behavior, req.Behavior, "event"), field)
-				coverage.RequiredFields = appendUnique(coverage.RequiredFields, requiredField)
-				if !availableFields[field] {
-					coverage.MissingFields = appendUnique(coverage.MissingFields, requiredField)
-				}
-			}
-		}
-		if len(coverage.MissingBehaviors) > 0 || len(coverage.MissingFields) > 0 {
-			coverage.Status = "missing_inputs"
-			report.Status = "degraded"
-			missing := append([]string(nil), coverage.MissingBehaviors...)
-			missing = append(missing, coverage.MissingFields...)
-			report.Warnings = append(report.Warnings, fmt.Sprintf("rule %s missing collection inputs: %s", rule.spec.RuleID, strings.Join(missing, ",")))
-		}
-		report.Rules = append(report.Rules, coverage)
-	}
-	return report
-}
-
-func availableFieldsForCollection(collection contract.CollectionIntent) map[string]bool {
-	if len(collection.Capabilities) > 0 {
-		return availableFieldsFromCapabilities(collection)
-	}
-	fields := map[string]bool{
-		"event.id":       true,
-		"event.behavior": true,
-		"lineage_id":     true,
-		"scope.type":     true,
-		"scope.selector": true,
-		"container.id":   true,
-		"container_id":   true,
-		"cgroup":         true,
-	}
-	addProcess := func() {
-		for _, field := range []string{"process.stable_id", "process.id", "process.binary", "process.argv", "process.uid", "process.pid", "pid", "parent.stable_id", "parent.id"} {
-			fields[field] = true
-		}
-	}
-	if len(collection.Behaviors) == 0 {
-		for _, field := range []string{"file.path", "object.file_path", "socket.addr", "object.socket_addr", "socket.port", "socket"} {
-			fields[field] = true
-		}
-		addProcess()
-		return fields
-	}
-	behaviors := map[string]bool{}
-	for _, behavior := range collection.Behaviors {
-		behaviors[eventmodel.NormalizeBehavior(behavior).String()] = true
-	}
-	if behaviors[eventmodel.BehaviorProcessExec.String()] || behaviors[eventmodel.BehaviorProcessFork.String()] || behaviors[eventmodel.BehaviorProcessExit.String()] {
-		addProcess()
-	}
-	if behaviors[eventmodel.BehaviorFileOpen.String()] || behaviors[eventmodel.BehaviorFileRead.String()] || behaviors[eventmodel.BehaviorFileWrite.String()] || behaviors[eventmodel.BehaviorFileChmod.String()] {
-		addProcess()
-		fields["file.path"] = true
-		fields["object.file_path"] = true
-	}
-	if behaviors[eventmodel.BehaviorNetworkConnect.String()] {
-		addProcess()
-		fields["socket.addr"] = true
-		fields["object.socket_addr"] = true
-		fields["socket.port"] = true
-		fields["socket"] = true
-	}
-	return fields
-}
-
-func availableFieldsFromCapabilities(collection contract.CollectionIntent) map[string]bool {
-	fields := map[string]bool{}
-	behaviors := map[string]bool{}
-	for _, behavior := range collection.Behaviors {
-		behavior = eventmodel.NormalizeBehavior(behavior).String()
-		if behavior != "" {
-			behaviors[behavior] = true
-		}
-	}
-	for _, behavior := range collection.Capabilities {
-		if len(behaviors) > 0 && !behaviors[eventmodel.NormalizeBehavior(behavior.Behavior).String()] {
-			continue
-		}
-		for _, field := range behavior.Fields {
-			if field != "" {
-				fields[field] = true
-			}
-		}
-	}
-	return fields
 }
 
 func processEntity(ev domainevent.Event) domaindetection.Entity {

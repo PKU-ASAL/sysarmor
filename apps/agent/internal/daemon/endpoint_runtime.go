@@ -32,7 +32,11 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 	domainEvent := r.normalizer.NormalizeDomain(ev.SensorEvent)
 	domainEvent.Labels = mergeLabels(domainEvent.Labels, r.runner.policyLabels())
 	canonical := contractmapper.CanonicalEvent(domainEvent)
-	signals := r.runner.currentDetection().Process(domainEvent)
+	domainSignals := r.runner.currentDetection().Process(domainEvent)
+	signals := make([]*signalv1.Signal, 0, len(domainSignals))
+	for _, signal := range domainSignals {
+		signals = append(signals, contractmapper.Signal(*signal))
+	}
 	return r.runner.dataBatchForEvent(canonical, signals), nil
 }
 

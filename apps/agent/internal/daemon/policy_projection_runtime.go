@@ -3,8 +3,8 @@ package daemon
 import (
 	"context"
 
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 

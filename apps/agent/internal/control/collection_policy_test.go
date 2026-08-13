@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"

@@ -3,10 +3,10 @@ package daemon
 import (
 	"context"
 
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"

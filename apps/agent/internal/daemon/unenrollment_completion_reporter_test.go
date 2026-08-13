@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 )
 
 func TestCompletionReporterRetriesReadyOutboxAfterRestart(t *testing.T) {

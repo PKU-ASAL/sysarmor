@@ -11,8 +11,8 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	tetragondecoder "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -216,9 +216,11 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 	}
 	if ev, ok := decodeEvent(data); ok {
 		ev.Labels = mergeLabels(ev.GetLabels(), labels)
-		signals := detector.Process(contractmapper.DomainEvent(ev))
-		for _, sig := range signals {
-			sig.Labels = mergeLabels(sig.GetLabels(), labels)
+		domainSignals := detector.Process(contractmapper.DomainEvent(ev))
+		signals := make([]*signalv1.Signal, 0, len(domainSignals))
+		for _, sig := range domainSignals {
+			sig.Labels = mergeLabels(sig.Labels, labels)
+			signals = append(signals, contractmapper.Signal(*sig))
 		}
 		return []*eventv1.CanonicalEvent{ev}, signals, nil
 	}
@@ -227,9 +229,11 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 		domainEvent := norm.NormalizeDomain(sev)
 		domainEvent.Labels = mergeLabels(domainEvent.Labels, labels)
 		ev := contractmapper.CanonicalEvent(domainEvent)
-		signals := detector.Process(domainEvent)
-		for _, sig := range signals {
-			sig.Labels = mergeLabels(sig.GetLabels(), labels)
+		domainSignals := detector.Process(domainEvent)
+		signals := make([]*signalv1.Signal, 0, len(domainSignals))
+		for _, sig := range domainSignals {
+			sig.Labels = mergeLabels(sig.Labels, labels)
+			signals = append(signals, contractmapper.Signal(*sig))
 		}
 		return []*eventv1.CanonicalEvent{ev}, signals, nil
 	}
@@ -247,9 +251,11 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 			domainEvent.Labels = mergeLabels(domainEvent.Labels, labels)
 			ev := contractmapper.CanonicalEvent(domainEvent)
 			events = append(events, ev)
-			detected := detector.Process(domainEvent)
-			for _, sig := range detected {
-				sig.Labels = mergeLabels(sig.GetLabels(), labels)
+			domainDetected := detector.Process(domainEvent)
+			var detected []*signalv1.Signal
+			for _, sig := range domainDetected {
+				sig.Labels = mergeLabels(sig.Labels, labels)
+				detected = append(detected, contractmapper.Signal(*sig))
 			}
 			signals = append(signals, detected...)
 		}

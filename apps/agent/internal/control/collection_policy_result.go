@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 

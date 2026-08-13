@@ -93,7 +93,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "apps/agent/internal/config",
             "apps/agent/internal/content",
             "apps/agent/internal/daemon",
-            "apps/agent/internal/detection",
+            "apps/agent/internal/domain/detection/runtime",
             "apps/agent/internal/domain/event",
             "apps/agent/internal/domain/policy",
             "apps/agent/internal/adapters/policy",
@@ -118,7 +118,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "domain/detection/matcher",
             "adapters/contracts",
             "adapters/sensor/tetragon",
-            "detection",
+            "domain/detection/runtime",
             "telemetry/dataappend",
             "telemetry/ringbuffer",
         )

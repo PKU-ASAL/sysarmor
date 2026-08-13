@@ -26,7 +26,6 @@ AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/config",
 	"apps/agent/internal/content",
 	"apps/agent/internal/control",
-	"apps/agent/internal/detection",
 	"apps/agent/internal/daemon",
 	"apps/agent/internal/localapi",
 	"apps/agent/internal/localstore",
@@ -49,6 +48,7 @@ STANDARD_LIBRARY = {
         "sort",
         "strconv",
         "strings",
+        "path/filepath",
         "sync",
         "sync/atomic",
         "time",
@@ -179,11 +179,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertTrue((root / "domain/detection/signal.go").is_file())
         self.assertTrue((root / "adapters/contracts/detection.go").is_file())
         for name in ("correlate.go", "evidence_entities.go"):
-            source = (root / "detection" / name).read_text()
+            source = (root / "domain/detection/runtime" / name).read_text()
             self.assertNotIn("packages/contracts/proto/signal", source)
 
     def test_agent_detection_runtime_uses_domain_events(self):
-        root = self.repo / "apps/agent/internal/detection"
+        root = self.repo / "apps/agent/internal/domain/detection/runtime"
         for source in root.glob("*.go"):
             if source.name.endswith("_test.go"):
                 continue

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"

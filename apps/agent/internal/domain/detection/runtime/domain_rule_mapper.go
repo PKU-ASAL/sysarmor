@@ -1,4 +1,4 @@
-package detection
+package runtime
 
 import domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 

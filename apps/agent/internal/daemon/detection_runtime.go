@@ -3,11 +3,10 @@ package daemon
 import (
 	"time"
 
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 
 func (r *AgentRuntime) contentStore() *agentcontent.Store {
@@ -60,7 +59,7 @@ func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detecti
 			RequiredBehaviors: requiredBehaviors(rule.RequiredEvents),
 			ContextRefs:       append([]string(nil), rule.ContextRefs...),
 			IOCRefs:           append([]string(nil), rule.IOCRefs...),
-			ResponseIntent: &policymodel.ResponseIntentRef{
+			ResponseIntent: &detection.ResponseIntent{
 				Action:     rule.ResponseIntent.Action,
 				Confidence: rule.ResponseIntent.Confidence,
 				Reason:     rule.ResponseIntent.Reason,

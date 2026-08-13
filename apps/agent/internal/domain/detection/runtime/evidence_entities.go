@@ -1,4 +1,4 @@
-package detection
+package runtime
 
 import (
 	"path/filepath"

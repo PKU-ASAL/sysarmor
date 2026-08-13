@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 )
 
 func TestStandaloneTelemetryFailsClosedWithoutStore(t *testing.T) {

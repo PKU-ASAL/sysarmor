@@ -1,11 +1,11 @@
-package detection
+package runtime
 
 import (
 	"strings"
 	"time"
 
 	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
-	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
+	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 )
 
 type compiledCorrelateRuntime struct {
@@ -83,7 +83,7 @@ func compileFactBehaviors(fact FactSpec) map[string]bool {
 		behaviors = append(behaviors, fact.Event)
 	}
 	for _, behavior := range behaviors {
-		normalized := eventmodel.NormalizeBehavior(behavior).String()
+		normalized := domainevent.NormalizeBehavior(behavior)
 		if normalized != "" {
 			out[normalized] = true
 		}

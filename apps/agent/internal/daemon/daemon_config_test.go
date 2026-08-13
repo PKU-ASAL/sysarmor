@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )

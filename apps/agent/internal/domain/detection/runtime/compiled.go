@@ -1,4 +1,4 @@
-package detection
+package runtime
 
 import (
 	"path/filepath"
@@ -10,7 +10,6 @@ import (
 	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
-	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
 )
 
 type compiledRuntime struct {
@@ -221,7 +220,7 @@ func compileRule(rule effectiveRule, content ContentSnapshot) compiledRule {
 		for _, step := range rule.spec.Sequence.Steps {
 			steps = append(steps, compiledStep{
 				id:             strings.TrimSpace(step.ID),
-				behavior:       eventmodel.NormalizeBehavior(step.Behavior).String(),
+				behavior:       domainevent.NormalizeBehavior(step.Behavior),
 				conditions:     compileConditions(step.Conditions, content),
 				conditionGroup: compileConditionNode(step.ConditionGroup, content),
 			})
@@ -281,7 +280,7 @@ func (r compiledRule) behaviors() []string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(behavior string) {
-		behavior = eventmodel.NormalizeBehavior(behavior).String()
+		behavior = domainevent.NormalizeBehavior(behavior)
 		if behavior == "" || seen[behavior] {
 			return
 		}

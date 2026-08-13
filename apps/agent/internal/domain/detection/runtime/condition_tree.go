@@ -1,4 +1,4 @@
-package detection
+package runtime
 
 type compiledConditionNodeKind uint8
 

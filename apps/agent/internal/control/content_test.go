@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
 )
 
 type recordingContentRuntime struct {

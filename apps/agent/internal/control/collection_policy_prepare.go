@@ -3,7 +3,7 @@ package control
 import (
 	"fmt"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
