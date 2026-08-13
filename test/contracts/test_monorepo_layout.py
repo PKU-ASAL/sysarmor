@@ -365,6 +365,31 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                 violations.append(path)
         self.assertEqual([], violations, f"legacy command paths in build inputs: {violations}")
 
+    def test_platform_functional_path_does_not_reference_removed_manager_integration(self):
+        script = self.repo / "test/suites/functional/platform/e2e-agent-gateway-manager-local.sh"
+        content = script.read_text()
+        self.assertNotIn("./apps/manager/integration", content)
+        for package in (
+            "./apps/manager/internal/application/gateway/...",
+            "./apps/manager/internal/adapters/inbound/kafka",
+            "./apps/manager/internal/application/worker/...",
+            "./apps/manager/internal/adapters/outbound/opensearch/worker",
+        ):
+            self.assertIn(package, content)
+
+        platform = self.repo / "test/suites/functional/platform"
+        for functional_script in platform.glob("*.sh"):
+            with self.subTest(script=functional_script.name):
+                self.assertNotIn('"backend":"memory"', functional_script.read_text())
+
+    def test_functional_paths_do_not_call_removed_manager_reset(self):
+        functional = self.repo / "test/suites/functional"
+        violations = []
+        for script in functional.rglob("*.sh"):
+            if "/api/v1/reset" in script.read_text():
+                violations.append(script.relative_to(self.repo).as_posix())
+        self.assertEqual([], violations, f"removed manager reset endpoint remains in: {violations}")
+
 
 if __name__ == "__main__":
     unittest.main()

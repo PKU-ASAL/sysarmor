@@ -355,14 +355,13 @@ wait_contains() {
   done
 }
 
-curl -sf -X POST "$MANAGER_URL/api/v1/reset?label=scenario=$SCENARIO" >/dev/null
 docker exec "$OWNED_CONTAINER" sh -c "rm -f '$WORK/agent.log'; /opt/sysarmor/agent/bin/sysarmor-agent run --config /etc/sysarmor/agent/agent.yaml > '$WORK/agent.log' 2>&1 & echo \$! > '$WORK/agent.pid'"
 
 wait_contains "agent-health backend" '"backend":"tetragon"' "$RESULTS/e2e-agent-namespace-self-container.health.json" \
   curl -sf "$MANAGER_URL/api/v1/agent-health?agent_id=$AGENT_ID&tenant_id=default"
 wait_contains "agent-health scope" '"scope":{"type":"namespace","selector":"self"}' "$RESULTS/e2e-agent-namespace-self-container.health.json" \
   curl -sf "$MANAGER_URL/api/v1/agent-health?agent_id=$AGENT_ID&tenant_id=default"
-wait_contains "agent-health policy" '"policy_loaded":true' "$RESULTS/e2e-agent-namespace-self-container.health.json" \
+wait_contains "agent-health policy" '"policyLoaded":true' "$RESULTS/e2e-agent-namespace-self-container.health.json" \
   curl -sf "$MANAGER_URL/api/v1/agent-health?agent_id=$AGENT_ID&tenant_id=default"
 wait_contains "agent-owned tracing policy" 'sysarmor-runtime-collection' "$RESULTS/e2e-agent-namespace-self-container.tracingpolicy.txt" \
   docker exec "$OWNED_CONTAINER" /opt/sysarmor/agent/sensors/tetragon/current/bin/tetra tracingpolicy list

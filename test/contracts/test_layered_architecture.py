@@ -190,6 +190,19 @@ import (
                     violations.append(str(source.relative_to(self.repo)))
         self.assertEqual([], violations, f"cross-product internal imports: {violations}")
 
+    def test_manager_commands_depend_on_bootstrap_only(self):
+        violations = []
+        for command in ("sysarmor-manager", "sysarmor-gateway", "sysarmor-worker"):
+            source = self.repo / "apps" / "manager" / "cmd" / command / "main.go"
+            for imported in IMPORT_PATTERN.findall(source.read_text()):
+                if imported == f"{MODULE}apps/manager/internal/bootstrap":
+                    continue
+                if imported.startswith(MODULE):
+                    violations.append(f"{command}: {imported}")
+                elif "." in imported.split("/", 1)[0]:
+                    violations.append(f"{command}: {imported}")
+        self.assertEqual([], violations, "command bypasses bootstrap:\n" + "\n".join(violations))
+
     def test_domain_does_not_import_protobuf(self):
         forbidden = f"{MODULE}packages/contracts/proto"
         violations = []
