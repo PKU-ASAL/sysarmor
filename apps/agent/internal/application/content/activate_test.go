@@ -34,10 +34,16 @@ type runtimeFake struct {
 
 func (f *runtimeFake) BuildDetection(domaincontent.Snapshot) (ports.DetectionBuild, error) {
 	f.built = true
-	return ports.DetectionBuild{Value: struct{}{}}, f.buildErr
+	return fakeBuild{}, f.buildErr
 }
 func (f *runtimeFake) ActivateDetection(domaincontent.Snapshot, ports.DetectionBuild) {
 	f.activated = true
+}
+
+type fakeBuild struct{}
+
+func (fakeBuild) DetectionReport() ports.DetectionReport {
+	return ports.DetectionReport{Status: "applied"}
 }
 
 type mutationFake struct{ released bool }
@@ -67,5 +73,17 @@ func TestActivateDoesNotCommitWhenDetectionBuildFails(t *testing.T) {
 	}
 	if repo.committed || runtime.activated {
 		t.Fatalf("unexpected commit/swap: %+v %+v", repo, runtime)
+	}
+}
+
+func TestActivateWithReportReturnsTypedDetectionReport(t *testing.T) {
+	repo := &repositoryFake{record: domaincontent.Record{Ref: "rulepack:r1"}}
+	service := NewService(repo, &runtimeFake{}, &mutationFake{})
+	result, err := service.ActivateWithReport(context.Background(), "{}", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Record.Ref != "rulepack:r1" || result.Report.Status != "applied" {
+		t.Fatalf("result=%+v", result)
 	}
 }

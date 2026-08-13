@@ -156,6 +156,12 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertTrue((root / "domain/policy").is_dir())
         self.assertTrue((root / "adapters/policy").is_dir())
         self.assertFalse((root / "policy").exists())
+        for source in (root / "domain/policy").glob("*.go"):
+            imports = IMPORT_PATTERN.findall(source.read_text())
+            self.assertFalse(
+                set(imports) & ADAPTER_BRIDGE_IMPORTS,
+                f"policy domain imports adapter bridge: {source}",
+            )
 
     def test_agent_content_activation_is_layered(self):
         root = self.repo / "apps/agent/internal"
@@ -163,12 +169,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertTrue((root / "application/content").is_dir())
         self.assertTrue((root / "adapters/content").is_dir())
         self.assertFalse((root / "content").exists())
-        for source in (root / "domain/policy").glob("*.go"):
-            imports = IMPORT_PATTERN.findall(source.read_text())
-            self.assertFalse(
-                set(imports) & ADAPTER_BRIDGE_IMPORTS,
-                f"policy domain imports adapter bridge: {source}",
-            )
+
+    def test_content_activation_contract_is_typed(self):
+        for relative in ("apps/agent/internal/ports/content.go", "apps/agent/internal/application/content/activate.go"):
+            source = (self.repo / relative).read_text()
+            self.assertNotIn("any", source, f"untyped content contract remains: {relative}")
 
     def test_agent_detection_matcher_is_layered(self):
         root = self.repo / "apps/agent/internal"

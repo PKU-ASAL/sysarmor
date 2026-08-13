@@ -19,7 +19,15 @@ type ContentRuntime interface {
 	ActivateDetection(snapshot domaincontent.Snapshot, built DetectionBuild)
 }
 
-type DetectionBuild struct{ Value any }
+type DetectionBuild interface {
+	DetectionReport() DetectionReport
+}
+
+type DetectionReport struct {
+	Status   string
+	Warnings []string
+	Details  []string
+}
 
 type ContentMutation interface {
 	Begin(context.Context, bool) (func(), error)
