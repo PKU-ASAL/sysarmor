@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/ringbuffer"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
+	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
 )
 
@@ -39,6 +40,7 @@ func TestStreamJSONLBatchesAndAssignsRawRefs(t *testing.T) {
 		BatchSize:     2,
 		FlushInterval: time.Hour,
 		RawRing:       ring,
+		SensorParser:  testSensorParser,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +91,7 @@ func TestStreamJSONLStoresTetragonRawLineBehindRef(t *testing.T) {
 		BatchSize:     10,
 		FlushInterval: time.Hour,
 		RawRing:       ring,
+		SensorParser:  testSensorParser,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,4 +110,14 @@ func TestStreamJSONLStoresTetragonRawLineBehindRef(t *testing.T) {
 	if !strings.Contains(string(entry.Data), `"process_exec"`) {
 		t.Fatalf("raw entry = %s", string(entry.Data))
 	}
+}
+
+func testSensorParser(data []byte) ([]*sensorv1.SensorEvent, bool) {
+	if !strings.Contains(string(data), `"process_exec"`) {
+		return nil, false
+	}
+	return []*sensorv1.SensorEvent{
+		{Behavior: "process.exec", Proc: &sensorv1.RawProcess{Pid: 100, Binary: "/usr/bin/curl", StartTimeNs: 1}},
+		{Behavior: "file.write", Proc: &sensorv1.RawProcess{Pid: 100, Binary: "/usr/bin/curl", StartTimeNs: 1}, Object: &sensorv1.RawObject{Path: "/dev/shm/x.sh"}},
+	}, true
 }

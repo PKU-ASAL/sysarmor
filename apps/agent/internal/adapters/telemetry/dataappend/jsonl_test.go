@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/ringbuffer"
 )
 
 func TestReadProtoJSONLStoresSensorRawRefs(t *testing.T) {
 	raw := `{"mono_ns":"1","behavior":"process.exec","proc":{"pid":7,"binary":"/bin/bash","start_time_ns":"77"},"raw_ref":"sensor-raw-1"}`
 	ring := ringbuffer.New(8)
 
-	batch, err := ReadProtoJSONLWithRing(strings.NewReader(raw+"\n"), "agent-a", "host-a", "policy-a", 3, map[string]string{"scenario": "scenario-a"}, ring)
+	batch, err := ReadProtoJSONLWithRing(strings.NewReader(raw+"\n"), "agent-a", "host-a", "policy-a", 3, map[string]string{"scenario": "scenario-a"}, ring, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestReadProtoJSONLAllocatesMissingSensorRawRef(t *testing.T) {
 	raw := `{"mono_ns":"1","behavior":"process.exec","proc":{"pid":7,"binary":"/bin/bash","start_time_ns":"77"}}`
 	ring := ringbuffer.New(8)
 
-	batch, err := ReadProtoJSONLWithRing(strings.NewReader(raw+"\n"), "agent-a", "host-a", "policy-a", 3, map[string]string{"scenario": "scenario-a"}, ring)
+	batch, err := ReadProtoJSONLWithRing(strings.NewReader(raw+"\n"), "agent-a", "host-a", "policy-a", 3, map[string]string{"scenario": "scenario-a"}, ring, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

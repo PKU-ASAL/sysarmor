@@ -31,7 +31,6 @@ AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/remoteapi",
 	"apps/agent/internal/sensors",
 	"apps/agent/internal/tamper",
-	"apps/agent/internal/telemetry",
 }
 LEGACY_ROOTS = AGENT_LEGACY_ROOTS
 STANDARD_LIBRARY = {
@@ -60,6 +59,7 @@ ADAPTER_BRIDGE_IMPORTS = {
     f"{MODULE}packages/policy",
     f"{MODULE}packages/response",
     f"{MODULE}packages/sensor-sdk/contract",
+	f"{MODULE}packages/tlsconfig",
 }
 IMPORT_PATTERN = re.compile(r'^\s*(?:[._\w]+\s+)?"([^"]+)"', re.MULTILINE)
 

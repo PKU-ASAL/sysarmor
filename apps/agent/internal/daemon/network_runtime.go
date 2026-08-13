@@ -6,9 +6,9 @@ import (
 	"time"
 
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
 	applicationtelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 )
 

@@ -7,7 +7,7 @@ import (
 
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/ringbuffer"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
@@ -16,11 +16,11 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func ReadProtoJSONL(r io.Reader, agentID, hostID, policyID string, policyVersion uint64, labels map[string]string) (*dataplanev1.DataBatch, error) {
-	return ReadProtoJSONLWithRing(r, agentID, hostID, policyID, policyVersion, labels, ringbuffer.New(4096))
+func ReadProtoJSONL(r io.Reader, agentID, hostID, policyID string, policyVersion uint64, labels map[string]string, parser SensorLineParser) (*dataplanev1.DataBatch, error) {
+	return ReadProtoJSONLWithRing(r, agentID, hostID, policyID, policyVersion, labels, ringbuffer.New(4096), parser)
 }
 
-func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, policyVersion uint64, labels map[string]string, rawRing *ringbuffer.Buffer) (*dataplanev1.DataBatch, error) {
+func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, policyVersion uint64, labels map[string]string, rawRing *ringbuffer.Buffer, parser SensorLineParser) (*dataplanev1.DataBatch, error) {
 	if err := validateReplayPolicy(policyID, policyVersion); err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, polic
 			continue
 		}
 		rawData := append([]byte(nil), data...)
-		events, signals, err := decodeLine(rawData, norm, detector, labels, rawRing)
+		events, signals, err := decodeLine(rawData, norm, detector, labels, rawRing, parser)
 		if err != nil {
 			return nil, fmt.Errorf("line %d is neither Signal, CanonicalEvent, SensorEvent nor Tetragon event", line)
 		}

@@ -6,7 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
+	tetragondecoder "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 )
@@ -47,7 +48,7 @@ func AppendJSONL(options ReplayOptions) error {
 		return err
 	}
 	defer input.Close()
-	batch, err := dataappend.ReadProtoJSONL(input, options.AgentID, options.HostID, options.PolicyID, options.PolicyVersion, options.Labels)
+	batch, err := dataappend.ReadProtoJSONL(input, options.AgentID, options.HostID, options.PolicyID, options.PolicyVersion, options.Labels, tetragondecoder.ParseLine)
 	if err != nil {
 		return err
 	}
@@ -78,6 +79,7 @@ func StreamJSONL(ctx context.Context, options ReplayOptions) (ReplayStats, error
 		AgentID: options.AgentID, HostID: options.HostID, TenantID: options.TenantID,
 		PolicyID: options.PolicyID, PolicyVersion: options.PolicyVersion, Labels: options.Labels,
 		Version: options.Version, BatchSize: options.BatchSize, FlushInterval: options.FlushInterval,
+		SensorParser: tetragondecoder.ParseLine,
 	})
 	return ReplayStats{Events: stats.Events, Signals: stats.Signals, Batches: stats.Batches}, err
 }

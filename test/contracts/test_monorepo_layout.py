@@ -100,7 +100,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "apps/agent/internal/adapters/sensor/tetragon",
             "apps/agent/internal/localstore",
             "apps/agent/internal/tamper",
-            "apps/agent/internal/telemetry",
             "apps/agent/internal/sensors/fake",
             "apps/agent/internal/sensors/linux",
             "apps/agent/internal/sensors/runtime",
@@ -122,13 +121,14 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "adapters/contracts",
             "adapters/sensor/tetragon",
             "domain/detection/runtime",
-            "telemetry/dataappend",
-            "telemetry/ringbuffer",
+            "adapters/telemetry/dataappend",
+            "adapters/telemetry/ringbuffer",
         )
         for path in expected:
             with self.subTest(path=path):
                 self.assertTrue((root / path).is_dir(), f"missing {path}")
         self.assertFalse((root / "endpoint").exists(), "legacy endpoint path remains")
+        self.assertFalse((root / "telemetry").exists(), "legacy telemetry path remains")
 
     def test_legacy_agent_implementation_paths_are_absent(self):
         legacy = (
