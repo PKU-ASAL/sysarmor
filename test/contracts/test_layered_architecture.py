@@ -190,6 +190,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         for symbol in ("PendingStore", "ActivateManaged", "ManagedResult"):
             self.assertIn(symbol, source)
 
+    def test_endpoint_policy_application_contract_exists(self):
+        source = (self.repo / "apps/agent/internal/application/policy/endpoint.go").read_text()
+        for symbol in ("EndpointCandidate", "ActivateStandalone", "ActivateManaged", "SaveDesiredManaged"):
+            self.assertIn(symbol, source)
+
     def test_agent_detection_matcher_is_layered(self):
         root = self.repo / "apps/agent/internal"
         self.assertTrue((root / "domain/detection/matcher").is_dir())
