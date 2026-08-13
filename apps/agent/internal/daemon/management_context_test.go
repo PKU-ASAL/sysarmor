@@ -18,7 +18,7 @@ func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
 	policyRuntimes := []interface {
 		PolicyIdentity() agentcontrol.PolicyIdentity
 	}{
-		newEndpointPolicyRuntime(runner, nil, nil),
+		newEndpointPolicyApplication(runner, nil, nil),
 		newCollectionPolicyRuntime(runner, nil),
 		newDetectionPolicyRuntime(runner),
 		newTelemetryPolicyRuntime(runner, nil),
@@ -29,11 +29,6 @@ func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
 			t.Fatalf("policy identity=%+v", identity)
 		}
 	}
-	settings := newEndpointPolicyRuntime(runner, nil, nil).EndpointPolicySettings()
-	if settings.TenantID != "tenant-a" {
-		t.Fatalf("endpoint policy tenant=%q", settings.TenantID)
-	}
-
 	status := &localStatusService{runner: runner}
 	capability, err := status.Capability(t.Context(), &controlplanev1.CapabilityRequest{})
 	if err != nil {

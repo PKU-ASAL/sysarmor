@@ -5,35 +5,38 @@ import (
 	"strings"
 
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
+
+func endpointApplicationResult(identity PolicyIdentity, requestID string, candidate applicationpolicy.EndpointCandidate, report applicationpolicy.EndpointReport) Result {
+	status := report.Status
+	if status == "" {
+		status = "applied"
+	}
+	message := report.Message
+	if message == "" {
+		message = "endpoint policy applied"
+	}
+	return Result{
+		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
+		Status: status, Message: message, PolicyID: candidate.PolicyID(), Version: candidate.PolicyVersion(),
+		RequiresRestart: report.RequiresRestart,
+		Sections: []SectionResult{
+			{Name: "detection", Status: status, Message: "endpoint rules updated"},
+			{Name: "response", Status: status, Message: "response policy updated"},
+			{Name: "resource", Status: "unsupported", Message: "resource policy contract is reserved for the next phase", RequiresRestart: report.RequiresRestart},
+			{Name: "telemetry", Status: status, Message: "telemetry policy accepted"},
+			{Name: "collection", Status: status, Message: "collection policy accepted", RequiresRestart: report.RequiresRestart},
+		},
+	}
+}
 
 func rejectedPolicyResult(identity PolicyIdentity, requestID, section, message string) Result {
 	return Result{
 		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
 		Status: "rejected", Message: message,
 		Sections: []SectionResult{{Name: section, Status: "rejected", Message: message}},
-	}
-}
-
-func endpointPolicyResult(identity PolicyIdentity, requestID string, policy policymodel.Policy, status, message string, requiresRestart bool) Result {
-	telemetryStatus := "unchanged"
-	telemetryMessage := "telemetry policy unchanged"
-	if policy.Telemetry != nil {
-		telemetryStatus = status
-		telemetryMessage = "telemetry policy accepted"
-	}
-	return Result{
-		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
-		Status: status, Message: message, PolicyID: policy.PolicyID, Version: policy.Version,
-		RequiresRestart: true,
-		Sections: []SectionResult{
-			{Name: "detection", Status: status, Message: "endpoint rules updated"},
-			{Name: "response", Status: status, Message: "response policy updated"},
-			{Name: "resource", Status: "unsupported", Message: "resource policy contract is reserved for the next phase", RequiresRestart: requiresRestart},
-			{Name: "telemetry", Status: telemetryStatus, Message: telemetryMessage},
-			{Name: "collection", Status: "unsupported", Message: "collection hot reload requires compiler/runtime apply in the next phase", RequiresRestart: true},
-		},
 	}
 }
 

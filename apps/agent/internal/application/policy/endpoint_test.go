@@ -37,6 +37,9 @@ func (f *endpointRepoFake) SaveDesiredManaged(context.Context, EndpointCandidate
 	f.desired = true
 	return f.desiredErr
 }
+func (f *endpointRepoFake) BeginManagedTransition(context.Context, EndpointCandidate) (func(), error) {
+	return func() {}, nil
+}
 func (f *endpointRepoFake) ActivateManagedDurable(context.Context, EndpointCandidate) error {
 	f.durable = true
 	return f.durableErr
@@ -76,6 +79,19 @@ func TestEndpointCandidateExposesOnlyApplicationIdentity(t *testing.T) {
 	}
 }
 
+func TestEndpointStandaloneReturnsCandidateIdentity(t *testing.T) {
+	candidate := endpointCandidateFake{id: "p1", version: 2, source: SourceStandalone}
+	repo := &endpointRepoFake{candidate: candidate}
+	runtime := &endpointRuntimeFake{report: EndpointReport{Status: "applied"}}
+	service := NewEndpointService(repo, runtime)
+
+	result, err := service.ActivateStandalone(t.Context(), "{}")
+
+	if err != nil || result.Candidate.PolicyID() != "p1" || result.Report.Status != "applied" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
 func TestEndpointStandalonePersistenceFailureRollsBackRuntime(t *testing.T) {
 	candidate := endpointCandidateFake{id: "p1", source: SourceStandalone}
 	repo := &endpointRepoFake{candidate: candidate, persistErr: errors.New("disk full")}
@@ -110,10 +126,10 @@ func TestEndpointManagedSensorFailureStaysPending(t *testing.T) {
 	runtime := &endpointRuntimeFake{applyErr: errors.New("sensor unavailable")}
 	service := NewEndpointService(repo, runtime)
 
-	report, pending, err := service.ActivateManaged(t.Context(), "{}")
+	result, err := service.ActivateManaged(t.Context(), "{}")
 
-	if err != nil || !pending || report.Status != "pending" || !repo.desired || repo.durable || repo.promoted || runtime.activated {
-		t.Fatalf("report=%+v pending=%v repo=%+v runtime=%+v err=%v", report, pending, repo, runtime, err)
+	if err != nil || !result.Pending || result.Report.Status != "pending" || !repo.desired || repo.durable || repo.promoted || runtime.activated {
+		t.Fatalf("result=%+v repo=%+v runtime=%+v err=%v", result, repo, runtime, err)
 	}
 }
 
@@ -122,10 +138,10 @@ func TestEndpointManagedDurableFailureStaysPending(t *testing.T) {
 	runtime := &endpointRuntimeFake{report: EndpointReport{Status: "applied"}}
 	service := NewEndpointService(repo, runtime)
 
-	report, pending, err := service.ActivateManaged(t.Context(), "{}")
+	result, err := service.ActivateManaged(t.Context(), "{}")
 
-	if err != nil || !pending || report.Status != "pending" || !repo.durable || repo.promoted || runtime.activated {
-		t.Fatalf("report=%+v pending=%v repo=%+v runtime=%+v err=%v", report, pending, repo, runtime, err)
+	if err != nil || !result.Pending || result.Report.Status != "pending" || !repo.durable || repo.promoted || runtime.activated {
+		t.Fatalf("result=%+v repo=%+v runtime=%+v err=%v", result, repo, runtime, err)
 	}
 }
 
@@ -134,10 +150,10 @@ func TestEndpointManagedPromotionFailureStaysPending(t *testing.T) {
 	runtime := &endpointRuntimeFake{report: EndpointReport{Status: "applied"}}
 	service := NewEndpointService(repo, runtime)
 
-	report, pending, err := service.ActivateManaged(t.Context(), "{}")
+	result, err := service.ActivateManaged(t.Context(), "{}")
 
-	if err != nil || !pending || report.Status != "pending" || !repo.promoted || runtime.activated {
-		t.Fatalf("report=%+v pending=%v repo=%+v runtime=%+v err=%v", report, pending, repo, runtime, err)
+	if err != nil || !result.Pending || result.Report.Status != "pending" || !repo.promoted || runtime.activated {
+		t.Fatalf("result=%+v repo=%+v runtime=%+v err=%v", result, repo, runtime, err)
 	}
 }
 

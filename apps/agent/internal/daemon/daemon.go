@@ -13,7 +13,6 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/tamper"
@@ -47,7 +46,6 @@ type AgentRuntime struct {
 	telemetryBatcher        *telemetry.Batcher
 	managedControl          *TransportRuntime
 	sensorSupervisor        *sensorruntime.SubscriptionSupervisor
-	pendingEndpoint         *agentcontrol.PreparedEndpointPolicy
 	revokeEnrollment        func(context.Context, localstore.Enrollment, string) (string, time.Time, error)
 	reportUnenrollment      func(context.Context) (bool, error)
 	endpointPolicy          policy.EndpointPolicy
@@ -171,15 +169,14 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	longControl := r.Config.Manager.Transport == "grpc"
 	sensorSupervisor := sensorruntime.NewSubscriptionSupervisor(sensorruntime.AdaptManager(rt), intent, sensorruntime.RetryOptions{})
 	r.setSensorSupervisor(sensorSupervisor)
-	endpointControl := agentcontrol.NewEndpointPolicyController(newEndpointPolicyRuntime(r, rt, nil))
-	sensorSupervisor.OnApplied(endpointControl.CompletePending)
-	pending, hasPending, err := endpointControl.LoadPending(ctx)
+	endpointApplication := newEndpointPolicyApplication(r, rt, nil)
+	sensorSupervisor.OnApplied(endpointApplication.ResumeApplied)
+	pendingIntent, hasPending, err := endpointApplication.PendingIntent(ctx)
 	if err != nil {
 		return failStartup("pending_policy", err)
 	}
 	if hasPending {
-		newEndpointPolicyRuntime(r, rt, nil).SetPendingEndpointPolicy(pending)
-		sensorSupervisor.UpdateIntent(pending.Intent)
+		sensorSupervisor.UpdateIntent(pendingIntent)
 	}
 	sensorSupervisor.Start(ctx)
 	events := sensorSupervisor.Events()

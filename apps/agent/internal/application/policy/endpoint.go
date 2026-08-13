@@ -18,10 +18,17 @@ type EndpointReport struct {
 	RequiresRestart bool
 }
 
+type EndpointResult struct {
+	Candidate EndpointCandidate
+	Report    EndpointReport
+	Pending   bool
+}
+
 type EndpointRepository interface {
 	PrepareEndpoint(context.Context, string, Source) (EndpointCandidate, error)
 	PersistEndpoint(context.Context, EndpointCandidate) error
 	SaveDesiredManaged(context.Context, EndpointCandidate) error
+	BeginManagedTransition(context.Context, EndpointCandidate) (func(), error)
 	ActivateManagedDurable(context.Context, EndpointCandidate) error
 	PromoteManaged(context.Context, EndpointCandidate) error
 	PendingManaged(context.Context) (EndpointCandidate, bool, error)
@@ -50,33 +57,33 @@ func (s *EndpointService) Validate(ctx context.Context, document string, source 
 	return s.repository.PrepareEndpoint(ctx, document, source)
 }
 
-func (s *EndpointService) ActivateStandalone(ctx context.Context, document string) (EndpointReport, error) {
+func (s *EndpointService) ActivateStandalone(ctx context.Context, document string) (EndpointResult, error) {
 	candidate, err := s.Validate(ctx, document, SourceStandalone)
 	if err != nil {
-		return EndpointReport{}, err
+		return EndpointResult{}, err
 	}
 	report, err := s.runtime.ApplyEndpoint(ctx, candidate)
 	if err != nil {
-		return EndpointReport{}, fmt.Errorf("apply endpoint policy: %w", err)
+		return EndpointResult{}, fmt.Errorf("apply endpoint policy: %w", err)
 	}
 	if err := s.repository.PersistEndpoint(ctx, candidate); err != nil {
-		return EndpointReport{}, s.rollback(ctx, candidate, fmt.Errorf("persist endpoint policy: %w", err))
+		return EndpointResult{}, s.rollback(ctx, candidate, fmt.Errorf("persist endpoint policy: %w", err))
 	}
 	s.runtime.ActivateEndpoint(candidate, report)
-	return report, nil
+	return EndpointResult{Candidate: candidate, Report: report}, nil
 }
 
-func (s *EndpointService) ActivateManaged(ctx context.Context, document string) (EndpointReport, bool, error) {
+func (s *EndpointService) ActivateManaged(ctx context.Context, document string) (EndpointResult, error) {
 	candidate, err := s.Validate(ctx, document, SourceManaged)
 	if err != nil {
-		return EndpointReport{}, false, err
+		return EndpointResult{}, err
 	}
 	if err := s.repository.SaveDesiredManaged(ctx, candidate); err != nil {
-		return EndpointReport{}, false, fmt.Errorf("save desired managed endpoint policy: %w", err)
+		return EndpointResult{}, fmt.Errorf("save desired managed endpoint policy: %w", err)
 	}
 	report, err := s.runtime.ApplyEndpoint(ctx, candidate)
 	if err != nil {
-		return pendingEndpointReport("endpoint policy persisted; waiting for sensor recovery"), true, nil
+		return EndpointResult{Candidate: candidate, Report: pendingEndpointReport("endpoint policy persisted; waiting for sensor recovery"), Pending: true}, nil
 	}
 	return s.completeManaged(ctx, candidate, report)
 }
@@ -89,8 +96,8 @@ func (s *EndpointService) ResumeManaged(ctx context.Context) (bool, error) {
 	if err != nil || !ok {
 		return false, err
 	}
-	_, pending, err := s.completeManaged(ctx, candidate, EndpointReport{Status: "applied"})
-	return !pending, err
+	result, err := s.completeManaged(ctx, candidate, EndpointReport{Status: "applied"})
+	return !result.Pending, err
 }
 
 func (s *EndpointService) RestoreStandalone(ctx context.Context, activate func(context.Context) error) error {
@@ -115,15 +122,20 @@ func (s *EndpointService) RestoreStandalone(ctx context.Context, activate func(c
 	return nil
 }
 
-func (s *EndpointService) completeManaged(ctx context.Context, candidate EndpointCandidate, report EndpointReport) (EndpointReport, bool, error) {
+func (s *EndpointService) completeManaged(ctx context.Context, candidate EndpointCandidate, report EndpointReport) (EndpointResult, error) {
+	release, err := s.repository.BeginManagedTransition(ctx, candidate)
+	if err != nil {
+		return EndpointResult{Candidate: candidate, Report: pendingEndpointReport("endpoint policy persisted; waiting for managed transition"), Pending: true}, nil
+	}
+	defer release()
 	if err := s.repository.ActivateManagedDurable(ctx, candidate); err != nil {
-		return pendingEndpointReport("endpoint policy persisted; waiting for durable activation"), true, nil
+		return EndpointResult{Candidate: candidate, Report: pendingEndpointReport("endpoint policy persisted; waiting for durable activation"), Pending: true}, nil
 	}
 	if err := s.repository.PromoteManaged(ctx, candidate); err != nil {
-		return pendingEndpointReport("endpoint policy persisted; waiting for authority promotion"), true, nil
+		return EndpointResult{Candidate: candidate, Report: pendingEndpointReport("endpoint policy persisted; waiting for authority promotion"), Pending: true}, nil
 	}
 	s.runtime.ActivateEndpoint(candidate, report)
-	return report, false, nil
+	return EndpointResult{Candidate: candidate, Report: report}, nil
 }
 
 func (s *EndpointService) rollback(ctx context.Context, candidate EndpointCandidate, cause error) error {

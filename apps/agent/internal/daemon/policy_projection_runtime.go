@@ -2,11 +2,38 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
+
+func (r *AgentRuntime) beginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
+	if !mutation {
+		return func() {}, nil
+	}
+	r.policyAuthorityMu.RLock()
+	if r.localStore == nil {
+		r.policyAuthorityMu.RUnlock()
+		return nil, fmt.Errorf("local store is unavailable")
+	}
+	enrollment, err := r.localStore.Enrollment(ctx)
+	if err != nil {
+		r.policyAuthorityMu.RUnlock()
+		return nil, fmt.Errorf("read enrollment state: %w", err)
+	}
+	mode, err := management.Resolve(enrollment.State)
+	if err == nil {
+		err = mode.Authorize(management.PolicyWriteLocal)
+	}
+	if err != nil {
+		r.policyAuthorityMu.RUnlock()
+		return nil, err
+	}
+	return r.policyAuthorityMu.RUnlock, nil
+}
 
 type policyProjectionRuntime struct {
 	runner *AgentRuntime
