@@ -1,11 +1,13 @@
 package detection
 
 import (
+	"fmt"
 	detectionmodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	domainruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
+	"strings"
 )
 
 type Engine struct{ state *domainruntime.State }
@@ -45,7 +47,67 @@ func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contra
 	}
 	input := domainruntime.ProgramInput{Content: content, Rules: resolve(policy, content)}
 	program, report := domainruntime.Compile(input)
+	report.Coverage = coverage(policy, collection, input.Rules)
+	report.Warnings = append(report.Warnings, report.Coverage.Warnings...)
+	if len(report.Warnings) > 0 && report.Status == "applied" {
+		report.Status = "degraded"
+		report.Message = "detection policy applied with missing collection inputs"
+		report.Details = append(report.Details, report.Warnings...)
+	}
 	return &Engine{state: domainruntime.NewState(program, limits)}, report
+}
+
+func coverage(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, rules []RuleSpec) CoverageReport {
+	if policy == nil || len(collection.Behaviors) == 0 {
+		return CoverageReport{Status: "unknown"}
+	}
+	behaviors := map[string]bool{}
+	for _, behavior := range collection.Behaviors {
+		behaviors[strings.ToLower(strings.TrimSpace(behavior))] = true
+	}
+	capabilities := map[string]map[string]bool{}
+	for _, capability := range collection.Capabilities {
+		behavior := strings.ToLower(strings.TrimSpace(capability.Behavior))
+		if capabilities[behavior] == nil {
+			capabilities[behavior] = map[string]bool{}
+		}
+		for _, field := range capability.Fields {
+			capabilities[behavior][field] = true
+		}
+	}
+	report := CoverageReport{Status: "covered"}
+	for _, rule := range rules {
+		item := domainruntime.RuleCoverage{RuleID: rule.RuleID, Status: "covered"}
+		for _, required := range rule.RequiredBehaviors {
+			required = strings.ToLower(strings.TrimSpace(required))
+			if required == "" {
+				continue
+			}
+			item.RequiredBehaviors = append(item.RequiredBehaviors, required)
+			if !behaviors[required] {
+				item.MissingBehaviors = append(item.MissingBehaviors, required)
+			}
+		}
+		for _, required := range rule.RequiredEvents {
+			behavior := strings.ToLower(strings.TrimSpace(required.Behavior))
+			if behavior != "" && !behaviors[behavior] {
+				item.MissingBehaviors = append(item.MissingBehaviors, behavior)
+			}
+			for _, field := range required.Fields {
+				if behavior != "" && len(capabilities) > 0 && !capabilities[behavior][field] {
+					item.MissingFields = append(item.MissingFields, behavior+":"+field)
+				}
+			}
+		}
+		if len(item.MissingBehaviors) > 0 || len(item.MissingFields) > 0 {
+			item.Status = "missing_inputs"
+			report.Status = "degraded"
+			missing := append(append([]string(nil), item.MissingBehaviors...), item.MissingFields...)
+			report.Warnings = append(report.Warnings, fmt.Sprintf("rule %s missing collection inputs: %s", rule.RuleID, strings.Join(missing, ",")))
+		}
+		report.Rules = append(report.Rules, item)
+	}
+	return report
 }
 
 func (e *Engine) Process(event domainevent.Event) []*detectionmodel.Signal {
