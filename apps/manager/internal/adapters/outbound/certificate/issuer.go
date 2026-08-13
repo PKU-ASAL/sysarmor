@@ -115,8 +115,16 @@ func parsePrivateKey(raw []byte) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("certificate authority key is invalid")
 	}
 	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err == nil {
+		return key, nil
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parse certificate authority key: %w", err)
+	}
+	key, ok := parsed.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("certificate authority key must be RSA")
 	}
 	return key, nil
 }
