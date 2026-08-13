@@ -185,15 +185,37 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             self.assertNotIn("internal/adapters/", text)
             self.assertNotIn("any", text)
 
-    def test_policy_application_models_managed_pending(self):
-        source = (self.repo / "apps/agent/internal/application/policy/activate.go").read_text()
-        for symbol in ("PendingStore", "ActivateManaged", "ManagedResult"):
-            self.assertIn(symbol, source)
+    def test_policy_application_uses_typed_services_only(self):
+        root = self.repo / "apps/agent/internal/application/policy"
+        self.assertFalse((root / "activate.go").exists())
+        self.assertFalse((root / "activate_test.go").exists())
+        self.assertTrue((root / "source.go").exists())
+        for name in ("endpoint", "collection", "detection", "telemetry"):
+            source = (root / f"{name}.go").read_text()
+            self.assertIn(f"type {name.title()}Service struct", source)
 
-    def test_endpoint_policy_application_contract_exists(self):
-        source = (self.repo / "apps/agent/internal/application/policy/endpoint.go").read_text()
-        for symbol in ("EndpointCandidate", "ActivateStandalone", "ActivateManaged", "SaveDesiredManaged"):
-            self.assertIn(symbol, source)
+    def test_policy_control_has_no_runtime_facades(self):
+        root = self.repo / "apps/agent/internal"
+        legacy_types = (
+            "EndpointPolicyRuntime",
+            "CollectionPolicyRuntime",
+            "DetectionPolicyRuntime",
+            "TelemetryPolicyRuntime",
+        )
+        for source in (root / "control").glob("*_policy.go"):
+            text = source.read_text()
+            for symbol in legacy_types:
+                self.assertNotIn(symbol, text, f"legacy facade remains: {source}")
+        for name in ("endpoint", "collection", "detection", "telemetry"):
+            self.assertFalse((root / "daemon" / f"{name}_policy_runtime.go").exists())
+
+    def test_migrated_policy_controls_do_not_import_infrastructure(self):
+        root = self.repo / "apps/agent/internal/control"
+        forbidden = ("internal/adapters/", "sensor-sdk/contract", "packages/policy")
+        for name in ("endpoint", "collection", "detection", "telemetry"):
+            source = (root / f"{name}_policy.go").read_text()
+            for import_path in forbidden:
+                self.assertNotIn(import_path, source, f"infrastructure import remains: {source}")
 
     def test_agent_detection_matcher_is_layered(self):
         root = self.repo / "apps/agent/internal"
