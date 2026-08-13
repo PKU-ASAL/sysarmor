@@ -12,9 +12,12 @@ import (
 	"testing"
 	"time"
 
+	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/fake"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
@@ -25,6 +28,49 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 	"google.golang.org/grpc"
 )
+
+func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *AgentRuntime {
+	t.Helper()
+	var sensor contract.Sensor
+	switch cfg.Sensor.Backend {
+	case "fake":
+		sensor = fake.NewWithStartupEvents(max(cfg.Sensor.FakeStartupEvents, 1))
+	case "tetragon":
+		sensor = tetragon.NewBackend(cfg.Sensor.PolicyPath, cfg.Sensor.EventSource, cfg.Sensor.Version)
+	default:
+		t.Fatalf("unsupported test sensor backend %q", cfg.Sensor.Backend)
+	}
+	dependencies := Dependencies{Config: cfg, Sensor: sensor, Content: agentcontent.NewStore()}
+	if cfg.Manager.Transport == "" {
+		store, err := localstore.Open(context.Background(), localstore.Options{
+			RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes, MinFreeBytes: cfg.Local.Storage.MinFreeBytes,
+			SegmentSize: cfg.Local.Storage.SegmentSize, SignalMaxCount: cfg.Local.Storage.SignalMaxCount,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+		identity, err := store.DeviceIdentity(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dependencies.Config.Agent.ID == "" {
+			dependencies.Config.Agent.ID = identity.DeviceID
+		}
+		if dependencies.Config.Agent.HostID == "" {
+			dependencies.Config.Agent.HostID = identity.HostID
+		}
+		if dependencies.Config.Agent.TenantID == "" {
+			dependencies.Config.Agent.TenantID = "local"
+		}
+		cursor, err := store.SequenceCursor(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		dependencies.LocalStore, dependencies.EventSeq, dependencies.SignalSeq = store, cursor.Event, cursor.Signal
+	}
+	return NewRuntime(dependencies)
+}
 
 type healthOnlySensor struct {
 	health contract.Health

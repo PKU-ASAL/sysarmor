@@ -11,7 +11,6 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/tamper"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
@@ -40,10 +39,7 @@ func TestAgentRuntimeRunsWithTetragonJSONLSource(t *testing.T) {
 		Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Second, RetryMax: time.Second, RequestTimeout: time.Second, MaxInflight: 1}},
 		Health:    config.HealthConfig{Interval: time.Hour},
 	}
-	runner, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
 	var out safeBuffer
 	runDaemonUntilOutput(t, runner, &out, "agent daemon event")
@@ -69,13 +65,10 @@ func TestAgentRuntimeTetragonRequiresEventSource(t *testing.T) {
 		Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Second, RetryMax: time.Second, RequestTimeout: time.Second, MaxInflight: 1}},
 		Health:    config.HealthConfig{Interval: time.Hour},
 	}
-	runner, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	runner := newConfiguredTestRuntime(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err = runner.Run(ctx, Options{})
+	err := runner.Run(ctx, Options{})
 	if err == nil {
 		t.Fatal("Run() error = nil")
 	}
@@ -205,29 +198,5 @@ func TestNewBatchSenderAcceptsConfiguredTimeout(t *testing.T) {
 				t.Fatal("newBatchSender() = nil")
 			}
 		})
-	}
-}
-
-func TestTetragonRestartPolicyFromConfig(t *testing.T) {
-	policy, err := tetragonRestartPolicy(config.SensorConfig{
-		Restart:       "always",
-		MaxRestarts:   7,
-		RestartWindow: 25 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatalf("tetragonRestartPolicy() error = %v", err)
-	}
-	if policy != (tetragon.ProcessRestartPolicy{Enabled: true, MaxRestarts: 7, Delay: 25 * time.Millisecond}) {
-		t.Fatalf("policy = %+v", policy)
-	}
-	disabled, err := tetragonRestartPolicy(config.SensorConfig{Restart: "never"})
-	if err != nil {
-		t.Fatalf("tetragonRestartPolicy(never) error = %v", err)
-	}
-	if disabled.Enabled {
-		t.Fatalf("disabled policy = %+v", disabled)
-	}
-	if _, err := tetragonRestartPolicy(config.SensorConfig{Restart: "sometimes"}); err == nil {
-		t.Fatal("tetragonRestartPolicy(unknown) error = nil")
 	}
 }

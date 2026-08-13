@@ -4,23 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
-
-func newContentStore(cfg config.Config) (*agentcontent.Store, error) {
-	options := agentcontent.Options{
-		DefaultDir:  cfg.Content.DefaultPath,
-		Dir:         cfg.Content.Path,
-		TrustedKeys: parseTrustKeys(cfg.Content.TrustKeys),
-	}
-	if strings.TrimSpace(options.DefaultDir) != "" {
-		return agentcontent.OpenLayered(options)
-	}
-	return agentcontent.NewStoreWithOptions(options)
-}
 
 func (r *AgentRuntime) applyStartupDetection(policy policymodel.Policy) error {
 	policy = policymodel.Normalize(policy)

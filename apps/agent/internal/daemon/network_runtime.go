@@ -2,10 +2,7 @@ package daemon
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
@@ -53,27 +50,4 @@ func newBatchSender(manager, transport string, timeout time.Duration, token stri
 	default:
 		return nil, fmt.Errorf("unknown transport %q", transport)
 	}
-}
-
-func parseTrustKeys(raw string) map[string]ed25519.PublicKey {
-	out := map[string]ed25519.PublicKey{}
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		keyID, encoded, ok := strings.Cut(item, "=")
-		if !ok {
-			continue
-		}
-		keyID = strings.TrimSpace(keyID)
-		encoded = strings.TrimSpace(encoded)
-		if keyID == "" || encoded == "" {
-			continue
-		}
-		if data, err := base64.StdEncoding.DecodeString(encoded); err == nil && len(data) == ed25519.PublicKeySize {
-			out[keyID] = ed25519.PublicKey(data)
-		}
-	}
-	return out
 }

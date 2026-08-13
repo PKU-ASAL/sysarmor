@@ -39,10 +39,7 @@ func TestAgentRuntimeUploadsFakeSensorEvent(t *testing.T) {
 		Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Second, RetryMax: time.Second, RequestTimeout: time.Second, MaxInflight: 1}},
 		Health:    config.HealthConfig{Interval: time.Hour},
 	}
-	runner, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
 	var out bytes.Buffer
 	runDaemonUntilUploadedBatch(t, runner, &out)
@@ -66,11 +63,7 @@ func TestStandaloneRuntimePersistsBeforeAcknowledging(t *testing.T) {
 		Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second},
 		Health:    config.HealthConfig{Interval: time.Second},
 	}
-	runner, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer runner.localStore.Close()
+	runner := newConfiguredTestRuntime(t, cfg)
 	if runner.Config.Agent.ID == "" || runner.Config.Agent.HostID == "" || runner.Config.Agent.TenantID != "local" {
 		t.Fatalf("identity=%+v", runner.Config.Agent)
 	}
@@ -97,11 +90,7 @@ func TestStandaloneRuntimeResumesPersistentSequences(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := standaloneTestConfig(t, dir, statePath)
-	runner, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer runner.localStore.Close()
+	runner := newConfiguredTestRuntime(t, cfg)
 	if runner.eventSeq != 41 || runner.signalSeq != 17 {
 		t.Fatalf("eventSeq=%d signalSeq=%d, want 41/17", runner.eventSeq, runner.signalSeq)
 	}
@@ -225,10 +214,7 @@ func TestAgentRuntimeUploadsConfiguredLabels(t *testing.T) {
 		Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Second, RetryMax: time.Second, RequestTimeout: time.Second, MaxInflight: 1}},
 		Health:    config.HealthConfig{Interval: time.Hour},
 	}
-	runner, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
 	batch := runDaemonUntilUploadedBatch(t, runner, nil)
 	if got := batch.GetEvents()[0].GetEvent().GetLabels()["scenario"]; got != "daemon-scenario" {

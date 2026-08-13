@@ -61,67 +61,37 @@ type AgentRuntime struct {
 	telemetrySeq            uint64
 }
 
+type Dependencies struct {
+	Config       config.Config
+	Sensor       contract.Sensor
+	Content      *agentcontent.Store
+	LocalStore   *localstore.Store
+	FeatureFlags agenthealth.RuntimeFeatureFlags
+	EventSeq     uint64
+	SignalSeq    uint64
+}
+
 func (r *AgentRuntime) withDetectionUpdateTransaction(fn func()) {
 	r.detectionUpdateMu.Lock()
 	defer r.detectionUpdateMu.Unlock()
 	fn()
 }
 
-func New(cfg config.Config) (*AgentRuntime, error) {
-	featureFlags, err := applyRuntimeFeatureFlags(cfg)
-	if err != nil {
-		return nil, err
+func NewRuntime(dependencies Dependencies) *AgentRuntime {
+	runtime := &AgentRuntime{
+		Config: dependencies.Config, Sensor: dependencies.Sensor, content: dependencies.Content,
+		featureFlags: dependencies.FeatureFlags, localStore: dependencies.LocalStore,
+		eventSeq: dependencies.EventSeq, signalSeq: dependencies.SignalSeq,
 	}
-	sensor, err := sensorFromConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	contentStore, err := newContentStore(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("load startup content: %w", err)
-	}
-	var state *localstore.Store
-	if cfg.Manager.Transport == "" {
-		state, err = localstore.Open(context.Background(), localstore.Options{RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes, MinFreeBytes: cfg.Local.Storage.MinFreeBytes, SegmentSize: cfg.Local.Storage.SegmentSize, SignalMaxCount: cfg.Local.Storage.SignalMaxCount})
-		if err != nil {
-			return nil, fmt.Errorf("open agent local store: %w", err)
-		}
-		identity, err := state.DeviceIdentity(context.Background())
-		if err != nil {
-			_ = state.Close()
-			return nil, fmt.Errorf("load device identity: %w", err)
-		}
-		if cfg.Agent.ID == "" {
-			cfg.Agent.ID = identity.DeviceID
-		}
-		if cfg.Agent.HostID == "" {
-			cfg.Agent.HostID = identity.HostID
-		}
-		if cfg.Agent.TenantID == "" {
-			cfg.Agent.TenantID = "local"
-		}
-		cursor, err := state.SequenceCursor(context.Background())
-		if err != nil {
-			_ = state.Close()
-			return nil, fmt.Errorf("load local sequence cursor: %w", err)
-		}
-		runtime := &AgentRuntime{Config: cfg, Sensor: sensor, content: contentStore, featureFlags: featureFlags, localStore: state, eventSeq: cursor.Event, signalSeq: cursor.Signal}
-		runtime.setRuntimeIdentity(runtimeIdentity{AgentID: cfg.Agent.ID, HostID: cfg.Agent.HostID, TenantID: cfg.Agent.TenantID})
-		return runtime, nil
-	}
-	runtime := &AgentRuntime{Config: cfg, Sensor: sensor, content: contentStore, featureFlags: featureFlags, localStore: state}
-	runtime.setRuntimeIdentity(runtimeIdentity{AgentID: cfg.Agent.ID, HostID: cfg.Agent.HostID, TenantID: cfg.Agent.TenantID})
-	return runtime, nil
-}
-
-func NewAgentRuntime(cfg config.Config) (*AgentRuntime, error) {
-	return New(cfg)
+	runtime.setRuntimeIdentity(runtimeIdentity{
+		AgentID:  dependencies.Config.Agent.ID,
+		HostID:   dependencies.Config.Agent.HostID,
+		TenantID: dependencies.Config.Agent.TenantID,
+	})
+	return runtime
 }
 
 func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
-	if r.localStore != nil {
-		defer r.localStore.Close()
-	}
 	if opts.Out != nil {
 		r.Out = opts.Out
 	}

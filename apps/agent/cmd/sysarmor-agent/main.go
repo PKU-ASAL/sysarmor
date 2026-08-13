@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,11 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	agentconfig "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/daemon"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
-	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
-	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/bootstrap"
 )
 
 var version = "dev"
@@ -66,7 +63,8 @@ func main() {
 	}
 
 	if *input != "" {
-		if err := appendJSONL(*manager, *transport, *agentID, *hostID, *tenantID, *policyID, *policyVersion, labels.Map(), *input, cliTLS(*tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure)); err != nil {
+		options := replayOptions(*manager, *transport, *agentID, *hostID, *tenantID, *policyID, *policyVersion, labels.Map(), *input, *batchSize, *flushInterval, *tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure)
+		if err := bootstrap.AppendJSONL(options); err != nil {
 			fmt.Fprintf(os.Stderr, "sysarmor-agent: %v\n", err)
 			os.Exit(1)
 		}
@@ -74,7 +72,8 @@ func main() {
 	}
 
 	if *stream != "" {
-		stats, err := streamJSONL(*manager, *transport, *agentID, *hostID, *tenantID, *policyID, *policyVersion, labels.Map(), *stream, *batchSize, *flushInterval, cliTLS(*tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure))
+		options := replayOptions(*manager, *transport, *agentID, *hostID, *tenantID, *policyID, *policyVersion, labels.Map(), *stream, *batchSize, *flushInterval, *tlsCA, *tlsCert, *tlsKey, *tlsServerName, *tlsInsecure)
+		stats, err := bootstrap.StreamJSONL(context.Background(), options)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "sysarmor-agent: %v\n", err)
 			os.Exit(1)
@@ -98,27 +97,7 @@ func mergeReleaseConfigCommand(args []string) error {
 	if *existingPath == "" || *releasePath == "" || *outputPath == "" {
 		return fmt.Errorf("--existing, --release, and --output are required")
 	}
-	existing, err := os.ReadFile(*existingPath)
-	if err != nil {
-		return fmt.Errorf("read existing config: %w", err)
-	}
-	release, err := os.ReadFile(*releasePath)
-	if err != nil {
-		return fmt.Errorf("read release config: %w", err)
-	}
-	merged, err := agentconfig.MergeReleaseContent(existing, release)
-	if err != nil {
-		return err
-	}
-	output, err := os.OpenFile(*outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return fmt.Errorf("open merged config: %w", err)
-	}
-	if _, err := output.Write(merged); err != nil {
-		_ = output.Close()
-		return fmt.Errorf("write merged config: %w", err)
-	}
-	return output.Close()
+	return bootstrap.MergeReleaseConfig(*existingPath, *releasePath, *outputPath)
 }
 
 func runDaemonCommand(args []string) error {
@@ -129,22 +108,23 @@ func runDaemonCommand(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	cfg, err := agentconfig.LoadFile(*configPath)
-	if err != nil {
-		return err
-	}
 	if *dryRun {
+		summary, err := bootstrap.ValidateConfig(*configPath)
+		if err != nil {
+			return err
+		}
 		fmt.Fprintf(os.Stdout, "config ok: agent=%s host=%s tenant=%s manager=%s sensor=%s/%s\n",
-			cfg.Agent.ID, cfg.Agent.HostID, cfg.Agent.TenantID, cfg.Manager.Address, cfg.Sensor.Backend, cfg.Sensor.Mode)
+			summary.AgentID, summary.HostID, summary.TenantID, summary.Manager, summary.SensorBackend, summary.SensorMode)
 		return nil
-	}
-	runner, err := daemon.New(cfg)
-	if err != nil {
-		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runner.Run(ctx, daemon.Options{Out: os.Stdout})
+	agent, err := bootstrap.NewAgentFromFile(ctx, *configPath)
+	if err != nil {
+		return err
+	}
+	runErr := agent.Run(ctx, os.Stdout)
+	return errors.Join(runErr, agent.Close())
 }
 
 type labelFlags map[string]string
@@ -179,70 +159,11 @@ func (f labelFlags) Map() map[string]string {
 	return out
 }
 
-func appendJSONL(manager, transport, agentID, hostID, tenantID, policyID string, policyVersion uint64, labels map[string]string, input string, tlsCfg tlsconfig.ClientConfig) error {
-	f, err := os.Open(input)
-	if err != nil {
-		return err
+func replayOptions(manager, transport, agentID, hostID, tenantID, policyID string, policyVersion uint64, labels map[string]string, input string, batchSize int, flushInterval time.Duration, ca, cert, key, serverName string, insecure bool) bootstrap.ReplayOptions {
+	return bootstrap.ReplayOptions{
+		Manager: manager, Transport: transport, AgentID: agentID, HostID: hostID, TenantID: tenantID,
+		PolicyID: policyID, PolicyVersion: policyVersion, Labels: labels, Input: input, Version: version,
+		BatchSize: batchSize, FlushInterval: flushInterval,
+		TLS: bootstrap.TLSOptions{CAFile: ca, CertFile: cert, KeyFile: key, ServerName: serverName, Insecure: insecure},
 	}
-	defer f.Close()
-	batch, err := dataappend.ReadProtoJSONL(f, agentID, hostID, policyID, policyVersion, labels)
-	if err != nil {
-		return err
-	}
-	if batch.Header == nil {
-		batch.Header = &dataplanev1.BatchHeader{}
-	}
-	batch.Header.AgentId = agentID
-	batch.Header.HostId = hostID
-	batch.Header.TenantId = tenantID
-	if batch.Header.Labels == nil {
-		batch.Header.Labels = map[string]string{}
-	}
-	batch.Header.Labels["agent_version"] = version
-	up, err := newUploader(manager, transport, tlsCfg)
-	if err != nil {
-		return err
-	}
-	_, err = up.SendBatch(batch)
-	return err
-}
-
-func streamJSONL(manager, transport, agentID, hostID, tenantID, policyID string, policyVersion uint64, labels map[string]string, input string, batchSize int, flushInterval time.Duration, tlsCfg tlsconfig.ClientConfig) (dataappend.StreamStats, error) {
-	r := os.Stdin
-	if input != "-" {
-		f, err := os.Open(input)
-		if err != nil {
-			return dataappend.StreamStats{}, err
-		}
-		defer f.Close()
-		r = f
-	}
-	up, err := newUploader(manager, transport, tlsCfg)
-	if err != nil {
-		return dataappend.StreamStats{}, err
-	}
-	return dataappend.StreamJSONL(context.Background(), r, up, dataappend.StreamOptions{
-		AgentID:       agentID,
-		HostID:        hostID,
-		TenantID:      tenantID,
-		PolicyID:      policyID,
-		PolicyVersion: policyVersion,
-		Labels:        labels,
-		Version:       version,
-		BatchSize:     batchSize,
-		FlushInterval: flushInterval,
-	})
-}
-
-func newUploader(manager, transport string, tlsCfg tlsconfig.ClientConfig) (dataappend.BatchSender, error) {
-	switch transport {
-	case "grpc":
-		return dataappend.NewGRPCAppenderWithTLS(manager, 10*time.Second, "", tlsCfg), nil
-	default:
-		return nil, fmt.Errorf("unknown transport %q", transport)
-	}
-}
-
-func cliTLS(ca, cert, key, serverName string, insecure bool) tlsconfig.ClientConfig {
-	return tlsconfig.ClientConfig{CAFile: ca, CertFile: cert, KeyFile: key, ServerName: serverName, Insecure: insecure}
 }
