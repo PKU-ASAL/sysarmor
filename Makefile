@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api build build-agent-binary build-agent-tools build-binary business-docx install-agent uninstall-agent test test-help test-doctor test-unit test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle test-business-docx up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api build build-agent-binary build-agent-tools build-binary business-docx install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle test-business-docx up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
@@ -108,6 +108,9 @@ test-doctor:
 
 test-unit:
 	$(MAKE) -C test test-unit
+
+test-postgres-integration:
+	bash test/suites/functional/platform/postgres-worker-concurrency.sh
 
 test-functional:
 ifeq ($(FUNCTIONAL_TARGET),)
@@ -297,6 +300,7 @@ help:
 	@echo "  make test-help         show all test suite commands"
 	@echo "  make test-doctor       verify the complete test environment"
 	@echo "  make test-unit         run local Go tests"
+	@echo "  make test-postgres-integration  run real PostgreSQL worker concurrency tests"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection    run truth-labeled detection tests"
 	@echo "  make test-performance DOMAIN=endpoint|platform|modules|all PROFILE=medium"

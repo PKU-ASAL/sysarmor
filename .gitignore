@@ -12,6 +12,7 @@ test/.results/*.jsonl
 test/.results/*.txt
 test/.results/*.json
 test/.results/*.csv
+test/environments/vm-topology/.results/
 
 # vm topology deployment cache (large, regenerated)
 test/environments/vm-topology/deploy/platform/
