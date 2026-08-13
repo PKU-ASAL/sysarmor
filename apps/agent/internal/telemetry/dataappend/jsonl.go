@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -29,7 +29,7 @@ func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, polic
 	}
 	labels = replayLabels(labels, policyID, policyVersion)
 	batch := newBatch(StreamOptions{AgentID: agentID, HostID: hostID, TenantID: "default", PolicyID: policyID, PolicyVersion: policyVersion, Labels: labels})
-	norm := normalize.New(agentID, hostID, nil)
+	norm := eventadapter.NewEventNormalizer(agentID, hostID, eventadapter.EventNormalizerOptions{})
 	detector, _ := detection.New(policymodel.DefaultDetectionPolicy())
 	scanner := bufio.NewScanner(r)
 	line := 0

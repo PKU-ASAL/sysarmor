@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -43,7 +43,7 @@ type AgentRuntime struct {
 	policyAuthorityMu       sync.RWMutex
 	identity                runtimeIdentity
 	standaloneIdentity      runtimeIdentity
-	normalizer              *normalize.Normalizer
+	normalizer              *eventadapter.EventNormalizer
 	telemetryBatcher        *telemetry.Batcher
 	managedControl          *TransportRuntime
 	sensorSupervisor        *sensorruntime.SubscriptionSupervisor
@@ -208,7 +208,7 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	dataPlaneCtx, cancelDataPlane := context.WithCancel(ctx)
 	defer cancelDataPlane()
 	identity := r.currentIdentity()
-	norm := normalize.NewWithOptions(identity.AgentID, identity.HostID, nil, normalize.Options{
+	norm := eventadapter.NewEventNormalizer(identity.AgentID, identity.HostID, eventadapter.EventNormalizerOptions{
 		TenantID:        identity.TenantID,
 		ScopeType:       scopeType,
 		ScopeSelector:   scopeSelector,

@@ -1,7 +1,7 @@
 package daemon
 
 import (
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -64,7 +64,7 @@ func (r *AgentRuntime) standaloneRuntimeIdentity() runtimeIdentity {
 	return runtimeIdentity{AgentID: r.Config.Agent.ID, HostID: r.Config.Agent.HostID, TenantID: r.Config.Agent.TenantID}
 }
 
-func (r *AgentRuntime) setNormalizer(normalizer *normalize.Normalizer) {
+func (r *AgentRuntime) setNormalizer(normalizer *eventadapter.EventNormalizer) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.normalizer = normalizer

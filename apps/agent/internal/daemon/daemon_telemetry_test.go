@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
@@ -281,7 +281,7 @@ func TestAgentRuntimeRefreshesEndpointPolicy(t *testing.T) {
 	runner := &AgentRuntime{Config: cfg}
 	installTestDetection(t, runner)
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
-	norm := normalize.New(cfg.Agent.ID, cfg.Agent.HostID, nil)
+	norm := eventadapter.NewEventNormalizer(cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})
 	first := appendEndpointEventForTest(t, runner, nil, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 	updated := runner.activePolicy()
 	updated.PolicyID = "no-payload-after-refresh"

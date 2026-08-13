@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
@@ -36,7 +36,7 @@ func TestLocalControlWatchRecentEventsAndSignals(t *testing.T) {
 	}
 	defer stop()
 
-	norm := normalize.NewWithOptions("agent-a", "host-a", nil, normalize.Options{TenantID: "default", ScopeType: "host", Labels: map[string]string{"benchmark_run": "run-a"}})
+	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host", Labels: map[string]string{"benchmark_run": "run-a"}})
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 

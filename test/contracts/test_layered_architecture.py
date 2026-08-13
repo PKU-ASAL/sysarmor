@@ -28,7 +28,6 @@ AGENT_LEGACY_ROOTS = {
 	"apps/agent/internal/control",
 	"apps/agent/internal/detection",
 	"apps/agent/internal/daemon",
-	"apps/agent/internal/event",
 	"apps/agent/internal/localapi",
 	"apps/agent/internal/localstore",
 	"apps/agent/internal/policy",
@@ -51,6 +50,7 @@ STANDARD_LIBRARY = {
         "sort",
         "strconv",
         "strings",
+        "sync",
         "time",
     },
     "application": {"context", "errors", "fmt", "sort", "strings", "sync", "time"},
@@ -128,6 +128,21 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             (self.repo / "apps/agent/internal/domain/management").is_dir()
         )
         self.assertFalse((self.repo / "apps/agent/internal/management").exists())
+
+    def test_agent_event_domain_is_layered(self):
+        self.assertTrue((self.repo / "apps/agent/internal/domain/event").is_dir())
+        self.assertTrue(
+            (self.repo / "apps/agent/internal/adapters/sensor/tetragon").is_dir()
+        )
+        self.assertFalse((self.repo / "apps/agent/internal/event").exists())
+
+    def test_agent_sensor_adapter_does_not_forward_to_contract_adapter(self):
+        source = (
+            self.repo
+            / "apps/agent/internal/adapters/sensor/tetragon/event_mapper.go"
+        ).read_text()
+        self.assertNotIn("internal/adapters/contracts", source)
+        self.assertNotIn("packages/contracts/proto/event", source)
 
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []

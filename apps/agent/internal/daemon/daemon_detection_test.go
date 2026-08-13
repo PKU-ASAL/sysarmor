@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/content"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -90,7 +90,7 @@ func TestDetectionCorrelateConversion(t *testing.T) {
 const testCollectionPolicyJSON = `{"behaviors":["process.exec","process.exit","process.fork","file.read","file.write","network.connect"],"observe_only":true}
 `
 
-func appendEndpointEventForTest(t testing.TB, runner *AgentRuntime, bus *telemetry.Bus, norm *normalize.Normalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
+func appendEndpointEventForTest(t testing.TB, runner *AgentRuntime, bus *telemetry.Bus, norm *eventadapter.EventNormalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
 	t.Helper()
 	batch, err := NewEndpointRuntime(runner, norm).ProcessEvent(ev)
 	if err != nil {

@@ -94,7 +94,8 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "apps/agent/internal/content",
             "apps/agent/internal/daemon",
             "apps/agent/internal/detection",
-            "apps/agent/internal/event",
+            "apps/agent/internal/domain/event",
+            "apps/agent/internal/adapters/sensor/tetragon",
             "apps/agent/internal/localstore",
             "apps/agent/internal/policy",
             "apps/agent/internal/tamper",
@@ -111,8 +112,9 @@ class MonorepoLayoutContractTest(unittest.TestCase):
     def test_agent_data_pipeline_layout(self):
         root = self.repo / "apps/agent/internal"
         expected = (
-            "event/context",
-            "event/normalize",
+            "domain/event",
+            "adapters/contracts",
+            "adapters/sensor/tetragon",
             "detection",
             "detection/matcher",
             "telemetry/dataappend",

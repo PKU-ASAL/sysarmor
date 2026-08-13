@@ -3,7 +3,8 @@ package daemon
 import (
 	"fmt"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -11,10 +12,10 @@ import (
 
 type EndpointRuntime struct {
 	runner     *AgentRuntime
-	normalizer *normalize.Normalizer
+	normalizer *eventadapter.EventNormalizer
 }
 
-func NewEndpointRuntime(runner *AgentRuntime, normalizer *normalize.Normalizer) *EndpointRuntime {
+func NewEndpointRuntime(runner *AgentRuntime, normalizer *eventadapter.EventNormalizer) *EndpointRuntime {
 	return &EndpointRuntime{runner: runner, normalizer: normalizer}
 }
 
@@ -28,7 +29,7 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 	if ev.SensorEvent.RawRef == "" {
 		ev.SensorEvent.RawRef = ev.RawRef
 	}
-	canonical := r.normalizer.Normalize(ev.SensorEvent)
+	canonical := contractmapper.CanonicalEvent(r.normalizer.NormalizeDomain(ev.SensorEvent))
 	canonical.Labels = mergeLabels(canonical.GetLabels(), r.runner.policyLabels())
 	signals := r.runner.currentDetection().Process(canonical)
 	return r.runner.dataBatchForEvent(canonical, signals), nil

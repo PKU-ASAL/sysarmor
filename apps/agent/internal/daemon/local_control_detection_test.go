@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
@@ -66,7 +66,7 @@ func TestLocalControlContentApplyEnablesCEPRulePack(t *testing.T) {
 		t.Fatalf("policy ack = %+v", policyAck)
 	}
 
-	norm := normalize.NewWithOptions("agent-a", "host-a", nil, normalize.Options{TenantID: "default", ScopeType: "host"})
+	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host"})
 	for _, ev := range []contract.EventEnvelope{
 		cepSensorEventEnvelope("file.write", "/usr/bin/curl", "/dev/shm/cep-x", ""),
 		cepSensorEventEnvelope("file.chmod", "/usr/bin/chmod", "/dev/shm/cep-x", ""),

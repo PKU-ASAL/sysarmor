@@ -10,9 +10,10 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/event/normalize"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
+	tetragondecoder "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/ringbuffer"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -63,7 +64,7 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 	}
 	opts.Labels = replayLabels(opts.Labels, opts.PolicyID, opts.PolicyVersion)
 
-	norm := normalize.New(opts.AgentID, opts.HostID, nil)
+	norm := eventadapter.NewEventNormalizer(opts.AgentID, opts.HostID, eventadapter.EventNormalizerOptions{})
 	detector, _ := detection.New(policymodel.DefaultDetectionPolicy())
 	lines := scanLines(r)
 	ticker := time.NewTicker(opts.FlushInterval)
@@ -208,7 +209,7 @@ func appendFrames(batch *dataplanev1.DataBatch, events []*eventv1.CanonicalEvent
 	}
 }
 
-func decodeLine(data []byte, norm *normalize.Normalizer, detector *detection.Engine, labels map[string]string, rawRing *ringbuffer.Buffer) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
+func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detection.Engine, labels map[string]string, rawRing *ringbuffer.Buffer) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
 	if sig, ok := decodeSignal(data); ok {
 		sig.Labels = mergeLabels(sig.GetLabels(), labels)
 		return nil, []*signalv1.Signal{sig}, nil
@@ -223,7 +224,7 @@ func decodeLine(data []byte, norm *normalize.Normalizer, detector *detection.Eng
 	}
 	if sev, ok := decodeSensorEvent(data); ok {
 		sev.RawRef = rawRing.Remember(sev.GetRawRef(), data)
-		ev := norm.Normalize(sev)
+		ev := contractmapper.CanonicalEvent(norm.NormalizeDomain(sev))
 		ev.Labels = mergeLabels(ev.GetLabels(), labels)
 		signals := detector.Process(ev)
 		for _, sig := range signals {
@@ -231,7 +232,7 @@ func decodeLine(data []byte, norm *normalize.Normalizer, detector *detection.Eng
 		}
 		return []*eventv1.CanonicalEvent{ev}, signals, nil
 	}
-	if sevs, ok := tetragon.ParseLine(data); ok {
+	if sevs, ok := tetragondecoder.ParseLine(data); ok {
 		rawRef := rawRing.Put(data)
 		events := make([]*eventv1.CanonicalEvent, 0, len(sevs))
 		var signals []*signalv1.Signal
@@ -241,7 +242,7 @@ func decodeLine(data []byte, norm *normalize.Normalizer, detector *detection.Eng
 			} else {
 				rawRing.Remember(sev.GetRawRef(), data)
 			}
-			ev := norm.Normalize(sev)
+			ev := contractmapper.CanonicalEvent(norm.NormalizeDomain(sev))
 			ev.Labels = mergeLabels(ev.GetLabels(), labels)
 			events = append(events, ev)
 			detected := detector.Process(ev)
