@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 
@@ -29,17 +29,17 @@ func (c *telemetryCandidate) ReportJSON() string {
 
 type telemetryPolicyApplication struct {
 	runner  *AgentRuntime
-	batcher *telemetry.Batcher
+	batcher *telemetryadapter.Batcher
 	service *applicationpolicy.TelemetryService
 }
 
-func newTelemetryPolicyApplication(runner *AgentRuntime, batcher *telemetry.Batcher) *telemetryPolicyApplication {
+func newTelemetryPolicyApplication(runner *AgentRuntime, batcher *telemetryadapter.Batcher) *telemetryPolicyApplication {
 	application := &telemetryPolicyApplication{runner: runner, batcher: batcher}
 	application.service = applicationpolicy.NewTelemetryService(application, application)
 	return application
 }
 
-func NewTelemetryPolicyApplication(runner *AgentRuntime, batcher *telemetry.Batcher) agentcontrol.TelemetryApplication {
+func NewTelemetryPolicyApplication(runner *AgentRuntime, batcher *telemetryadapter.Batcher) agentcontrol.TelemetryApplication {
 	return newTelemetryPolicyApplication(runner, batcher)
 }
 
@@ -137,7 +137,7 @@ func (a *telemetryPolicyApplication) PublishTelemetry(candidate applicationpolic
 	a.runner.setEndpointPolicy(prepared.endpoint)
 	a.runner.setEffectiveTelemetry(prepared.effective)
 	if a.batcher != nil {
-		a.batcher.Reconfigure(telemetry.BatchSettings{
+		a.batcher.Reconfigure(telemetryadapter.BatchSettings{
 			MaxItems: prepared.effective.MaxBatchItems, MaxBytes: prepared.effective.MaxBatchBytes,
 			FlushInterval: prepared.effective.FlushInterval,
 		})

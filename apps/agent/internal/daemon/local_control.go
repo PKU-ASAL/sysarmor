@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localapi"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -34,13 +35,13 @@ func (r *AgentRuntime) startLocalControlServer(ctx context.Context, rt sensorrun
 	return localapi.New(socketPath, handler, r.Out).Start(ctx)
 }
 
-func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetry.Batcher, *telemetry.Sender, time.Time) {
+func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetry.Sender, time.Time) {
 	if bus, ok := source.(*telemetry.Bus); ok {
-		var batcher *telemetry.Batcher
+		var batcher *telemetryadapter.Batcher
 		var sender *telemetry.Sender
 		var startedAt time.Time
 		if len(rest) > 0 {
-			batcher, _ = rest[0].(*telemetry.Batcher)
+			batcher, _ = rest[0].(*telemetryadapter.Batcher)
 		}
 		if len(rest) > 1 {
 			sender, _ = rest[1].(*telemetry.Sender)
@@ -49,7 +50,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 			startedAt, _ = rest[2].(time.Time)
 		}
 		if batcher == nil {
-			batcher = telemetry.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
+			batcher = telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 		}
 		if sender == nil {
 			sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
@@ -63,7 +64,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 		return bus, batcher, sender, startedAt
 	}
 	bus := telemetry.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
-	batcher := telemetry.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
+	batcher := telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 	sender := &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
 	startedAt := time.Now().UTC()
 	return bus, batcher, sender, startedAt
@@ -73,7 +74,7 @@ type localStatusService struct {
 	runner    *AgentRuntime
 	runtime   sensorruntime.Runtime
 	bus       *telemetry.Bus
-	batcher   *telemetry.Batcher
+	batcher   *telemetryadapter.Batcher
 	sender    *telemetry.Sender
 	startedAt time.Time
 }

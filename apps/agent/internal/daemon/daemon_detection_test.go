@@ -119,7 +119,7 @@ func commitEndpointBatchForTest(t testing.TB, runner *AgentRuntime, bus *telemet
 		}
 		return
 	}
-	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 1, time.Hour, 1)
+	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 1, time.Hour, 1)
 	batcher.Add(batch)
 	batch = <-batcher.Batches()
 	batcher.CloseAndFlush("test")

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
@@ -33,7 +34,7 @@ func TestBusSnapshotsAndWatchesFrames(t *testing.T) {
 }
 
 func TestBatcherFlushesByCount(t *testing.T) {
-	batcher := NewBatcher(func(now time.Time) *dataplanev1.DataBatch {
+	batcher := telemetryadapter.NewBatcher(func(now time.Time) *dataplanev1.DataBatch {
 		return &dataplanev1.DataBatch{Header: &dataplanev1.BatchHeader{TenantId: "default", AgentId: "agent-a", CreatedAtUnixNano: now.UnixNano()}}
 	}, 2, time.Hour, 4)
 	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{eventFrame(1, "ev-1")}})
@@ -55,7 +56,7 @@ func TestBatcherFlushAndApplyBlocksConcurrentAddUntilApplyCompletes(t *testing.T
 	identity := "old"
 	applyStarted := make(chan struct{})
 	releaseApply := make(chan struct{})
-	batcher := NewBatcher(func(time.Time) *dataplanev1.DataBatch {
+	batcher := telemetryadapter.NewBatcher(func(time.Time) *dataplanev1.DataBatch {
 		return &dataplanev1.DataBatch{Header: &dataplanev1.BatchHeader{AgentId: identity}}
 	}, 10, time.Hour, 4)
 	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
@@ -94,9 +95,9 @@ func TestBatcherFlushAndApplyBlocksConcurrentAddUntilApplyCompletes(t *testing.T
 }
 
 func TestBatcherReconfigureSealsPendingBatchAndUsesNewLimits(t *testing.T) {
-	batcher := NewBatcher(nil, 10, time.Hour, 4, 256<<10)
+	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 4, 256<<10)
 	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{eventFrame(1, "ev-1")}})
-	batcher.Reconfigure(BatchSettings{MaxItems: 2, MaxBytes: 128 << 10, FlushInterval: 2 * time.Second})
+	batcher.Reconfigure(telemetryadapter.BatchSettings{MaxItems: 2, MaxBytes: 128 << 10, FlushInterval: 2 * time.Second})
 	first := <-batcher.Batches()
 	if len(first.GetEvents()) != 1 {
 		t.Fatalf("sealed batch=%+v", first)
@@ -110,7 +111,7 @@ func TestBatcherReconfigureSealsPendingBatchAndUsesNewLimits(t *testing.T) {
 }
 
 func TestSenderRecordsAcceptedBatch(t *testing.T) {
-	batcher := NewBatcher(nil, 10, time.Hour, 1)
+	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 1)
 	appender := &recordingAppender{}
 	sender := &Sender{Appender: appender, Batcher: batcher}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -137,7 +138,7 @@ func TestSenderRecordsAcceptedBatch(t *testing.T) {
 }
 
 func TestSenderDrainsClosedBatcher(t *testing.T) {
-	batcher := NewBatcher(nil, 10, time.Hour, 4)
+	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 4)
 	appender := &recordingAppender{}
 	sender := &Sender{Appender: appender, Batcher: batcher}
 	ctx, cancel := context.WithCancel(context.Background())

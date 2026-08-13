@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
-func (r *AgentRuntime) shutdownAndReport(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetry.Batcher, sender *telemetry.Sender, reporter healthReporter, startedAt time.Time, cancelDataPlane func(), stopRuntime func()) error {
+func (r *AgentRuntime) shutdownAndReport(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetryadapter.Batcher, sender *telemetry.Sender, reporter healthReporter, startedAt time.Time, cancelDataPlane func(), stopRuntime func()) error {
 	stopRuntime()
 	grace := shutdownDrainTimeout(r.Config)
 	shutdownStarted := time.Now()
@@ -39,7 +40,7 @@ func (r *AgentRuntime) shutdownAndReport(ctx context.Context, rt sensorruntime.R
 	return nil
 }
 
-func (r *AgentRuntime) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetry.Batcher, sender *telemetry.Sender, startedAt time.Time) (agenthealth.AgentHealth, error) {
+func (r *AgentRuntime) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetry.Bus, batcher *telemetryadapter.Batcher, sender *telemetry.Sender, startedAt time.Time) (agenthealth.AgentHealth, error) {
 	health, err := r.collectHealth(ctx, rt, bus, batcher, sender, startedAt)
 	if err != nil {
 		return agenthealth.AgentHealth{}, err

@@ -1,12 +1,12 @@
 package daemon
 
 import (
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 )
 
-func newApplicationPolicyController(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetry.Batcher) *agentcontrol.ApplicationPolicyController {
+func newApplicationPolicyController(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
 	return agentcontrol.NewApplicationPolicyController(
 		newPolicyProjectionRuntime(runner),
 		agentcontrol.PolicyUseCases{

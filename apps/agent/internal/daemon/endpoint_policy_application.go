@@ -8,13 +8,13 @@ import (
 
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -38,17 +38,17 @@ func (c *endpointCandidate) PolicySource() applicationpolicy.Source { return c.s
 type endpointPolicyApplication struct {
 	runner  *AgentRuntime
 	runtime sensorruntime.Runtime
-	batcher *telemetry.Batcher
+	batcher *telemetryadapter.Batcher
 	service *applicationpolicy.EndpointService
 }
 
-func newEndpointPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetry.Batcher) *endpointPolicyApplication {
+func newEndpointPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *endpointPolicyApplication {
 	application := &endpointPolicyApplication{runner: runner, runtime: runtime, batcher: batcher}
 	application.service = applicationpolicy.NewEndpointService(application, application)
 	return application
 }
 
-func NewEndpointPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetry.Batcher) agentcontrol.EndpointApplication {
+func NewEndpointPolicyApplication(runner *AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) agentcontrol.EndpointApplication {
 	return newEndpointPolicyApplication(runner, runtime, batcher)
 }
 
@@ -273,7 +273,7 @@ func (a *endpointPolicyApplication) ActivateEndpoint(candidate applicationpolicy
 	a.runner.setDetectionStatus(prepared.policy, prepared.report, a.runner.contentStore().Snapshot())
 	a.runner.setEffectiveTelemetry(prepared.telemetry)
 	if a.batcher != nil && prepared.source == applicationpolicy.SourceStandalone {
-		a.batcher.Reconfigure(telemetry.BatchSettings{
+		a.batcher.Reconfigure(telemetryadapter.BatchSettings{
 			MaxItems: prepared.telemetry.MaxBatchItems, MaxBytes: prepared.telemetry.MaxBatchBytes,
 			FlushInterval: prepared.telemetry.FlushInterval,
 		})

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -36,13 +37,13 @@ func (u *recordingUploader) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev
 	return (&noopUploader{}).SendBatch(batch)
 }
 
-func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *telemetry.Batcher, *telemetry.Sender) {
+func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *telemetryadapter.Batcher, *telemetry.Sender) {
 	t.Helper()
 	runner.policyController = newApplicationPolicyController
 	ensureTestLocalStore(t, runner)
 	installTestDetection(t, runner)
 	bus := telemetry.NewBus(1024)
-	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
+	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
 	return bus, batcher, sender
 }

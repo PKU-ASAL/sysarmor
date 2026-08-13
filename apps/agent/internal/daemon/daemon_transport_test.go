@@ -9,6 +9,7 @@ import (
 	"time"
 
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/remoteapi"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -142,7 +143,7 @@ func TestAgentRuntimeControlChannelProcessesPendingResponse(t *testing.T) {
 	}
 	runner.policyController = newApplicationPolicyController
 	rt := sensorruntime.New(runner.Sensor)
-	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
+	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

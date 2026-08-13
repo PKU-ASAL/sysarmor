@@ -13,6 +13,7 @@ import (
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -241,7 +242,7 @@ func TestAgentRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
 		capability: contract.Capability{Backend: "fake", SupportsHealth: true},
 	}
 	bus := telemetry.NewBus(16)
-	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
+	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
 	uploader := newRecordingUploader()
 	sender := &telemetry.Sender{Appender: uploader, Batcher: batcher}
 	ctx, cancelSender := context.WithCancel(context.Background())

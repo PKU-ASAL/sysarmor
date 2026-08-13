@@ -5,9 +5,9 @@ import (
 	"time"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 )
 
 func TestTelemetryProductionPathAcceptsNestedDocumentAndReconfiguresBatcher(t *testing.T) {
@@ -19,7 +19,7 @@ func TestTelemetryProductionPathAcceptsNestedDocumentAndReconfiguresBatcher(t *t
 	}
 	runner := &AgentRuntime{Config: config.Config{Telemetry: config.DefaultTelemetryConfig()}, localStore: store}
 	runner.setEndpointPolicy(endpoint)
-	batcher := telemetry.NewBatcher(nil, 10, time.Hour, 2, 12345)
+	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 2, 12345)
 	result := newApplicationPolicyController(runner, nil, batcher).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "telemetry", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"telemetry":{"max_batch_items":32,"max_batch_bytes":65536,"flush_interval":"1s"}}`,

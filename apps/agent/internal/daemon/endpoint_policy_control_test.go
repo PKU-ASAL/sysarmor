@@ -10,11 +10,11 @@ import (
 	"time"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -210,7 +210,7 @@ func TestManagedEndpointPolicyDoesNotReconfigureTelemetryBatcher(t *testing.T) {
 	defer store.Close()
 	sensor := runner.Sensor.(*applyErrorSensor)
 	sensor.err = nil
-	batcher := telemetry.NewBatcher(nil, 10, time.Hour, 2, 12345)
+	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 2, 12345)
 	controller := newApplicationPolicyController(runner, runtime, batcher)
 	command := managedPolicyCommand("managed", 5)
 

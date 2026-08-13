@@ -7,7 +7,6 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -17,7 +16,7 @@ func TestAgentRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 	builder := telemetryadapter.NewBatchBuilder(runner, 0)
-	runner.telemetryBatcher = telemetry.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
 	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
 	if err := runner.reconcileManagementContext(localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
@@ -53,7 +52,7 @@ func TestAgentRuntimeKeepsPendingBatchForUnchangedIdentity(t *testing.T) {
 	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 	builder := telemetryadapter.NewBatchBuilder(runner, 0)
-	runner.telemetryBatcher = telemetry.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
 	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
 	runner.applyProjectedIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})

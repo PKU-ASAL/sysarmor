@@ -45,7 +45,7 @@ type AgentRuntime struct {
 	identity                runtimeIdentity
 	standaloneIdentity      runtimeIdentity
 	normalizer              *eventadapter.EventNormalizer
-	telemetryBatcher        *telemetry.Batcher
+	telemetryBatcher        *telemetryadapter.Batcher
 	managedControl          *TransportRuntime
 	sensorSupervisor        *sensorruntime.SubscriptionSupervisor
 	revokeEnrollment        func(context.Context, localstore.Enrollment, string) (string, time.Time, error)
@@ -75,7 +75,7 @@ type Dependencies struct {
 	Policy       PolicyControllerFactory
 }
 
-type PolicyControllerFactory func(*AgentRuntime, sensorruntime.Runtime, *telemetry.Batcher) *agentcontrol.ApplicationPolicyController
+type PolicyControllerFactory func(*AgentRuntime, sensorruntime.Runtime, *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController
 
 func (r *AgentRuntime) withDetectionUpdateTransaction(fn func()) {
 	r.detectionUpdateMu.Lock()
@@ -175,7 +175,7 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 		local.onCommit = bus.PublishBatch
 	}
 	batchBuilder := telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
-	batcher := telemetry.NewBatcher(batchBuilder.NewBatch, effectiveTelemetry.MaxBatchItems, effectiveTelemetry.FlushInterval, r.Config.Local.Export.MaxInflight*64, effectiveTelemetry.MaxBatchBytes)
+	batcher := telemetryadapter.NewBatcher(batchBuilder.NewBatch, effectiveTelemetry.MaxBatchItems, effectiveTelemetry.FlushInterval, r.Config.Local.Export.MaxInflight*64, effectiveTelemetry.MaxBatchBytes)
 	r.telemetryBatcher = batcher
 	sender := &telemetry.Sender{
 		Appender:     appender,

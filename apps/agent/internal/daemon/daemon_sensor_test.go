@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
@@ -167,7 +168,7 @@ func TestAgentRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T)
 		t.Fatal(err)
 	}
 	bus := telemetry.NewBus(1024)
-	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
+	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
 	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
 	health, err := runner.collectHealth(context.Background(), rt, bus, batcher, sender, time.Now())
 	if err != nil {
