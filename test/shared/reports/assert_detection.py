@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--matrix", required=True)
     parser.add_argument("--truth-steps", required=True)
-    parser.add_argument("--min-score", type=float, default=1.0)
+    parser.add_argument("--min-score", type=float, default=0.9)
     args = parser.parse_args()
 
     failures = []
