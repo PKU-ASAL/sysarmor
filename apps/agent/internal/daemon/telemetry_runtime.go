@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry/dataappend"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
-	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
-	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 )
+
+func (r *AgentRuntime) newTelemetryBatchBuilder() *telemetryadapter.BatchBuilder {
+	return telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
+}
 
 type localBatchSender struct{}
 
@@ -73,21 +76,31 @@ func (r *AgentRuntime) runtimeLabels(scopeType, scopeSelector, sensorRuntime str
 }
 
 func (r *AgentRuntime) policyLabels() map[string]string {
-	policy := r.activePolicy()
+	context := r.TelemetryContext()
 	labels := map[string]string{}
-	if policy.PolicyID != "" {
-		labels["policy_id"] = policy.PolicyID
+	if context.PolicyID != "" {
+		labels["policy_id"] = context.PolicyID
 	}
-	if policy.Version > 0 {
-		labels["policy_version"] = fmt.Sprintf("%d", policy.Version)
+	if context.PolicyVersion > 0 {
+		labels["policy_version"] = fmt.Sprintf("%d", context.PolicyVersion)
 	}
-	if policy.Mode != "" {
-		labels["policy_mode"] = policy.Mode
+	if context.PolicyMode != "" {
+		labels["policy_mode"] = context.PolicyMode
 	}
 	if len(labels) == 0 {
 		return nil
 	}
 	return labels
+}
+
+func (r *AgentRuntime) TelemetryContext() ports.TelemetryContext {
+	identity := r.currentIdentity()
+	policy := r.activePolicy()
+	return ports.TelemetryContext{
+		TenantID: identity.TenantID, AgentID: identity.AgentID, HostID: identity.HostID,
+		PolicyID: policy.PolicyID, PolicyVersion: policy.Version, PolicyMode: policy.Mode,
+		Labels: cloneStringMap(r.Config.Agent.Labels),
+	}
 }
 
 func cloneStringMap(in map[string]string) map[string]string {
@@ -100,102 +113,4 @@ func cloneStringMap(in map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
-}
-
-func mergeLabels(base, extra map[string]string) map[string]string {
-	out := cloneStringMap(base)
-	for key, value := range extra {
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		out[key] = value
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-func (r *AgentRuntime) dataBatchForEvent(event *eventv1.CanonicalEvent, signals []*signalv1.Signal) *dataplanev1.DataBatch {
-	now := time.Now().UTC()
-	batch := r.newDataBatch(now)
-	if event != nil {
-		batch.Events = append(batch.Events, &dataplanev1.EventFrame{
-			Sequence:   event.GetSeq(),
-			ObservedAt: now.Format(time.RFC3339Nano),
-			Event:      event,
-		})
-	}
-	for _, sig := range signals {
-		sequence := r.nextSignalSequence()
-		setEndpointSignalID(sig, sequence)
-		batch.Signals = append(batch.Signals, &dataplanev1.SignalFrame{
-			Sequence:   sequence,
-			ObservedAt: now.Format(time.RFC3339Nano),
-			Signal:     sig,
-		})
-	}
-	return batch
-}
-
-func setEndpointSignalID(signal *signalv1.Signal, sequence uint64) {
-	if signal == nil {
-		return
-	}
-	signal.Id = fmt.Sprintf("sig-%020d", sequence)
-	if signal.Evidence != nil {
-		signal.Evidence.Id = "evb-" + signal.Id
-	}
-}
-
-func (r *AgentRuntime) dataBatchForSignals(signals []*signalv1.Signal) *dataplanev1.DataBatch {
-	now := time.Now().UTC()
-	batch := r.newDataBatch(now)
-	policyLabels := r.policyLabels()
-	for _, sig := range signals {
-		if sig != nil {
-			sig.Labels = mergeLabels(sig.GetLabels(), policyLabels)
-		}
-		batch.Signals = append(batch.Signals, &dataplanev1.SignalFrame{
-			Sequence:   r.nextSignalSequence(),
-			ObservedAt: now.Format(time.RFC3339Nano),
-			Signal:     sig,
-		})
-	}
-	return batch
-}
-
-func (r *AgentRuntime) newDataBatch(now time.Time) *dataplanev1.DataBatch {
-	identity := r.currentIdentity()
-	policy := r.activePolicy()
-	labels := cloneStringMap(r.Config.Agent.Labels)
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	for key, value := range r.policyLabels() {
-		labels[key] = value
-	}
-	if len(labels) == 0 {
-		labels = nil
-	}
-	return &dataplanev1.DataBatch{
-		Header: &dataplanev1.BatchHeader{
-			TenantId:          identity.TenantID,
-			AgentId:           identity.AgentID,
-			HostId:            identity.HostID,
-			PolicyId:          policy.PolicyID,
-			PolicyVersion:     policy.Version,
-			PolicyMode:        policy.Mode,
-			CreatedAtUnixNano: now.UnixNano(),
-			Labels:            labels,
-		},
-	}
-}
-
-func (r *AgentRuntime) nextSignalSequence() uint64 {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.signalSeq++
-	return r.signalSeq
 }

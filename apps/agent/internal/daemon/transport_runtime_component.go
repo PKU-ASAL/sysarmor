@@ -78,7 +78,7 @@ func transportArgs(runner *AgentRuntime, source any, rest ...any) (*telemetry.Bu
 		bus = telemetry.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
 	}
 	if batcher == nil {
-		batcher = telemetry.NewBatcher(runner.newDataBatch, runner.Config.Telemetry.MaxBatchItems, runner.Config.Telemetry.FlushInterval, 64, runner.Config.Telemetry.MaxBatchBytes)
+		batcher = telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, runner.Config.Telemetry.MaxBatchItems, runner.Config.Telemetry.FlushInterval, 64, runner.Config.Telemetry.MaxBatchBytes)
 	}
 	if sender == nil {
 		sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}

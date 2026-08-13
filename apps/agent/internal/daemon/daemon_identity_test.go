@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
@@ -15,7 +16,8 @@ import (
 func TestAgentRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
-	runner.telemetryBatcher = telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 2)
+	builder := telemetryadapter.NewBatchBuilder(runner, 0)
+	runner.telemetryBatcher = telemetry.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
 	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
 	if err := runner.reconcileManagementContext(localstore.Enrollment{State: localstore.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
@@ -25,7 +27,7 @@ func TestAgentRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	if boundary.GetHeader().GetAgentId() != "device-a" || boundary.GetHeader().GetTenantId() != "local" {
 		t.Fatalf("boundary batch identity = %+v", boundary.GetHeader())
 	}
-	managed := runner.newDataBatch(time.Now())
+	managed := builder.NewBatch(time.Now())
 	if managed.GetHeader().GetAgentId() != "agent-a" || managed.GetHeader().GetTenantId() != "tenant-a" {
 		t.Fatalf("managed batch identity = %+v", managed.GetHeader())
 	}
@@ -41,9 +43,24 @@ func TestAgentRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	if err := runner.reconcileManagementContext(localstore.Enrollment{State: localstore.StateStandalone}); err != nil {
 		t.Fatal(err)
 	}
-	standalone := runner.newDataBatch(time.Now())
+	standalone := builder.NewBatch(time.Now())
 	if standalone.GetHeader().GetAgentId() != "device-a" || standalone.GetHeader().GetTenantId() != "local" {
 		t.Fatalf("standalone batch identity = %+v", standalone.GetHeader())
+	}
+}
+
+func TestAgentRuntimeKeepsPendingBatchForUnchangedIdentity(t *testing.T) {
+	runner := &AgentRuntime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	builder := telemetryadapter.NewBatchBuilder(runner, 0)
+	runner.telemetryBatcher = telemetry.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
+
+	runner.applyProjectedIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+
+	stats := runner.telemetryBatcher.Stats()
+	if stats.PendingEvents != 1 || stats.QueuedBatches != 0 {
+		t.Fatalf("batcher stats = %+v, want pending event without flush", stats)
 	}
 }
 

@@ -42,7 +42,7 @@ func newTestTelemetry(t testing.TB, runner *AgentRuntime) (*telemetry.Bus, *tele
 	ensureTestLocalStore(t, runner)
 	installTestDetection(t, runner)
 	bus := telemetry.NewBus(1024)
-	batcher := telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 16)
+	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
 	return bus, batcher, sender
 }

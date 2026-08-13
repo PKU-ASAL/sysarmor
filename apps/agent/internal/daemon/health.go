@@ -258,7 +258,7 @@ func (r *AgentRuntime) healthTelemetryArgs(source any, rest ...any) (*telemetry.
 		bus = telemetry.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
 	}
 	if batcher == nil {
-		batcher = telemetry.NewBatcher(r.newDataBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
+		batcher = telemetry.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 	}
 	if sender == nil {
 		sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}

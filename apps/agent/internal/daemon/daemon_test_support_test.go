@@ -213,7 +213,7 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
-	batcher := telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 16)
+	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := &telemetry.Sender{Appender: noopUploader{}, Batcher: batcher}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

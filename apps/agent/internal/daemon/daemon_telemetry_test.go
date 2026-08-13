@@ -91,13 +91,14 @@ func TestStandaloneRuntimeResumesPersistentSequences(t *testing.T) {
 	}
 	cfg := standaloneTestConfig(t, dir, statePath)
 	runner := newConfiguredTestRuntime(t, cfg)
-	if runner.eventSeq != 41 || runner.signalSeq != 17 {
-		t.Fatalf("eventSeq=%d signalSeq=%d, want 41/17", runner.eventSeq, runner.signalSeq)
+	if runner.eventSeq != 41 || runner.initialSignalSequence != 17 {
+		t.Fatalf("eventSeq=%d signalSeq=%d, want 41/17", runner.eventSeq, runner.initialSignalSequence)
 	}
 }
 
 func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
-	runner := &AgentRuntime{signalSeq: 17}
+	runner := &AgentRuntime{initialSignalSequence: 17}
+	builder := runner.newTelemetryBatchBuilder()
 	parent := &eventv1.CanonicalEvent{
 		Id: "event-parent", Behavior: "process.exec",
 		SubjectProc: &eventv1.ProcessRef{StableId: "node-parent", Binary: "/usr/bin/node"},
@@ -117,8 +118,8 @@ func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
 	secondEngine.Process(contractmapper.DomainEvent(parent))
 	firstDomain := firstEngine.Process(contractmapper.DomainEvent(event))
 	secondDomain := secondEngine.Process(contractmapper.DomainEvent(event))
-	first := runner.dataBatchForEvent(event, []*signalv1.Signal{contractmapper.Signal(*firstDomain[0])}).GetSignals()[0]
-	second := runner.dataBatchForEvent(event, []*signalv1.Signal{contractmapper.Signal(*secondDomain[0])}).GetSignals()[0]
+	first := builder.ForEvent(time.Now().UTC(), event, []*signalv1.Signal{contractmapper.Signal(*firstDomain[0])}).GetSignals()[0]
+	second := builder.ForEvent(time.Now().UTC(), event, []*signalv1.Signal{contractmapper.Signal(*secondDomain[0])}).GetSignals()[0]
 	if first.GetSequence() != 18 || first.GetSignal().GetId() != "sig-00000000000000000018" {
 		t.Fatalf("first signal=%+v", first)
 	}
@@ -240,7 +241,7 @@ func TestAgentRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
 		capability: contract.Capability{Backend: "fake", SupportsHealth: true},
 	}
 	bus := telemetry.NewBus(16)
-	batcher := telemetry.NewBatcher(runner.newDataBatch, 10, time.Hour, 4)
+	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
 	uploader := newRecordingUploader()
 	sender := &telemetry.Sender{Appender: uploader, Batcher: batcher}
 	ctx, cancelSender := context.WithCancel(context.Background())

@@ -38,8 +38,14 @@ func (r *AgentRuntime) identityForManagementContext(enrollment localstore.Enroll
 }
 
 func (r *AgentRuntime) applyProjectedIdentity(identity runtimeIdentity) {
-	if identity != r.currentIdentity() && r.telemetryBatcher != nil {
-		r.telemetryBatcher.Flush("identity")
+	if identity == r.currentIdentity() {
+		return
+	}
+	if r.telemetryBatcher != nil {
+		r.telemetryBatcher.FlushAndApply("identity", func() {
+			r.setRuntimeIdentity(identity)
+		})
+		return
 	}
 	r.setRuntimeIdentity(identity)
 }

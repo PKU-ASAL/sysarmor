@@ -2,9 +2,11 @@ package daemon
 
 import (
 	"fmt"
+	"time"
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	applicationpipeline "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/pipeline"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
@@ -15,14 +17,15 @@ type EndpointRuntime struct {
 	runner     *AgentRuntime
 	normalizer *eventadapter.EventNormalizer
 	pipeline   *applicationpipeline.Service
+	batches    *telemetryadapter.BatchBuilder
 }
 
-func NewEndpointRuntime(runner *AgentRuntime, normalizer *eventadapter.EventNormalizer) *EndpointRuntime {
-	return &EndpointRuntime{runner: runner, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{runner: runner})}
+func NewEndpointRuntime(runner *AgentRuntime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder) *EndpointRuntime {
+	return &EndpointRuntime{runner: runner, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{runner: runner}), batches: batches}
 }
 
 func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.DataBatch, error) {
-	if r == nil || r.runner == nil || r.normalizer == nil {
+	if r == nil || r.runner == nil || r.normalizer == nil || r.batches == nil {
 		return nil, fmt.Errorf("endpoint runtime is not initialized")
 	}
 	if ev.SensorEvent == nil {
@@ -41,12 +44,12 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 	for _, signal := range result.Signals {
 		signals = append(signals, contractmapper.Signal(*signal))
 	}
-	return r.runner.dataBatchForEvent(canonical, signals), nil
+	return r.batches.ForEvent(time.Now().UTC(), canonical, signals), nil
 }
 
 func (r *EndpointRuntime) ProcessSignals(signals []*signalv1.Signal) (*dataplanev1.DataBatch, error) {
-	if r == nil || r.runner == nil {
+	if r == nil || r.runner == nil || r.batches == nil {
 		return nil, fmt.Errorf("endpoint runtime is not initialized")
 	}
-	return r.runner.dataBatchForSignals(signals), nil
+	return r.batches.ForSignals(time.Now().UTC(), signals), nil
 }

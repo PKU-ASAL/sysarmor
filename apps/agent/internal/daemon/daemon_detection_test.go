@@ -11,6 +11,7 @@ import (
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/telemetry"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -92,7 +93,7 @@ const testCollectionPolicyJSON = `{"behaviors":["process.exec","process.exit","p
 
 func appendEndpointEventForTest(t testing.TB, runner *AgentRuntime, bus *telemetry.Bus, norm *eventadapter.EventNormalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
 	t.Helper()
-	batch, err := NewEndpointRuntime(runner, norm).ProcessEvent(ev)
+	batch, err := NewEndpointRuntime(runner, norm, telemetryadapter.NewBatchBuilder(runner, runner.initialSignalSequence)).ProcessEvent(ev)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,7 @@ func appendEndpointEventForTest(t testing.TB, runner *AgentRuntime, bus *telemet
 
 func appendEndpointSignalsForTest(t testing.TB, runner *AgentRuntime, bus *telemetry.Bus, signals []*signalv1.Signal) *dataplanev1.DataBatch {
 	t.Helper()
-	batch, err := NewEndpointRuntime(runner, nil).ProcessSignals(signals)
+	batch, err := NewEndpointRuntime(runner, nil, telemetryadapter.NewBatchBuilder(runner, runner.initialSignalSequence)).ProcessSignals(signals)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func commitEndpointBatchForTest(t testing.TB, runner *AgentRuntime, bus *telemet
 		}
 		return
 	}
-	batcher := telemetry.NewBatcher(runner.newDataBatch, 1, time.Hour, 1)
+	batcher := telemetry.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 1, time.Hour, 1)
 	batcher.Add(batch)
 	batch = <-batcher.Batches()
 	batcher.CloseAndFlush("test")

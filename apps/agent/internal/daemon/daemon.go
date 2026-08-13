@@ -12,6 +12,7 @@ import (
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
@@ -58,7 +59,7 @@ type AgentRuntime struct {
 	featureFlags            agenthealth.RuntimeFeatureFlags
 	detectionStatus         agenthealth.DetectionHealth
 	eventSeq                uint64
-	signalSeq               uint64
+	initialSignalSequence   uint64
 	telemetrySeq            uint64
 	policyController        PolicyControllerFactory
 }
@@ -95,7 +96,7 @@ func NewRuntime(dependencies Dependencies) (*AgentRuntime, error) {
 	runtime := &AgentRuntime{
 		Config: dependencies.Config, Sensor: dependencies.Sensor, content: dependencies.Content,
 		featureFlags: dependencies.FeatureFlags, localStore: dependencies.LocalStore,
-		eventSeq: dependencies.EventSeq, signalSeq: dependencies.SignalSeq,
+		eventSeq: dependencies.EventSeq, initialSignalSequence: dependencies.SignalSeq,
 	}
 	runtime.policyController = dependencies.Policy
 	runtime.setRuntimeIdentity(runtimeIdentity{
@@ -173,7 +174,8 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 	if local, ok := appender.(*localStoreBatchSender); ok {
 		local.onCommit = bus.PublishBatch
 	}
-	batcher := telemetry.NewBatcher(r.newDataBatch, effectiveTelemetry.MaxBatchItems, effectiveTelemetry.FlushInterval, r.Config.Local.Export.MaxInflight*64, effectiveTelemetry.MaxBatchBytes)
+	batchBuilder := telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
+	batcher := telemetry.NewBatcher(batchBuilder.NewBatch, effectiveTelemetry.MaxBatchItems, effectiveTelemetry.FlushInterval, r.Config.Local.Export.MaxInflight*64, effectiveTelemetry.MaxBatchBytes)
 	r.telemetryBatcher = batcher
 	sender := &telemetry.Sender{
 		Appender:     appender,
@@ -198,7 +200,7 @@ func (r *AgentRuntime) Run(ctx context.Context, opts Options) error {
 		InitialSequence: r.eventSeq,
 	})
 	r.setNormalizer(norm)
-	endpointRuntime := NewEndpointRuntime(r, norm)
+	endpointRuntime := NewEndpointRuntime(r, norm, batchBuilder)
 	transportRuntime := NewTransportRuntime(r, rt, bus, batcher, sender, startedAt, scopeType, scopeSelector)
 	if r.localStore != nil {
 		go transportRuntime.RunDataFlow(dataPlaneCtx)

@@ -51,6 +51,48 @@ func TestBatcherFlushesByCount(t *testing.T) {
 	}
 }
 
+func TestBatcherFlushAndApplyBlocksConcurrentAddUntilApplyCompletes(t *testing.T) {
+	identity := "old"
+	applyStarted := make(chan struct{})
+	releaseApply := make(chan struct{})
+	batcher := NewBatcher(func(time.Time) *dataplanev1.DataBatch {
+		return &dataplanev1.DataBatch{Header: &dataplanev1.BatchHeader{AgentId: identity}}
+	}, 10, time.Hour, 4)
+	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
+
+	transitionDone := make(chan struct{})
+	go func() {
+		batcher.FlushAndApply("identity", func() {
+			close(applyStarted)
+			<-releaseApply
+			identity = "new"
+		})
+		close(transitionDone)
+	}()
+	<-applyStarted
+
+	addDone := make(chan struct{})
+	go func() {
+		batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 2}}})
+		close(addDone)
+	}()
+	select {
+	case <-addDone:
+		t.Fatal("Add completed before identity transition")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseApply)
+	<-transitionDone
+	<-addDone
+	batcher.Flush("test")
+
+	oldBatch := <-batcher.Batches()
+	newBatch := <-batcher.Batches()
+	if oldBatch.GetHeader().GetAgentId() != "old" || newBatch.GetHeader().GetAgentId() != "new" {
+		t.Fatalf("batch identities = %q/%q", oldBatch.GetHeader().GetAgentId(), newBatch.GetHeader().GetAgentId())
+	}
+}
+
 func TestBatcherReconfigureSealsPendingBatchAndUsesNewLimits(t *testing.T) {
 	batcher := NewBatcher(nil, 10, time.Hour, 4, 256<<10)
 	batcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{eventFrame(1, "ev-1")}})

@@ -49,7 +49,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 			startedAt, _ = rest[2].(time.Time)
 		}
 		if batcher == nil {
-			batcher = telemetry.NewBatcher(r.newDataBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
+			batcher = telemetry.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 		}
 		if sender == nil {
 			sender = &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
@@ -63,7 +63,7 @@ func (r *AgentRuntime) localControlTelemetryArgs(source any, rest ...any) (*tele
 		return bus, batcher, sender, startedAt
 	}
 	bus := telemetry.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
-	batcher := telemetry.NewBatcher(r.newDataBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
+	batcher := telemetry.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
 	sender := &telemetry.Sender{Appender: localBatchSender{}, Batcher: batcher}
 	startedAt := time.Now().UTC()
 	return bus, batcher, sender, startedAt

@@ -150,6 +150,21 @@ func (b *Batcher) Flush(reason string) {
 	b.flushLocked(reason)
 }
 
+func (b *Batcher) FlushAndApply(reason string, apply func()) {
+	if b == nil {
+		if apply != nil {
+			apply()
+		}
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.flushLocked(reason)
+	if apply != nil {
+		apply()
+	}
+}
+
 func (b *Batcher) Reconfigure(settings BatchSettings) {
 	if b == nil {
 		return
