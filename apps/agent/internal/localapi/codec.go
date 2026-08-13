@@ -2,6 +2,8 @@ package localapi
 
 import (
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
+	appenrollment "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/enrollment"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/lifecycle"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -27,15 +29,23 @@ func contentCommand(req *controlplanev1.ApplyContentRequest) agentcontrol.Conten
 	}
 }
 
-func enrollmentCommand(req *controlplanev1.EnrollRequest) agentcontrol.EnrollmentCommand {
-	return agentcontrol.EnrollmentCommand{
-		Context: controlRequestContext(req.GetContext()), ManagerURL: req.GetManagerUrl(),
+func enrollmentCommand(req *controlplanev1.EnrollRequest) appenrollment.EnrollmentCommand {
+	return appenrollment.EnrollmentCommand{
+		Context: lifecycleRequestContext(req.GetContext()), ManagerURL: req.GetManagerUrl(),
 		Token: req.GetEnrollmentToken(), UploadHistory: req.GetUploadHistory(),
 	}
 }
 
-func unenrollmentCommand(req *controlplanev1.UnenrollRequest) agentcontrol.UnenrollmentCommand {
-	return agentcontrol.UnenrollmentCommand{Context: controlRequestContext(req.GetContext())}
+func unenrollmentCommand(req *controlplanev1.UnenrollRequest) appenrollment.UnenrollmentCommand {
+	return appenrollment.UnenrollmentCommand{Context: lifecycleRequestContext(req.GetContext())}
+}
+
+func lifecycleRequestContext(req *controlplanev1.RequestContext) lifecycle.RequestContext {
+	ctx := lifecycle.RequestContext{RequestID: req.GetRequestId(), TenantID: req.GetTenantId(), AgentID: req.GetAgentId()}
+	if req.GetScope() != nil {
+		ctx.Scope = &lifecycle.Scope{Type: req.GetScope().GetType(), Selector: req.GetScope().GetSelector()}
+	}
+	return ctx
 }
 
 func controlRequestContext(req *controlplanev1.RequestContext) agentcontrol.RequestContext {
@@ -59,6 +69,13 @@ func controlAck(result agentcontrol.Result) *controlplanev1.ControlAck {
 		})
 	}
 	return ack
+}
+
+func enrollmentAck(result lifecycle.Result) *controlplanev1.ControlAck {
+	return &controlplanev1.ControlAck{
+		RequestId: result.RequestID, TenantId: result.TenantID, AgentId: result.AgentID,
+		Status: string(result.Status), Message: result.Message,
+	}
 }
 
 func contentRecordMessage(record agentcontent.Record) *controlplanev1.ContentRecord {

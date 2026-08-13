@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	appenrollment "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/enrollment"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
@@ -19,7 +20,7 @@ type Dependencies struct {
 	Telemetry  TelemetryReader
 	Policy     agentcontrol.PolicyController
 	Content    agentcontrol.ContentController
-	Enrollment agentcontrol.EnrollmentController
+	Enrollment appenrollment.Controller
 	Validate   func(*controlplanev1.RequestContext) error
 }
 
@@ -111,14 +112,14 @@ func (h *Handler) Enroll(ctx context.Context, req *controlplanev1.EnrollRequest)
 	if h.deps.Enrollment == nil {
 		return nil, fmt.Errorf("local api enrollment controller is unavailable")
 	}
-	return controlAck(h.deps.Enrollment.Enroll(ctx, enrollmentCommand(req))), nil
+	return enrollmentAck(h.deps.Enrollment.Enroll(ctx, enrollmentCommand(req))), nil
 }
 
 func (h *Handler) Unenroll(ctx context.Context, req *controlplanev1.UnenrollRequest) (*controlplanev1.ControlAck, error) {
 	if h.deps.Enrollment == nil {
 		return nil, fmt.Errorf("local api enrollment controller is unavailable")
 	}
-	return controlAck(h.deps.Enrollment.Unenroll(ctx, unenrollmentCommand(req))), nil
+	return enrollmentAck(h.deps.Enrollment.Unenroll(ctx, unenrollmentCommand(req))), nil
 }
 
 func (h *Handler) validate(ctx *controlplanev1.RequestContext) error {

@@ -51,7 +51,20 @@ STANDARD_LIBRARY = {
         "sync/atomic",
         "time",
     },
-    "application": {"context", "errors", "fmt", "sort", "strings", "sync", "time"},
+    "application": {
+        "context",
+        "crypto/rand",
+        "crypto/sha256",
+        "encoding/base64",
+        "encoding/hex",
+        "errors",
+        "fmt",
+        "net/url",
+        "sort",
+        "strings",
+        "sync",
+        "time",
+    },
     "ports": {"context", "errors", "io", "time"},
 }
 ADAPTER_BRIDGE_IMPORTS = {
@@ -184,6 +197,15 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             self.assertNotIn("sensor-sdk/contract", text)
             self.assertNotIn("internal/adapters/", text)
             self.assertNotIn("any", text)
+
+    def test_enrollment_application_hides_legacy_protocols(self):
+        root = self.repo / "apps/agent/internal/application/enrollment"
+        for source in root.glob("*.go"):
+            if source.name.endswith("_test.go"):
+                continue
+            text = source.read_text()
+            self.assertNotIn("legacy_mtls", text)
+            self.assertNotIn("UnenrollmentProtocol", text)
 
     def test_policy_application_uses_typed_services_only(self):
         root = self.repo / "apps/agent/internal/application/policy"

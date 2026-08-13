@@ -208,7 +208,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_agent_control_contract_files(self):
         root = self.repo / "apps/agent/internal/control"
-        expected = ("types.go", "policy.go", "content.go", "response.go", "enrollment.go")
+        expected = ("types.go", "policy.go", "content.go", "response.go")
         for name in expected:
             with self.subTest(name=name):
                 self.assertTrue((root / name).is_file(), f"missing control/{name}")
@@ -261,10 +261,14 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         self.assertFalse((root / "daemon/content_controller.go").exists())
         self.assertFalse((root / "daemon/content_controller_runtime.go").exists())
 
-    def test_enrollment_use_case_is_owned_by_control(self):
+    def test_enrollment_use_case_is_layered(self):
         root = self.repo / "apps/agent/internal"
-        enrollment = (root / "control/enrollment.go").read_text()
-        self.assertIn("func NewEnrollmentCoordinator", enrollment)
+
+        service = (root / "application/enrollment/service.go").read_text()
+        self.assertIn("func NewService", service)
+        self.assertTrue((root / "ports/enrollment.go").is_file())
+        self.assertTrue((root / "adapters/enrollment/store.go").is_file())
+        self.assertFalse((root / "control/enrollment.go").exists())
         self.assertFalse((root / "daemon/enrollment_controller.go").exists())
         self.assertFalse((root / "daemon/enrollment_coordinator.go").exists())
 

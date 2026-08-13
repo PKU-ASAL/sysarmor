@@ -7,23 +7,17 @@ import (
 	"strings"
 	"time"
 
-	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
+	adapterenrollment "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/enrollment"
+	appenrollment "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/enrollment"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 )
 
 type enrollmentCoordinator struct {
-	*agentcontrol.EnrollmentCoordinator
+	*appenrollment.Service
 	completeUnenrollment func(context.Context, string) error
-}
-
-type enrollmentStore struct {
-	*localstore.Store
-	complete func(context.Context, string) error
-}
-
-func (s *enrollmentStore) CompleteUnenrollment(ctx context.Context, kind string) error {
-	return s.complete(ctx, kind)
 }
 
 type enrollmentRuntime struct {
@@ -32,25 +26,28 @@ type enrollmentRuntime struct {
 }
 
 type enrollmentPreparationState struct {
+	enrollment     ports.Enrollment
 	paths          credentialPaths
 	created        bool
 	pendingKeyPath string
 }
 
+func (s enrollmentPreparationState) PreparedEnrollment() ports.Enrollment { return s.enrollment }
+
 func newEnrollmentCoordinator(lifecycleCtx context.Context, runner *AgentRuntime, runtime sensorruntime.Runtime) *enrollmentCoordinator {
 	coordinator := &enrollmentCoordinator{}
 	if runner.localStore == nil {
-		coordinator.EnrollmentCoordinator = agentcontrol.NewEnrollmentCoordinator(lifecycleCtx, nil, newEnrollmentRuntime(runner, runtime))
+		coordinator.Service = appenrollment.NewService(lifecycleCtx, nil, newEnrollmentRuntime(runner, runtime))
 		return coordinator
 	}
-	store := &enrollmentStore{Store: runner.localStore}
-	store.complete = func(ctx context.Context, kind string) error {
+	complete := func(ctx context.Context, kind string) error {
 		if coordinator.completeUnenrollment != nil {
 			return coordinator.completeUnenrollment(ctx, kind)
 		}
 		return runner.localStore.CompleteUnenrollment(ctx, kind)
 	}
-	coordinator.EnrollmentCoordinator = agentcontrol.NewEnrollmentCoordinator(lifecycleCtx, store, newEnrollmentRuntime(runner, runtime))
+	store := adapterenrollment.NewStore(runner.localStore, complete)
+	coordinator.Service = appenrollment.NewService(lifecycleCtx, store, newEnrollmentRuntime(runner, runtime))
 	return coordinator
 }
 
@@ -58,40 +55,39 @@ func newEnrollmentRuntime(runner *AgentRuntime, runtime sensorruntime.Runtime) *
 	return &enrollmentRuntime{runner: runner, runtime: runtime}
 }
 
-func (r *enrollmentRuntime) EnrollmentIdentity() agentcontrol.EnrollmentIdentity {
+func (r *enrollmentRuntime) Identity() ports.EnrollmentIdentity {
 	identity := r.runner.currentIdentity()
-	return agentcontrol.EnrollmentIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
+	return ports.EnrollmentIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
-func (r *enrollmentRuntime) PrepareEnrollment(ctx context.Context, managerURL, token string) (agentcontrol.EnrollmentPreparation, error) {
+func (r *enrollmentRuntime) PrepareEnrollment(ctx context.Context, managerURL, token string) (ports.EnrollmentPreparation, error) {
 	certificate, keyPEM, pendingKeyPath, err := requestEnrollmentCertificate(ctx, managerURL, token, r.runner.Config.Local.StatePath)
 	if err != nil {
-		return agentcontrol.EnrollmentPreparation{}, err
+		return nil, err
 	}
 	paths, created, err := writeEnrollmentCredentials(r.runner.Config.Local.StatePath, certificate, keyPEM)
 	if err != nil {
-		return agentcontrol.EnrollmentPreparation{}, fmt.Errorf("write credentials: %v", err)
+		return nil, fmt.Errorf("write credentials: %v", err)
 	}
-	enrollment := localstore.Enrollment{
-		State: localstore.StateEnrolling, TenantID: certificate.TenantID, AgentID: certificate.AgentID,
+	enrollment := ports.Enrollment{
+		State: management.StateEnrolling, TenantID: certificate.TenantID, AgentID: certificate.AgentID,
 		EnrollmentID: certificate.EnrollmentID, CertificateSerial: certificate.SerialNumber, ManagerURL: managerURL,
 		GatewayAddress: certificate.GatewayAddress, TLSCAPath: paths.CA, TLSCertPath: paths.Certificate,
 		TLSKeyPath: paths.Key, TLSServerName: certificate.GatewayServerName,
 	}
-	state := enrollmentPreparationState{paths: paths, created: created, pendingKeyPath: pendingKeyPath}
-	return agentcontrol.EnrollmentPreparation{Enrollment: enrollment, Handle: state}, nil
+	return enrollmentPreparationState{enrollment: enrollment, paths: paths, created: created, pendingKeyPath: pendingKeyPath}, nil
 }
 
-func (r *enrollmentRuntime) RollbackEnrollment(preparation agentcontrol.EnrollmentPreparation, cause error) error {
-	state, ok := preparation.Handle.(enrollmentPreparationState)
+func (r *enrollmentRuntime) RollbackEnrollment(preparation ports.EnrollmentPreparation, cause error) error {
+	state, ok := preparation.(enrollmentPreparationState)
 	if !ok {
 		return cause
 	}
 	return rollbackEnrollmentFailure(state.paths, state.created, cause)
 }
 
-func (r *enrollmentRuntime) FinalizeEnrollment(preparation agentcontrol.EnrollmentPreparation) {
-	state, ok := preparation.Handle.(enrollmentPreparationState)
+func (r *enrollmentRuntime) FinalizeEnrollment(preparation ports.EnrollmentPreparation) {
+	state, ok := preparation.(enrollmentPreparationState)
 	if !ok || state.pendingKeyPath == "" {
 		return
 	}
@@ -106,8 +102,8 @@ func (r *enrollmentRuntime) StopEnrollmentNetwork() {
 	}
 }
 
-func (r *enrollmentRuntime) ReconcileEnrollment(enrollment localstore.Enrollment) error {
-	return r.runner.reconcileManagementContext(enrollment)
+func (r *enrollmentRuntime) ReconcileEnrollment(enrollment ports.Enrollment) error {
+	return r.runner.reconcileManagementContext(localEnrollment(enrollment))
 }
 
 func (r *enrollmentRuntime) WithPolicyAuthority(run func() error) error {
@@ -116,23 +112,36 @@ func (r *enrollmentRuntime) WithPolicyAuthority(run func() error) error {
 	return run()
 }
 
-func (r *enrollmentRuntime) RevokeEnrollment(ctx context.Context, enrollment localstore.Enrollment, tokenHash string) (string, time.Time, error) {
+func (r *enrollmentRuntime) RevokeEnrollment(ctx context.Context, enrollment ports.Enrollment, tokenHash string) (string, time.Time, error) {
 	if r.runner.revokeEnrollment != nil {
-		return r.runner.revokeEnrollment(ctx, enrollment, tokenHash)
+		return r.runner.revokeEnrollment(ctx, localEnrollment(enrollment), tokenHash)
 	}
-	return revokeEnrollmentOnline(ctx, enrollment, tokenHash)
+	return revokeEnrollmentOnline(ctx, localEnrollment(enrollment), tokenHash)
 }
 
 func (r *enrollmentRuntime) RestoreStandalonePolicy(ctx context.Context, activate func(context.Context) error) error {
 	return newEndpointPolicyApplication(r.runner, r.runtime, nil).RestoreStandalone(ctx, activate)
 }
 
-func (r *enrollmentRuntime) RemoveEnrollmentCredentials(enrollment localstore.Enrollment) error {
+func (r *enrollmentRuntime) RemoveEnrollmentCredentials(enrollment ports.Enrollment) error {
 	paths := credentialPaths{CA: enrollment.TLSCAPath, Certificate: enrollment.TLSCertPath, Key: enrollment.TLSKeyPath}
 	if failures := removeCredentials(paths); len(failures) > 0 {
 		return fmt.Errorf("remove enrollment credentials: %s", strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+func localEnrollment(value ports.Enrollment) localstore.Enrollment {
+	return localstore.Enrollment{
+		State: value.State, TenantID: value.TenantID, AgentID: value.AgentID,
+		EnrollmentID: value.EnrollmentID, CertificateSerial: value.CertificateSerial,
+		ManagerURL:     value.ManagerURL,
+		GatewayAddress: value.GatewayAddress, TLSCAPath: value.TLSCAPath,
+		TLSCertPath: value.TLSCertPath, TLSKeyPath: value.TLSKeyPath,
+		TLSServerName: value.TLSServerName, UploadHistory: value.UploadHistory,
+		ManagedFromSequence: value.ManagedFromSequence, RevocationConfirmed: value.RevocationConfirmed,
+		RevokedAt: value.RevokedAt, RevocationReceipt: value.RevocationReceipt,
+	}
 }
 
 func (r *enrollmentRuntime) ReportUnenrollmentCompletion(ctx context.Context) (bool, error) {
