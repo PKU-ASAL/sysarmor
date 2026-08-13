@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
@@ -241,7 +242,7 @@ func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contra
 		engine.rules[rule.spec.RuleID] = rule
 		report.RuleIDs = append(report.RuleIDs, rule.spec.RuleID)
 	}
-	errs := append(validateEffectiveRules(engine.rules), validateRuleSpecs(rules)...)
+	errs := detectioncompiler.Validate(domainRules(rules))
 	errs = append(errs, validateContentRefs(rules, content)...)
 	if len(errs) > 0 {
 		report.Status = "rejected"
@@ -300,38 +301,6 @@ func validateRuleSelection(policy *policymodel.DetectionPolicy, content ContentS
 		seen[rule.spec.RuleID] = true
 	}
 	return errs
-}
-
-func validateEffectiveRules(rules map[string]effectiveRule) []string {
-	var out []string
-	for _, rule := range rules {
-		runtimeType := rule.runtimeType()
-		switch runtimeType {
-		case "", "expr", "sequence", "correlate":
-		default:
-			out = append(out, fmt.Sprintf("rule %s has unsupported runtime type %q", rule.spec.RuleID, runtimeType))
-		}
-		if runtimeType == "expr" && len(rule.spec.Expr.Conditions) == 0 && rule.spec.Expr.ConditionGroup == nil {
-			out = append(out, fmt.Sprintf("rule %s expr runtime requires conditions", rule.spec.RuleID))
-		}
-		if runtimeType == "sequence" {
-			if len(rule.spec.Sequence.Steps) == 0 {
-				out = append(out, fmt.Sprintf("rule %s sequence runtime requires steps", rule.spec.RuleID))
-			}
-			for _, step := range rule.spec.Sequence.Steps {
-				if strings.TrimSpace(step.ID) == "" {
-					out = append(out, fmt.Sprintf("rule %s sequence step id is required", rule.spec.RuleID))
-				}
-				if strings.TrimSpace(step.Behavior) == "" {
-					out = append(out, fmt.Sprintf("rule %s sequence step %s behavior is required", rule.spec.RuleID, step.ID))
-				}
-			}
-		}
-		if runtimeType == "correlate" && len(rule.spec.Correlate.Facts) == 0 {
-			out = append(out, fmt.Sprintf("rule %s correlate runtime requires facts", rule.spec.RuleID))
-		}
-	}
-	return out
 }
 
 func normalizeLimits(limits EngineLimits) EngineLimits {
@@ -763,41 +732,38 @@ func (e *Engine) matchCondition(ev *eventv1.CanonicalEvent, cond ConditionSpec, 
 	if cond.Ref != "" {
 		values = append(values, e.contentValues(cond.Ref)...)
 	}
-	op := strings.ToLower(strings.TrimSpace(cond.Op))
-	if op == "" {
-		op = "eq"
-	}
+	op := detectioncompiler.ParseOperator(cond.Op)
 	switch op {
-	case "eq", "equals":
+	case detectioncompiler.OperatorEqual:
 		return e.recordConditionResult(containsString(values, actual))
-	case "neq", "not_eq":
+	case detectioncompiler.OperatorNotEqual:
 		return e.recordConditionResult(!containsString(values, actual))
-	case "contains":
+	case detectioncompiler.OperatorContains:
 		for _, value := range values {
 			if value != "" && strings.Contains(actual, value) {
 				return e.recordConditionResult(true)
 			}
 		}
 		return e.recordConditionResult(false)
-	case "prefix", "has_prefix":
+	case detectioncompiler.OperatorPrefix:
 		for _, value := range values {
 			if value != "" && strings.HasPrefix(actual, value) {
 				return e.recordConditionResult(true)
 			}
 		}
 		return e.recordConditionResult(false)
-	case "suffix", "has_suffix":
+	case detectioncompiler.OperatorSuffix:
 		for _, value := range values {
 			if value != "" && strings.HasSuffix(actual, value) {
 				return e.recordConditionResult(true)
 			}
 		}
 		return e.recordConditionResult(false)
-	case "in":
+	case detectioncompiler.OperatorIn:
 		return e.recordConditionResult(containsString(values, actual))
-	case "not_in":
+	case detectioncompiler.OperatorNotIn:
 		return e.recordConditionResult(!containsString(values, actual))
-	case "same_as":
+	case detectioncompiler.OperatorSameAs:
 		if st == nil || cond.Step == "" {
 			return e.recordConditionResult(false)
 		}
@@ -805,12 +771,13 @@ func (e *Engine) matchCondition(ev *eventv1.CanonicalEvent, cond ConditionSpec, 
 		if stepValues == nil {
 			return e.recordConditionResult(false)
 		}
-		stepField := firstNonEmpty(cond.StepField, cond.Field)
+		stepField := fieldName(detectioncompiler.ParseField(firstNonEmpty(cond.StepField, cond.Field)))
 		return e.recordConditionResult(actual != "" && actual == stepValues[stepField])
-	case "exists":
+	case detectioncompiler.OperatorExists:
 		return e.recordConditionResult(actual != "")
-	case "gt", "gte", "lt", "lte":
-		return e.recordConditionResult(compareNumber(actual, firstValue(values), op))
+	case detectioncompiler.OperatorGreaterThan, detectioncompiler.OperatorGreaterThanOrEqual,
+		detectioncompiler.OperatorLessThan, detectioncompiler.OperatorLessThanOrEqual:
+		return e.recordConditionResult(compareNumber(actual, firstValue(values), opString(op)))
 	default:
 		return e.recordConditionResult(false)
 	}
@@ -865,60 +832,65 @@ func eventFieldMap(ev *eventv1.CanonicalEvent) map[string]string {
 }
 
 func eventField(ev *eventv1.CanonicalEvent, field string) string {
+	return eventFieldByID(ev, detectioncompiler.ParseField(field))
+}
+
+func eventFieldByID(ev *eventv1.CanonicalEvent, field detectioncompiler.Field) string {
 	if ev == nil {
 		return ""
 	}
-	field = strings.TrimSpace(field)
 	switch field {
-	case "event.id", "id":
+	case detectioncompiler.FieldEventID:
 		return ev.GetId()
-	case "event.behavior", "behavior":
+	case detectioncompiler.FieldBehavior:
 		return ev.GetBehavior()
-	case "lineage_id", "lineage.id":
+	case detectioncompiler.FieldLineageID:
 		return ev.GetLineageId()
-	case "process.stable_id", "process.id":
+	case detectioncompiler.FieldProcessStableID:
 		return ev.GetSubjectProc().GetStableId()
-	case "process.binary", "binary":
+	case detectioncompiler.FieldProcessBinary:
 		return ev.GetSubjectProc().GetBinary()
-	case "process.argv", "argv":
+	case detectioncompiler.FieldProcessBinaryName:
+		return filepath.Base(ev.GetSubjectProc().GetBinary())
+	case detectioncompiler.FieldProcessArgv:
 		return strings.Join(ev.GetSubjectProc().GetArgv(), " ")
-	case "process.sudo_command":
+	case detectioncompiler.FieldProcessSudoCommand:
 		if filepath.Base(ev.GetSubjectProc().GetBinary()) != "sudo" || !ev.GetSubjectProc().GetArgvBoundariesTrusted() {
 			return ""
 		}
 		return sudoCommand(ev.GetSubjectProc().GetArgv())
-	case "process.uid", "uid":
+	case detectioncompiler.FieldProcessUID:
 		return strconv.FormatUint(uint64(ev.GetSubjectProc().GetUid()), 10)
-	case "process.pid", "pid":
+	case detectioncompiler.FieldProcessPID:
 		if ev.GetSubjectProc().GetPid() == 0 {
 			return ""
 		}
 		return strconv.FormatUint(uint64(ev.GetSubjectProc().GetPid()), 10)
-	case "parent.stable_id", "parent.id":
+	case detectioncompiler.FieldParentStableID:
 		return ev.GetParentStableId()
-	case "file.path", "object.file_path":
+	case detectioncompiler.FieldFilePath:
 		return ev.GetObject().GetFilePath()
-	case "socket.addr", "object.socket_addr":
+	case detectioncompiler.FieldSocketAddr:
 		addr, _, ok := strings.Cut(ev.GetObject().GetSocketAddr(), ":")
 		if ok {
 			return addr
 		}
 		return ev.GetObject().GetSocketAddr()
-	case "socket.port":
+	case detectioncompiler.FieldSocketPort:
 		_, port, ok := strings.Cut(ev.GetObject().GetSocketAddr(), ":")
 		if ok {
 			return port
 		}
 		return ""
-	case "socket":
+	case detectioncompiler.FieldSocket:
 		return ev.GetObject().GetSocketAddr()
-	case "scope.type":
+	case detectioncompiler.FieldScopeType:
 		return ev.GetScope().GetType()
-	case "scope.selector":
+	case detectioncompiler.FieldScopeSelector:
 		return ev.GetScope().GetSelector()
-	case "container.id", "container_id":
+	case detectioncompiler.FieldContainerID:
 		return ev.GetContainerId()
-	case "cgroup":
+	case detectioncompiler.FieldCgroup:
 		return ev.GetCgroup()
 	default:
 		return ""

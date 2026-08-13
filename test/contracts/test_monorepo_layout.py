@@ -114,10 +114,11 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         root = self.repo / "apps/agent/internal"
         expected = (
             "domain/event",
+            "domain/detection/compiler",
+            "domain/detection/matcher",
             "adapters/contracts",
             "adapters/sensor/tetragon",
             "detection",
-            "detection/matcher",
             "telemetry/dataappend",
             "telemetry/ringbuffer",
         )

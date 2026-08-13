@@ -169,6 +169,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertTrue((root / "domain/detection/matcher").is_dir())
         self.assertFalse((root / "detection/matcher").exists())
 
+    def test_agent_detection_compiler_is_layered(self):
+        root = self.repo / "apps/agent/internal"
+        self.assertTrue((root / "domain/detection/compiler").is_dir())
+        self.assertFalse((root / "detection/validation.go").exists())
+
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []
         for product in ("agent", "manager"):

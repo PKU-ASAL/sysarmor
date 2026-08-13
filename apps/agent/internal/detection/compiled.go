@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	detectioncompiler "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/compiler"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/eventmodel"
@@ -68,22 +69,22 @@ type compiledSequenceCandidate struct {
 	firstStep bool
 }
 
-type conditionOp uint8
+type conditionOp = detectioncompiler.Operator
 
 const (
-	opEq conditionOp = iota + 1
-	opNeq
-	opContains
-	opPrefix
-	opSuffix
-	opIn
-	opNotIn
-	opSameAs
-	opExists
-	opGT
-	opGTE
-	opLT
-	opLTE
+	opEq       = detectioncompiler.OperatorEqual
+	opNeq      = detectioncompiler.OperatorNotEqual
+	opContains = detectioncompiler.OperatorContains
+	opPrefix   = detectioncompiler.OperatorPrefix
+	opSuffix   = detectioncompiler.OperatorSuffix
+	opIn       = detectioncompiler.OperatorIn
+	opNotIn    = detectioncompiler.OperatorNotIn
+	opSameAs   = detectioncompiler.OperatorSameAs
+	opExists   = detectioncompiler.OperatorExists
+	opGT       = detectioncompiler.OperatorGreaterThan
+	opGTE      = detectioncompiler.OperatorGreaterThanOrEqual
+	opLT       = detectioncompiler.OperatorLessThan
+	opLTE      = detectioncompiler.OperatorLessThanOrEqual
 )
 
 type compiledCondition struct {
@@ -96,29 +97,29 @@ type compiledCondition struct {
 	cost      int
 }
 
-type fieldID uint8
+type fieldID = detectioncompiler.Field
 
 const (
-	fieldUnknown fieldID = iota
-	fieldEventID
-	fieldBehavior
-	fieldLineageID
-	fieldProcessStableID
-	fieldProcessBinary
-	fieldProcessBinaryName
-	fieldProcessArgv
-	fieldProcessSudoCommand
-	fieldProcessUID
-	fieldProcessPID
-	fieldParentStableID
-	fieldFilePath
-	fieldSocketAddr
-	fieldSocketPort
-	fieldSocket
-	fieldScopeType
-	fieldScopeSelector
-	fieldContainerID
-	fieldCgroup
+	fieldUnknown            = detectioncompiler.FieldUnknown
+	fieldEventID            = detectioncompiler.FieldEventID
+	fieldBehavior           = detectioncompiler.FieldBehavior
+	fieldLineageID          = detectioncompiler.FieldLineageID
+	fieldProcessStableID    = detectioncompiler.FieldProcessStableID
+	fieldProcessBinary      = detectioncompiler.FieldProcessBinary
+	fieldProcessBinaryName  = detectioncompiler.FieldProcessBinaryName
+	fieldProcessArgv        = detectioncompiler.FieldProcessArgv
+	fieldProcessSudoCommand = detectioncompiler.FieldProcessSudoCommand
+	fieldProcessUID         = detectioncompiler.FieldProcessUID
+	fieldProcessPID         = detectioncompiler.FieldProcessPID
+	fieldParentStableID     = detectioncompiler.FieldParentStableID
+	fieldFilePath           = detectioncompiler.FieldFilePath
+	fieldSocketAddr         = detectioncompiler.FieldSocketAddr
+	fieldSocketPort         = detectioncompiler.FieldSocketPort
+	fieldSocket             = detectioncompiler.FieldSocket
+	fieldScopeType          = detectioncompiler.FieldScopeType
+	fieldScopeSelector      = detectioncompiler.FieldScopeSelector
+	fieldContainerID        = detectioncompiler.FieldContainerID
+	fieldCgroup             = detectioncompiler.FieldCgroup
 )
 
 type eventView struct {
@@ -453,81 +454,11 @@ func compileFields(fields []string) []fieldID {
 }
 
 func compileField(field string) fieldID {
-	switch strings.TrimSpace(field) {
-	case "event.id", "id":
-		return fieldEventID
-	case "event.behavior", "behavior":
-		return fieldBehavior
-	case "lineage_id", "lineage.id":
-		return fieldLineageID
-	case "process.stable_id", "process.id":
-		return fieldProcessStableID
-	case "process.binary", "binary":
-		return fieldProcessBinary
-	case "process.binary_name", "binary_name":
-		return fieldProcessBinaryName
-	case "process.argv", "argv":
-		return fieldProcessArgv
-	case "process.sudo_command":
-		return fieldProcessSudoCommand
-	case "process.uid", "uid":
-		return fieldProcessUID
-	case "process.pid", "pid":
-		return fieldProcessPID
-	case "parent.stable_id", "parent.id":
-		return fieldParentStableID
-	case "file.path", "object.file_path":
-		return fieldFilePath
-	case "socket.addr", "object.socket_addr":
-		return fieldSocketAddr
-	case "socket.port":
-		return fieldSocketPort
-	case "socket":
-		return fieldSocket
-	case "scope.type":
-		return fieldScopeType
-	case "scope.selector":
-		return fieldScopeSelector
-	case "container.id", "container_id":
-		return fieldContainerID
-	case "cgroup":
-		return fieldCgroup
-	default:
-		return fieldUnknown
-	}
+	return detectioncompiler.ParseField(field)
 }
 
 func compileOp(op string) conditionOp {
-	switch strings.ToLower(strings.TrimSpace(op)) {
-	case "", "eq", "equals":
-		return opEq
-	case "neq", "not_eq":
-		return opNeq
-	case "contains":
-		return opContains
-	case "prefix", "has_prefix":
-		return opPrefix
-	case "suffix", "has_suffix":
-		return opSuffix
-	case "in":
-		return opIn
-	case "not_in":
-		return opNotIn
-	case "same_as":
-		return opSameAs
-	case "exists":
-		return opExists
-	case "gt":
-		return opGT
-	case "gte":
-		return opGTE
-	case "lt":
-		return opLT
-	case "lte":
-		return opLTE
-	default:
-		return 0
-	}
+	return detectioncompiler.ParseOperator(op)
 }
 
 func newEventView(ev *eventv1.CanonicalEvent) eventView {
