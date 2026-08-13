@@ -2,106 +2,51 @@ package control
 
 import (
 	"context"
-	"errors"
 	"testing"
-	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 )
 
-type recordingTelemetryPolicyRuntime struct {
-	identity       PolicyIdentity
-	baseline       config.TelemetryConfig
-	persistErr     error
-	beginMutations []bool
-	events         []string
-	persisted      policymodel.TelemetryPolicy
-	activated      config.EffectiveTelemetry
+type telemetryApplicationFake struct {
+	validated, activated, mutation bool
+	input                          *applicationpolicy.TelemetryInput
+	candidate                      applicationpolicy.TelemetryCandidate
 }
 
-func (r *recordingTelemetryPolicyRuntime) PolicyIdentity() PolicyIdentity { return r.identity }
-func (*recordingTelemetryPolicyRuntime) ValidatePolicyContext(RequestContext) error {
-	return nil
+func (*telemetryApplicationFake) PolicyIdentity() PolicyIdentity {
+	return PolicyIdentity{TenantID: "tenant-a", AgentID: "agent-a"}
 }
-func (r *recordingTelemetryPolicyRuntime) BeginLocalPolicyMutation(_ context.Context, mutation bool) (func(), error) {
-	r.beginMutations = append(r.beginMutations, mutation)
+func (*telemetryApplicationFake) ValidatePolicyContext(RequestContext) error { return nil }
+func (f *telemetryApplicationFake) BeginLocalPolicyMutation(_ context.Context, mutation bool) (func(), error) {
+	f.mutation = mutation
 	return func() {}, nil
 }
-func (r *recordingTelemetryPolicyRuntime) TelemetryPolicyBaseline() config.TelemetryConfig {
-	return r.baseline
+func (f *telemetryApplicationFake) ValidateTelemetry(_ context.Context, _ string, input *applicationpolicy.TelemetryInput) (applicationpolicy.TelemetryCandidate, error) {
+	f.validated = true
+	f.input = input
+	return f.candidate, nil
 }
-func (r *recordingTelemetryPolicyRuntime) PersistTelemetryPolicy(_ context.Context, policy policymodel.TelemetryPolicy) error {
-	r.events = append(r.events, "persist")
-	r.persisted = policy
-	return r.persistErr
-}
-func (r *recordingTelemetryPolicyRuntime) ActivateTelemetryPolicy(effective config.EffectiveTelemetry) {
-	r.events = append(r.events, "activate")
-	r.activated = effective
+func (f *telemetryApplicationFake) ActivateTelemetry(_ context.Context, _ string, input *applicationpolicy.TelemetryInput) (applicationpolicy.TelemetryCandidate, error) {
+	f.activated = true
+	f.input = input
+	return f.candidate, nil
 }
 
-func TestTelemetryPolicyPersistsBeforeActivation(t *testing.T) {
-	runtime := newRecordingTelemetryPolicyRuntime()
-	command := telemetryPolicyCommand()
+type controlTelemetryCandidate struct{}
 
-	result := NewTelemetryPolicyController(runtime).Apply(t.Context(), command)
+func (controlTelemetryCandidate) ReportJSON() string { return `{"telemetry":{}}` }
 
-	if result.Status != "applied" || len(runtime.events) != 2 || runtime.events[0] != "persist" || runtime.events[1] != "activate" {
-		t.Fatalf("result=%+v events=%v", result, runtime.events)
-	}
-	if runtime.activated.MaxBatchItems != 64 || runtime.activated.MaxBatchBytes != 128<<10 || runtime.activated.FlushInterval != 2*time.Second {
-		t.Fatalf("activated=%+v", runtime.activated)
+func TestTelemetryControlDelegatesStructuredInput(t *testing.T) {
+	application := &telemetryApplicationFake{candidate: controlTelemetryCandidate{}}
+	result := NewTelemetryPolicyController(application).Apply(t.Context(), PolicyCommand{Telemetry: &TelemetryPolicy{MaxBatchItems: 64}})
+	if !application.activated || !application.mutation || application.input.MaxBatchItems != 64 || result.Status != "applied" {
+		t.Fatalf("result=%+v application=%+v", result, application)
 	}
 }
-
-func TestTelemetryPolicyPersistenceFailureDoesNotActivate(t *testing.T) {
-	runtime := newRecordingTelemetryPolicyRuntime()
-	runtime.persistErr = errors.New("sqlite commit failed")
-
-	result := NewTelemetryPolicyController(runtime).Apply(t.Context(), telemetryPolicyCommand())
-
-	if result.Status != "rejected" || len(runtime.events) != 1 || runtime.events[0] != "persist" {
-		t.Fatalf("result=%+v events=%v", result, runtime.events)
-	}
-}
-
-func TestTelemetryPolicyDryRunHasNoSideEffects(t *testing.T) {
-	runtime := newRecordingTelemetryPolicyRuntime()
-	command := telemetryPolicyCommand()
-	command.DryRun = true
-
-	result := NewTelemetryPolicyController(runtime).Apply(t.Context(), command)
-
-	if result.Status != "validated" || len(runtime.events) != 0 || len(runtime.beginMutations) != 1 || runtime.beginMutations[0] {
-		t.Fatalf("result=%+v runtime=%+v", result, runtime)
-	}
-}
-
-func TestTelemetryPolicyAcceptsNestedDocument(t *testing.T) {
-	runtime := newRecordingTelemetryPolicyRuntime()
-	command := telemetryPolicyCommand()
-	command.Document = `{"telemetry":{"max_batch_items":32,"max_batch_bytes":65536,"flush_interval":"1s"}}`
-	command.Telemetry = nil
-
-	result := NewTelemetryPolicyController(runtime).Apply(t.Context(), command)
-
-	if result.Status != "applied" || runtime.persisted.MaxBatchItems != 32 || runtime.persisted.MaxBatchBytes != 65536 || runtime.persisted.FlushInterval != "1s" {
-		t.Fatalf("result=%+v persisted=%+v", result, runtime.persisted)
-	}
-}
-
-func newRecordingTelemetryPolicyRuntime() *recordingTelemetryPolicyRuntime {
-	return &recordingTelemetryPolicyRuntime{
-		identity: PolicyIdentity{TenantID: "tenant-a", AgentID: "agent-a"},
-		baseline: config.DefaultTelemetryConfig(),
-	}
-}
-
-func telemetryPolicyCommand() PolicyCommand {
-	return PolicyCommand{
-		Context:    RequestContext{RequestID: "request-a", TenantID: "tenant-a", AgentID: "agent-a"},
-		PolicyType: "telemetry", Source: PolicySourceStandalone,
-		Telemetry: &TelemetryPolicy{MaxBatchItems: 64, MaxBatchBytes: 128 << 10, FlushInterval: "2s"},
+func TestTelemetryControlDryRunOnlyValidates(t *testing.T) {
+	application := &telemetryApplicationFake{candidate: controlTelemetryCandidate{}}
+	result := NewTelemetryPolicyController(application).Apply(t.Context(), PolicyCommand{Document: "{}", DryRun: true})
+	if !application.validated || application.activated || application.mutation || result.Status != "validated" {
+		t.Fatalf("result=%+v application=%+v", result, application)
 	}
 }

@@ -21,7 +21,7 @@ func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
 		newEndpointPolicyApplication(runner, nil, nil),
 		newCollectionPolicyApplication(runner, nil),
 		newDetectionPolicyApplication(runner),
-		newTelemetryPolicyRuntime(runner, nil),
+		newTelemetryPolicyApplication(runner, nil),
 		newPolicyProjectionRuntime(runner),
 	}
 	for _, runtime := range policyRuntimes {

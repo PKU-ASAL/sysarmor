@@ -1,11 +1,6 @@
 package control
 
-import (
-	"encoding/json"
-
-	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
-)
+import applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 
 func endpointApplicationResult(identity PolicyIdentity, requestID string, candidate applicationpolicy.EndpointCandidate, report applicationpolicy.EndpointReport) Result {
 	status := report.Status
@@ -38,12 +33,12 @@ func rejectedPolicyResult(identity PolicyIdentity, requestID, section, message s
 	}
 }
 
-func telemetryPolicyResult(identity PolicyIdentity, requestID, status, message string, policy policymodel.TelemetryPolicy) Result {
-	report, _ := json.Marshal(map[string]any{"telemetry": policy})
+func telemetryApplicationResult(identity PolicyIdentity, requestID, status, message string, candidate applicationpolicy.TelemetryCandidate) Result {
+	reportJSON := candidate.ReportJSON()
 	return Result{
 		RequestID: requestID, TenantID: identity.TenantID, AgentID: identity.AgentID,
-		Status: status, Message: message, ReportJSON: string(report),
-		Sections: []SectionResult{{Name: "telemetry", Status: status, Message: message, ReportJSON: string(report)}},
+		Status: status, Message: message, ReportJSON: reportJSON,
+		Sections: []SectionResult{{Name: "telemetry", Status: status, Message: message, ReportJSON: reportJSON}},
 	}
 }
 

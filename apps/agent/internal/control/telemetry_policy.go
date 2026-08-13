@@ -2,100 +2,54 @@ package control
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"strings"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
 )
 
-type TelemetryPolicyRuntime interface {
+type TelemetryApplication interface {
 	PolicyIdentity() PolicyIdentity
 	ValidatePolicyContext(RequestContext) error
 	BeginLocalPolicyMutation(context.Context, bool) (func(), error)
-	TelemetryPolicyBaseline() config.TelemetryConfig
-	PersistTelemetryPolicy(context.Context, policymodel.TelemetryPolicy) error
-	ActivateTelemetryPolicy(config.EffectiveTelemetry)
+	ValidateTelemetry(context.Context, string, *applicationpolicy.TelemetryInput) (applicationpolicy.TelemetryCandidate, error)
+	ActivateTelemetry(context.Context, string, *applicationpolicy.TelemetryInput) (applicationpolicy.TelemetryCandidate, error)
 }
 
-type TelemetryPolicyController struct {
-	runtime TelemetryPolicyRuntime
-}
+type TelemetryPolicyController struct{ application TelemetryApplication }
 
-func NewTelemetryPolicyController(runtime TelemetryPolicyRuntime) *TelemetryPolicyController {
-	return &TelemetryPolicyController{runtime: runtime}
+func NewTelemetryPolicyController(application TelemetryApplication) *TelemetryPolicyController {
+	return &TelemetryPolicyController{application: application}
 }
 
 func (c *TelemetryPolicyController) Apply(ctx context.Context, command PolicyCommand) Result {
-	identity := c.runtime.PolicyIdentity()
-	if err := c.runtime.ValidatePolicyContext(command.Context); err != nil {
+	identity := c.application.PolicyIdentity()
+	if err := c.application.ValidatePolicyContext(command.Context); err != nil {
 		return rejectedPolicyResult(identity, command.Context.RequestID, "policy", err.Error())
 	}
-	release, err := c.runtime.BeginLocalPolicyMutation(ctx, !command.DryRun)
+	release, err := c.application.BeginLocalPolicyMutation(ctx, !command.DryRun)
 	if err != nil {
 		return rejectedPolicyResult(identity, command.Context.RequestID, "telemetry", err.Error())
 	}
 	defer release()
-	policy, effective, err := c.prepare(command)
-	if err != nil {
-		return rejectedPolicyResult(identity, command.Context.RequestID, "telemetry", err.Error())
-	}
+	input := telemetryApplicationInput(command.Telemetry)
 	if command.DryRun {
-		return telemetryPolicyResult(identity, command.Context.RequestID, "validated", "telemetry policy accepted in dry-run", policy)
+		candidate, err := c.application.ValidateTelemetry(ctx, command.Document, input)
+		if err != nil {
+			return rejectedPolicyResult(identity, command.Context.RequestID, "telemetry", err.Error())
+		}
+		return telemetryApplicationResult(identity, command.Context.RequestID, "validated", "telemetry policy accepted in dry-run", candidate)
 	}
-	if err := c.runtime.PersistTelemetryPolicy(ctx, policy); err != nil {
+	candidate, err := c.application.ActivateTelemetry(ctx, command.Document, input)
+	if err != nil {
 		return rejectedPolicyResult(identity, command.Context.RequestID, "telemetry", err.Error())
 	}
-	c.runtime.ActivateTelemetryPolicy(effective)
-	return telemetryPolicyResult(identity, command.Context.RequestID, "applied", "telemetry policy applied", policy)
+	return telemetryApplicationResult(identity, command.Context.RequestID, "applied", "telemetry policy applied", candidate)
 }
 
-func (c *TelemetryPolicyController) prepare(command PolicyCommand) (policymodel.TelemetryPolicy, config.EffectiveTelemetry, error) {
-	policy, err := parseTelemetryPolicy(command)
-	if err != nil {
-		return policymodel.TelemetryPolicy{}, config.EffectiveTelemetry{}, err
-	}
-	if _, err := config.ResolveTelemetry(config.DefaultTelemetryConfig(), &policy); err != nil {
-		return policymodel.TelemetryPolicy{}, config.EffectiveTelemetry{}, err
-	}
-	effective, err := config.ResolveTelemetry(c.runtime.TelemetryPolicyBaseline(), &policy)
-	return policy, effective, err
-}
-
-func parseTelemetryPolicy(command PolicyCommand) (policymodel.TelemetryPolicy, error) {
-	var policy *policymodel.TelemetryPolicy
-	if strings.TrimSpace(command.Document) != "" {
-		parsed, err := parseTelemetryDocument(command.Document)
-		if err != nil {
-			return policymodel.TelemetryPolicy{}, err
-		}
-		policy = &parsed
-	}
-	if command.Telemetry != nil {
-		policy = &policymodel.TelemetryPolicy{
-			MaxBatchItems: int(command.Telemetry.MaxBatchItems), MaxBatchBytes: int(command.Telemetry.MaxBatchBytes),
-			FlushInterval: command.Telemetry.FlushInterval,
-		}
-	}
+func telemetryApplicationInput(policy *TelemetryPolicy) *applicationpolicy.TelemetryInput {
 	if policy == nil {
-		return policymodel.TelemetryPolicy{}, fmt.Errorf("telemetry policy is required")
+		return nil
 	}
-	return *policy, nil
-}
-
-func parseTelemetryDocument(document string) (policymodel.TelemetryPolicy, error) {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(document), &raw); err != nil {
-		return policymodel.TelemetryPolicy{}, fmt.Errorf("invalid telemetry policy json: %w", err)
+	return &applicationpolicy.TelemetryInput{
+		MaxBatchItems: policy.MaxBatchItems, MaxBatchBytes: policy.MaxBatchBytes, FlushInterval: policy.FlushInterval,
 	}
-	payload := []byte(document)
-	if nested, ok := raw["telemetry"]; ok {
-		payload = nested
-	}
-	var policy policymodel.TelemetryPolicy
-	if err := json.Unmarshal(payload, &policy); err != nil {
-		return policymodel.TelemetryPolicy{}, fmt.Errorf("invalid telemetry policy json: %w", err)
-	}
-	return policy, nil
 }
