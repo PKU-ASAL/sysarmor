@@ -2,14 +2,28 @@ package daemon
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
+	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/control"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
+
+func TestCollectionReportDetailsPreserveCompileAndCoverageWarnings(t *testing.T) {
+	details := collectionReportDetails(
+		contract.CollectionCompileReport{Backend: "fake", GeneratedPolicyHash: "hash-a", Warnings: []string{"compile warning"}},
+		detection.CoverageReport{Status: "degraded", Warnings: []string{"coverage warning"}},
+	)
+	for _, want := range []string{"generated_policy_hash=hash-a", "warning=compile warning", "coverage_warning=coverage warning"} {
+		if !slices.Contains(details, want) {
+			t.Fatalf("details=%v missing %q", details, want)
+		}
+	}
+}
 
 func TestCollectionProductionPathPersistsUnifiedEndpointAfterSensorApply(t *testing.T) {
 	store := openEndpointPolicyStore(t)

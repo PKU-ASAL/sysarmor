@@ -204,8 +204,21 @@ func collectionReportDetails(report contract.CollectionCompileReport, coverage d
 	if len(report.ResolvedRefs) > 0 {
 		details = append(details, fmt.Sprintf("resolved_refs=%d", len(report.ResolvedRefs)))
 	}
+	if report.GeneratedPolicyHash != "" {
+		details = append(details, "generated_policy_hash="+report.GeneratedPolicyHash)
+	}
+	for _, warning := range report.Warnings {
+		if warning != "" {
+			details = append(details, "warning="+warning)
+		}
+	}
 	if coverage.Status != "" {
 		details = append(details, "detection_coverage="+coverage.Status)
+	}
+	for _, warning := range coverage.Warnings {
+		if warning != "" {
+			details = append(details, "coverage_warning="+warning)
+		}
 	}
 	return details
 }
