@@ -199,6 +199,7 @@ type UnenrollmentStatus string
 const (
 	UnenrollmentPending   UnenrollmentStatus = "revoked_endpoint_pending"
 	UnenrollmentCompleted UnenrollmentStatus = "endpoint_completed"
+	UnenrollmentLegacy    UnenrollmentStatus = "unknown_legacy"
 )
 
 type UnenrollmentIdentity struct {
@@ -230,6 +231,15 @@ func NewPendingUnenrollment(identity UnenrollmentIdentity, receipt, tokenHash st
 		return Unenrollment{}, failure.New(failure.InvalidArgument, "unenrollment identity is incomplete")
 	}
 	return Unenrollment{Identity: identity, Receipt: receipt, CompletionTokenHash: tokenHash, Status: UnenrollmentPending, RevokedAt: revokedAt.UTC()}, nil
+}
+
+func NewLegacyUnenrollment(identity UnenrollmentIdentity, receipt string, revokedAt time.Time) (Unenrollment, error) {
+	identity = normalizeIdentity(identity)
+	receipt = strings.TrimSpace(receipt)
+	if !identity.valid() || receipt == "" || revokedAt.IsZero() {
+		return Unenrollment{}, failure.New(failure.InvalidArgument, "unenrollment identity is incomplete")
+	}
+	return Unenrollment{Identity: identity, Receipt: receipt, Status: UnenrollmentLegacy, RevokedAt: revokedAt.UTC()}, nil
 }
 
 func (value Unenrollment) Complete(completion UnenrollmentCompletion, at time.Time) (Unenrollment, error) {

@@ -53,6 +53,21 @@ func TestUnenrollmentRejectsIdentityMismatch(t *testing.T) {
 	}
 }
 
+func TestLegacyUnenrollmentAllowsMissingCompletionToken(t *testing.T) {
+	record, err := NewLegacyUnenrollment(UnenrollmentIdentity{
+		TenantID:          mustTenantID(t, "tenant-a"),
+		AgentID:           "agent-a",
+		EnrollmentID:      "enroll-a",
+		CertificateSerial: "42",
+	}, "receipt-a", time.Unix(100, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != UnenrollmentLegacy || record.CompletionTokenHash != "" {
+		t.Fatalf("legacy unenrollment = %#v", record)
+	}
+}
+
 func TestEnrollmentIssueReplaysOriginalCertificateForSameKey(t *testing.T) {
 	value := newActiveEnrollment(t)
 	first := Issuance{KeySHA256: "key-a", Certificate: Certificate{SerialNumber: "42", CertificatePEM: "first"}}

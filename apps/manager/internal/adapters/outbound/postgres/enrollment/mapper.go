@@ -118,9 +118,14 @@ func decodeUnenrollment(raw []byte) (domainenrollment.Unenrollment, error) {
 	if err != nil {
 		return domainenrollment.Unenrollment{}, err
 	}
-	value, err := domainenrollment.NewPendingUnenrollment(domainenrollment.UnenrollmentIdentity{TenantID: tenantID,
-		AgentID: record.AgentID, EnrollmentID: record.EnrollmentID, CertificateSerial: record.CertificateSerial},
-		record.Receipt, record.CompletionTokenHash, record.RevokedAt)
+	identity := domainenrollment.UnenrollmentIdentity{TenantID: tenantID, AgentID: record.AgentID,
+		EnrollmentID: record.EnrollmentID, CertificateSerial: record.CertificateSerial}
+	var value domainenrollment.Unenrollment
+	if record.Status == domainenrollment.UnenrollmentLegacy {
+		value, err = domainenrollment.NewLegacyUnenrollment(identity, record.Receipt, record.RevokedAt)
+	} else {
+		value, err = domainenrollment.NewPendingUnenrollment(identity, record.Receipt, record.CompletionTokenHash, record.RevokedAt)
+	}
 	if err != nil {
 		return domainenrollment.Unenrollment{}, err
 	}
