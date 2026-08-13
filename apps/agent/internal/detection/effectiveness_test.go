@@ -3,7 +3,7 @@ package detection
 import (
 	"testing"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection/matcher"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 )

@@ -50,6 +50,7 @@ STANDARD_LIBRARY = {
         "strconv",
         "strings",
         "sync",
+        "sync/atomic",
         "time",
     },
     "application": {"context", "errors", "fmt", "sort", "strings", "sync", "time"},
@@ -162,6 +163,11 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                 set(imports) & ADAPTER_BRIDGE_IMPORTS,
                 f"policy domain imports adapter bridge: {source}",
             )
+
+    def test_agent_detection_matcher_is_layered(self):
+        root = self.repo / "apps/agent/internal"
+        self.assertTrue((root / "domain/detection/matcher").is_dir())
+        self.assertFalse((root / "detection/matcher").exists())
 
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []

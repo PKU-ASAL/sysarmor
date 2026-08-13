@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/detection/matcher"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/fake"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
