@@ -1,62 +1,52 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
+	"os"
+	"strings"
 	"testing"
-	"time"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
-	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
-	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func TestBatchProcessorClassifiesMalformedPayload(t *testing.T) {
-	err := (batchProcessor{processor: nil}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: []byte("{")})
-	assertPermanentEnvelope(t, err, "invalid_data_batch")
-}
-
-func TestBatchProcessorClassifiesUnsupportedSchema(t *testing.T) {
-	batch := validWorkerBatch()
-	batch.SchemaVersion = "sysarmor.dataplane/v9"
-	raw, _ := protojson.Marshal(batch)
-	err := (batchProcessor{processor: nil}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: raw})
-	assertPermanentEnvelope(t, err, "unsupported_schema_version")
-}
-
-func TestBatchProcessorRejectsMissingIdentity(t *testing.T) {
-	batch := validWorkerBatch()
-	batch.Header.AgentId = ""
-	raw, _ := protojson.Marshal(batch)
-	err := (batchProcessor{processor: nil}).Process(context.Background(), ports.RawMessage{Topic: "raw", Value: raw})
-	assertPermanentEnvelope(t, err, "invalid_data_batch")
-}
-
-func TestStabilizeBatchTimeUsesLatestEvent(t *testing.T) {
-	batch := validWorkerBatch()
-	batch.Events = []*dataplanev1.EventFrame{{Event: &eventv1.CanonicalEvent{OccurredAtNs: 200}}}
-	stabilizeBatchTime(batch, time.Unix(0, 100))
-	if batch.GetHeader().GetCreatedAtUnixNano() != 200 {
-		t.Fatalf("created_at=%d", batch.GetHeader().GetCreatedAtUnixNano())
+func TestWorkerCommandUsesBootstrapForComposition(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{
+		"internal/adapters/inbound/kafka",
+		"internal/adapters/outbound/kafka",
+		"internal/adapters/outbound/opensearch",
+		"internal/adapters/outbound/postgres",
+		"packages/contracts/proto",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("worker command imports composition detail %q", forbidden)
+		}
 	}
 }
 
-func assertPermanentEnvelope(t *testing.T, err error, class string) {
-	t.Helper()
-	var permanent ports.PermanentError
-	if !errors.As(err, &permanent) || permanent.Message == nil {
-		t.Fatalf("error = %v", err)
+func TestWorkerCommandDependsOnBootstrapOnly(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
 	}
-	var envelope struct {
-		FailureClass string `json:"failure_class"`
-	}
-	if decodeErr := json.Unmarshal(permanent.Message.Value, &envelope); decodeErr != nil || envelope.FailureClass != class {
-		t.Fatalf("envelope=%+v decodeErr=%v", envelope, decodeErr)
+	text := string(source)
+	for _, forbidden := range []string{
+		"github.com/lib/pq",
+		"/internal/adapters/",
+		"/packages/contracts/",
+		"google.golang.org/grpc",
+		"segmentio/kafka-go",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("worker command imports technical dependency %q", forbidden)
+		}
 	}
 }
 
-func validWorkerBatch() *dataplanev1.DataBatch {
-	return &dataplanev1.DataBatch{SchemaVersion: "sysarmor.dataplane/v1", Header: &dataplanev1.BatchHeader{TenantId: "default", AgentId: "agent-a", HostId: "host-a", BatchId: "batch-a"}}
+func TestSplitCSVTrimsAndDropsEmptyValues(t *testing.T) {
+	got := splitCSV(" broker-a, ,broker-b ")
+	if len(got) != 2 || got[0] != "broker-a" || got[1] != "broker-b" {
+		t.Fatalf("splitCSV() = %#v", got)
+	}
 }

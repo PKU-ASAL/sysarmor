@@ -42,8 +42,9 @@ func (repo *TelemetryBatches) Claim(ctx context.Context, tenantID, batchID strin
 
 func claimBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID, token string, lease time.Duration) (ports.TelemetryClaim, error) {
 	var status string
+	var claimToken string
 	var leaseUntil time.Time
-	err := tx.QueryRowContext(ctx, `SELECT status, lease_until FROM telemetry_batches WHERE tenant_id=$1 AND batch_id=$2`, tenantID, batchID).Scan(&status, &leaseUntil)
+	err := tx.QueryRowContext(ctx, `SELECT status, claim_token, lease_until FROM telemetry_batches WHERE tenant_id=$1 AND batch_id=$2`, tenantID, batchID).Scan(&status, &claimToken, &leaseUntil)
 	if err == sql.ErrNoRows {
 		result, insertErr := tx.ExecContext(ctx, `INSERT INTO telemetry_batches (tenant_id,batch_id,status,claim_token,lease_until) VALUES ($1,$2,'processing',$3,$4) ON CONFLICT (tenant_id,batch_id) DO NOTHING`, tenantID, batchID, token, time.Now().UTC().Add(lease))
 		if insertErr != nil {
@@ -67,8 +68,51 @@ func claimBatch(ctx context.Context, tx *sql.Tx, tenantID, batchID, token string
 	if leaseUntil.After(time.Now().UTC()) {
 		return ports.TelemetryBusy, nil
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE telemetry_batches SET claim_token=$3, lease_until=$4 WHERE tenant_id=$1 AND batch_id=$2 AND status='processing'`, tenantID, batchID, token, time.Now().UTC().Add(lease))
-	return ports.TelemetryClaimed, err
+	claimed, err := takeoverExpiredClaim(ctx, tx, tenantID, batchID, token, claimToken, leaseUntil, lease)
+	if err != nil {
+		return ports.TelemetryBusy, err
+	}
+	if !claimed {
+		return ports.TelemetryBusy, nil
+	}
+	return ports.TelemetryClaimed, nil
+}
+
+type claimExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func takeoverExpiredClaim(ctx context.Context, exec claimExecer, tenantID, batchID, token, previousToken string, previousLease time.Time, lease time.Duration) (bool, error) {
+	now := time.Now().UTC()
+	result, err := exec.ExecContext(ctx, `UPDATE telemetry_batches SET claim_token=$3, lease_until=$4 WHERE tenant_id=$1 AND batch_id=$2 AND status='processing' AND claim_token=$5 AND lease_until=$6 AND lease_until<=$7`, tenantID, batchID, token, now.Add(lease), previousToken, previousLease, now)
+	if err != nil {
+		return false, err
+	}
+	updated, err := result.RowsAffected()
+	return updated == 1, err
+}
+
+func (repo *TelemetryBatches) Renew(ctx context.Context, tenantID, batchID, token string, lease time.Duration) error {
+	if repo == nil || repo.db == nil || strings.TrimSpace(token) == "" || lease <= 0 {
+		return fmt.Errorf("database, claim token, and positive lease are required")
+	}
+	result, err := repo.db.ExecContext(ctx, `UPDATE telemetry_batches SET lease_until=$4 WHERE tenant_id=$1 AND batch_id=$2 AND claim_token=$3 AND status='processing'`, tenantID, batchID, token, time.Now().UTC().Add(lease))
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		var status, owner string
+		queryErr := repo.db.QueryRowContext(ctx, `SELECT status, claim_token FROM telemetry_batches WHERE tenant_id=$1 AND batch_id=$2`, tenantID, batchID).Scan(&status, &owner)
+		if queryErr == nil && status == "completed" && owner == token {
+			return nil
+		}
+		return fmt.Errorf("telemetry claim ownership lost")
+	}
+	return nil
 }
 
 func (repo *TelemetryBatches) Commit(ctx context.Context, delta ports.TelemetryBatchDelta) error {
@@ -84,7 +128,15 @@ func (repo *TelemetryBatches) Commit(ctx context.Context, delta ports.TelemetryB
 		err = mergeRarity(ctx, tx, delta)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `UPDATE telemetry_batches SET status='completed', completed_at=$4 WHERE tenant_id=$1 AND batch_id=$2 AND claim_token=$3 AND status='processing'`, delta.TenantID, delta.BatchID, delta.ClaimToken, time.Now().UTC())
+		var result sql.Result
+		result, err = tx.ExecContext(ctx, `UPDATE telemetry_batches SET status='completed', completed_at=$4 WHERE tenant_id=$1 AND batch_id=$2 AND claim_token=$3 AND status='processing'`, delta.TenantID, delta.BatchID, delta.ClaimToken, time.Now().UTC())
+		if err == nil {
+			var rows int64
+			rows, err = result.RowsAffected()
+			if err == nil && rows != 1 {
+				err = fmt.Errorf("telemetry claim ownership lost before commit")
+			}
+		}
 	}
 	if err != nil {
 		return err
@@ -124,18 +176,26 @@ type metricsDocument struct {
 
 func mergeMetrics(ctx context.Context, tx *sql.Tx, delta ports.TelemetryBatchDelta) error {
 	current := metricsDocument{}
+	empty, _ := json.Marshal(current)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO metrics (tenant_id,metric_key,data) VALUES ($1,'manager',$2) ON CONFLICT (tenant_id,metric_key) DO NOTHING`, delta.TenantID, empty); err != nil {
+		return fmt.Errorf("initialize tenant metrics: %w", err)
+	}
 	var raw []byte
-	err := tx.QueryRowContext(ctx, `SELECT data FROM metrics WHERE tenant_id=$1 AND metric_key='manager'`, delta.TenantID).Scan(&raw)
-	if err != nil && err != sql.ErrNoRows {
+	err := tx.QueryRowContext(ctx, metricsReadQuery(), delta.TenantID).Scan(&raw)
+	if err != nil {
 		return fmt.Errorf("read tenant metrics: %w", err)
 	}
-	if err == nil && json.Unmarshal(raw, &current) != nil {
+	if json.Unmarshal(raw, &current) != nil {
 		return fmt.Errorf("decode tenant metrics")
 	}
 	addMetrics(&current, delta.Metrics)
 	raw, _ = json.Marshal(current)
-	_, err = tx.ExecContext(ctx, `INSERT INTO metrics (tenant_id,metric_key,data) VALUES ($1,'manager',$2) ON CONFLICT (tenant_id,metric_key) DO UPDATE SET data=EXCLUDED.data`, delta.TenantID, raw)
+	_, err = tx.ExecContext(ctx, `UPDATE metrics SET data=$2 WHERE tenant_id=$1 AND metric_key='manager'`, delta.TenantID, raw)
 	return err
+}
+
+func metricsReadQuery() string {
+	return `SELECT data FROM metrics WHERE tenant_id=$1 AND metric_key='manager' FOR UPDATE`
 }
 
 func addMetrics(value *metricsDocument, delta ports.TelemetryMetrics) {

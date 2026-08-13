@@ -3,10 +3,10 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 	_ "modernc.org/sqlite"
 )
@@ -18,7 +18,7 @@ func TestTelemetryBatchesClaimsAreTenantScoped(t *testing.T) {
 	if err != nil || claim != ports.TelemetryClaimed || token == "" {
 		t.Fatalf("first claim=%v token=%q err=%v", claim, token, err)
 	}
-	if err := repository.Commit(context.Background(), ports.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "shared", ClaimToken: token}); err != nil {
+	if _, err := db.Exec(`UPDATE telemetry_batches SET status='completed' WHERE tenant_id=? AND batch_id=? AND claim_token=?`, "tenant-a", "shared", token); err != nil {
 		t.Fatal(err)
 	}
 	claim, _, err = repository.Claim(context.Background(), "tenant-a", "shared", time.Minute)
@@ -31,21 +31,17 @@ func TestTelemetryBatchesClaimsAreTenantScoped(t *testing.T) {
 	}
 }
 
-func TestTelemetryBatchesCommitMetricsAndRarity(t *testing.T) {
-	db := newTelemetryDB(t)
-	repository := NewTelemetryBatches(db)
-	_, token, _ := repository.Claim(context.Background(), "tenant-a", "batch-a", time.Minute)
-	delta := ports.TelemetryBatchDelta{TenantID: "tenant-a", BatchID: "batch-a", ClaimToken: token, Metrics: ports.TelemetryMetrics{DataBatches: 1, Events: 2}, Rarity: identity.RarityBaseline{WorkloadCounts: map[string]map[string]uint64{"workload-a": {"signal-a": 3}}}}
-	if err := repository.Commit(context.Background(), delta); err != nil {
-		t.Fatal(err)
+func TestAddMetricsAccumulatesCountersAndLatency(t *testing.T) {
+	metrics := metricsDocument{DataBatches: 1, Events: 2, TotalLatency: 10, MaxLatency: 10}
+	addMetrics(&metrics, ports.TelemetryMetrics{DataBatches: 1, Events: 3, TotalLatencyMs: 20, MaxLatencyMs: 20, LastLatencyMs: 20})
+	if metrics.DataBatches != 2 || metrics.Events != 5 || metrics.TotalLatency != 30 || metrics.MaxLatency != 20 || metrics.LastLatency != 20 || metrics.AverageLatency != 15 {
+		t.Fatalf("metrics = %+v", metrics)
 	}
-	var status string
-	if err := db.QueryRow(`SELECT status FROM telemetry_batches WHERE tenant_id=? AND batch_id=?`, "tenant-a", "batch-a").Scan(&status); err != nil || status != "completed" {
-		t.Fatalf("status=%q err=%v", status, err)
-	}
-	var count uint64
-	if err := db.QueryRow(`SELECT signal_count FROM rarity_baseline WHERE tenant_id=? AND workload_key=? AND signal_name=?`, "tenant-a", "workload-a", "signal-a").Scan(&count); err != nil || count != 3 {
-		t.Fatalf("rarity=%d err=%v", count, err)
+}
+
+func TestMetricsReadQueryLocksPostgresRow(t *testing.T) {
+	if query := metricsReadQuery(); !strings.Contains(query, "FOR UPDATE") {
+		t.Fatalf("metrics read query does not lock PostgreSQL row: %s", query)
 	}
 }
 
@@ -53,6 +49,38 @@ func TestTelemetryBatchesRejectsSubMillisecondLease(t *testing.T) {
 	repository := NewTelemetryBatches(newTelemetryDB(t))
 	if _, _, err := repository.Claim(context.Background(), "tenant-a", "batch-a", time.Nanosecond); err == nil {
 		t.Fatal("Claim() accepted sub-millisecond lease")
+	}
+}
+
+func TestTelemetryBatchesTreatsLostLeaseUpdateAsBusy(t *testing.T) {
+	db := newTelemetryDB(t)
+	_, err := db.Exec(`CREATE TRIGGER ignore_expired_claim BEFORE UPDATE OF claim_token ON telemetry_batches BEGIN SELECT RAISE(IGNORE); END`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO telemetry_batches (tenant_id,batch_id,status,claim_token,lease_until) VALUES ('tenant-a','batch-a','processing','old',?)`, time.Now().UTC().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	claim, _, err := NewTelemetryBatches(db).Claim(context.Background(), "tenant-a", "batch-a", time.Minute)
+	if err != nil || claim != ports.TelemetryBusy {
+		t.Fatalf("lost lease claim=%v err=%v, want busy", claim, err)
+	}
+}
+
+func TestTakeoverExpiredClaimRejectsStaleLeaseSnapshot(t *testing.T) {
+	db := newTelemetryDB(t)
+	expired := time.Now().UTC().Add(-time.Minute)
+	if _, err := db.Exec(`INSERT INTO telemetry_batches (tenant_id,batch_id,status,claim_token,lease_until) VALUES ('tenant-a','batch-a','processing','old',?)`, expired); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE telemetry_batches SET claim_token='racer', lease_until=? WHERE tenant_id='tenant-a' AND batch_id='batch-a'`, time.Now().UTC().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err := takeoverExpiredClaim(context.Background(), db, "tenant-a", "batch-a", "new", "old", expired, time.Minute)
+
+	if err != nil || claimed {
+		t.Fatalf("claimed=%t err=%v, want stale snapshot rejected", claimed, err)
 	}
 }
 

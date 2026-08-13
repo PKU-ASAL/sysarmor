@@ -44,6 +44,24 @@ func (view View) CollectEntities(names ...string) []domaintelemetry.Entity {
 	return entity.Unique(values)
 }
 
+func (view View) CollectSignalRefs(names ...string) []string {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, name := range names {
+		for _, signal := range view.ByName[name] {
+			if signal.ID == "" {
+				continue
+			}
+			if _, exists := seen[signal.ID]; exists {
+				continue
+			}
+			seen[signal.ID] = struct{}{}
+			result = append(result, signal.ID)
+		}
+	}
+	return result
+}
+
 func EndpointRuleEnabled(policy *detection.Policy, name string) bool {
 	if policy == nil || len(policy.EndpointRules) == 0 {
 		return true

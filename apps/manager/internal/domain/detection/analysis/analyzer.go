@@ -29,12 +29,14 @@ func (analyzer *Analyzer) Analyze(events []domaintelemetry.Event, signals []doma
 	if cloudRuleEnabled(policy, "dropped_payload_executed_and_connects") && stagedPayloadDetected(view, policy) {
 		signal := analyzer.cloudSignal("dropped_payload_executed_and_connects", view.Labels, 80,
 			view.CollectEntities("payload_dropped", "reverse_shell_pattern", "suspicious_exec_connect"))
+		signal.SignalRefs = view.CollectSignalRefs("payload_dropped", "reverse_shell_pattern", "suspicious_exec_connect")
 		signal.CrossLineage = view.Has("suspicious_exec_connect") && !view.HasTerminal("reverse_shell_pattern")
 		result.CloudSignals = append(result.CloudSignals, signal)
 	}
 	if cloudRuleEnabled(policy, "web_shell_chain") && view.Has("web_runtime_spawns_shell") && view.HasTerminal("reverse_shell_pattern") {
 		result.CloudSignals = append(result.CloudSignals, analyzer.cloudSignal("web_shell_chain", view.Labels, 85,
 			view.CollectEntities("web_runtime_spawns_shell", "reverse_shell_pattern")))
+		result.CloudSignals[len(result.CloudSignals)-1].SignalRefs = view.CollectSignalRefs("web_runtime_spawns_shell", "reverse_shell_pattern")
 	}
 	allSignals := append(append([]domaintelemetry.Signal(nil), signals...), result.CloudSignals...)
 	decision := convergence.Decide(view.ByName, result.CloudSignals, policy)

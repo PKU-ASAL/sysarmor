@@ -4,8 +4,10 @@ import (
 	"context"
 	"time"
 
+	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
 
@@ -34,12 +36,12 @@ type RarityReader interface {
 }
 
 type HistorySnapshot struct {
-	Events  [][]byte
-	Signals [][]byte
+	Events  []domaintelemetry.Event
+	Signals []ObservedSignal
 }
 
 type HistoryReader interface {
-	ReadDocuments(context.Context, string, map[string]string, time.Time, time.Time) (HistorySnapshot, error)
+	Read(context.Context, tenant.ID, map[string]string, time.Time, time.Time) (HistorySnapshot, error)
 }
 
 type SearchDocument struct {
@@ -79,12 +81,13 @@ type TelemetryBatchDelta struct {
 
 type TelemetryBatches interface {
 	Claim(context.Context, string, string, time.Duration) (TelemetryClaim, string, error)
+	Renew(context.Context, string, string, string, time.Duration) error
 	Commit(context.Context, TelemetryBatchDelta) error
 	Abandon(context.Context, string, string, string) error
 }
 
 type DetectionPolicyReader interface {
-	Effective(context.Context, tenant.ID, identity.AgentID) (domainpolicy.Policy, error)
+	Published(context.Context, tenant.ID, domainpolicy.ID, domainpolicy.Version) (domaindetection.Policy, error)
 }
 
 type PermanentError struct {

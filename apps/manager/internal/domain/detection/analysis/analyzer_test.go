@@ -24,8 +24,12 @@ func TestAnalyzeAttackChainProducesCloudSignalsAndIncident(t *testing.T) {
 
 func TestAnalyzeHonorsCrossLineagePolicy(t *testing.T) {
 	signals := []domaintelemetry.Signal{
-		endpoint("payload_dropped", "lin-a", false, file("/tmp/payload")),
-		endpoint("suspicious_exec_connect", "lin-b", false, file("/tmp/payload"), socket("10.66.0.99:443")),
+		endpointWithID("drop-a", "payload_dropped", "lin-a", false, file("/tmp/payload")),
+		endpointWithID("exec-a", "suspicious_exec_connect", "lin-b", false, file("/tmp/payload"), socket("10.66.0.99:443")),
+	}
+	linked := NewAnalyzer().Analyze(nil, signals, nil)
+	if len(linked.CloudSignals) != 1 || len(linked.CloudSignals[0].SignalRefs) != 2 {
+		t.Fatalf("cloud signals = %+v, want contributing endpoint signal refs", linked.CloudSignals)
 	}
 	result := NewAnalyzer().Analyze(nil, signals, &detection.Policy{Converge: &detection.ConvergePolicy{CrossLineage: false}})
 	if len(result.CloudSignals) != 0 || len(result.Incidents) != 0 {
@@ -71,8 +75,12 @@ func TestAnalyzeIDsIgnoreCallHistoryAndInputOrder(t *testing.T) {
 }
 
 func endpoint(name, lineage string, terminal bool, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
+	return endpointWithID("", name, lineage, terminal, entities...)
+}
+
+func endpointWithID(id, name, lineage string, terminal bool, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
 	return domaintelemetry.Signal{
-		Name: name, Where: domaintelemetry.SignalWhereEndpoint, BaseRisk: 50, GlobalRarity: 1,
+		ID: id, Name: name, Where: domaintelemetry.SignalWhereEndpoint, BaseRisk: 50, GlobalRarity: 1,
 		LineageID: lineage, Terminal: terminal, Entities: entities, Labels: map[string]string{"scenario": "scenario-a"},
 	}
 }

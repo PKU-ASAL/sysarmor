@@ -19,7 +19,53 @@ func NewRawConsumer(brokers []string, topic, groupID string) (*RawConsumer, erro
 	if len(clean) == 0 || strings.TrimSpace(topic) == "" || strings.TrimSpace(groupID) == "" {
 		return nil, ErrDisabled
 	}
-	return &RawConsumer{reader: kafkago.NewReader(kafkago.ReaderConfig{Brokers: clean, Topic: topic, GroupID: groupID})}, nil
+	return &RawConsumer{reader: kafkago.NewReader(kafkago.ReaderConfig{
+		Brokers: clean, Topic: topic, GroupID: groupID, WatchPartitionChanges: true,
+	})}, nil
+}
+
+func WaitForTopic(ctx context.Context, brokers []string, topic string) error {
+	clean := cleanBrokers(brokers)
+	if len(clean) == 0 || strings.TrimSpace(topic) == "" {
+		return ErrDisabled
+	}
+	dialer := &kafkago.Dialer{Timeout: 2 * time.Second}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := readTopicPartitions(ctx, dialer, clean, topic); err == nil {
+			return nil
+		}
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func readTopicPartitions(ctx context.Context, dialer *kafkago.Dialer, brokers []string, topic string) error {
+	var lastErr error
+	for _, broker := range brokers {
+		conn, err := dialer.DialContext(ctx, "tcp", broker)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		partitions, err := conn.ReadPartitions(topic)
+		_ = conn.Close()
+		if err == nil && len(partitions) > 0 {
+			return nil
+		}
+		if err == nil {
+			err = errors.New("kafka topic has no partitions")
+		}
+		lastErr = err
+	}
+	return lastErr
 }
 
 func (consumer *RawConsumer) Fetch(ctx context.Context) (ports.RawMessage, error) {
