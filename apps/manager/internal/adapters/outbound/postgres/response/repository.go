@@ -95,11 +95,25 @@ func (repo repository) Put(ctx context.Context, current, next domainresponse.Com
 	if err != nil {
 		return err
 	}
-	result, err := repo.db.ExecContext(ctx, `UPDATE response_audit SET
+	statement := `UPDATE response_audit SET
 agent_id=$1,status=$2,action=$3,updated_at=$4,command=$5,ack=$6
 WHERE tenant_id=$7 AND response_id=$8 AND command=$9
-AND (($10 IS NULL AND ack IS NULL) OR ack=$10)`, next.AgentID, string(next.Status), next.Action,
-		next.UpdatedAt, command, ack, current.TenantID.String(), current.ID, expectedCommand, expectedAck)
+AND ack=$10`
+	args := []any{next.AgentID, string(next.Status), next.Action, next.UpdatedAt, command, ack,
+		current.TenantID.String(), current.ID, expectedCommand, expectedAck}
+	if len(ack) == 0 && len(expectedAck) == 0 {
+		statement = `UPDATE response_audit SET
+agent_id=$1,status=$2,action=$3,updated_at=$4,command=$5,ack=NULL
+WHERE tenant_id=$6 AND response_id=$7 AND command=$8 AND ack IS NULL`
+		args = []any{next.AgentID, string(next.Status), next.Action, next.UpdatedAt, command,
+			current.TenantID.String(), current.ID, expectedCommand}
+	} else if len(expectedAck) == 0 {
+		statement = `UPDATE response_audit SET
+agent_id=$1,status=$2,action=$3,updated_at=$4,command=$5,ack=$6
+WHERE tenant_id=$7 AND response_id=$8 AND command=$9 AND ack IS NULL`
+		args = args[:9]
+	}
+	result, err := repo.db.ExecContext(ctx, statement, args...)
 	if err != nil {
 		return fmt.Errorf("put response command: %w", err)
 	}
