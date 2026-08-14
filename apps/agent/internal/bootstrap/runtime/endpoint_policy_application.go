@@ -28,7 +28,6 @@ type endpointCandidate struct {
 	detection *detectionruntime.State
 	report    detectionruntime.ApplyReport
 	telemetry config.EffectiveTelemetry
-	compile   contract.CollectionCompileReport
 	source    applicationpolicy.Source
 }
 
@@ -88,7 +87,7 @@ func (a *endpointPolicyApplication) PrepareEndpoint(_ context.Context, document 
 }
 
 func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy, source applicationpolicy.Source) (*endpointCandidate, error) {
-	collection, expansion, err := agentpolicy.ExpandCollectionPolicyRefs(endpoint.Collection, collectionContentSnapshot(a.policy.contentStore().Snapshot()))
+	collection, _, err := agentpolicy.ExpandCollectionPolicyRefs(endpoint.Collection, collectionContentSnapshot(a.policy.contentStore().Snapshot()))
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +97,6 @@ func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy,
 		return nil, err
 	}
 	compile := tetragon.CompileReport(intent)
-	compile.ResolvedRefs = expansion.ResolvedRefs
 	if len(compile.UnsupportedSelectors) > 0 {
 		return nil, fmt.Errorf("unsupported collection selectors: %+v", compile.UnsupportedSelectors)
 	}
@@ -117,7 +115,7 @@ func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy,
 	}
 	return &endpointCandidate{
 		endpoint: endpoint, intent: intent, previous: a.policy.currentCollectionIntent(), policy: runtimePolicy,
-		detection: engine, report: report, telemetry: effective, compile: compile, source: source,
+		detection: engine, report: report, telemetry: effective, source: source,
 	}, nil
 }
 

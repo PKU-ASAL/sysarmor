@@ -559,6 +559,18 @@ import (
         self.assertIn("applicationtelemetry.NewDelivery", network)
         self.assertNotIn("exportPipeline", network)
 
+    def test_agent_endpoint_candidate_keeps_only_activation_state(self):
+        source = (
+            self.repo
+            / "apps/agent/internal/bootstrap/runtime/endpoint_policy_application.go"
+        ).read_text()
+        candidate = re.search(
+            r"type endpointCandidate struct \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        self.assertIsNotNone(candidate)
+        self.assertNotRegex(candidate.group("body"), r"(?m)^\s*compile\s+")
+        self.assertNotIn("compile.ResolvedRefs", source)
+
     def test_agent_endpoint_runtime_uses_pipeline_application(self):
         source = (
             self.repo / "apps" / "agent" / "internal" / "bootstrap" / "runtime" / "endpoint_runtime.go"
