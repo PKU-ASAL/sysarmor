@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	appresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/response"
 	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -96,11 +96,11 @@ func responseCommand(in *controlplanev1.ResponseCommand) (domainresponse.Command
 		return domainresponse.Command{}, fmt.Errorf("control frame missing response_command")
 	}
 	if in.GetRawJson() != "" {
-		var cmd responsemodel.Command
-		if err := json.Unmarshal([]byte(in.GetRawJson()), &cmd); err != nil {
+		command, err := contractmapper.DecodeResponseCommand([]byte(in.GetRawJson()))
+		if err != nil {
 			return domainresponse.Command{}, fmt.Errorf("decode control frame response command raw_json: %w", err)
 		}
-		return domainResponseCommand(cmd), nil
+		return command, nil
 	}
 	return domainresponse.Command{
 		ID: in.GetResponseId(), TenantID: in.GetTenantId(), AgentID: in.GetAgentId(),
@@ -110,22 +110,6 @@ func responseCommand(in *controlplanev1.ResponseCommand) (domainresponse.Command
 		ApprovalRequired: in.GetApprovalRequired(), ApprovalStatus: in.GetApprovalStatus(), ApprovalThreshold: in.GetApprovalThreshold(),
 		ApprovalRoles: append([]string(nil), in.GetApprovalRoles()...),
 	}, nil
-}
-
-func domainResponseCommand(command responsemodel.Command) domainresponse.Command {
-	approvals := make([]domainresponse.Approval, 0, len(command.Approvals))
-	for _, approval := range command.Approvals {
-		approvals = append(approvals, domainresponse.Approval{Actor: approval.Actor, Role: approval.Role, Approved: approval.Approved})
-	}
-	return domainresponse.Command{
-		ID: command.ResponseID, TenantID: command.TenantID, AgentID: command.AgentID,
-		PolicyID: command.PolicyID, PolicyVersion: command.PolicyVersion, SignalID: command.SignalID,
-		Labels: cloneLabels(command.Labels), Scope: domainresponse.Scope{Type: command.Scope.Type, Selector: command.Scope.Selector},
-		Action: command.Action, Mode: domainresponse.Mode(command.Mode), Target: command.Target, Reason: command.Reason,
-		Status: command.Status, Actor: command.Actor, ApprovalRequired: command.ApprovalRequired,
-		ApprovalStatus: command.ApprovalStatus, ApprovalThreshold: command.ApprovalThreshold,
-		ApprovalRoles: append([]string(nil), command.ApprovalRoles...), Approvals: approvals,
-	}
 }
 
 func evidencePullback(in *controlplanev1.EvidencePullbackRequest) (appresponse.EvidenceRequest, error) {

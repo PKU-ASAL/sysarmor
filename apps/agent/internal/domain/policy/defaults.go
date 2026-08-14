@@ -44,8 +44,5 @@ func defaultConvergeParams() *ConvergeParams {
 }
 
 func defaultResponsePolicy() domainresponse.Policy {
-	return domainresponse.Policy{
-		AllowedActions: []string{"collect", "noop"},
-		AllowedModes:   []domainresponse.Mode{domainresponse.ModeObserve},
-	}
+	return domainresponse.DefaultPolicy()
 }

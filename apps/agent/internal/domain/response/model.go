@@ -19,9 +19,11 @@ type Scope struct {
 }
 
 type Approval struct {
-	Actor    string
-	Role     string
-	Approved bool
+	Actor      string
+	Role       string
+	Approved   bool
+	Reason     string
+	ObservedAt time.Time
 }
 
 type Command struct {
@@ -44,6 +46,10 @@ type Command struct {
 	ApprovalThreshold uint32
 	ApprovalRoles     []string
 	Approvals         []Approval
+	ApprovedBy        string
+	ApprovedAt        time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type Policy struct {
