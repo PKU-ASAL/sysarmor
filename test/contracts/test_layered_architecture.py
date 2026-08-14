@@ -250,12 +250,13 @@ class LayeredArchitectureContractTest(unittest.TestCase):
 
     def test_task11_has_no_retired_model_imports_or_compatibility_facades(self):
         forbidden = ("packages/policy", "packages/response", "packages/eventmodel")
-        for source in self.repo.rglob("*.go"):
-            text = source.read_text()
-            for imported in forbidden:
-                self.assertNotIn(
-                    imported, text, f"retired model import remains: {source}"
-                )
+        for root in (self.repo / "apps", self.repo / "packages"):
+            for source in root.rglob("*.go"):
+                text = source.read_text()
+                for imported in forbidden:
+                    self.assertNotIn(
+                        imported, text, f"retired model import remains: {source}"
+                    )
 
     def test_policy_application_uses_typed_services_only(self):
         root = self.repo / "apps/agent/internal/application/policy"

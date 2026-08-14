@@ -57,6 +57,18 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                     (self.repo / path).exists(), f"retired package remains: {path}"
                 )
 
+    def test_task11_keeps_real_cross_product_contracts(self):
+        contracts = ("contracts/controlmodel", "contracts/health")
+        for contract in contracts:
+            consumers = set()
+            import_path = f"packages/{contract}"
+            for product in ("agent", "manager"):
+                for source in (self.repo / "apps" / product).rglob("*.go"):
+                    if import_path in source.read_text():
+                        consumers.add(product)
+            with self.subTest(contract=contract):
+                self.assertEqual({"agent", "manager"}, consumers)
+
     def test_legacy_shared_capability_paths_are_absent(self):
         legacy = (
             "api/proto",
