@@ -85,14 +85,12 @@ func (r *enrollmentRuntime) RollbackEnrollment(preparation ports.EnrollmentPrepa
 	return adapterenrollment.RollbackFailure(state.paths, state.created, cause)
 }
 
-func (r *enrollmentRuntime) FinalizeEnrollment(preparation ports.EnrollmentPreparation) {
+func (r *enrollmentRuntime) FinalizeEnrollment(preparation ports.EnrollmentPreparation) error {
 	state, ok := preparation.(enrollmentPreparationState)
 	if !ok || state.pendingKeyPath == "" {
-		return
+		return nil
 	}
-	if err := adapterenrollment.RemovePendingKey(state.pendingKeyPath); err != nil && r.runner.Out != nil {
-		fmt.Fprintf(r.runner.Out, "remove pending enrollment key: %v\n", err)
-	}
+	return adapterenrollment.RemovePendingKey(state.pendingKeyPath)
 }
 
 func (r *enrollmentRuntime) StopEnrollmentNetwork() {

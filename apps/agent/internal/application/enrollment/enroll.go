@@ -56,16 +56,22 @@ func (s *Service) commitEnrollmentState(ctx context.Context, request lifecycle.R
 		return s.runtime.ReconcileEnrollment(enrollment)
 	})
 	if err == nil {
-		s.runtime.FinalizeEnrollment(preparation)
-		return s.result(request, lifecycle.StatusPending, "enrollment credentials accepted; waiting for manager endpoint policy")
+		message := "enrollment credentials accepted; waiting for manager endpoint policy"
+		if finalizeErr := s.runtime.FinalizeEnrollment(preparation); finalizeErr != nil {
+			message += "; finalize enrollment: " + finalizeErr.Error()
+		}
+		return s.result(request, lifecycle.StatusPending, message)
 	}
 	return s.failedEnrollmentCommit(request, preparation, committed, err)
 }
 
 func (s *Service) failedEnrollmentCommit(request lifecycle.RequestContext, preparation ports.EnrollmentPreparation, committed bool, cause error) lifecycle.Result {
 	if committed {
-		s.runtime.FinalizeEnrollment(preparation)
-		return s.result(request, lifecycle.StatusPending, "enrollment committed; runtime reconciliation is pending: "+cause.Error())
+		message := "enrollment committed; runtime reconciliation is pending: " + cause.Error()
+		if finalizeErr := s.runtime.FinalizeEnrollment(preparation); finalizeErr != nil {
+			message += "; finalize enrollment: " + finalizeErr.Error()
+		}
+		return s.result(request, lifecycle.StatusPending, message)
 	}
 	standalone := ports.Enrollment{State: management.StateStandalone}
 	if err := s.runtime.ReconcileEnrollment(standalone); err != nil {

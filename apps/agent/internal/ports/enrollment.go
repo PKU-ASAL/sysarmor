@@ -63,7 +63,7 @@ type EnrollmentRuntime interface {
 	Identity() EnrollmentIdentity
 	PrepareEnrollment(context.Context, string, string) (EnrollmentPreparation, error)
 	RollbackEnrollment(EnrollmentPreparation, error) error
-	FinalizeEnrollment(EnrollmentPreparation)
+	FinalizeEnrollment(EnrollmentPreparation) error
 	StopEnrollmentNetwork()
 	ReconcileEnrollment(Enrollment) error
 	WithPolicyAuthority(func() error) error

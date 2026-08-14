@@ -85,6 +85,7 @@ type recordingRuntime struct {
 	restoreCalls     int
 	reportCalls      int
 	finalizeCalls    int
+	finalizeErr      error
 	authorityCalls   int
 	reconcileStates  []management.State
 	reconcileErr     error
@@ -112,8 +113,11 @@ func (r *recordingRuntime) RollbackEnrollment(ports.EnrollmentPreparation, error
 	return nil
 }
 
-func (r *recordingRuntime) FinalizeEnrollment(ports.EnrollmentPreparation) { r.finalizeCalls++ }
-func (r *recordingRuntime) StopEnrollmentNetwork()                         { r.stopNetworkCalls++ }
+func (r *recordingRuntime) FinalizeEnrollment(ports.EnrollmentPreparation) error {
+	r.finalizeCalls++
+	return r.finalizeErr
+}
+func (r *recordingRuntime) StopEnrollmentNetwork() { r.stopNetworkCalls++ }
 
 func (r *recordingRuntime) WithPolicyAuthority(run func() error) error {
 	r.authorityCalls++
@@ -223,6 +227,19 @@ func TestServiceKeepsCommittedEnrollmentWhenReconcileFails(t *testing.T) {
 	}
 	if store.enrollment.State != management.StateEnrolling || runtime.finalizeCalls != 1 || runtime.rollbackCalls != 0 {
 		t.Fatalf("store=%+v runtime=%+v", store, runtime)
+	}
+}
+
+func TestServiceReportsFinalizeFailureAfterCommit(t *testing.T) {
+	store := &recordingStore{enrollment: ports.Enrollment{State: management.StateStandalone}}
+	runtime := enrollmentRuntimeFixture()
+	runtime.finalizeErr = errors.New("pending key cleanup failed")
+	result := NewService(t.Context(), store, runtime).Enroll(t.Context(), EnrollmentCommand{
+		ManagerURL: "https://manager.example", Token: "token-a",
+	})
+
+	if result.Status != lifecycle.StatusPending || !strings.Contains(result.Message, "pending key cleanup failed") {
+		t.Fatalf("result=%+v", result)
 	}
 }
 
