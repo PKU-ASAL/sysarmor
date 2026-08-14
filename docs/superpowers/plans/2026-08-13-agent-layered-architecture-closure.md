@@ -60,7 +60,7 @@ Final acceptance evidence:
 - Produces `AGENT_LEGACY_ROOTS`, the ordered burn-down set used by later tasks.
 - Produces command, layered-to-legacy import, retired-symbol, and file-size checks.
 
-- [ ] **Step 1: Add the first failing management-root assertion**
+- [x] **Step 1: Add the first failing management-root assertion**
 
 ```python
 def test_agent_management_domain_is_layered(self):
@@ -68,17 +68,17 @@ def test_agent_management_domain_is_layered(self):
     self.assertFalse((self.repo / "apps/agent/internal/management").exists())
 ```
 
-- [ ] **Step 2: Run the focused contract and verify RED**
+- [x] **Step 2: Run the focused contract and verify RED**
 
 Run: `python3 -m unittest test.contracts.test_layered_architecture.LayeredArchitectureContractTest.test_agent_management_domain_is_layered -v`
 
 Expected: FAIL because `internal/management` still exists and `domain/management` does not.
 
-- [ ] **Step 3: Add migration-safe governance**
+- [x] **Step 3: Add migration-safe governance**
 
 Keep the current explicit legacy set, but add checks that layered Agent packages never import a legacy root and `cmd/sysarmor-agent` may only import Bootstrap after Task 9. Each later task removes one or more entries rather than weakening assertions.
 
-- [ ] **Step 4: Continue directly into Task 2; commit the contract with the first green slice**
+- [x] **Step 4: Continue directly into Task 2; commit the contract with the first green slice**
 
 ### Task 2: Isolate Management Domain
 
@@ -94,12 +94,12 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Produces `management.ValidateTransition(State, State) error`.
 - Produces `(Context).Authorize(PolicyWriteOrigin) error`.
 
-- [ ] **Step 1: Move the existing behavioral tests to the target package while the target implementation is absent**
-- [ ] **Step 2: Run `go test ./apps/agent/internal/domain/management -count=1` and verify RED because the implementation is missing**
-- [ ] **Step 3: Move the pure model, switch all callers, and delete the old package**
-- [ ] **Step 4: Remove only `apps/agent/internal/management` from `AGENT_LEGACY_ROOTS`**
-- [ ] **Step 5: Run management, localstore, daemon, architecture, and Agent race tests**
-- [ ] **Step 6: Commit `refactor(agent): isolate management domain`**
+- [x] **Step 1: Move the existing behavioral tests to the target package while the target implementation is absent**
+- [x] **Step 2: Run `go test ./apps/agent/internal/domain/management -count=1` and verify RED because the implementation is missing**
+- [x] **Step 3: Move the pure model, switch all callers, and delete the old package**
+- [x] **Step 4: Remove only `apps/agent/internal/management` from `AGENT_LEGACY_ROOTS`**
+- [x] **Step 5: Run management, localstore, daemon, architecture, and Agent race tests**
+- [x] **Step 6: Commit `refactor(agent): isolate management domain`**
 
 ### Task 3: Isolate Event Domain and Contract Mapper
 
@@ -117,13 +117,13 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Produces deterministic `StableProcessID`, `SensorProcessID`, and `EventID` functions.
 - Adapter maps `sensorv1.SensorEvent -> domain/event.Event` and `domain/event.Event -> eventv1.CanonicalEvent`.
 
-- [ ] **Step 1: Write Domain identity and parent-lineage tests without Protobuf fixtures**
-- [ ] **Step 2: Verify RED for missing Domain APIs**
-- [ ] **Step 3: Implement pure Domain identity/table rules**
-- [ ] **Step 4: Write failing Adapter round-trip and sensor mapping tests**
-- [ ] **Step 5: Implement mappers, switch pipeline callers, and delete legacy event packages**
-- [ ] **Step 6: Run Domain, Adapter, daemon, telemetry, architecture, and race tests**
-- [ ] **Step 7: Commit `refactor(agent): isolate event domain`**
+- [x] **Step 1: Write Domain identity and parent-lineage tests without Protobuf fixtures**
+- [x] **Step 2: Verify RED for missing Domain APIs**
+- [x] **Step 3: Implement pure Domain identity/table rules**
+- [x] **Step 4: Write failing Adapter round-trip and sensor mapping tests**
+- [x] **Step 5: Implement mappers, switch pipeline callers, and delete legacy event packages**
+- [x] **Step 6: Run Domain, Adapter, daemon, telemetry, architecture, and race tests**
+- [x] **Step 7: Commit `refactor(agent): isolate event domain`**
 
 ### Task 4: Isolate Policy Domain
 
@@ -138,12 +138,12 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Produces Domain policy identity, collection intent, endpoint sections, activation candidate, authority validation, and version validation.
 - Contract mapper owns `packages/policy` conversion until Task 11 removes the shared business model.
 
-- [ ] **Step 1: Write target Domain validation tests and observe RED**
-- [ ] **Step 2: Implement pure policy values and collection compilation inputs**
-- [ ] **Step 3: Add failing shared-contract mapper round-trip tests**
-- [ ] **Step 4: Implement mapper, switch callers, and delete legacy policy root**
-- [ ] **Step 5: Run policy/control/sensor tests, architecture contracts, and race tests**
-- [ ] **Step 6: Commit `refactor(agent): isolate policy domain`**
+- [x] **Step 1: Write target Domain validation tests and observe RED**
+- [x] **Step 2: Implement pure policy values and collection compilation inputs**
+- [x] **Step 3: Add failing shared-contract mapper round-trip tests**
+- [x] **Step 4: Implement mapper, switch callers, and delete legacy policy root**
+- [x] **Step 5: Run policy/control/sensor tests, architecture contracts, and race tests**
+- [x] **Step 6: Commit `refactor(agent): isolate policy domain`**
 
 ### Task 5: Isolate Detection Domain
 
@@ -158,13 +158,13 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Produces immutable `Program`, bounded `RuntimeState`, Domain `Signal`, `Evidence`, compile report, and evaluation result.
 - Contract mapper owns Protobuf signal/evidence conversion.
 
-- [ ] **Step 1: Move matcher tests to target package and verify RED**
-- [ ] **Step 2: Move matcher implementation and benchmark without behavior changes**
-- [ ] **Step 3: Split engine tests into compiler, runtime, correlation, and evidence behaviors; verify each target RED**
-- [ ] **Step 4: Implement the minimal pure Domain packages and remove generated-contract imports**
-- [ ] **Step 5: Add mapper tests, switch callers, delete legacy detection root**
-- [ ] **Step 6: Run Domain benchmarks, focused tests, architecture contracts, and Agent race**
-- [ ] **Step 7: Commit by coherent contexts: matcher, compiler, runtime/evidence**
+- [x] **Step 1: Move matcher tests to target package and verify RED**
+- [x] **Step 2: Move matcher implementation and benchmark without behavior changes**
+- [x] **Step 3: Split engine tests into compiler, runtime, correlation, and evidence behaviors; verify each target RED**
+- [x] **Step 4: Implement the minimal pure Domain packages and remove generated-contract imports**
+- [x] **Step 5: Add mapper tests, switch callers, delete legacy detection root**
+- [x] **Step 6: Run Domain benchmarks, focused tests, architecture contracts, and Agent race**
+- [x] **Step 7: Commit by coherent contexts: matcher, compiler, runtime/evidence**
 
 ### Task 6: Move Content Activation Behind Application Ports
 
@@ -180,12 +180,12 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - `ContentRepository.Current/Replace` uses Domain snapshots.
 - `Activate.Execute` enforces verify -> resolve -> persist -> runtime swap -> result.
 
-- [ ] **Step 1: Write failure-order Application tests and observe RED**
-- [ ] **Step 2: Move pure manifest/layer rules into Domain**
-- [ ] **Step 3: Implement narrow Ports and filesystem Adapter contract tests**
-- [ ] **Step 4: Switch control/daemon callers and delete old content path**
-- [ ] **Step 5: Run content, control, daemon, architecture, and race tests**
-- [ ] **Step 6: Commit `refactor(agent): move content activation to application`**
+- [x] **Step 1: Write failure-order Application tests and observe RED**
+- [x] **Step 2: Move pure manifest/layer rules into Domain**
+- [x] **Step 3: Implement narrow Ports and filesystem Adapter contract tests**
+- [x] **Step 4: Switch control/daemon callers and delete old content path**
+- [x] **Step 5: Run content, control, daemon, architecture, and race tests**
+- [x] **Step 6: Commit `refactor(agent): move content activation to application`**
 
 ### Task 7: Move Policy Activation Behind Application Ports
 
@@ -199,12 +199,12 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - `Activate.Prepare` validates authority and builds an immutable candidate.
 - `Activate.Commit` persists, applies sensor/runtime state, and returns an explicit report.
 
-- [ ] **Step 1: Port existing failure-matrix tests to Application fakes and observe RED**
-- [ ] **Step 2: Implement minimal orchestration using Domain and narrow Ports**
-- [ ] **Step 3: Switch local and remote API handlers to the Application interface**
-- [ ] **Step 4: Delete migrated control/daemon policy orchestration**
-- [ ] **Step 5: Run standalone/managed policy tests, architecture, and race**
-- [ ] **Step 6: Commit `refactor(agent): move policy activation to application`**
+- [x] **Step 1: Port existing failure-matrix tests to Application fakes and observe RED**
+- [x] **Step 2: Implement minimal orchestration using Domain and narrow Ports**
+- [x] **Step 3: Switch local and remote API handlers to the Application interface**
+- [x] **Step 4: Delete migrated control/daemon policy orchestration**
+- [x] **Step 5: Run standalone/managed policy tests, architecture, and race**
+- [x] **Step 6: Commit `refactor(agent): move policy activation to application`**
 
 ### Task 8: Move Event Pipeline and Telemetry Delivery
 
@@ -221,12 +221,12 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Telemetry delivery advances checkpoints only for accepted/duplicate acknowledgments.
 - Capacity and eviction decisions are pure Domain rules.
 
-- [ ] **Step 1: Write acknowledgment/checkpoint and retry failure tests; observe RED**
-- [ ] **Step 2: Implement Domain telemetry decisions and Application services**
-- [ ] **Step 3: Add SQLite segment and gRPC/JSONL Adapter contract tests**
-- [ ] **Step 4: Switch callers and delete legacy telemetry root**
-- [ ] **Step 5: Run pipeline, storage recovery, transport, architecture, race, and endpoint functional tests**
-- [ ] **Step 6: Commit pipeline and delivery as separate atomic commits**
+- [x] **Step 1: Write acknowledgment/checkpoint and retry failure tests; observe RED**
+- [x] **Step 2: Implement Domain telemetry decisions and Application services**
+- [x] **Step 3: Add SQLite segment and gRPC/JSONL Adapter contract tests**
+- [x] **Step 4: Switch callers and delete legacy telemetry root**
+- [x] **Step 5: Run pipeline, storage recovery, transport, architecture, race, and endpoint functional tests**
+- [x] **Step 6: Commit pipeline and delivery as separate atomic commits**
 
 ### Task 9: Move Enrollment, Health, Response, and Diagnostics
 
@@ -243,13 +243,13 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Health aggregates narrow component snapshots without owning components.
 - Response validates Domain authorization before invoking a response Port.
 
-- [ ] **Step 1: Port enrollment/unenrollment failure and recovery tests; observe RED**
-- [ ] **Step 2: Implement lifecycle and enrollment services over narrow Ports**
-- [ ] **Step 3: Port health, response, and diagnostics tests and implementations**
-- [ ] **Step 4: Implement Unix/gRPC boundary mappers and switch API servers**
-- [ ] **Step 5: Delete control/localapi/remoteapi roots and their exemptions**
-- [ ] **Step 6: Run focused, topology contract, architecture, and race tests**
-- [ ] **Step 7: Commit one use-case family at a time**
+- [x] **Step 1: Port enrollment/unenrollment failure and recovery tests; observe RED**
+- [x] **Step 2: Implement lifecycle and enrollment services over narrow Ports**
+- [x] **Step 3: Port health, response, and diagnostics tests and implementations**
+- [x] **Step 4: Implement Unix/gRPC boundary mappers and switch API servers**
+- [x] **Step 5: Delete control/localapi/remoteapi roots and their exemptions**
+- [x] **Step 6: Run focused, topology contract, architecture, and race tests**
+- [x] **Step 7: Commit one use-case family at a time**
 
 ### Task 10: Move Remaining Infrastructure Adapters and Wire Bootstrap
 
@@ -265,13 +265,13 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Runner starts, coordinates, and stops Application services without business decisions.
 - Commands import Bootstrap only.
 
-- [ ] **Step 1: Add failing command-boundary and Bootstrap validation tests**
-- [ ] **Step 2: Move concrete infrastructure behind existing Ports**
-- [ ] **Step 3: Implement Bootstrap resource construction and deterministic close ordering**
-- [ ] **Step 4: Switch commands and verify CLI/config compatibility**
-- [ ] **Step 5: Delete daemon and remaining infrastructure legacy roots**
-- [ ] **Step 6: Run all Agent tests, race, endpoint functional, and managed topology smoke**
-- [ ] **Step 7: Commit Adapter families separately, then `refactor(agent): wire layered bootstrap`**
+- [x] **Step 1: Add failing command-boundary and Bootstrap validation tests**
+- [x] **Step 2: Move concrete infrastructure behind existing Ports**
+- [x] **Step 3: Implement Bootstrap resource construction and deterministic close ordering**
+- [x] **Step 4: Switch commands and verify CLI/config compatibility**
+- [x] **Step 5: Delete daemon and remaining infrastructure legacy roots**
+- [x] **Step 6: Run all Agent tests, race, endpoint functional, and managed topology smoke**
+- [x] **Step 7: Commit Adapter families separately, then `refactor(agent): wire layered bootstrap`**
 
 ### Task 11: Retire Shared Business Models and All Exemptions
 
@@ -287,12 +287,12 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - `packages` contains only stable cross-process, plugin, schema, or technical contracts.
 - Architecture contract has no Agent legacy exemptions.
 
-- [ ] **Step 1: Add failing absence/import tests for each proven-retired package**
-- [ ] **Step 2: Move remaining product-owned types and switch callers**
-- [ ] **Step 3: Delete retired shared packages and all Agent legacy exemptions**
-- [ ] **Step 4: Run forbidden-symbol/import and file-size scans**
-- [ ] **Step 5: Run full Go, architecture, and race suites**
-- [ ] **Step 6: Commit `refactor(architecture): remove agent legacy roots`**
+- [x] **Step 1: Add failing absence/import tests for each proven-retired package**
+- [x] **Step 2: Move remaining product-owned types and switch callers**
+- [x] **Step 3: Delete retired shared packages and all Agent legacy exemptions**
+- [x] **Step 4: Run forbidden-symbol/import and file-size scans**
+- [x] **Step 5: Run full Go, architecture, and race suites**
+- [x] **Step 6: Commit `refactor(architecture): remove agent legacy roots`**
 
 ### Task 12: Final Reliability and Documentation Closure
 

@@ -73,7 +73,7 @@ exemptions, and Task 12 performs final validation and documentation closure.
 - Produces a repository contract that classifies paths as `domain`, `application`, `ports`, `adapters`, `bootstrap`, or `contracts` and rejects forbidden imports.
 - Consumes only repository source text and `go list`; it does not mutate generated code.
 
-- [ ] **Step 1: Write the failing layer contract**
+- [x] **Step 1: Write the failing layer contract**
 
 Add tests with this allow matrix and explicit legacy exemptions:
 
@@ -97,7 +97,7 @@ LEGACY_ROOTS = {
 
 Assert that new layered packages obey the matrix, Agent never imports Manager internals, Manager never imports Agent internals, and Domain never imports `packages/contracts/proto`.
 
-- [ ] **Step 2: Run the contract and verify the missing-layer failure**
+- [x] **Step 2: Run the contract and verify the missing-layer failure**
 
 Run:
 
@@ -107,11 +107,11 @@ python3 -m unittest test.contracts.test_layered_architecture -v
 
 Expected: FAIL because the required layer roots and governance allowlist do not exist.
 
-- [ ] **Step 3: Add empty layer roots through governance files**
+- [x] **Step 3: Add empty layer roots through governance files**
 
 Create `README.md` files under both product `internal/{domain,application,ports,adapters,bootstrap}` roots. Each file states its allowed imports and points to the approved spec. Do not create empty Go packages.
 
-- [ ] **Step 4: Wire the contract into test entrypoints**
+- [x] **Step 4: Wire the contract into test entrypoints**
 
 Add `test-layered-architecture` to `test/Makefile` and CI, then run:
 
@@ -122,7 +122,7 @@ make -C test test-unit
 
 Expected: architecture contract PASS; existing unit suite remains green where socket permissions permit.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add test apps/agent/internal/{domain,application,ports,adapters,bootstrap}/README.md apps/manager/internal/{domain,application,ports,adapters,bootstrap}/README.md .github/workflows/architecture.yml
@@ -144,7 +144,7 @@ git commit -m "test(architecture): enforce layered dependencies"
 - Produces `tenant.ID`, `tenant.Actor`, `tenant.RoleSet`, `failure.Kind`, `Clock`, and `IDGenerator`.
 - Later tasks must use these exact types rather than defining local tenant strings or clocks.
 
-- [ ] **Step 1: Write tenant and failure tests**
+- [x] **Step 1: Write tenant and failure tests**
 
 ```go
 func TestNewIDRejectsBlank(t *testing.T) {
@@ -161,7 +161,7 @@ func TestActorRequireAcceptsAdmin(t *testing.T) {
 
 Test stable failure kinds: `InvalidArgument`, `Unauthenticated`, `PermissionDenied`, `NotFound`, `Conflict`, `FailedPrecondition`, `ResourceExhausted`, `RetryableDependency`, and `Internal`.
 
-- [ ] **Step 2: Verify tests fail before implementation**
+- [x] **Step 2: Verify tests fail before implementation**
 
 ```bash
 go test ./apps/manager/internal/domain/tenant ./apps/manager/internal/domain/failure ./apps/agent/internal/domain/failure
@@ -169,7 +169,7 @@ go test ./apps/manager/internal/domain/tenant ./apps/manager/internal/domain/fai
 
 Expected: FAIL with undefined constructors and kinds.
 
-- [ ] **Step 3: Implement minimal immutable values and ports**
+- [x] **Step 3: Implement minimal immutable values and ports**
 
 ```go
 type Clock interface { Now() time.Time }
@@ -185,7 +185,7 @@ func NewID(raw string) (ID, error) {
 
 Keep `failure.Error` free of HTTP/gRPC status codes.
 
-- [ ] **Step 4: Run foundation and architecture tests**
+- [x] **Step 4: Run foundation and architecture tests**
 
 ```bash
 go test ./apps/manager/internal/domain/... ./apps/agent/internal/domain/...
@@ -194,7 +194,7 @@ python3 -m unittest test.contracts.test_layered_architecture -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/manager/internal/domain apps/manager/internal/ports apps/agent/internal/domain apps/agent/internal/ports
@@ -220,11 +220,11 @@ git commit -m "feat(architecture): add domain foundation types"
 - `ListAgentHealthWithError(tenantID string)` and overview helpers require a tenant.
 - `/api/v1/reset` is removed from production routing; test-only reset uses a non-production helper.
 
-- [ ] **Step 1: Add two-tenant failing tests**
+- [x] **Step 1: Add two-tenant failing tests**
 
 For each endpoint `/events`, `/signals`, `/search`, `/search/histogram`, `/agent-health`, `/ui/overview`, `/metrics`, and `/rarity-baseline`, create tenant A and tenant B records, authenticate as tenant A, and assert no tenant B identifier or count appears.
 
-- [ ] **Step 2: Run focused tests and verify cross-tenant failures**
+- [x] **Step 2: Run focused tests and verify cross-tenant failures**
 
 ```bash
 go test ./apps/manager/internal/api -run 'Tenant|Overview|Search|Health|Metrics|Rarity' -count=1
@@ -232,15 +232,15 @@ go test ./apps/manager/internal/api -run 'Tenant|Overview|Search|Health|Metrics|
 
 Expected: FAIL on the previously unscoped handlers.
 
-- [ ] **Step 3: Inject tenant filters at the last trusted boundary**
+- [x] **Step 3: Inject tenant filters at the last trusted boundary**
 
 Ensure OpenSearch requests include top-level or label tenant filters according to index mapping. Change store list methods to require tenant and reject blank tenant. Do not rely only on request-body rewriting.
 
-- [ ] **Step 4: Remove production reset semantics**
+- [x] **Step 4: Remove production reset semantics**
 
 Remove `/api/v1/reset` from `Server.Handler`; replace internal test setup with direct fixture construction. Assert authenticated requests receive `404` and cannot mutate another tenant.
 
-- [ ] **Step 5: Verify focused and package tests**
+- [x] **Step 5: Verify focused and package tests**
 
 ```bash
 go test ./apps/manager/internal/api ./apps/manager/internal/store ./apps/manager/internal/store/postgres -count=1
@@ -248,7 +248,7 @@ go test ./apps/manager/internal/api ./apps/manager/internal/store ./apps/manager
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/manager/internal/api apps/manager/internal/store
@@ -270,7 +270,7 @@ git commit -m "fix(manager): enforce tenant-scoped operations"
 - Produces `bootstrap.NewProductionGateway(Config)` and `bootstrap.NewDevelopmentGateway(Config)`.
 - Production requires TLS certificate, key, Client CA, and verified client certificates.
 
-- [ ] **Step 1: Write the security-mode matrix tests**
+- [x] **Step 1: Write the security-mode matrix tests**
 
 ```go
 func TestProductionGatewayRejectsMissingMTLS(t *testing.T) {
@@ -284,24 +284,24 @@ func TestDevelopmentGatewayRejectsNonLoopbackInsecureListen(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 ```bash
 go test ./apps/manager/internal/bootstrap ./packages/tlsconfig -count=1
 ```
 
-- [ ] **Step 3: Implement explicit constructors and thin main wiring**
+- [x] **Step 3: Implement explicit constructors and thin main wiring**
 
 Move security-mode selection out of implicit flag combinations. `main` selects production unless `--development` is explicitly present; production constructor returns an error before opening any listener.
 
-- [ ] **Step 4: Run Gateway tests and build**
+- [x] **Step 4: Run Gateway tests and build**
 
 ```bash
 go test ./apps/manager/cmd/sysarmor-gateway ./apps/manager/internal/bootstrap ./apps/manager/internal/gateway ./packages/tlsconfig
 go build ./apps/manager/cmd/sysarmor-gateway
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/manager/cmd/sysarmor-gateway apps/manager/internal/bootstrap apps/manager/internal/adapters packages/tlsconfig deployments/gateway
@@ -333,40 +333,40 @@ type PolicyUnitOfWork interface {
 }
 ```
 
-- [ ] **Step 1: Write pure Domain tests**
+- [x] **Step 1: Write pure Domain tests**
 
 Test stale version rejection, tenant mismatch, immutable publication audit, assignment target validation, and deterministic behavior with supplied time.
 
-- [ ] **Step 2: Write Application transaction tests with fakes**
+- [x] **Step 2: Write Application transaction tests with fakes**
 
 Assert publish writes Policy and Audit in one callback; assignment writes Assignment, Audit, and optional Control Command; any fake failure rolls back the captured transaction.
 
-- [ ] **Step 3: Run tests and verify undefined-type failures**
+- [x] **Step 3: Run tests and verify undefined-type failures**
 
 ```bash
 go test ./apps/manager/internal/domain/policy ./apps/manager/internal/application/manager/policy
 ```
 
-- [ ] **Step 4: Implement Domain, Ports, and use cases**
+- [x] **Step 4: Implement Domain, Ports, and use cases**
 
 Use validated `tenant.ID`, injected `Clock`, and domain failure kinds. Do not import legacy `store` or `packages/policy` from Domain/Application.
 
-- [ ] **Step 5: Implement PostgreSQL adapter contract tests**
+- [x] **Step 5: Implement PostgreSQL adapter contract tests**
 
 Run the same repository behavior suite against memory fakes and PostgreSQL fake driver: tenant isolation, conflict behavior, atomic publication, and rollback.
 
-- [ ] **Step 6: Switch HTTP policy routes to the new inbound Adapter**
+- [x] **Step 6: Switch HTTP policy routes to the new inbound Adapter**
 
 Preserve existing JSON and status contract. Remove policy methods from `managerapi.ManagerStore` once no route uses them.
 
-- [ ] **Step 7: Run reference-slice verification**
+- [x] **Step 7: Run reference-slice verification**
 
 ```bash
 go test ./apps/manager/internal/domain/policy/... ./apps/manager/internal/application/manager/policy/... ./apps/manager/internal/adapters/... ./apps/manager/internal/api/...
 python3 -m unittest test.contracts.test_layered_architecture -v
 ```
 
-- [ ] **Step 8: Commit in two atomic changes**
+- [x] **Step 8: Commit in two atomic changes**
 
 ```bash
 git add apps/manager/internal/domain/policy apps/manager/internal/domain/audit apps/manager/internal/application/manager/policy apps/manager/internal/ports/policy.go apps/manager/internal/adapters/outbound/postgres/policy
@@ -390,33 +390,33 @@ git commit -m "refactor(manager): route policy API through application"
 - Produces the exact Repository and UnitOfWork families specified in the design.
 - Each slice follows Task 5 and has no direct dependency on another slice's adapter.
 
-- [ ] **Step 1: Migrate Identity read use cases**
+- [x] **Step 1: Migrate Identity read use cases**
 
 Implement tenant-scoped Agent, Health, Session, Overview, Metrics, and Rarity queries. Run two-tenant tests before deleting legacy identity handlers.
 
-- [ ] **Step 2: Migrate Enrollment and certificate issuance**
+- [x] **Step 2: Migrate Enrollment and certificate issuance**
 
 Test token single use, CSR identity binding, idempotent issuance, commit failure behavior, certificate revocation, and unenrollment completion.
 
-- [ ] **Step 3: Migrate Control commands**
+- [x] **Step 3: Migrate Control commands**
 
 Test create, pending, sent, ack, retry, cancel, expire, replay, and optimistic conflicts through `ControlUnitOfWork`.
 
-- [ ] **Step 4: Migrate Response approval**
+- [x] **Step 4: Migrate Response approval**
 
 Test role requirements, multi-approval, denial, command creation, ack, and audit in `ResponseUnitOfWork`.
 
-- [ ] **Step 5: Migrate Artifact and channel operations**
+- [x] **Step 5: Migrate Artifact and channel operations**
 
 Keep archive parsing in outbound Adapter; keep artifact state transitions in Domain/Application.
 
-- [ ] **Step 6: Remove migrated legacy methods and run Manager tests**
+- [x] **Step 6: Remove migrated legacy methods and run Manager tests**
 
 ```bash
 go test ./apps/manager/internal/domain/... ./apps/manager/internal/application/manager/... ./apps/manager/internal/adapters/... ./apps/manager/internal/api/...
 ```
 
-- [ ] **Step 7: Commit one slice at a time**
+- [x] **Step 7: Commit one slice at a time**
 
 Use `feat(manager): add <slice> application slice` followed by `refactor(manager): remove legacy <slice> path`.
 
@@ -436,29 +436,29 @@ Use `feat(manager): add <slice> application slice` followed by `refactor(manager
 - Data acceptance returns accepted only after reliable publish or proven duplicate.
 - Control dispatcher delegates each command type to a handler below 50 lines.
 
-- [ ] **Step 1: Add application tests for batch reliability**
+- [x] **Step 1: Add application tests for batch reliability**
 
 Cover identity mismatch, revoked certificate, duplicate batch, publisher failure, session failure after publish, and accepted cursor.
 
-- [ ] **Step 2: Add dispatcher tests**
+- [x] **Step 2: Add dispatcher tests**
 
 Cover hello, health, policy ack, response ack, evidence result, command ack, replay, sequence gap, and unknown frame.
 
-- [ ] **Step 3: Implement application use cases using Manager Ports**
+- [x] **Step 3: Implement application use cases using Manager Ports**
 
 Pass request context through all calls; remove `context.Background()` from request paths.
 
-- [ ] **Step 4: Implement gRPC mappers and stream adapters**
+- [x] **Step 4: Implement gRPC mappers and stream adapters**
 
 Protobuf remains confined to `adapters/inbound/grpc` and `packages/contracts`.
 
-- [ ] **Step 5: Switch bootstrap and delete the old Gateway package**
+- [x] **Step 5: Switch bootstrap and delete the old Gateway package**
 
 ```bash
 go test ./apps/manager/internal/application/gateway/... ./apps/manager/internal/adapters/inbound/grpc/... ./apps/manager/cmd/sysarmor-gateway
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(gateway): add data and control application services"
@@ -482,25 +482,25 @@ git commit -m "refactor(gateway): remove legacy runtime backend"
 - Pure analysis Domain accepts Domain Event/Signal and returns Domain Analysis.
 - `ProcessDataBatchResult` exposes `accepted`, `retryable`, or `rejected` disposition.
 
-- [ ] **Step 1: Port analytics tests to Protobuf-free Domain models**
+- [x] **Step 1: Port analytics tests to Protobuf-free Domain models**
 
 Retain correlation, graph, rarity, convergence, stable Incident ID, and evidence assertions.
 
-- [ ] **Step 2: Add Worker failure matrix tests**
+- [x] **Step 2: Add Worker failure matrix tests**
 
 Cover invalid contract, history timeout, policy lookup failure, partial projection, DLQ failure, and successful offset eligibility.
 
-- [ ] **Step 3: Implement Contract mappers and use cases**
+- [x] **Step 3: Implement Contract mappers and use cases**
 
 Map Protobuf only in Kafka Adapter. Require tenant on history and projection Ports.
 
-- [ ] **Step 4: Switch Worker bootstrap and remove old Processor**
+- [x] **Step 4: Switch Worker bootstrap and remove old Processor**
 
 ```bash
 go test ./apps/manager/internal/domain/detection/... ./apps/manager/internal/domain/investigation/... ./apps/manager/internal/application/worker/... ./apps/manager/internal/adapters/inbound/kafka/...
 ```
 
-- [ ] **Step 5: Run benchmarks and commit**
+- [x] **Step 5: Run benchmarks and commit**
 
 ```bash
 go test -bench=. ./apps/manager/internal/domain/detection/... ./apps/manager/internal/domain/investigation/...
@@ -521,18 +521,18 @@ git commit -m "refactor(worker): isolate analytics and message adapters"
 - Domain uses no Protobuf or sensor contract types.
 - Detection `Program` is immutable; only bounded `RuntimeState` mutates.
 
-- [ ] **Step 1: Move management and matcher with unchanged tests**
-- [ ] **Step 2: Introduce Domain Event, Signal, Policy, Content, and Telemetry models**
-- [ ] **Step 3: Port detection compiler and runtime tests before implementation moves**
-- [ ] **Step 4: Add Protobuf mapper round-trip tests in Adapter package**
-- [ ] **Step 5: Run Domain tests and benchmarks**
+- [x] **Step 1: Move management and matcher with unchanged tests**
+- [x] **Step 2: Introduce Domain Event, Signal, Policy, Content, and Telemetry models**
+- [x] **Step 3: Port detection compiler and runtime tests before implementation moves**
+- [x] **Step 4: Add Protobuf mapper round-trip tests in Adapter package**
+- [x] **Step 5: Run Domain tests and benchmarks**
 
 ```bash
 go test ./apps/agent/internal/domain/... ./apps/agent/internal/adapters/contracts/...
 go test -bench=. ./apps/agent/internal/domain/detection/...
 ```
 
-- [ ] **Step 6: Commit by Domain context**
+- [x] **Step 6: Commit by Domain context**
 
 Use atomic `refactor(agent): isolate <context> domain` commits.
 
@@ -551,21 +551,21 @@ Use atomic `refactor(agent): isolate <context> domain` commits.
 - Checkpoint advances only for accepted/duplicate acknowledgements.
 - Bootstrap owns lifecycle; no replacement global runtime container is allowed.
 
-- [ ] **Step 1: Implement State, Spool, Sensor, DataAppender, and ControlChannel contract suites**
-- [ ] **Step 2: Migrate policy/content activation use cases and failure-point tests**
-- [ ] **Step 3: Migrate event pipeline and telemetry use cases with Fake Ports**
-- [ ] **Step 4: Migrate enrollment, unenrollment, health, and diagnostics use cases**
-- [ ] **Step 5: Implement SQLite, segment, Tetragon, Unix, and gRPC adapters**
-- [ ] **Step 6: Wire `bootstrap.NewAgent` and reduce main to command dispatch**
-- [ ] **Step 7: Delete each legacy package immediately after its last caller moves**
-- [ ] **Step 8: Run Agent verification**
+- [x] **Step 1: Implement State, Spool, Sensor, DataAppender, and ControlChannel contract suites**
+- [x] **Step 2: Migrate policy/content activation use cases and failure-point tests**
+- [x] **Step 3: Migrate event pipeline and telemetry use cases with Fake Ports**
+- [x] **Step 4: Migrate enrollment, unenrollment, health, and diagnostics use cases**
+- [x] **Step 5: Implement SQLite, segment, Tetragon, Unix, and gRPC adapters**
+- [x] **Step 6: Wire `bootstrap.NewAgent` and reduce main to command dispatch**
+- [x] **Step 7: Delete each legacy package immediately after its last caller moves**
+- [x] **Step 8: Run Agent verification**
 
 ```bash
 go test -race ./apps/agent/... ./packages/...
 make test-functional DOMAIN=endpoint
 ```
 
-- [ ] **Step 9: Commit one use case and adapter family at a time**
+- [x] **Step 9: Commit one use case and adapter family at a time**
 
 ### Task 11: Retire Shared Business Models and Legacy Containers
 
@@ -581,10 +581,10 @@ make test-functional DOMAIN=endpoint
 - `packages` contains stable wire/plugin contracts only.
 - No old global Store, Runtime, Backend, Processor, or shared mutable business model remains.
 
-- [ ] **Step 1: Add failing absence/import assertions for every retired package**
-- [ ] **Step 2: Move remaining contract DTOs under `packages/contracts` without changing wire semantics**
-- [ ] **Step 3: Remove legacy packages and all exemptions from the architecture contract**
-- [ ] **Step 4: Verify no forbidden names remain**
+- [x] **Step 1: Add failing absence/import assertions for every retired package**
+- [x] **Step 2: Move remaining contract DTOs under `packages/contracts` without changing wire semantics**
+- [x] **Step 3: Remove legacy packages and all exemptions from the architecture contract**
+- [x] **Step 4: Verify no forbidden names remain**
 
 ```bash
 rg -n 'store\.Store|ManagerStore|ControlStore|SaveState|AgentRuntime|gateway\.Backend|ingest\.Processor' apps packages --glob '*.go'
@@ -592,7 +592,7 @@ rg -n 'store\.Store|ManagerStore|ControlStore|SaveState|AgentRuntime|gateway\.Ba
 
 Expected: no product implementation matches; historical docs may retain names.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "refactor(architecture): remove legacy application containers"
@@ -612,7 +612,7 @@ git commit -m "refactor(architecture): remove legacy application containers"
 - Documentation describes implemented state only.
 - Architecture tests have no legacy exemptions.
 
-- [ ] **Step 1: Run formatting, static, and architecture checks**
+- [x] **Step 1: Run formatting, static, and architecture checks**
 
 ```bash
 test -z "$(gofmt -l apps packages)"
@@ -621,14 +621,14 @@ python3 -m unittest discover -s test/contracts -p 'test_*.py' -v
 GOCACHE=/tmp/sysarmor-layered-go-cache go vet ./...
 ```
 
-- [ ] **Step 2: Run unit and race suites**
+- [x] **Step 2: Run unit and race suites**
 
 ```bash
 GOCACHE=/tmp/sysarmor-layered-go-cache go test ./...
 GOCACHE=/tmp/sysarmor-layered-go-cache go test -race ./apps/agent/... ./apps/manager/...
 ```
 
-- [ ] **Step 3: Run product integration suites**
+- [x] **Step 3: Run product integration suites**
 
 ```bash
 make build-binary
@@ -639,15 +639,15 @@ make test-performance DOMAIN=endpoint PROFILE=quick
 make test-performance DOMAIN=platform PROFILE=quick
 ```
 
-- [ ] **Step 4: Check file and function governance**
+- [x] **Step 4: Check file and function governance**
 
 Run the repository governance contract and confirm no non-generated Go file exceeds 500 lines and no newly changed function exceeds 50 lines without an approved exception.
 
-- [ ] **Step 5: Update current architecture documentation**
+- [x] **Step 5: Update current architecture documentation**
 
 Document layer ownership, dependency direction, transaction boundaries, production/development bootstrap, and test commands. Remove descriptions of deleted Store/Runtime paths.
 
-- [ ] **Step 6: Perform final review and commit**
+- [x] **Step 6: Perform final review and commit**
 
 ```bash
 git add docs CATALOG.md test apps packages
