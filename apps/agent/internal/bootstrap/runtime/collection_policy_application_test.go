@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"slices"
 	"testing"
 
@@ -51,11 +50,11 @@ func TestCollectionProductionPathPersistsUnifiedEndpointAfterSensorApply(t *test
 	if err != nil || !ok {
 		t.Fatalf("stored endpoint ok=%t err=%v", ok, err)
 	}
-	var persisted agentpolicy.EndpointPolicy
-	if err := json.Unmarshal(record.Document, &persisted); err != nil {
+	persisted, err := agentpolicy.ParseEndpointPolicy(record.Document)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Version != 2 || persisted.Collection.PolicyID != "collection-a" || runner.currentEndpointPolicy().Version != 2 {
+	if persisted.Version != 2 || persisted.Collection.Identity.ID != "collection-a" || runner.currentEndpointPolicy().Version != 2 {
 		t.Fatalf("persisted=%+v runtime=%+v", persisted, runner.currentEndpointPolicy())
 	}
 }

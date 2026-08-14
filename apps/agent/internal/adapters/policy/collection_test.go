@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 func TestParseCollectionIntent(t *testing.T) {
@@ -214,7 +216,7 @@ func TestCollectionPolicyFlatFieldsBecomeBehaviorFilters(t *testing.T) {
 }
 
 func TestCollectionPolicyRejectsUnknownBehavior(t *testing.T) {
-	_, err := CollectionPolicyIntent(CollectionPolicy{Behaviors: []string{"unknown.behavior"}})
+	_, err := CollectionPolicyIntent(domainpolicy.CollectionPolicy{Behaviors: []string{"unknown.behavior"}})
 	if err == nil {
 		t.Fatal("CollectionPolicyIntent() error = nil")
 	}

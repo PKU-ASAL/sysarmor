@@ -12,12 +12,13 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
 type collectionCandidate struct {
-	policy   agentpolicy.CollectionPolicy
-	endpoint agentpolicy.EndpointPolicy
+	policy   policymodel.CollectionPolicy
+	endpoint policymodel.EndpointPolicy
 	intent   contract.CollectionIntent
 	previous contract.CollectionIntent
 	compile  contract.CollectionCompileReport
@@ -26,8 +27,8 @@ type collectionCandidate struct {
 	result   applicationpolicy.CollectionReport
 }
 
-func (c *collectionCandidate) PolicyID() string      { return c.policy.PolicyID }
-func (c *collectionCandidate) PolicyVersion() uint64 { return c.policy.Version }
+func (c *collectionCandidate) PolicyID() string      { return c.policy.Identity.ID }
+func (c *collectionCandidate) PolicyVersion() uint64 { return c.policy.Identity.Version }
 func (c *collectionCandidate) ValidationReport() applicationpolicy.CollectionReport {
 	return c.result
 }
@@ -151,7 +152,7 @@ func (a *collectionPolicyApplication) PublishCollection(candidate applicationpol
 	prepared.result = collectionActivationReport(prepared.compile, prepared.report)
 }
 
-func applyCollectionScope(policy *agentpolicy.CollectionPolicy, requested applicationpolicy.CollectionScope, sensorConfig config.SensorConfig) error {
+func applyCollectionScope(policy *policymodel.CollectionPolicy, requested applicationpolicy.CollectionScope, sensorConfig config.SensorConfig) error {
 	if policy.ScopeType == "" && requested.Type != "" {
 		policy.ScopeType = requested.Type
 		policy.ScopeSelector = requested.Selector

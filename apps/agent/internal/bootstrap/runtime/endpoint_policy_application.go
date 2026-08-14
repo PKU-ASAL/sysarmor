@@ -15,12 +15,12 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
 type endpointCandidate struct {
-	endpoint  agentpolicy.EndpointPolicy
+	endpoint  policymodel.EndpointPolicy
 	intent    contract.CollectionIntent
 	previous  contract.CollectionIntent
 	policy    policymodel.Policy
@@ -90,7 +90,7 @@ func (a *endpointPolicyApplication) PrepareEndpoint(_ context.Context, document 
 	return a.prepare(endpoint, source)
 }
 
-func (a *endpointPolicyApplication) prepare(endpoint agentpolicy.EndpointPolicy, source applicationpolicy.Source) (*endpointCandidate, error) {
+func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy, source applicationpolicy.Source) (*endpointCandidate, error) {
 	collection, expansion, err := agentpolicy.ExpandCollectionPolicyRefs(endpoint.Collection, collectionContentSnapshot(a.runner.contentStore().Snapshot()))
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (a *endpointPolicyApplication) prepare(endpoint agentpolicy.EndpointPolicy,
 	}, nil
 }
 
-func endpointRuntimePolicy(tenantID string, endpoint agentpolicy.EndpointPolicy) policymodel.Policy {
+func endpointRuntimePolicy(tenantID string, endpoint policymodel.EndpointPolicy) policymodel.Policy {
 	policy := policymodel.DefaultPolicy(tenantID)
 	policy.PolicyID = endpoint.PolicyID
 	policy.Version = endpoint.Version

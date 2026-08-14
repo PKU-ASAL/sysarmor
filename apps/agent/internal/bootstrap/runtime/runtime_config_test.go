@@ -6,7 +6,7 @@ import (
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 func TestRuntimeRejectsStartupDetectionWithoutRuleSet(t *testing.T) {

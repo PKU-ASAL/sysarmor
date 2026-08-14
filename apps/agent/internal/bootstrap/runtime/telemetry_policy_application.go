@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,19 +10,17 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 type telemetryCandidate struct {
 	policy    policymodel.TelemetryPolicy
 	effective config.EffectiveTelemetry
-	endpoint  agentpolicy.EndpointPolicy
+	endpoint  policymodel.EndpointPolicy
 }
 
 func (c *telemetryCandidate) ReportJSON() string {
-	report, _ := json.Marshal(struct {
-		Telemetry policymodel.TelemetryPolicy `json:"telemetry"`
-	}{Telemetry: c.policy})
+	report, _ := agentpolicy.EncodeTelemetryEnvelope(c.policy)
 	return string(report)
 }
 
@@ -103,19 +100,7 @@ func parseTelemetryPolicy(document string, input *applicationpolicy.TelemetryInp
 }
 
 func parseTelemetryDocument(document string) (policymodel.TelemetryPolicy, error) {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(document), &raw); err != nil {
-		return policymodel.TelemetryPolicy{}, fmt.Errorf("invalid telemetry policy json: %w", err)
-	}
-	payload := []byte(document)
-	if nested, ok := raw["telemetry"]; ok {
-		payload = nested
-	}
-	var policy policymodel.TelemetryPolicy
-	if err := json.Unmarshal(payload, &policy); err != nil {
-		return policymodel.TelemetryPolicy{}, fmt.Errorf("invalid telemetry policy json: %w", err)
-	}
-	return policy, nil
+	return agentpolicy.DecodeTelemetryDocument([]byte(document))
 }
 
 func (a *telemetryPolicyApplication) PersistTelemetry(ctx context.Context, candidate applicationpolicy.TelemetryCandidate) error {

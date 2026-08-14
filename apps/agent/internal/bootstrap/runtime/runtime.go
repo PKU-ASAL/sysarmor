@@ -19,9 +19,9 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
@@ -50,7 +50,7 @@ type Runtime struct {
 	sensorSupervisor        *sensorruntime.SubscriptionSupervisor
 	revokeEnrollment        func(context.Context, sqlite.Enrollment, string) (string, time.Time, error)
 	reportUnenrollment      func(context.Context) (bool, error)
-	endpointPolicy          policy.EndpointPolicy
+	endpointPolicy          policymodel.EndpointPolicy
 	effectiveTelemetry      config.EffectiveTelemetry
 	policy                  policymodel.Policy
 	detection               *detection.Engine

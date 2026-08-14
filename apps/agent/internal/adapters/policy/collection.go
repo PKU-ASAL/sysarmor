@@ -8,17 +8,8 @@ import (
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
-
-type CollectionPolicy = policymodel.CollectionPolicy
-type CollectionBehaviorPolicy = policymodel.CollectionBehaviorPolicy
-type CollectionBehaviorSelectors = policymodel.CollectionBehaviorSelectors
-type BinarySelector = policymodel.BinarySelector
-type ProcessSelector = policymodel.ProcessSelector
-type FileSelector = policymodel.FileSelector
-type SocketSelector = policymodel.SocketSelector
 
 type CollectionContentSnapshot struct {
 	ContextSets map[string]CollectionValueSet
@@ -60,19 +51,19 @@ func ParseCollectionIntent(data string, observeOnly bool) (contract.CollectionIn
 	return CollectionPolicyIntent(policy)
 }
 
-func ParseCollectionPolicyJSON(data []byte, defaultObserveOnly bool) (CollectionPolicy, error) {
+func ParseCollectionPolicyJSON(data []byte, defaultObserveOnly bool) (domainpolicy.CollectionPolicy, error) {
 	var envelope struct {
 		Collection json.RawMessage `json:"collection"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return CollectionPolicy{}, fmt.Errorf("decode collection policy: %w", err)
+		return domainpolicy.CollectionPolicy{}, fmt.Errorf("decode collection policy: %w", err)
 	}
 	if len(envelope.Collection) > 0 {
 		data = envelope.Collection
 	}
-	var policy CollectionPolicy
-	if err := decodeCollectionPolicy(data, &policy); err != nil {
-		return CollectionPolicy{}, err
+	policy, err := decodeCollectionDocument(data)
+	if err != nil {
+		return domainpolicy.CollectionPolicy{}, err
 	}
 	if !policy.ObserveOnly {
 		policy.ObserveOnly = defaultObserveOnly
@@ -80,63 +71,30 @@ func ParseCollectionPolicyJSON(data []byte, defaultObserveOnly bool) (Collection
 	return NormalizeCollectionPolicy(policy), nil
 }
 
-func decodeCollectionPolicy(data []byte, policy *CollectionPolicy) error {
-	var wire struct {
-		PolicyID       string          `json:"policy_id,omitempty"`
-		Version        uint64          `json:"version,omitempty"`
-		Behaviors      json.RawMessage `json:"behaviors,omitempty"`
-		BinaryPrefixes []string        `json:"binary_prefixes,omitempty"`
-		FilePrefixes   []string        `json:"file_prefixes,omitempty"`
-		SocketFamilies []string        `json:"socket_families,omitempty"`
-		SocketAddrs    []string        `json:"socket_addrs,omitempty"`
-		SocketPorts    []string        `json:"socket_ports,omitempty"`
-		ScopeType      string          `json:"scope_type,omitempty"`
-		ScopeSelector  string          `json:"scope_selector,omitempty"`
-		ObserveOnly    bool            `json:"observe_only,omitempty"`
+func NormalizeCollectionPolicy(value domainpolicy.CollectionPolicy) domainpolicy.CollectionPolicy {
+	if strings.TrimSpace(value.Identity.ID) == "" {
+		value.Identity.ID = "local-collection-policy"
 	}
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return fmt.Errorf("decode collection policy: %w", err)
+	if value.Identity.Version == 0 {
+		value.Identity.Version = 1
 	}
-	policy.PolicyID, policy.Version = wire.PolicyID, wire.Version
-	policy.BinaryPrefixes, policy.FilePrefixes = wire.BinaryPrefixes, wire.FilePrefixes
-	policy.SocketFamilies, policy.SocketAddrs, policy.SocketPorts = wire.SocketFamilies, wire.SocketAddrs, wire.SocketPorts
-	policy.ScopeType, policy.ScopeSelector, policy.ObserveOnly = wire.ScopeType, wire.ScopeSelector, wire.ObserveOnly
-	if len(wire.Behaviors) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(wire.Behaviors, &policy.Behaviors); err == nil {
-		return nil
-	}
-	if err := json.Unmarshal(wire.Behaviors, &policy.BehaviorSpecs); err != nil {
-		return fmt.Errorf("decode collection behaviors: %w", err)
-	}
-	return nil
+	return domainpolicy.NormalizeCollection(value)
 }
 
-func NormalizeCollectionPolicy(value CollectionPolicy) CollectionPolicy {
-	if strings.TrimSpace(value.PolicyID) == "" {
-		value.PolicyID = "local-collection-policy"
-	}
-	if value.Version == 0 {
-		value.Version = 1
-	}
-	return contractmapper.SharedCollectionPolicy(domainpolicy.NormalizeCollection(contractmapper.DomainCollectionPolicy(value)))
-}
-
-func ExpandCollectionPolicyRefs(value CollectionPolicy, snapshot CollectionContentSnapshot) (CollectionPolicy, CollectionExpansionReport, error) {
-	expanded, report, err := domainpolicy.ExpandCollection(contractmapper.DomainCollectionPolicy(value), domainContentSnapshot(snapshot))
+func ExpandCollectionPolicyRefs(value domainpolicy.CollectionPolicy, snapshot CollectionContentSnapshot) (domainpolicy.CollectionPolicy, CollectionExpansionReport, error) {
+	expanded, report, err := domainpolicy.ExpandCollection(value, domainContentSnapshot(snapshot))
 	if err != nil {
-		return CollectionPolicy{}, CollectionExpansionReport{}, err
+		return domainpolicy.CollectionPolicy{}, CollectionExpansionReport{}, err
 	}
-	return contractmapper.SharedCollectionPolicy(expanded), sharedExpansionReport(report), nil
+	return expanded, sharedExpansionReport(report), nil
 }
 
-func CollectionPolicyIntent(value CollectionPolicy) (contract.CollectionIntent, error) {
-	intent, err := domainpolicy.CompileCollectionIntent(contractmapper.DomainCollectionPolicy(value))
+func CollectionPolicyIntent(value domainpolicy.CollectionPolicy) (contract.CollectionIntent, error) {
+	intent, err := domainpolicy.CompileCollectionIntent(value)
 	if err != nil {
 		return contract.CollectionIntent{}, err
 	}
-	return sensorCollectionIntent(intent).NormalizeScope()
+	return contractmapper.SensorCollectionIntent(intent).NormalizeScope()
 }
 
 func WithScope(intent contract.CollectionIntent, scopeType, scopeSelector string) contract.CollectionIntent {
@@ -164,14 +122,6 @@ func sharedExpansionReport(value domainpolicy.ExpansionReport) CollectionExpansi
 	result := CollectionExpansionReport{ResolvedRefs: make([]contract.CollectionResolvedRef, 0, len(value.ResolvedRefs))}
 	for _, ref := range value.ResolvedRefs {
 		result.ResolvedRefs = append(result.ResolvedRefs, contract.CollectionResolvedRef{Behavior: ref.Behavior, Selector: ref.Selector, Ref: ref.Ref, Version: ref.Version, Digest: ref.Digest, ValueType: ref.ValueType, Count: ref.Count, Values: append([]string(nil), ref.Values...)})
-	}
-	return result
-}
-
-func sensorCollectionIntent(value domainpolicy.CollectionIntent) contract.CollectionIntent {
-	result := contract.CollectionIntent{Behaviors: append([]string(nil), value.Behaviors...), BinaryPrefixes: append([]string(nil), value.BinaryPrefixes...), FilePrefixes: append([]string(nil), value.FilePrefixes...), SocketFamilies: append([]string(nil), value.SocketFamilies...), SocketAddrs: append([]string(nil), value.SocketAddrs...), SocketPorts: append([]string(nil), value.SocketPorts...), ScopeType: value.ScopeType, ScopeSelector: value.ScopeSelector, ObserveOnly: value.ObserveOnly}
-	for _, filter := range value.BehaviorFilters {
-		result.BehaviorFilters = append(result.BehaviorFilters, contract.CollectionBehaviorFilter{Behavior: filter.Behavior, BinaryPrefixes: append([]string(nil), filter.BinaryPrefixes...), FilePrefixes: append([]string(nil), filter.FilePrefixes...), SocketFamilies: append([]string(nil), filter.SocketFamilies...), SocketAddrs: append([]string(nil), filter.SocketAddrs...), SocketPorts: append([]string(nil), filter.SocketPorts...)})
 	}
 	return result
 }

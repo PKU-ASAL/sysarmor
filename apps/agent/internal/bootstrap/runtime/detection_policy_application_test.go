@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"testing"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
@@ -28,8 +27,8 @@ func TestDetectionProductionPathPersistsUnifiedEndpointBeforePublish(t *testing.
 	if err != nil || !ok {
 		t.Fatalf("stored endpoint ok=%t err=%v", ok, err)
 	}
-	var persisted agentpolicy.EndpointPolicy
-	if err := json.Unmarshal(record.Document, &persisted); err != nil {
+	persisted, err := agentpolicy.ParseEndpointPolicy(record.Document)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if persisted.Version != 2 || persisted.Detection.PolicyID != "detection-a" || runner.currentEndpointPolicy().Detection.PolicyID != "detection-a" {

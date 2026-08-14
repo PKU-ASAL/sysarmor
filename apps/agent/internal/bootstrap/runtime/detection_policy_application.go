@@ -10,12 +10,12 @@ import (
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 type detectionCandidate struct {
 	detection policymodel.DetectionPolicy
-	endpoint  agentpolicy.EndpointPolicy
+	endpoint  policymodel.EndpointPolicy
 	policy    policymodel.Policy
 	engine    *detection.Engine
 	report    detection.ApplyReport
@@ -92,17 +92,7 @@ func (a *detectionPolicyApplication) PrepareDetection(_ context.Context, documen
 }
 
 func parseDetectionPolicy(document string) (policymodel.DetectionPolicy, error) {
-	var envelope struct {
-		Detection *policymodel.DetectionPolicy `json:"detection"`
-	}
-	if err := json.Unmarshal([]byte(document), &envelope); err == nil && envelope.Detection != nil {
-		return *envelope.Detection, nil
-	}
-	var policy policymodel.DetectionPolicy
-	if err := json.Unmarshal([]byte(document), &policy); err != nil {
-		return policymodel.DetectionPolicy{}, fmt.Errorf("invalid detection policy json: %w", err)
-	}
-	return policy, nil
+	return agentpolicy.DecodeDetectionDocument([]byte(document))
 }
 
 func (a *detectionPolicyApplication) PersistDetection(ctx context.Context, candidate applicationpolicy.DetectionCandidate) error {

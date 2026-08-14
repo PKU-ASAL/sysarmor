@@ -5,8 +5,8 @@ import (
 	"net"
 	"testing"
 
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"google.golang.org/grpc"
 )
 

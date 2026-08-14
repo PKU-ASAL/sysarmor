@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 func TestRuntimeProjectsCurrentTelemetryContext(t *testing.T) {

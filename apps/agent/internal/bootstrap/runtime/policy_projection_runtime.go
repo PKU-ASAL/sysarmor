@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
+	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 func (r *Runtime) beginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
@@ -62,13 +62,16 @@ func (r *policyProjectionRuntime) BeginLocalPolicyMutation(ctx context.Context, 
 
 func (r *policyProjectionRuntime) CurrentPolicySnapshot(ctx context.Context) (agentcontrol.PolicySnapshot, error) {
 	policy := policymodel.Normalize(r.runner.activePolicy())
-	document := any(policy)
-	if endpoint := r.runner.currentEndpointPolicy(); endpoint.PolicyID != "" {
-		document, policy.PolicyID, policy.Version = endpoint, endpoint.PolicyID, endpoint.Version
-	}
-	raw, err := json.Marshal(document)
+	raw, err := agentpolicy.EncodePolicyDocument(policy)
 	if err != nil {
 		return agentcontrol.PolicySnapshot{}, err
+	}
+	if endpoint := r.runner.currentEndpointPolicy(); endpoint.PolicyID != "" {
+		raw, err = agentpolicy.EncodeEndpointPolicy(endpoint)
+		if err != nil {
+			return agentcontrol.PolicySnapshot{}, err
+		}
+		policy.PolicyID, policy.Version = endpoint.PolicyID, endpoint.Version
 	}
 	status, err := r.runner.pendingPolicyStatus(ctx)
 	if err != nil {

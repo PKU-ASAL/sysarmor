@@ -5,7 +5,6 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
@@ -15,7 +14,9 @@ func TestResponseContextProjectsIdentityPolicyAndScope(t *testing.T) {
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}
 	runner.setPolicy(runner.activePolicy())
-	runner.policy.Response = responsemodel.Policy{AllowedActions: []string{"kill"}, AllowedModes: []string{"enforce"}, AllowDestructive: true}
+	runner.policy.Response = domainresponse.Policy{
+		AllowedActions: []string{"kill"}, AllowedModes: []domainresponse.Mode{domainresponse.ModeEnforce}, AllowDestructive: true,
+	}
 	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
 	responseContext := newResponseContext(runner, "container", "abc123")
 	if identity := responseContext.Identity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {

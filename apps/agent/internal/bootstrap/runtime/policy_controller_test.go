@@ -5,15 +5,15 @@ import (
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
-	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 func TestStandaloneTelemetryFailsClosedWithoutStore(t *testing.T) {
 	runner := &Runtime{Config: config.Config{
 		Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}, Telemetry: config.DefaultTelemetryConfig(),
 	}}
-	runner.setEndpointPolicy(agentpolicy.EndpointPolicy{PolicyID: "endpoint-a", Version: 7})
+	runner.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 7})
 	controller := newApplicationPolicyController(runner, nil, nil)
 
 	result := controller.ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{

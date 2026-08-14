@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,8 +12,8 @@ import (
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
@@ -279,7 +278,7 @@ func TestApplyTelemetryPolicyPersistsUnifiedEndpointPolicy(t *testing.T) {
 	}
 	defer store.Close()
 	runner := &Runtime{localStore: store, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
-	runner.setEndpointPolicy(agentpolicy.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
+	runner.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
 	result := newApplicationPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "telemetry", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"max_batch_items":512,"max_batch_bytes":524288,"flush_interval":"2s"}`,
@@ -291,8 +290,8 @@ func TestApplyTelemetryPolicyPersistsUnifiedEndpointPolicy(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("policy ok=%t err=%v", ok, err)
 	}
-	var persisted agentpolicy.EndpointPolicy
-	if err := json.Unmarshal(record.Document, &persisted); err != nil {
+	persisted, err := agentpolicy.ParseEndpointPolicy(record.Document)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if persisted.Telemetry.MaxBatchItems != 512 || persisted.Version != 2 {

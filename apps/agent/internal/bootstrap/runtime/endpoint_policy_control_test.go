@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,16 +14,16 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
 const standaloneEndpointPolicyJSON = `{"policy_id":"standalone","version":1,"collection":{"behaviors":["process.exec"]},"detection":{"rulesets":[{"ref":"ruleset:cep-endpoint"}]},"telemetry":{},"response":{}}`
 
 func TestManagerDefaultEndpointPolicyPassesStrictPreparation(t *testing.T) {
-	policy := policymodel.ManagerDefaultPolicy("default")
-	document, err := json.Marshal(policy.EndpointPolicy())
+	policy := policymodel.DefaultManagedPolicy("default")
+	document, err := agentpolicy.EncodeEndpointPolicy(policy.EndpointPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +394,7 @@ func newEndpointPolicyRunner(t *testing.T, store *sqlite.Store, sensor contract.
 	return runner
 }
 
-func parseEndpointPolicy(t *testing.T, document string) agentpolicy.EndpointPolicy {
+func parseEndpointPolicy(t *testing.T, document string) policymodel.EndpointPolicy {
 	t.Helper()
 	policy, err := agentpolicy.ParseEndpointPolicy([]byte(document))
 	if err != nil {

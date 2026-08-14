@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +8,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
-	policyModel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
 func TestLoadEffectiveEndpointPolicyBootstrapsAndRestoresSQLite(t *testing.T) {
@@ -171,7 +170,9 @@ func endpointTestEnrollment() sqlite.Enrollment {
 }
 
 func TestCollectionPolicyMarshalOmitsAbsentBehaviors(t *testing.T) {
-	raw, err := json.Marshal(policyModel.CollectionPolicy{PolicyID: "empty"})
+	raw, err := encodeCollectionDocument(domainpolicy.CollectionPolicy{
+		Identity: domainpolicy.Identity{ID: "empty"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

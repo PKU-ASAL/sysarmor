@@ -3,7 +3,6 @@ package runtime
 import (
 	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
-	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 )
 
 type responseContext struct {
@@ -23,23 +22,12 @@ func (r *responseContext) Identity() ports.ResponseIdentity {
 
 func (r *responseContext) Policy() domainresponse.Policy {
 	policy := r.runner.activePolicy()
-	return domainResponsePolicy(policy.PolicyID, policy.Version, policy.Response)
+	response := policy.Response
+	response.ID, response.Version = policy.PolicyID, policy.Version
+	return response
 }
 
 func (r *responseContext) Scope() (domainresponse.Scope, bool) {
 	scope := domainresponse.Scope{Type: r.scopeType, Selector: r.scopeSelector}
 	return scope, scope.Type != ""
-}
-
-func domainResponsePolicy(id string, version uint64, policy responsemodel.Policy) domainresponse.Policy {
-	modes := make([]domainresponse.Mode, 0, len(policy.AllowedModes))
-	for _, mode := range policy.AllowedModes {
-		modes = append(modes, domainresponse.Mode(mode))
-	}
-	return domainresponse.Policy{
-		ID: id, Version: version,
-		AllowedActions: append([]string(nil), policy.AllowedActions...), AllowedModes: modes,
-		ApprovalRequired: policy.ApprovalRequired, ApprovalThreshold: policy.ApprovalThreshold,
-		ApprovalRoles: append([]string(nil), policy.ApprovalRoles...), AllowDestructive: policy.AllowDestructive,
-	}
 }

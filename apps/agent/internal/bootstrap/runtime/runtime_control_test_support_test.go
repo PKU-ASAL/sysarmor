@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"testing"
@@ -16,8 +15,8 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 	"google.golang.org/grpc"
 )
@@ -96,14 +95,14 @@ func (s *contentUpdateControlServer) Connect(stream controlplanev1.AgentControlP
 	agentID := firstNonEmptyString(s.agentID, hello.GetContext().GetAgentId())
 	policy := s.policy
 	if policy.PolicyID == "" {
-		policy = policymodel.ManagerDefaultPolicy(tenantID)
+		policy = policymodel.DefaultManagedPolicy(tenantID)
 	}
 	policy.TenantID = tenantID
 	endpoint := policy.EndpointPolicy()
-	endpointPolicy := agentpolicy.EndpointPolicy{PolicyID: endpoint.PolicyID, Version: endpoint.Version,
+	endpointPolicy := policymodel.EndpointPolicy{PolicyID: endpoint.PolicyID, Version: endpoint.Version,
 		Collection: endpoint.Collection, Detection: endpoint.Detection,
 		Telemetry: policymodel.TelemetryPolicy{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: "1s"}, Response: policy.Response}
-	rawPolicy, _ := json.Marshal(endpointPolicy)
+	rawPolicy, _ := agentpolicy.EncodeEndpointPolicy(endpointPolicy)
 	for _, frame := range []*controlplanev1.ControlFrame{{
 		Type:            "policy_update",
 		RequestId:       hello.GetRequestId(),
@@ -231,7 +230,7 @@ func waitForControlAck(t *testing.T, server *contentUpdateControlServer, request
 }
 
 func badRuntimeCandidatePolicy(tenantID string) policymodel.Policy {
-	policy := policymodel.ManagerDefaultPolicy(tenantID)
+	policy := policymodel.DefaultManagedPolicy(tenantID)
 	policy.PolicyID = "bad-runtime-candidate"
 	policy.Version = 2
 	enabled := true

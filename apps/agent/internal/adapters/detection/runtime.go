@@ -5,7 +5,7 @@ import (
 	detectionmodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	domainruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 	"strings"
 )

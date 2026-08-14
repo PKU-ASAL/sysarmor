@@ -7,7 +7,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
-	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
@@ -59,19 +59,19 @@ func (r *Runtime) currentEffectiveTelemetry() config.EffectiveTelemetry {
 	return r.effectiveTelemetry
 }
 
-func (r *Runtime) setEndpointPolicy(policy agentpolicy.EndpointPolicy) {
+func (r *Runtime) setEndpointPolicy(policy policymodel.EndpointPolicy) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.endpointPolicy = policy
 }
 
-func (r *Runtime) currentEndpointPolicy() agentpolicy.EndpointPolicy {
+func (r *Runtime) currentEndpointPolicy() policymodel.EndpointPolicy {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.endpointPolicy
 }
 
-func (r *Runtime) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy agentpolicy.EndpointPolicy) error {
+func (r *Runtime) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy policymodel.EndpointPolicy) error {
 	if r.localStore == nil {
 		r.setEndpointPolicy(policy)
 		return nil
