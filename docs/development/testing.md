@@ -285,10 +285,16 @@ test/.results/performance-platform/<run-id>/
   platform.resources.csv
   platform.summary.json
   raw/
+    manager.healthz.{start,end}.json
+    gateway.healthz.{start,end}.json
+    manager.metrics.{start,end}.json
+    platform.compose.ps.txt
 ```
 
 Endpoint 与 Platform 是两个独立成本面，不能相加，也不能互相替代。原始健康和 metrics
-快照应与汇总一起保留。
+快照应与汇总一起保留。Platform runner 使用测试 PKI 签发的短期 Manager JWT 获取 metrics，
+令牌只通过标准输入进入 VM 内进程，不写入命令参数或结果文件。Docker 资源与 Compose 状态
+采集失败会使测试失败，不能以空状态文件或匿名 metrics 请求作为成功证据。
 
 ### Module
 

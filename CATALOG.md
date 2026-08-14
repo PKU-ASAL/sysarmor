@@ -54,6 +54,7 @@
 | 中长期建设重点与阶段退出标准 | `docs/roadmap.md` |
 | Event、Signal、Evidence、Incident | `docs/architecture.md` |
 | Agent 与平台运行边界 | `docs/architecture.md` |
+| 代码分层、目录归属与扩展规则 | `docs/development/development.md` |
 | 四层策略模型 | `docs/guides/policy.md` |
 | 部署与 PKI | `docs/operations/deployment.md` |
 | 运维与 OpenSearch 演进 | `docs/operations/maintenance.md` |

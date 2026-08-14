@@ -158,6 +158,29 @@ flowchart LR
 
 查询边界取决于运行范围：端点测试可以通过 Agent 本地流验证端点行为；包含 Manager 和 Gateway 的拓扑必须通过 Manager API 查询，并显式提供 tenant 上下文。内部数据库格式不是用户接口。
 
+### Agent 分层与启动路径
+
+Agent 的两个命令入口统一采用以下依赖方向：
+
+```text
+cmd -> bootstrap -> application + ports <- adapters
+                         |
+                         v
+                       domain
+```
+
+`cmd/sysarmor-agent` 和 `cmd/sysarmor-content-sign` 只负责参数、进程信号和顶层退出码，并只
+导入 Bootstrap。Bootstrap 校验配置，创建 SQLite、文件系统、Tetragon、Unix socket 和 gRPC
+Adapter，将窄 Port 注入 Application Service，并通过 Runner 管理启动、停止和资源关闭顺序。
+Application 负责内容、策略、事件管线、telemetry、注册、健康、响应和诊断用例；Domain 只
+保存确定性模型、状态转换和算法。
+
+YAML、Protobuf、SQLite schema、文件系统、操作系统和 sensor 类型只存在于 Adapter 边界。
+已发布 SQLite schema 与 `legacy_mtls` 退管兼容性也只在该边界处理。生产路径不存在旧根包
+转发 facade、聚合 Store 或 `AgentRuntime` 服务定位器。standalone 与 managed 复用同一采集
+和检测管线，但保留独立的策略 authority 与传输语义；managed 失败时不会回退到 standalone
+策略或凭据。
+
 ### 平台分层与启动路径
 
 Manager、Gateway 和 Worker 的生产入口统一采用以下依赖方向：

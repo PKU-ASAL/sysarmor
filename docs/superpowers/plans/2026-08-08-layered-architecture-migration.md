@@ -39,6 +39,28 @@
 | Agent runtime | 10 | Agent lifecycle assembled from application services and adapters |
 | Closure | 11-12 | Shared legacy models and global containers removed; full validation complete |
 
+## Implementation Status
+
+| Task | Scope | Status | Completion evidence |
+|---|---|---|---|
+| 1 | Architecture contracts | Complete | Layer and monorepo contracts are mandatory gates |
+| 2 | Foundation Domain and Ports | Complete | Shared tenant, time, and failure primitives are layered |
+| 3 | Tenant isolation | Complete | Manager reads and writes require validated tenant scope |
+| 4 | Gateway bootstrap | Complete | Production startup is mTLS-only and fails closed |
+| 5 | Manager Policy reference slice | Complete | Policy publish and assignment use Application/Ports/PostgreSQL |
+| 6 | Manager control plane | Complete | Identity, enrollment, control, response, and artifact paths are layered |
+| 7 | Gateway | Complete | Data and control gRPC adapters call Application services |
+| 8 | Worker | Complete | Kafka calls `ProcessBatch`; production persistence is PostgreSQL-only |
+| 9 | Agent Domain | Complete | Management, event, policy, content, and detection rules are isolated |
+| 10 | Agent runtime | Complete | Commands call Bootstrap; Application and Adapters own runtime behavior |
+| 11 | Legacy retirement | Complete | Agent-owned shared models, legacy roots, facades, and exemptions are removed |
+| 12 | Reliability and documentation | Complete | Full gates, functional matrices, performance quick profiles, and final review passed |
+
+The detailed Agent closure plan expands this plan's Tasks 9-12 into twelve smaller execution tasks in
+`docs/superpowers/plans/2026-08-13-agent-layered-architecture-closure.md`. Its Tasks 1-5 implement the
+Agent Domain task, Tasks 6-10 implement the Agent runtime task, Task 11 retires legacy models and
+exemptions, and Task 12 performs final validation and documentation closure.
+
 ### Task 1: Add Architecture Contract Enforcement
 
 **Files:**

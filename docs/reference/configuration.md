@@ -1,6 +1,8 @@
 # 配置参考
 
-本文定义当前 Agent YAML、安装路径、平台端口和主要环境变量。代码中的解析器、部署脚本和 Compose 文件是最终事实来源；未知 Agent section 或 key 会直接报错。
+本文定义当前 Agent YAML、安装路径、平台端口和主要环境变量。Agent YAML 的实现事实来源是
+`apps/agent/internal/adapters/config/`，由 Bootstrap 在创建运行资源前严格解析；部署脚本和
+Compose 文件定义安装与平台配置。未知 Agent section 或 key 会直接报错。
 
 ## Agent 配置
 

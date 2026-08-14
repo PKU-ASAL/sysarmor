@@ -23,6 +23,33 @@
 
 ---
 
+## Execution Status
+
+This plan is the executable decomposition of the parent migration plan's Tasks 9-12. Tasks 1-5 map
+to parent Task 9, Tasks 6-10 map to parent Task 10, Task 11 maps to parent Task 11, and Task 12 maps
+to parent Task 12. All twelve tasks are complete.
+
+| Tasks | Parent task | Status | Result |
+|---|---|---|---|
+| 1-5 | 9: Agent Domain | Complete | Domain rules no longer depend on wire or infrastructure types |
+| 6-10 | 10: Agent runtime | Complete | Production paths use Application, narrow Ports, Adapters, and Bootstrap |
+| 11 | 11: Legacy retirement | Complete | Shared Agent business models, old roots, facades, and exemptions are absent |
+| 12 | 12: Final closure | Complete | Quality gates, product tests, documentation, and independent review passed |
+
+Final acceptance evidence:
+
+- Architecture contracts: `80/80 PASS` for `test_layered_architecture` and `test_monorepo_layout`.
+- Go gates: repository unit tests, `go vet ./...`, and Agent/Manager race suites passed.
+- Standalone Endpoint quick: `test/.results/performance-endpoint/20260814T132813Z`; three collection
+  policies completed with zero dropped events and zero parse errors.
+- Managed Topology and Detection: `test/.results/detection-topology/20260814T155435Z` and
+  `test/.results/detection/20260814T155435Z`; all three topology scenarios and all six policy/scenario
+  detection cases passed. The lowest malicious score was `0.9813` against the `0.9` threshold,
+  required event recall and signal recall were `1.0`, and benign terminal false positives were `0`.
+- Platform quick: `test/.results/performance-platform/20260814T153727Z`; all expected containers,
+  health snapshots, authenticated metrics snapshots, and Compose state evidence were present.
+- Final independent review: Critical `0`, Important `0`, Minor `0`; ready to merge.
+
 ### Task 1: Make Agent Closure Executable
 
 **Files:**
@@ -280,11 +307,11 @@ Keep the current explicit legacy set, but add checks that layered Agent packages
 - Documentation describes only implemented paths.
 - Final repository has no compatibility facade or architecture exemption.
 
-- [ ] **Step 1: Run formatting, diff, architecture, vet, unit, and race gates**
-- [ ] **Step 2: Run standalone endpoint functional tests**
-- [ ] **Step 3: Run managed topology functional and Detection tests**
-- [ ] **Step 4: Run quick endpoint and platform performance profiles**
-- [ ] **Step 5: Verify no non-generated production Go file exceeds 500 lines and no changed function exceeds 50 lines without explicit justification**
-- [ ] **Step 6: Update documentation and mark Tasks 9-12 complete with exact run evidence**
-- [ ] **Step 7: Request final code review, fix all Critical/Important findings, and rerun affected gates**
-- [ ] **Step 8: Commit `docs: close layered product architecture` and require a clean worktree**
+- [x] **Step 1: Run formatting, diff, architecture, vet, unit, and race gates**
+- [x] **Step 2: Run standalone endpoint functional tests**
+- [x] **Step 3: Run managed topology functional and Detection tests**
+- [x] **Step 4: Run quick endpoint and platform performance profiles**
+- [x] **Step 5: Verify no non-generated production Go file exceeds 500 lines and no changed function exceeds 50 lines without explicit justification**
+- [x] **Step 6: Update documentation and mark Tasks 9-12 complete with exact run evidence**
+- [x] **Step 7: Request final code review, fix all Critical/Important findings, and rerun affected gates**
+- [x] **Step 8: Commit `docs: close layered product architecture` and require a clean worktree**

@@ -25,9 +25,11 @@ make web-build
 |---|---|
 | `apps/*/cmd/` | 参数解析、signal context、Bootstrap 生命周期和顶层退出码 |
 | `packages/contracts/proto/` | Agent 数据面与控制面 wire contract |
-| `apps/agent/internal/` | 配置、本地状态、注册、Policy 和 daemon 生命周期 |
-| `apps/agent/internal/endpoint/` | 事件规范化、匹配和端侧检测 |
-| `apps/agent/internal/sensors/` | Sensor 运行时与平台适配器实现 |
+| `apps/agent/internal/domain/` | 纯 Agent 模型、状态转换和确定性算法 |
+| `apps/agent/internal/application/` | 内容、策略、管线、telemetry、注册、健康、响应和诊断用例 |
+| `apps/agent/internal/ports/` | Application 使用的窄输入输出契约 |
+| `apps/agent/internal/adapters/` | 配置、SQLite、文件系统、Unix/gRPC、sensor 和系统实现 |
+| `apps/agent/internal/bootstrap/` | Agent 技术资源创建、Application 装配和 Runner 生命周期 |
 | `apps/manager/internal/adapters/inbound/grpc/` | Agent-facing mTLS Data/Control gRPC adapters |
 | `apps/manager/internal/bootstrap/` | Manager、Gateway、Worker 的技术资源创建与依赖装配 |
 | `apps/manager/internal/application/worker/` | Worker 批次编排、重试处置与检测策略解析 |
@@ -45,9 +47,10 @@ make web-build
 
 边界规则：
 
-- `apps/*/cmd/` 只组装服务，业务逻辑进入所属应用的 `internal/` package。
-- Manager、Gateway 和 Worker 的 `cmd` 只调用 `internal/bootstrap`，不得直接创建 Adapter。
+- `apps/*/cmd/` 只调用所属应用的 `internal/bootstrap`，不得直接创建 Adapter 或实现业务规则。
 - Application 只能依赖 Domain、Application、Ports 和标准库；Adapter 负责 wire、SQL 和文档映射。
+- Agent 的 SQLite schema 和 `legacy_mtls` 升级兼容只允许存在于 Adapter，不得形成第二条运行路径。
+- Agent 不保留旧根包转发 facade、聚合 Store 或 `AgentRuntime` 服务定位器。
 - Manager 与 Worker 生产路径只使用 PostgreSQL，不增加 memory/file Store 或 fallback。
 - Endpoint 不直接读取平台数据库；端云交互只经过已定义协议。
 - 浏览器调用同源 BFF，不直接调用 Manager。
@@ -124,7 +127,8 @@ Manager HTTP 字段变化还必须同步 `apps/manager/internal/adapters/inbound
 
 ## 修改 Agent 配置
 
-Agent 配置解析器位于 `apps/agent/internal/config/`，采用严格 key 校验。新增字段需要同时完成：
+Agent 配置解析器位于 `apps/agent/internal/adapters/config/`，由 Bootstrap 在资源创建前调用，
+并采用严格 key 校验。新增字段需要同时完成：
 
 1. 配置结构、默认值、解析和 Validate 规则。
 2. 正常值、边界值、未知值和冲突值测试。
