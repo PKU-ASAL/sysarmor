@@ -43,6 +43,17 @@ capture_manager_metrics() {
     > "$output_path"
 }
 
+validate_compose_status() {
+  local status_path="$1"
+  local service
+  for service in sysarmor-manager sysarmor-gateway sysarmor-worker sysarmor-postgres sysarmor-kafka; do
+    if ! awk -v service="$service" '$1 == service && index($0, " Up") { found = 1 } END { exit !found }' "$status_path"; then
+      echo "[performance-platform][ERROR] $service is not running" >&2
+      return 1
+    fi
+  done
+}
+
 COMPOSE_COMMAND="$(compose_command)"
 
 vagrant ssh mgr -c "curl -sf http://127.0.0.1:9443/healthz" \
@@ -77,6 +88,7 @@ vagrant ssh mgr -c "curl -sf http://127.0.0.1:9445/healthz" \
 capture_manager_metrics "$RESULTS/raw/manager.metrics.end.json"
 vagrant ssh mgr -c "cd /opt/sysarmor/platform && $COMPOSE_COMMAND -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps" \
   > "$RESULTS/raw/platform.compose.ps.txt"
+validate_compose_status "$RESULTS/raw/platform.compose.ps.txt"
 
 popd >/dev/null
 
@@ -99,6 +111,10 @@ with open(csv_path, newline="") as f:
         item["mem_pct_max"] = max(item["mem_pct_max"], mem_pct)
 
 summary = []
+required = {"sysarmor-manager", "sysarmor-gateway", "sysarmor-worker", "sysarmor-postgres", "sysarmor-kafka"}
+missing = sorted(name for name in required if by_name[name]["samples"] == 0)
+if missing:
+    raise SystemExit(f"missing required platform samples: {','.join(missing)}")
 for name, item in sorted(by_name.items()):
     samples = max(item["samples"], 1)
     summary.append({

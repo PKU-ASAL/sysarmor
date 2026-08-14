@@ -26,6 +26,19 @@ class PerformancePlatformContractTest(unittest.TestCase):
         self.assertNotIn("ps --format json", self.script)
         self.assertNotIn('platform.compose.ps.txt" || true', self.script)
 
+    def test_requires_core_platform_samples_and_running_services(self):
+        for container in (
+            "sysarmor-manager",
+            "sysarmor-gateway",
+            "sysarmor-worker",
+            "sysarmor-postgres",
+            "sysarmor-kafka",
+        ):
+            self.assertIn(container, self.script)
+        self.assertIn("missing required platform samples", self.script)
+        self.assertIn("validate_compose_status", self.script)
+        self.assertIn("is not running", self.script)
+
     def test_uses_privileged_docker_introspection_in_vm(self):
         self.assertIn("sudo docker stats --no-stream", self.script)
         self.assertNotIn('vagrant ssh mgr -c "docker stats', self.script)
