@@ -10,8 +10,8 @@ import (
 	"os"
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	policymodel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 	responsemodel "github.com/sysarmor/sysarmor-next-project/packages/response"
 )
@@ -57,7 +57,7 @@ func ParseEndpointPolicy(document []byte) (EndpointPolicy, error) {
 		Detection: policymodel.NormalizeDetectionPolicy(*envelope.Detection), Telemetry: *envelope.Telemetry, Response: response}, nil
 }
 
-func LoadEffectiveEndpointPolicy(ctx context.Context, store *localstore.Store, path string) (EndpointPolicy, error) {
+func LoadEffectiveEndpointPolicy(ctx context.Context, store *sqlite.Store, path string) (EndpointPolicy, error) {
 	if store == nil {
 		return EndpointPolicy{}, fmt.Errorf("local store is required")
 	}
@@ -85,7 +85,7 @@ func LoadEffectiveEndpointPolicy(ctx context.Context, store *localstore.Store, p
 	return policy, nil
 }
 
-func SaveEffectiveEndpointPolicy(ctx context.Context, store *localstore.Store, policy EndpointPolicy) error {
+func SaveEffectiveEndpointPolicy(ctx context.Context, store *sqlite.Store, policy EndpointPolicy) error {
 	record, err := endpointPolicyRecord(policy)
 	if err != nil {
 		return err
@@ -93,11 +93,11 @@ func SaveEffectiveEndpointPolicy(ctx context.Context, store *localstore.Store, p
 	return store.PutAndActivateStandalonePolicy(ctx, record)
 }
 
-func EnsureStandaloneEndpointPolicy(ctx context.Context, store *localstore.Store, path string) (bool, error) {
+func EnsureStandaloneEndpointPolicy(ctx context.Context, store *sqlite.Store, path string) (bool, error) {
 	if store == nil {
 		return false, fmt.Errorf("local store is required")
 	}
-	if _, ok, err := store.PolicySlot(ctx, endpointPolicyKind, localstore.PolicySourceStandalone); err != nil || ok {
+	if _, ok, err := store.PolicySlot(ctx, endpointPolicyKind, sqlite.PolicySourceStandalone); err != nil || ok {
 		return false, err
 	}
 	document, err := os.ReadFile(path)
@@ -118,7 +118,7 @@ func EnsureStandaloneEndpointPolicy(ctx context.Context, store *localstore.Store
 	return true, nil
 }
 
-func ActivateManagedEndpointPolicy(ctx context.Context, store *localstore.Store, policy EndpointPolicy) error {
+func ActivateManagedEndpointPolicy(ctx context.Context, store *sqlite.Store, policy EndpointPolicy) error {
 	record, err := endpointPolicyRecord(policy)
 	if err != nil {
 		return err
@@ -126,7 +126,7 @@ func ActivateManagedEndpointPolicy(ctx context.Context, store *localstore.Store,
 	return store.ActivateManagedPolicy(ctx, record)
 }
 
-func SaveDesiredManagedEndpointPolicy(ctx context.Context, store *localstore.Store, policy EndpointPolicy) error {
+func SaveDesiredManagedEndpointPolicy(ctx context.Context, store *sqlite.Store, policy EndpointPolicy) error {
 	record, err := endpointPolicyRecord(policy)
 	if err != nil {
 		return err
@@ -134,7 +134,7 @@ func SaveDesiredManagedEndpointPolicy(ctx context.Context, store *localstore.Sto
 	return store.PutDesiredManagedPolicy(ctx, record)
 }
 
-func LoadEndpointPolicy(ctx context.Context, store *localstore.Store, source localstore.PolicySource) (EndpointPolicy, bool, error) {
+func LoadEndpointPolicy(ctx context.Context, store *sqlite.Store, source sqlite.PolicySource) (EndpointPolicy, bool, error) {
 	record, ok, err := store.PolicySlot(ctx, endpointPolicyKind, source)
 	if err != nil || !ok {
 		return EndpointPolicy{}, ok, err
@@ -143,7 +143,7 @@ func LoadEndpointPolicy(ctx context.Context, store *localstore.Store, source loc
 	return policy, err == nil, err
 }
 
-func LoadActiveEndpointPolicy(ctx context.Context, store *localstore.Store) (EndpointPolicy, localstore.PolicySource, error) {
+func LoadActiveEndpointPolicy(ctx context.Context, store *sqlite.Store) (EndpointPolicy, sqlite.PolicySource, error) {
 	record, source, ok, err := store.ActivePolicy(ctx, endpointPolicyKind)
 	if err != nil {
 		return EndpointPolicy{}, "", err
@@ -155,14 +155,14 @@ func LoadActiveEndpointPolicy(ctx context.Context, store *localstore.Store) (End
 	return policy, source, err
 }
 
-func endpointPolicyRecord(policy EndpointPolicy) (localstore.PolicyRecord, error) {
+func endpointPolicyRecord(policy EndpointPolicy) (sqlite.PolicyRecord, error) {
 	canonical, err := json.Marshal(policy)
 	if err != nil {
-		return localstore.PolicyRecord{}, err
+		return sqlite.PolicyRecord{}, err
 	}
 	if _, err := ParseEndpointPolicy(canonical); err != nil {
-		return localstore.PolicyRecord{}, err
+		return sqlite.PolicyRecord{}, err
 	}
 	digest := sha256.Sum256(canonical)
-	return localstore.PolicyRecord{Kind: endpointPolicyKind, Version: policy.Version, Document: canonical, Digest: hex.EncodeToString(digest[:])}, nil
+	return sqlite.PolicyRecord{Kind: endpointPolicyKind, Version: policy.Version, Document: canonical, Digest: hex.EncodeToString(digest[:])}, nil
 }

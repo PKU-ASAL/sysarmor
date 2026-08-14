@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 )
 
 func TestLocalSpoolRoundTripsStoredBatchAndCheckpoint(t *testing.T) {
-	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: filepath.Join(t.TempDir(), "state")})
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: filepath.Join(t.TempDir(), "state")})
 	if err != nil {
 		t.Fatal(err)
 	}

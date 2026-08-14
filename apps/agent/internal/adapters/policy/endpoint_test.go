@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	policyModel "github.com/sysarmor/sysarmor-next-project/packages/policy"
 )
 
 func TestLoadEffectiveEndpointPolicyBootstrapsAndRestoresSQLite(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
-	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: root})
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestLoadEffectiveEndpointPolicyBootstrapsAndRestoresSQLite(t *testing.T) {
 }
 
 func TestEnsureStandaloneEndpointPolicyDoesNotReplaceManagedActivation(t *testing.T) {
-	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: t.TempDir()})
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,14 +56,14 @@ func TestEnsureStandaloneEndpointPolicyDoesNotReplaceManagedActivation(t *testin
 		t.Fatalf("EnsureStandaloneEndpointPolicy() initialized=%t err=%v", initialized, err)
 	}
 	active, source, err := LoadActiveEndpointPolicy(t.Context(), store)
-	standalone, ok, slotErr := LoadEndpointPolicy(t.Context(), store, localstore.PolicySourceStandalone)
-	if err != nil || source != localstore.PolicySourceManaged || active.PolicyID != "managed" || slotErr != nil || !ok || standalone.PolicyID != "bootstrap-standalone" {
+	standalone, ok, slotErr := LoadEndpointPolicy(t.Context(), store, sqlite.PolicySourceStandalone)
+	if err != nil || source != sqlite.PolicySourceManaged || active.PolicyID != "managed" || slotErr != nil || !ok || standalone.PolicyID != "bootstrap-standalone" {
 		t.Fatalf("active=%+v source=%q standalone=%+v ok=%t errors=%v/%v", active, source, standalone, ok, err, slotErr)
 	}
 }
 
 func TestEffectiveEndpointPolicyPreservesStructuredCollectionBehaviors(t *testing.T) {
-	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: t.TempDir()})
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestEffectiveEndpointPolicyPreservesStructuredCollectionBehaviors(t *testin
 }
 
 func TestEndpointPolicySourcesPreserveStandaloneWhenManagedActivates(t *testing.T) {
-	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: t.TempDir()})
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,10 +110,10 @@ func TestEndpointPolicySourcesPreserveStandaloneWhenManagedActivates(t *testing.
 		t.Fatal(err)
 	}
 	active, source, err := LoadActiveEndpointPolicy(t.Context(), store)
-	if err != nil || source != localstore.PolicySourceManaged || active.PolicyID != "managed" {
+	if err != nil || source != sqlite.PolicySourceManaged || active.PolicyID != "managed" {
 		t.Fatalf("active=%+v source=%q err=%v", active, source, err)
 	}
-	preserved, ok, err := LoadEndpointPolicy(t.Context(), store, localstore.PolicySourceStandalone)
+	preserved, ok, err := LoadEndpointPolicy(t.Context(), store, sqlite.PolicySourceStandalone)
 	if err != nil || !ok || preserved.PolicyID != "standalone" {
 		t.Fatalf("standalone=%+v ok=%t err=%v", preserved, ok, err)
 	}
@@ -121,7 +121,7 @@ func TestEndpointPolicySourcesPreserveStandaloneWhenManagedActivates(t *testing.
 
 func TestLoadEffectiveEndpointPolicyFollowsActivationAcrossRestart(t *testing.T) {
 	root := t.TempDir()
-	store, err := localstore.Open(t.Context(), localstore.Options{RootDir: root})
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestLoadEffectiveEndpointPolicyFollowsActivationAcrossRestart(t *testing.T)
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = localstore.Open(t.Context(), localstore.Options{RootDir: root})
+	store, err = sqlite.Open(t.Context(), sqlite.Options{RootDir: root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,8 +163,8 @@ func TestLoadEffectiveEndpointPolicyFollowsActivationAcrossRestart(t *testing.T)
 	}
 }
 
-func endpointTestEnrollment() localstore.Enrollment {
-	return localstore.Enrollment{
+func endpointTestEnrollment() sqlite.Enrollment {
+	return sqlite.Enrollment{
 		TenantID: "tenant-a", AgentID: "agent-a", EnrollmentID: "enroll-a", CertificateSerial: "42",
 		ManagerURL: "https://manager.example", GatewayAddress: "gateway", TLSCAPath: "/ca", TLSCertPath: "/cert", TLSKeyPath: "/key",
 	}

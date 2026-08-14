@@ -119,12 +119,12 @@ func runDaemonCommand(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	agent, err := bootstrap.NewAgentFromFile(ctx, *configPath)
+	runner, err := bootstrap.NewRunnerFromFile(ctx, *configPath)
 	if err != nil {
 		return err
 	}
-	runErr := agent.Run(ctx, os.Stdout)
-	return errors.Join(runErr, agent.Close())
+	runErr := runner.Run(ctx, os.Stdout)
+	return errors.Join(runErr, runner.Close())
 }
 
 type labelFlags map[string]string

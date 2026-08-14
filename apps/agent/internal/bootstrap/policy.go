@@ -1,21 +1,21 @@
 package bootstrap
 
 import (
+	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/daemon"
-	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/runtime"
+	agentruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/bootstrap/runtime"
 )
 
-func newPolicyController(runner *daemon.AgentRuntime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
+func newPolicyController(runner *agentruntime.Runtime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
 	return agentcontrol.NewApplicationPolicyController(
-		daemon.NewPolicyProjectionRuntime(runner),
+		agentruntime.NewPolicyProjectionRuntime(runner),
 		agentcontrol.PolicyUseCases{
-			StandaloneEndpoint: agentcontrol.NewEndpointPolicyController(daemon.NewEndpointPolicyApplication(runner, runtime, batcher)),
-			ManagedEndpoint:    agentcontrol.NewEndpointPolicyController(daemon.NewEndpointPolicyApplication(runner, runtime, nil)),
-			Collection:         agentcontrol.NewCollectionPolicyController(daemon.NewCollectionPolicyApplication(runner, runtime)),
-			Detection:          agentcontrol.NewDetectionPolicyController(daemon.NewDetectionPolicyApplication(runner)),
-			Telemetry:          agentcontrol.NewTelemetryPolicyController(daemon.NewTelemetryPolicyApplication(runner, batcher)),
+			StandaloneEndpoint: agentcontrol.NewEndpointPolicyController(agentruntime.NewEndpointPolicyApplication(runner, runtime, batcher)),
+			ManagedEndpoint:    agentcontrol.NewEndpointPolicyController(agentruntime.NewEndpointPolicyApplication(runner, runtime, nil)),
+			Collection:         agentcontrol.NewCollectionPolicyController(agentruntime.NewCollectionPolicyApplication(runner, runtime)),
+			Detection:          agentcontrol.NewDetectionPolicyController(agentruntime.NewDetectionPolicyApplication(runner)),
+			Telemetry:          agentcontrol.NewTelemetryPolicyController(agentruntime.NewTelemetryPolicyApplication(runner, batcher)),
 		},
 	)
 }

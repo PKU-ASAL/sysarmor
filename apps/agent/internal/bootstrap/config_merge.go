@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	agentconfig "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	agentconfig "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 )
 
 func MergeReleaseConfig(existingPath, releasePath, outputPath string) error {

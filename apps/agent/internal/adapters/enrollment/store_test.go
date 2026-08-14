@@ -5,42 +5,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 )
 
 type recordingBackend struct {
-	enrollment       localstore.Enrollment
+	enrollment       sqlite.Enrollment
 	beginCalls       int
 	prepareCalls     int
-	completion       localstore.UnenrollmentCompletion
+	completion       sqlite.UnenrollmentCompletion
 	completionExists bool
 }
 
-func (b *recordingBackend) Enrollment(context.Context) (localstore.Enrollment, error) {
+func (b *recordingBackend) Enrollment(context.Context) (sqlite.Enrollment, error) {
 	return b.enrollment, nil
 }
 
-func (b *recordingBackend) Stats(context.Context) (localstore.Stats, error) {
-	return localstore.Stats{}, nil
+func (b *recordingBackend) Stats(context.Context) (sqlite.Stats, error) {
+	return sqlite.Stats{}, nil
 }
 
-func (b *recordingBackend) SetEnrolling(context.Context, localstore.Enrollment) error { return nil }
+func (b *recordingBackend) SetEnrolling(context.Context, sqlite.Enrollment) error { return nil }
 
-func (b *recordingBackend) BeginUnenrollment(context.Context) (localstore.Enrollment, error) {
+func (b *recordingBackend) BeginUnenrollment(context.Context) (sqlite.Enrollment, error) {
 	b.beginCalls++
-	b.enrollment.State = localstore.StateUnenrolling
+	b.enrollment.State = sqlite.StateUnenrolling
 	return b.enrollment, nil
 }
 
-func (b *recordingBackend) PrepareUnenrollment(context.Context, string, string) (localstore.Enrollment, error) {
+func (b *recordingBackend) PrepareUnenrollment(context.Context, string, string) (sqlite.Enrollment, error) {
 	b.prepareCalls++
-	b.enrollment.State = localstore.StateUnenrolling
+	b.enrollment.State = sqlite.StateUnenrolling
 	return b.enrollment, nil
 }
 
-func (b *recordingBackend) UnenrollmentCompletion(context.Context) (localstore.UnenrollmentCompletion, bool, error) {
+func (b *recordingBackend) UnenrollmentCompletion(context.Context) (sqlite.UnenrollmentCompletion, bool, error) {
 	return b.completion, b.completionExists, nil
 }
 
@@ -67,8 +67,8 @@ func TestEnrollmentMappingPreservesWorkflowState(t *testing.T) {
 }
 
 func TestCompletionMappingKeepsDurableOutboxToken(t *testing.T) {
-	local := localstore.UnenrollmentCompletion{
-		Token: "completion-token", TokenHash: "completion-hash", Status: localstore.CompletionPrepared,
+	local := sqlite.UnenrollmentCompletion{
+		Token: "completion-token", TokenHash: "completion-hash", Status: sqlite.CompletionPrepared,
 	}
 	got := fromLocalCompletion(local)
 	if got.Token != local.Token || got.TokenHash != local.TokenHash || got.Status != ports.CompletionPrepared {
@@ -77,8 +77,8 @@ func TestCompletionMappingKeepsDurableOutboxToken(t *testing.T) {
 }
 
 func TestPrepareUnenrollmentHidesLegacyProtocolFromApplication(t *testing.T) {
-	backend := &recordingBackend{enrollment: localstore.Enrollment{
-		State: localstore.StateManaged, UnenrollmentProtocol: localstore.UnenrollmentProtocolLegacyMTLS,
+	backend := &recordingBackend{enrollment: sqlite.Enrollment{
+		State: sqlite.StateManaged, UnenrollmentProtocol: sqlite.UnenrollmentProtocolLegacyMTLS,
 	}}
 	store := NewStore(backend, func(context.Context, string) error { return nil })
 

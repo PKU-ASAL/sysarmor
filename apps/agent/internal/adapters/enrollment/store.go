@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 )
 
 type Backend interface {
-	Enrollment(context.Context) (localstore.Enrollment, error)
-	Stats(context.Context) (localstore.Stats, error)
-	SetEnrolling(context.Context, localstore.Enrollment) error
-	BeginUnenrollment(context.Context) (localstore.Enrollment, error)
-	PrepareUnenrollment(context.Context, string, string) (localstore.Enrollment, error)
-	UnenrollmentCompletion(context.Context) (localstore.UnenrollmentCompletion, bool, error)
+	Enrollment(context.Context) (sqlite.Enrollment, error)
+	Stats(context.Context) (sqlite.Stats, error)
+	SetEnrolling(context.Context, sqlite.Enrollment) error
+	BeginUnenrollment(context.Context) (sqlite.Enrollment, error)
+	PrepareUnenrollment(context.Context, string, string) (sqlite.Enrollment, error)
+	UnenrollmentCompletion(context.Context) (sqlite.UnenrollmentCompletion, bool, error)
 	RecordUnenrollmentError(context.Context, string) error
 	ConfirmEnrollmentRevocation(context.Context, string, time.Time) error
 }
@@ -57,19 +57,19 @@ func (s *Store) PrepareUnenrollment(ctx context.Context, token, tokenHash string
 		return ports.Enrollment{}, ports.UnenrollmentCompletion{}, err
 	}
 	switch current.UnenrollmentProtocol {
-	case localstore.UnenrollmentProtocolLegacyMTLS:
+	case sqlite.UnenrollmentProtocolLegacyMTLS:
 		current, err = s.backend.BeginUnenrollment(ctx)
 		return fromLocalEnrollment(current), ports.UnenrollmentCompletion{}, err
-	case localstore.UnenrollmentProtocolCompletionV1:
+	case sqlite.UnenrollmentProtocolCompletionV1:
 		return s.prepareCompletion(ctx, current, token, tokenHash)
 	default:
 		return ports.Enrollment{}, ports.UnenrollmentCompletion{}, fmt.Errorf("unsupported unenrollment protocol %q", current.UnenrollmentProtocol)
 	}
 }
 
-func (s *Store) prepareCompletion(ctx context.Context, current localstore.Enrollment, token, tokenHash string) (ports.Enrollment, ports.UnenrollmentCompletion, error) {
+func (s *Store) prepareCompletion(ctx context.Context, current sqlite.Enrollment, token, tokenHash string) (ports.Enrollment, ports.UnenrollmentCompletion, error) {
 	var err error
-	if current.State != localstore.StateUnenrolling {
+	if current.State != sqlite.StateUnenrolling {
 		current, err = s.backend.PrepareUnenrollment(ctx, token, tokenHash)
 		if err != nil {
 			return ports.Enrollment{}, ports.UnenrollmentCompletion{}, err
@@ -102,7 +102,7 @@ func (s *Store) CompleteUnenrollment(ctx context.Context, kind string) error {
 	return s.complete(ctx, kind)
 }
 
-func fromLocalEnrollment(value localstore.Enrollment) ports.Enrollment {
+func fromLocalEnrollment(value sqlite.Enrollment) ports.Enrollment {
 	return ports.Enrollment{
 		State: value.State, TenantID: value.TenantID, AgentID: value.AgentID,
 		EnrollmentID: value.EnrollmentID, CertificateSerial: value.CertificateSerial,
@@ -115,8 +115,8 @@ func fromLocalEnrollment(value localstore.Enrollment) ports.Enrollment {
 	}
 }
 
-func toLocalEnrollment(value ports.Enrollment) localstore.Enrollment {
-	return localstore.Enrollment{
+func toLocalEnrollment(value ports.Enrollment) sqlite.Enrollment {
+	return sqlite.Enrollment{
 		State: value.State, TenantID: value.TenantID, AgentID: value.AgentID,
 		EnrollmentID: value.EnrollmentID, CertificateSerial: value.CertificateSerial,
 		ManagerURL:     value.ManagerURL,
@@ -128,6 +128,6 @@ func toLocalEnrollment(value ports.Enrollment) localstore.Enrollment {
 	}
 }
 
-func fromLocalCompletion(value localstore.UnenrollmentCompletion) ports.UnenrollmentCompletion {
+func fromLocalCompletion(value sqlite.UnenrollmentCompletion) ports.UnenrollmentCompletion {
 	return ports.UnenrollmentCompletion{Token: value.Token, TokenHash: value.TokenHash, Status: value.Status}
 }

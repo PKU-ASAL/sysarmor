@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/config"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/sensors/linux/tetragon"
 )
 
 func TestMergeReleaseConfigWritesPrivateOutput(t *testing.T) {
@@ -41,10 +41,10 @@ func TestMergeReleaseConfigWritesPrivateOutput(t *testing.T) {
 	}
 }
 
-func TestNewAgentAppliesMatcherFeatureFlag(t *testing.T) {
+func TestNewRunnerAppliesMatcherFeatureFlag(t *testing.T) {
 	t.Setenv("SYSARMOR_TEST_MATCHER_STRATEGY", "optimized")
 	t.Cleanup(func() { matcher.SetDefaultStrategy(matcher.StrategyLinear) })
-	agent, err := NewAgent(t.Context(), config.Config{
+	runner, err := NewRunner(t.Context(), config.Config{
 		Manager: config.ManagerConfig{Transport: "local"},
 		Runtime: config.RuntimeConfig{FeatureFlags: config.RuntimeFeatureFlags{MatcherStrategy: "linear"}},
 		Sensor:  config.SensorConfig{Backend: "fake"},
@@ -52,56 +52,61 @@ func TestNewAgentAppliesMatcherFeatureFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer agent.Close()
+	defer runner.Close()
 	if got := matcher.DefaultStrategy(); got != matcher.StrategyOptimized {
 		t.Fatalf("matcher strategy = %q, want optimized", got)
 	}
 }
 
-func TestNewAgentRejectsMissingDefaultContentManifest(t *testing.T) {
-	_, err := NewAgent(t.Context(), config.Config{
+func TestNewRunnerRejectsMissingDefaultContentManifest(t *testing.T) {
+	matcher.SetDefaultStrategy(matcher.StrategyOptimized)
+	t.Cleanup(func() { matcher.SetDefaultStrategy(matcher.StrategyLinear) })
+	_, err := NewRunner(t.Context(), config.Config{
 		Manager: config.ManagerConfig{Transport: "local"},
 		Runtime: config.RuntimeConfig{FeatureFlags: config.RuntimeFeatureFlags{MatcherStrategy: "linear"}},
 		Sensor:  config.SensorConfig{Backend: "fake"},
 		Content: config.ContentConfig{DefaultPath: t.TempDir(), Path: t.TempDir()},
 	})
 	if err == nil || !strings.Contains(err.Error(), "default content manifest") {
-		t.Fatalf("NewAgent() error = %v, want default content manifest error", err)
+		t.Fatalf("NewRunner() error = %v, want default content manifest error", err)
+	}
+	if got := matcher.DefaultStrategy(); got != matcher.StrategyOptimized {
+		t.Fatalf("failed NewRunner changed matcher strategy to %q", got)
 	}
 }
 
-func TestNewAgentOwnsStandaloneLocalState(t *testing.T) {
-	agent, err := NewAgent(t.Context(), config.Config{
+func TestNewRunnerOwnsStandaloneLocalState(t *testing.T) {
+	runner, err := NewRunner(t.Context(), config.Config{
 		Local:  config.LocalConfig{StatePath: t.TempDir()},
 		Sensor: config.SensorConfig{Backend: "fake"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if agent.store == nil {
+	if runner.store == nil {
 		t.Fatal("standalone local store = nil")
 	}
-	identity := agent.runtime.Config.Agent
+	identity := runner.runtime.Config.Agent
 	if identity.ID == "" || identity.HostID == "" || identity.TenantID != "local" {
 		t.Fatalf("standalone identity = %+v", identity)
 	}
-	if err := agent.Close(); err != nil {
+	if err := runner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := agent.Close(); err != nil {
+	if err := runner.Close(); err != nil {
 		t.Fatalf("second Close() error = %v", err)
 	}
 }
 
-func TestNewAgentDoesNotCreateManagedLocalState(t *testing.T) {
-	agent, err := NewAgent(t.Context(), config.Config{
+func TestNewRunnerDoesNotCreateManagedLocalState(t *testing.T) {
+	runner, err := NewRunner(t.Context(), config.Config{
 		Manager: config.ManagerConfig{Transport: "grpc"},
 		Sensor:  config.SensorConfig{Backend: "fake"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if agent.store != nil {
+	if runner.store != nil {
 		t.Fatal("managed local store must be nil")
 	}
 }

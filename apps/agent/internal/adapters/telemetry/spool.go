@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/telemetry"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/localstore"
 	"google.golang.org/protobuf/proto"
 )
 
-type LocalSpool struct{ store *localstore.Store }
+type LocalSpool struct{ store *sqlite.Store }
 
-func NewLocalSpool(store *localstore.Store) *LocalSpool {
+func NewLocalSpool(store *sqlite.Store) *LocalSpool {
 	return &LocalSpool{store: store}
 }
 
@@ -27,7 +27,7 @@ func (spool *LocalSpool) Read(ctx context.Context, fromSequence uint64, limit in
 	if spool == nil || spool.store == nil {
 		return nil, fmt.Errorf("telemetry spool is not configured")
 	}
-	stored, err := spool.store.ReadBatches(ctx, localstore.ReadOptions{Limit: limit, FromSequence: fromSequence})
+	stored, err := spool.store.ReadBatches(ctx, sqlite.ReadOptions{Limit: limit, FromSequence: fromSequence})
 	if err != nil {
 		return nil, err
 	}
@@ -50,12 +50,12 @@ func (spool *LocalSpool) SaveCheckpoint(ctx context.Context, position domaintele
 	if spool == nil || spool.store == nil {
 		return fmt.Errorf("telemetry spool is not configured")
 	}
-	return spool.store.SaveCheckpoint(ctx, localstore.Checkpoint{
+	return spool.store.SaveCheckpoint(ctx, sqlite.Checkpoint{
 		SegmentID: position.SegmentID, RecordOffset: position.RecordOffset, LastBatchID: position.BatchID,
 	})
 }
 
-func domainPosition(position localstore.Position) domaintelemetry.Position {
+func domainPosition(position sqlite.Position) domaintelemetry.Position {
 	return domaintelemetry.Position{
 		SegmentID: position.SegmentID, RecordOffset: position.RecordOffset,
 		BatchSequence: position.BatchSequence, BatchID: position.BatchID,
