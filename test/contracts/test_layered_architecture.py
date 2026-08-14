@@ -346,6 +346,20 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                     ungoverned.append(relative)
         self.assertEqual([], ungoverned, f"ungoverned internal roots: {ungoverned}")
 
+    def test_production_go_files_are_bounded(self):
+        oversized = []
+        for root_name in ("apps", "packages"):
+            for source in (self.repo / root_name).rglob("*.go"):
+                if source.name.endswith("_test.go"):
+                    continue
+                text = source.read_text()
+                if "Code generated" in "\n".join(text.splitlines()[:5]):
+                    continue
+                line_count = len(text.splitlines())
+                if line_count > 500:
+                    oversized.append(f"{source.relative_to(self.repo)} ({line_count})")
+        self.assertEqual([], oversized, f"production Go files exceed 500 lines: {oversized}")
+
     def test_inner_layers_reject_infrastructure_imports(self):
         forbidden = (
             f"{MODULE}apps/manager/internal/store",
