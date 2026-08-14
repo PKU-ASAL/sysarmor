@@ -22,13 +22,7 @@ ALLOWED = {
         "contracts",
     },
 }
-AGENT_LEGACY_ROOTS = {
-	"apps/agent/internal/config",
-	"apps/agent/internal/daemon",
-	"apps/agent/internal/localstore",
-	"apps/agent/internal/sensors",
-	"apps/agent/internal/tamper",
-}
+AGENT_LEGACY_ROOTS = set()
 LEGACY_ROOTS = AGENT_LEGACY_ROOTS
 STANDARD_LIBRARY = {
     "domain": {
@@ -65,7 +59,7 @@ STANDARD_LIBRARY = {
     "ports": {"context", "errors", "io", "time"},
 }
 ADAPTER_BRIDGE_IMPORTS = {
-    f"{MODULE}apps/agent/internal/localstore",
+    f"{MODULE}apps/agent/internal/adapters/sqlite",
     f"{MODULE}packages/policy",
     f"{MODULE}packages/response",
     f"{MODULE}packages/sensor-sdk/contract",
@@ -88,7 +82,7 @@ def import_allowed(owner, imported, product):
     target = target_layer(imported, product)
     if target is not None:
         return target in ALLOWED[owner]
-    if owner == "adapters" and imported in ADAPTER_BRIDGE_IMPORTS:
+    if owner in {"adapters", "bootstrap"} and imported in ADAPTER_BRIDGE_IMPORTS:
         return True
     if imported.startswith(MODULE):
         return False
@@ -135,6 +129,27 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertFalse((root / "adapters/inbound/grpc/channel.go").exists())
         for name in ("control", "localapi", "remoteapi"):
             self.assertFalse((root / name).exists(), f"legacy agent root remains: {name}")
+
+    def test_task10_retires_agent_infrastructure_legacy_roots(self):
+        root = self.repo / "apps/agent/internal"
+        for relative in ("adapters/config", "adapters/sqlite", "adapters/sensor/fake", "adapters/sensor/tetragon", "adapters/system"):
+            self.assertTrue((root / relative).is_dir(), f"missing agent adapter: {relative}")
+        for name in ("config", "daemon", "localstore", "sensors", "tamper"):
+            self.assertFalse((root / name).exists(), f"legacy agent infrastructure root remains: {name}")
+        bootstrap = "\n".join(path.read_text() for path in (root / "bootstrap").glob("*.go") if not path.name.endswith("_test.go"))
+        for legacy in ("internal/config", "internal/daemon", "internal/localstore", "internal/sensors", "internal/tamper"):
+            self.assertNotIn(legacy, bootstrap, f"bootstrap imports legacy root: {legacy}")
+
+        sqlite_root = root / "adapters/sqlite"
+        for source in sqlite_root.glob("*.go"):
+            self.assertTrue(
+                source.read_text().startswith("package sqlite\n"),
+                f"sqlite adapter keeps legacy package name: {source.name}",
+            )
+
+        enrollment_runtime = (root / "bootstrap/runtime/enrollment_runtime.go").read_text()
+        self.assertNotIn('"os"', enrollment_runtime)
+        self.assertNotIn("os.Remove(", enrollment_runtime)
 
     def test_product_layer_roots_exist(self):
         for product in ("agent", "manager"):
@@ -374,29 +389,29 @@ import (
                     violations.append(f"{command}: {imported}")
         self.assertEqual([], violations, "command bypasses bootstrap:\n" + "\n".join(violations))
 
-    def test_agent_daemon_does_not_own_policy_assembly(self):
-        daemon = self.repo / "apps" / "agent" / "internal" / "daemon"
-        self.assertFalse((daemon / "policy_assembly.go").exists())
+    def test_agent_runtime_does_not_own_policy_assembly(self):
+        runtime = self.repo / "apps" / "agent" / "internal" / "bootstrap" / "runtime"
+        self.assertFalse((runtime / "policy_assembly.go").exists())
         violations = []
-        for source in daemon.glob("*.go"):
+        for source in runtime.glob("*.go"):
             if source.name.endswith("_test.go"):
                 continue
             if "newApplicationPolicyController" in source.read_text():
                 violations.append(str(source.relative_to(self.repo)))
-        self.assertEqual([], violations, f"daemon owns policy assembly: {violations}")
+        self.assertEqual([], violations, f"runtime owns policy assembly: {violations}")
 
-    def test_agent_daemon_does_not_own_telemetry_delivery(self):
-        daemon = self.repo / "apps" / "agent" / "internal" / "daemon"
+    def test_agent_runtime_does_not_own_telemetry_delivery(self):
+        runtime = self.repo / "apps" / "agent" / "internal" / "bootstrap" / "runtime"
         for retired in ("export_pipeline.go", "exporter.go"):
             with self.subTest(retired=retired):
-                self.assertFalse((daemon / retired).exists())
-        network = (daemon / "network_runtime.go").read_text()
+                self.assertFalse((runtime / retired).exists())
+        network = (runtime / "network_runtime.go").read_text()
         self.assertIn("applicationtelemetry.NewDelivery", network)
         self.assertNotIn("exportPipeline", network)
 
     def test_agent_endpoint_runtime_uses_pipeline_application(self):
         source = (
-            self.repo / "apps" / "agent" / "internal" / "daemon" / "endpoint_runtime.go"
+            self.repo / "apps" / "agent" / "internal" / "bootstrap" / "runtime" / "endpoint_runtime.go"
         ).read_text()
         self.assertIn("applicationpipeline.New", source)
         self.assertIn("pipeline.Process", source)

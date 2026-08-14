@@ -90,19 +90,17 @@ class MonorepoLayoutContractTest(unittest.TestCase):
 
     def test_agent_implementation_is_owned_by_agent_app(self):
         expected = (
-            "apps/agent/internal/config",
+            "apps/agent/internal/adapters/config",
             "apps/agent/internal/domain/content",
-            "apps/agent/internal/daemon",
+            "apps/agent/internal/bootstrap/runtime",
             "apps/agent/internal/domain/detection/runtime",
             "apps/agent/internal/domain/event",
             "apps/agent/internal/domain/policy",
             "apps/agent/internal/adapters/policy",
             "apps/agent/internal/adapters/sensor/tetragon",
-            "apps/agent/internal/localstore",
-            "apps/agent/internal/tamper",
-            "apps/agent/internal/sensors/fake",
-            "apps/agent/internal/sensors/linux",
-            "apps/agent/internal/sensors/runtime",
+            "apps/agent/internal/adapters/sqlite",
+            "apps/agent/internal/adapters/sensor/fake",
+            "apps/agent/internal/adapters/sensor/runtime",
         )
 
         for path in expected:
@@ -180,7 +178,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
                 self.assertFalse((self.repo / path).exists(), f"store facade remains: {path}")
 
     def test_tetragon_backend_responsibility_files(self):
-        root = self.repo / "apps/agent/internal/sensors/linux/tetragon"
+        root = self.repo / "apps/agent/internal/adapters/sensor/tetragon"
         expected = (
             "capability.go",
             "tracing_policy.go",
@@ -190,6 +188,15 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         for name in expected:
             with self.subTest(name=name):
                 self.assertTrue((root / name).is_file(), f"missing tetragon/{name}")
+
+    def test_tetragon_adapter_files_are_bounded(self):
+        root = self.repo / "apps/agent/internal/adapters/sensor/tetragon"
+        oversized = [
+            str(path.relative_to(self.repo))
+            for path in root.glob("*.go")
+            if len(path.read_text().splitlines()) > 500
+        ]
+        self.assertEqual([], oversized, f"oversized tetragon adapter files: {oversized}")
 
     def test_sysarmorctl_responsibility_files(self):
         root = self.repo / "apps/cli/cmd/sysarmorctl"
@@ -280,39 +287,39 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         self.assertFalse((root / "daemon/policy_controller.go").exists())
         self.assertFalse((root / "daemon/policy_controller_runtime.go").exists())
 
-    def test_agent_daemon_does_not_own_local_api_watch_streams(self):
-        daemon = self.repo / "apps/agent/internal/daemon"
+    def test_agent_runtime_does_not_own_local_api_watch_streams(self):
+        runtime = self.repo / "apps/agent/internal/bootstrap/runtime"
         violations = []
-        for source in daemon.glob("*.go"):
+        for source in runtime.glob("*.go"):
             if "AgentControlPlaneService_Watch" in source.read_text():
                 violations.append(str(source.relative_to(self.repo)))
-        self.assertEqual([], violations, f"daemon owns local API watch streams: {violations}")
+        self.assertEqual([], violations, f"runtime owns local API watch streams: {violations}")
 
     def test_agent_local_control_file_is_bounded(self):
-        path = self.repo / "apps/agent/internal/daemon/local_control.go"
+        path = self.repo / "apps/agent/internal/bootstrap/runtime/local_control.go"
         self.assertLessEqual(len(path.read_text().splitlines()), 500)
 
-    def test_agent_daemon_composition_root_is_bounded(self):
-        path = self.repo / "apps/agent/internal/daemon/daemon.go"
+    def test_agent_runtime_composition_root_is_bounded(self):
+        path = self.repo / "apps/agent/internal/bootstrap/runtime/runtime.go"
         self.assertLessEqual(len(path.read_text().splitlines()), 500)
 
-    def test_agent_daemon_tests_are_grouped_by_behavior(self):
-        root = self.repo / "apps/agent/internal/daemon"
+    def test_agent_runtime_tests_are_grouped_by_behavior(self):
+        root = self.repo / "apps/agent/internal/bootstrap/runtime"
         expected = (
-            "daemon_detection_test.go",
-            "daemon_identity_test.go",
-            "daemon_config_test.go",
-            "daemon_telemetry_test.go",
-            "daemon_transport_test.go",
-            "daemon_sensor_test.go",
-            "daemon_test_support_test.go",
+            "runtime_detection_test.go",
+            "runtime_identity_test.go",
+            "runtime_config_test.go",
+            "runtime_telemetry_test.go",
+            "runtime_transport_test.go",
+            "runtime_sensor_test.go",
+            "runtime_test_support_test.go",
         )
         for name in expected:
             with self.subTest(name=name):
-                self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
+                self.assertTrue((root / name).is_file(), f"missing runtime/{name}")
 
     def test_agent_local_control_tests_are_grouped_by_behavior(self):
-        root = self.repo / "apps/agent/internal/daemon"
+        root = self.repo / "apps/agent/internal/bootstrap/runtime"
         expected = (
             "local_control_status_test.go",
             "local_control_policy_test.go",
@@ -323,7 +330,7 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         )
         for name in expected:
             with self.subTest(name=name):
-                self.assertTrue((root / name).is_file(), f"missing daemon/{name}")
+                self.assertTrue((root / name).is_file(), f"missing runtime/{name}")
 
     def test_legacy_manager_implementation_paths_are_absent(self):
         legacy = (
