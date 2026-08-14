@@ -336,6 +336,15 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                 continue
             self.assertNotIn("packages/contracts/proto/event", source.read_text())
 
+    def test_agent_detection_adapter_is_not_a_runtime_facade(self):
+        source = (
+            self.repo / "apps/agent/internal/adapters/detection/runtime.go"
+        ).read_text()
+        self.assertNotRegex(source, r"type\s+\w+\s*=\s*domainruntime\.")
+        self.assertNotIn("type Engine struct", source)
+        self.assertNotIn("func (e *Engine) Process", source)
+        self.assertNotIn("func (e *Engine) Metrics", source)
+
     def test_all_unlayered_roots_are_explicit_legacy(self):
         ungoverned = []
         for product in ("agent", "manager"):

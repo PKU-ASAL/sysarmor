@@ -4,7 +4,8 @@ import (
 	"time"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	detectionmodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
@@ -18,17 +19,17 @@ func (r *Runtime) contentStore() *agentcontent.Store {
 	return r.content
 }
 
-func (r *Runtime) detectionContentSnapshot() detection.ContentSnapshot {
+func (r *Runtime) detectionContentSnapshot() detectionruntime.ContentSnapshot {
 	return detectionContentSnapshotFromContent(r.contentStore().Snapshot())
 }
 
-func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detection.ContentSnapshot {
-	out := detection.ContentSnapshot{
-		ContextRefs: make(map[string]detection.ContentRef),
-		IOCRefs:     make(map[string]detection.ContentRef),
+func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detectionruntime.ContentSnapshot {
+	out := detectionruntime.ContentSnapshot{
+		ContextRefs: make(map[string]detectionruntime.ContentRef),
+		IOCRefs:     make(map[string]detectionruntime.ContentRef),
 	}
 	for ref, set := range snapshot.ContextSets {
-		out.ContextRefs[ref] = detection.ContentRef{
+		out.ContextRefs[ref] = detectionruntime.ContentRef{
 			Ref:     set.Ref,
 			Version: set.Version,
 			Digest:  set.Digest,
@@ -36,7 +37,7 @@ func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detecti
 		}
 	}
 	for ref, set := range snapshot.IOCPacks {
-		out.IOCRefs[ref] = detection.ContentRef{
+		out.IOCRefs[ref] = detectionruntime.ContentRef{
 			Ref:     set.Ref,
 			Version: set.Version,
 			Digest:  set.Digest,
@@ -44,7 +45,7 @@ func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detecti
 		}
 	}
 	for _, rule := range snapshot.Rules {
-		out.Rules = append(out.Rules, detection.RuleSpec{
+		out.Rules = append(out.Rules, detectionruntime.RuleSpec{
 			RuleID:            rule.RuleID,
 			Version:           rule.Version,
 			RuleSetRef:        rule.RuleSetRef,
@@ -59,7 +60,7 @@ func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detecti
 			RequiredBehaviors: requiredBehaviors(rule.RequiredEvents),
 			ContextRefs:       append([]string(nil), rule.ContextRefs...),
 			IOCRefs:           append([]string(nil), rule.IOCRefs...),
-			ResponseIntent: &detection.ResponseIntent{
+			ResponseIntent: &detectionmodel.ResponseIntent{
 				Action:     rule.ResponseIntent.Action,
 				Confidence: rule.ResponseIntent.Confidence,
 				Reason:     rule.ResponseIntent.Reason,
@@ -84,10 +85,10 @@ func detectionContentRefs(snapshot agentcontent.Snapshot) []agenthealth.ContentR
 	return out
 }
 
-func detectionRequiredEvents(events []agentcontent.RequiredEvent) []detection.RequiredEventSpec {
-	out := make([]detection.RequiredEventSpec, 0, len(events))
+func detectionRequiredEvents(events []agentcontent.RequiredEvent) []detectionruntime.RequiredEventSpec {
+	out := make([]detectionruntime.RequiredEventSpec, 0, len(events))
 	for _, event := range events {
-		out = append(out, detection.RequiredEventSpec{
+		out = append(out, detectionruntime.RequiredEventSpec{
 			Behavior: event.Behavior,
 			Fields:   append([]string(nil), event.Fields...),
 		})
@@ -95,9 +96,9 @@ func detectionRequiredEvents(events []agentcontent.RequiredEvent) []detection.Re
 	return out
 }
 
-func detectionExpr(expr agentcontent.RuntimeExpr) detection.ExprSpec {
-	out := detection.ExprSpec{
-		Conditions:     make([]detection.ConditionSpec, 0, len(expr.Conditions)),
+func detectionExpr(expr agentcontent.RuntimeExpr) detectionruntime.ExprSpec {
+	out := detectionruntime.ExprSpec{
+		Conditions:     make([]detectionruntime.ConditionSpec, 0, len(expr.Conditions)),
 		ConditionGroup: detectionConditionNode(expr.ConditionGroup),
 	}
 	for _, cond := range expr.Conditions {
@@ -106,22 +107,22 @@ func detectionExpr(expr agentcontent.RuntimeExpr) detection.ExprSpec {
 	return out
 }
 
-func detectionSequence(seq agentcontent.RuntimeSequence) detection.SequenceSpec {
+func detectionSequence(seq agentcontent.RuntimeSequence) detectionruntime.SequenceSpec {
 	within, _ := time.ParseDuration(seq.Within)
-	out := detection.SequenceSpec{
+	out := detectionruntime.SequenceSpec{
 		Within: within,
 		By:     append([]string(nil), seq.By...),
-		Steps:  make([]detection.StepSpec, 0, len(seq.Steps)),
+		Steps:  make([]detectionruntime.StepSpec, 0, len(seq.Steps)),
 	}
 	for _, step := range seq.Steps {
 		behavior := step.Behavior
 		if behavior == "" {
 			behavior = step.Event
 		}
-		next := detection.StepSpec{
+		next := detectionruntime.StepSpec{
 			ID:             step.ID,
 			Behavior:       domainevent.NormalizeBehavior(behavior),
-			Conditions:     make([]detection.ConditionSpec, 0, len(step.Conditions)),
+			Conditions:     make([]detectionruntime.ConditionSpec, 0, len(step.Conditions)),
 			ConditionGroup: detectionConditionNode(step.ConditionGroup),
 		}
 		for _, cond := range step.Conditions {
@@ -132,20 +133,20 @@ func detectionSequence(seq agentcontent.RuntimeSequence) detection.SequenceSpec 
 	return out
 }
 
-func detectionCorrelate(spec agentcontent.RuntimeCorrelate) detection.CorrelateSpec {
+func detectionCorrelate(spec agentcontent.RuntimeCorrelate) detectionruntime.CorrelateSpec {
 	within, _ := time.ParseDuration(spec.Within)
-	out := detection.CorrelateSpec{
+	out := detectionruntime.CorrelateSpec{
 		Within:     within,
 		WithinText: spec.Within,
 		By:         append([]string(nil), spec.By...),
-		Facts:      make([]detection.FactSpec, 0, len(spec.Facts)),
+		Facts:      make([]detectionruntime.FactSpec, 0, len(spec.Facts)),
 	}
 	for _, fact := range spec.Facts {
-		next := detection.FactSpec{
+		next := detectionruntime.FactSpec{
 			ID:             fact.ID,
 			Event:          fact.Event,
 			Events:         append([]string(nil), fact.Events...),
-			Conditions:     make([]detection.ConditionSpec, 0, len(fact.Conditions)),
+			Conditions:     make([]detectionruntime.ConditionSpec, 0, len(fact.Conditions)),
 			ConditionGroup: detectionConditionNode(fact.ConditionGroup),
 		}
 		for _, condition := range fact.Conditions {
@@ -156,19 +157,19 @@ func detectionCorrelate(spec agentcontent.RuntimeCorrelate) detection.CorrelateS
 	return out
 }
 
-func detectionConditionNode(node *agentcontent.RuntimeConditionNode) *detection.ConditionNodeSpec {
+func detectionConditionNode(node *agentcontent.RuntimeConditionNode) *detectionruntime.ConditionNodeSpec {
 	if node == nil {
 		return nil
 	}
-	out := &detection.ConditionNodeSpec{}
+	out := &detectionruntime.ConditionNodeSpec{}
 	if node.All != nil {
-		out.All = make([]detection.ConditionNodeSpec, 0, len(node.All))
+		out.All = make([]detectionruntime.ConditionNodeSpec, 0, len(node.All))
 		for i := range node.All {
 			out.All = append(out.All, *detectionConditionNode(&node.All[i]))
 		}
 	}
 	if node.Any != nil {
-		out.Any = make([]detection.ConditionNodeSpec, 0, len(node.Any))
+		out.Any = make([]detectionruntime.ConditionNodeSpec, 0, len(node.Any))
 		for i := range node.Any {
 			out.Any = append(out.Any, *detectionConditionNode(&node.Any[i]))
 		}
@@ -181,13 +182,13 @@ func detectionConditionNode(node *agentcontent.RuntimeConditionNode) *detection.
 	return out
 }
 
-func detectionSuppression(spec agentcontent.RuntimeSuppression) detection.SuppressionSpec {
+func detectionSuppression(spec agentcontent.RuntimeSuppression) detectionruntime.SuppressionSpec {
 	within, _ := time.ParseDuration(spec.Within)
-	return detection.SuppressionSpec{Within: within, By: append([]string(nil), spec.By...)}
+	return detectionruntime.SuppressionSpec{Within: within, By: append([]string(nil), spec.By...)}
 }
 
-func detectionCondition(cond agentcontent.RuntimeCondition) detection.ConditionSpec {
-	return detection.ConditionSpec{
+func detectionCondition(cond agentcontent.RuntimeCondition) detectionruntime.ConditionSpec {
+	return detectionruntime.ConditionSpec{
 		Field:     cond.Field,
 		Op:        cond.Op,
 		Value:     cond.Value,

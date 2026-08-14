@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
@@ -21,7 +21,7 @@ func TestDetectionStatusIncludesDefaultManifestVersion(t *testing.T) {
 	runner := &Runtime{}
 	policy := policymodel.DefaultPolicy("default")
 	policy.Detection = &policymodel.DetectionPolicy{PolicyID: "detection-test"}
-	runner.setDetectionStatus(policy, detection.ApplyReport{Status: "applied"}, agentcontent.Snapshot{DefaultManifestVersion: "release-v1"})
+	runner.setDetectionStatus(policy, detectionruntime.ApplyReport{Status: "applied"}, agentcontent.Snapshot{DefaultManifestVersion: "release-v1"})
 	if got := runner.detectionHealth().DefaultManifestVersion; got != "release-v1" {
 		t.Fatalf("detection manifest version = %q, want release-v1", got)
 	}

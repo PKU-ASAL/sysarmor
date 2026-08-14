@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
@@ -15,6 +15,7 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -24,8 +25,8 @@ type endpointCandidate struct {
 	intent    contract.CollectionIntent
 	previous  contract.CollectionIntent
 	policy    policymodel.Policy
-	detection *detection.Engine
-	report    detection.ApplyReport
+	detection *detectionruntime.State
+	report    detectionruntime.ApplyReport
 	telemetry config.EffectiveTelemetry
 	compile   contract.CollectionCompileReport
 	source    applicationpolicy.Source
@@ -114,7 +115,7 @@ func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy,
 		detectionIntent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), a.runner.capability.Collection...)
 	}
 	runtimePolicy := endpointRuntimePolicy(a.runner.currentIdentity().TenantID, endpoint)
-	engine, report := detection.NewWithRuntimeLimits(runtimePolicy.Detection, detectionIntent, a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
+	engine, report := detectionadapter.NewWithRuntimeLimits(runtimePolicy.Detection, detectionIntent, a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
 	if report.Status == "rejected" {
 		return nil, fmt.Errorf("detection policy rejected: %s", strings.Join(report.Details, "; "))
 	}

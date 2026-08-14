@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
@@ -17,8 +18,8 @@ type detectionCandidate struct {
 	detection policymodel.DetectionPolicy
 	endpoint  policymodel.EndpointPolicy
 	policy    policymodel.Policy
-	engine    *detection.Engine
-	report    detection.ApplyReport
+	engine    *detectionruntime.State
+	report    detectionruntime.ApplyReport
 }
 
 func (c *detectionCandidate) PolicyID() string      { return c.detection.PolicyID }
@@ -82,7 +83,7 @@ func (a *detectionPolicyApplication) PrepareDetection(_ context.Context, documen
 		return nil, err
 	}
 	policy = policymodel.NormalizeDetectionPolicy(policy)
-	engine, report := detection.NewWithRuntimeLimits(&policy, a.runner.currentCollectionIntent(), a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
+	engine, report := detectionadapter.NewWithRuntimeLimits(&policy, a.runner.currentCollectionIntent(), a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
 	active := policymodel.Normalize(a.runner.activePolicy())
 	active.Detection = &policy
 	endpoint := a.runner.currentEndpointPolicy()

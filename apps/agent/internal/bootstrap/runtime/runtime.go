@@ -11,13 +11,13 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
 	contractadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
@@ -53,7 +53,7 @@ type Runtime struct {
 	endpointPolicy          policymodel.EndpointPolicy
 	effectiveTelemetry      config.EffectiveTelemetry
 	policy                  policymodel.Policy
-	detection               *detection.Engine
+	detection               *detectionruntime.State
 	collection              contract.CollectionIntent
 	content                 *agentcontent.Store
 	featureFlags            agenthealth.RuntimeFeatureFlags

@@ -6,12 +6,13 @@ import (
 	"fmt"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	applicationpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/policy"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -22,8 +23,8 @@ type collectionCandidate struct {
 	intent   contract.CollectionIntent
 	previous contract.CollectionIntent
 	compile  contract.CollectionCompileReport
-	engine   *detection.Engine
-	report   detection.ApplyReport
+	engine   *detectionruntime.State
+	report   detectionruntime.ApplyReport
 	result   applicationpolicy.CollectionReport
 }
 
@@ -100,7 +101,7 @@ func (a *collectionPolicyApplication) PrepareCollection(_ context.Context, docum
 	if len(detectionIntent.Capabilities) == 0 {
 		detectionIntent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), a.runner.capability.Collection...)
 	}
-	engine, report := detection.NewWithRuntimeLimits(a.runner.activePolicy().Detection, detectionIntent, a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
+	engine, report := detectionadapter.NewWithRuntimeLimits(a.runner.activePolicy().Detection, detectionIntent, a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
 	endpoint := a.runner.currentEndpointPolicy()
 	endpoint.Collection = policy
 	endpoint.Version++
@@ -171,10 +172,10 @@ func applyCollectionScope(policy *policymodel.CollectionPolicy, requested applic
 
 type collectionReportPayload struct {
 	contract.CollectionCompileReport
-	DetectionCoverage *detection.CoverageReport `json:"detection_coverage,omitempty"`
+	DetectionCoverage *detectionruntime.CoverageReport `json:"detection_coverage,omitempty"`
 }
 
-func collectionValidationReport(compile contract.CollectionCompileReport, detectionReport detection.ApplyReport) applicationpolicy.CollectionReport {
+func collectionValidationReport(compile contract.CollectionCompileReport, detectionReport detectionruntime.ApplyReport) applicationpolicy.CollectionReport {
 	status := "validated"
 	message := "collection policy accepted in dry-run"
 	if detectionReport.Status == "degraded" {
@@ -184,7 +185,7 @@ func collectionValidationReport(compile contract.CollectionCompileReport, detect
 	return buildCollectionReport(compile, detectionReport, status, message)
 }
 
-func collectionActivationReport(compile contract.CollectionCompileReport, detectionReport detection.ApplyReport) applicationpolicy.CollectionReport {
+func collectionActivationReport(compile contract.CollectionCompileReport, detectionReport detectionruntime.ApplyReport) applicationpolicy.CollectionReport {
 	status := "applied"
 	message := "collection policy applied"
 	if detectionReport.Status == "degraded" {
@@ -194,12 +195,12 @@ func collectionActivationReport(compile contract.CollectionCompileReport, detect
 	return buildCollectionReport(compile, detectionReport, status, message)
 }
 
-func buildCollectionReport(compile contract.CollectionCompileReport, detectionReport detection.ApplyReport, status, message string) applicationpolicy.CollectionReport {
+func buildCollectionReport(compile contract.CollectionCompileReport, detectionReport detectionruntime.ApplyReport, status, message string) applicationpolicy.CollectionReport {
 	payload, _ := json.Marshal(collectionReportPayload{CollectionCompileReport: compile, DetectionCoverage: &detectionReport.Coverage})
 	return applicationpolicy.CollectionReport{Status: status, Message: message, Warnings: collectionReportDetails(compile, detectionReport.Coverage), ReportJSON: string(payload)}
 }
 
-func collectionReportDetails(report contract.CollectionCompileReport, coverage detection.CoverageReport) []string {
+func collectionReportDetails(report contract.CollectionCompileReport, coverage detectionruntime.CoverageReport) []string {
 	details := []string{
 		fmt.Sprintf("backend=%s", report.Backend),
 		fmt.Sprintf("pushed_down_selectors=%d", len(report.PushedDownSelectors)),

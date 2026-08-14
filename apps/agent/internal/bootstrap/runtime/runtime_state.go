@@ -6,8 +6,9 @@ import (
 	"time"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
+	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -29,17 +30,17 @@ func (r *Runtime) setPolicy(policy policymodel.Policy) {
 	r.policy = policy
 }
 
-func (r *Runtime) currentDetection() *detection.Engine {
+func (r *Runtime) currentDetection() *detectionruntime.State {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.detection != nil {
 		return r.detection
 	}
-	engine, _ := detection.NewWithRuntimeLimits(policymodel.DefaultDetectionPolicy(), r.collection, detection.ContentSnapshot{}, r.detectionLimits())
+	engine, _ := detectionadapter.NewWithRuntimeLimits(policymodel.DefaultDetectionPolicy(), r.collection, detectionruntime.ContentSnapshot{}, r.detectionLimits())
 	return engine
 }
 
-func (r *Runtime) setDetection(engine *detection.Engine) {
+func (r *Runtime) setDetection(engine *detectionruntime.State) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.detection = engine
@@ -77,9 +78,9 @@ func (r *Runtime) applyRuntimePolicy(policy policymodel.Policy) {
 	r.tryApplyRuntimePolicy(policy)
 }
 
-func (r *Runtime) tryApplyRuntimePolicy(policy policymodel.Policy) (detection.ApplyReport, bool) {
+func (r *Runtime) tryApplyRuntimePolicy(policy policymodel.Policy) (detectionruntime.ApplyReport, bool) {
 	policy = policymodel.Normalize(policy)
-	engine, report := detection.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits())
+	engine, report := detectionadapter.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits())
 	if report.Status == "rejected" {
 		r.setDetectionStatus(policy, report, r.contentStore().Snapshot())
 		return report, false
@@ -90,9 +91,9 @@ func (r *Runtime) tryApplyRuntimePolicy(policy policymodel.Policy) (detection.Ap
 	return report, true
 }
 
-func (r *Runtime) rebuildDetection() detection.ApplyReport {
+func (r *Runtime) rebuildDetection() detectionruntime.ApplyReport {
 	policy := policymodel.Normalize(r.activePolicy())
-	engine, report := detection.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits())
+	engine, report := detectionadapter.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits())
 	if report.Status == "rejected" {
 		r.setDetectionStatus(policy, report, r.contentStore().Snapshot())
 		return report
@@ -102,13 +103,13 @@ func (r *Runtime) rebuildDetection() detection.ApplyReport {
 	return report
 }
 
-func (r *Runtime) buildDetectionWithSnapshot(snapshot agentcontent.Snapshot) (*detection.Engine, detection.ApplyReport) {
+func (r *Runtime) buildDetectionWithSnapshot(snapshot agentcontent.Snapshot) (*detectionruntime.State, detectionruntime.ApplyReport) {
 	policy := policymodel.Normalize(r.activePolicy())
-	engine, report := detection.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), detectionContentSnapshotFromContent(snapshot), r.detectionLimits())
+	engine, report := detectionadapter.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), detectionContentSnapshotFromContent(snapshot), r.detectionLimits())
 	return engine, report
 }
 
-func (r *Runtime) setDetectionStatus(policy policymodel.Policy, report detection.ApplyReport, snapshot agentcontent.Snapshot) {
+func (r *Runtime) setDetectionStatus(policy policymodel.Policy, report detectionruntime.ApplyReport, snapshot agentcontent.Snapshot) {
 	status := agenthealth.DetectionHealth{
 		PolicyID:               firstNonEmptyString(policy.Detection.PolicyID, policy.PolicyID),
 		PolicyVersion:          policy.Detection.Version,
@@ -135,8 +136,8 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func (r *Runtime) detectionLimits() detection.EngineLimits {
-	return detection.EngineLimits{
+func (r *Runtime) detectionLimits() detectionruntime.EngineLimits {
+	return detectionruntime.EngineLimits{
 		MaxCEPGroups: r.Config.Resource.MaxActiveCEPGroups,
 		MaxCEPRefs:   r.Config.Resource.MaxEventRefsPerSignal,
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -108,9 +109,9 @@ func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
 		SubjectProc: &eventv1.ProcessRef{StableId: "shell-child", Binary: "/bin/bash"},
 	}
 	policy := &policymodel.DetectionPolicy{RuleSets: []policymodel.RuleSetRef{{Ref: "ruleset:signal-sequence"}}}
-	content := detection.ContentSnapshot{Rules: []detection.RuleSpec{{
+	content := detectionruntime.ContentSnapshot{Rules: []detectionruntime.RuleSpec{{
 		RuleID: "signal_sequence_test", RuleSetRef: "ruleset:signal-sequence", RuntimeType: "expr",
-		Expr: detection.ExprSpec{Conditions: []detection.ConditionSpec{{Field: "process.binary_name", Op: "eq", Value: "bash"}}},
+		Expr: detectionruntime.ExprSpec{Conditions: []detectionruntime.ConditionSpec{{Field: "process.binary_name", Op: "eq", Value: "bash"}}},
 	}}}
 	firstEngine, _ := detection.NewWithRuntime(policy, contract.CollectionIntent{}, content)
 	secondEngine, _ := detection.NewWithRuntime(policy, contract.CollectionIntent{}, content)

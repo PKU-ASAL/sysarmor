@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 )
 
 type contentApplicationAdapter struct {
@@ -41,7 +41,7 @@ func (r *contentApplicationAdapter) ValidateContent(document string, allowUnsign
 
 func (r *contentApplicationAdapter) Activate(document string, allowUnsigned bool) (agentcontrol.ContentRecord, agentcontrol.ContentApplyReport, error) {
 	var record agentcontent.Record
-	var report detection.ApplyReport
+	var report detectionruntime.ApplyReport
 	var activationErr error
 	r.runner.withDetectionUpdateTransaction(func() {
 		var snapshot agentcontent.Snapshot

@@ -7,45 +7,25 @@ import (
 
 	detectionmodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	domainruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
-	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-type Engine struct{ state *domainruntime.State }
-type EngineLimits = domainruntime.EngineLimits
-type ApplyReport = domainruntime.ApplyReport
-type ContentSnapshot = domainruntime.ContentSnapshot
-type ContentRef = domainruntime.ContentRef
-type RuleSpec = domainruntime.RuleSpec
-type ExprSpec = domainruntime.ExprSpec
-type ConditionSpec = domainruntime.ConditionSpec
-type RequiredEventSpec = domainruntime.RequiredEventSpec
-type SequenceSpec = domainruntime.SequenceSpec
-type StepSpec = domainruntime.StepSpec
-type CorrelateSpec = domainruntime.CorrelateSpec
-type FactSpec = domainruntime.FactSpec
-type ConditionNodeSpec = domainruntime.ConditionNodeSpec
-type SuppressionSpec = domainruntime.SuppressionSpec
-type Signal = detectionmodel.Signal
-type ResponseIntent = detectionmodel.ResponseIntent
-type CoverageReport = domainruntime.CoverageReport
-
-func New(policy *policymodel.DetectionPolicy) (*Engine, ApplyReport) {
+func New(policy *policymodel.DetectionPolicy) (*domainruntime.State, domainruntime.ApplyReport) {
 	return NewWithInputs(policy, contract.CollectionIntent{})
 }
 
-func NewWithInputs(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent) (*Engine, ApplyReport) {
-	return NewWithRuntimeLimits(policy, collection, ContentSnapshot{}, EngineLimits{})
+func NewWithInputs(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent) (*domainruntime.State, domainruntime.ApplyReport) {
+	return NewWithRuntimeLimits(policy, collection, domainruntime.ContentSnapshot{}, domainruntime.EngineLimits{})
 }
 
-func NewWithRuntime(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content ContentSnapshot) (*Engine, ApplyReport) {
-	return NewWithRuntimeLimits(policy, collection, content, EngineLimits{})
+func NewWithRuntime(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content domainruntime.ContentSnapshot) (*domainruntime.State, domainruntime.ApplyReport) {
+	return NewWithRuntimeLimits(policy, collection, content, domainruntime.EngineLimits{})
 }
 
-func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content ContentSnapshot, limits EngineLimits) (*Engine, ApplyReport) {
+func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content domainruntime.ContentSnapshot, limits domainruntime.EngineLimits) (*domainruntime.State, domainruntime.ApplyReport) {
 	if policy == nil || len(policy.RuleSets) == 0 {
-		return &Engine{state: domainruntime.NewState(domainruntime.Program{}, limits)}, ApplyReport{Status: "rejected", Message: "detection policy rejected: explicit ruleset is required", Details: []string{"detection policy requires at least one explicit ruleset"}}
+		return domainruntime.NewState(domainruntime.Program{}, limits), domainruntime.ApplyReport{Status: "rejected", Message: "detection policy rejected: explicit ruleset is required", Details: []string{"detection policy requires at least one explicit ruleset"}}
 	}
 	input := domainruntime.ProgramInput{Content: content, Rules: resolve(policy, content)}
 	program, report := domainruntime.Compile(input)
@@ -56,15 +36,15 @@ func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contra
 		report.Message = "detection policy applied with missing collection inputs"
 		report.Details = append(report.Details, report.Warnings...)
 	}
-	return &Engine{state: domainruntime.NewState(program, limits)}, report
+	return domainruntime.NewState(program, limits), report
 }
 
-func coverage(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, rules []RuleSpec) CoverageReport {
+func coverage(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, rules []domainruntime.RuleSpec) domainruntime.CoverageReport {
 	if policy == nil || len(collection.Behaviors) == 0 {
-		return CoverageReport{Status: "unknown"}
+		return domainruntime.CoverageReport{Status: "unknown"}
 	}
 	behaviors, capabilities := coverageInputs(collection)
-	report := CoverageReport{Status: "covered"}
+	report := domainruntime.CoverageReport{Status: "covered"}
 	for _, rule := range rules {
 		item := ruleCoverage(rule, behaviors, capabilities)
 		if item.Status == "missing_inputs" {
@@ -95,7 +75,7 @@ func coverageInputs(collection contract.CollectionIntent) (map[string]bool, map[
 	return behaviors, capabilities
 }
 
-func ruleCoverage(rule RuleSpec, behaviors map[string]bool, capabilities map[string]map[string]bool) domainruntime.RuleCoverage {
+func ruleCoverage(rule domainruntime.RuleSpec, behaviors map[string]bool, capabilities map[string]map[string]bool) domainruntime.RuleCoverage {
 	item := domainruntime.RuleCoverage{RuleID: rule.RuleID, Status: "covered"}
 	for _, required := range rule.RequiredBehaviors {
 		required = strings.ToLower(strings.TrimSpace(required))
@@ -131,21 +111,7 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
-func (e *Engine) Process(event domainevent.Event) []*detectionmodel.Signal {
-	if e == nil || e.state == nil {
-		return nil
-	}
-	return e.state.Process(event)
-}
-
-func (e *Engine) Metrics() domainruntime.Metrics {
-	if e == nil || e.state == nil {
-		return domainruntime.Metrics{}
-	}
-	return e.state.Metrics()
-}
-
-func resolve(policy *policymodel.DetectionPolicy, content ContentSnapshot) []RuleSpec {
+func resolve(policy *policymodel.DetectionPolicy, content domainruntime.ContentSnapshot) []domainruntime.RuleSpec {
 	if policy == nil {
 		return nil
 	}
@@ -159,7 +125,7 @@ func resolve(policy *policymodel.DetectionPolicy, content ContentSnapshot) []Rul
 			overrides[override.RuleID] = override
 		}
 	}
-	var out []RuleSpec
+	var out []domainruntime.RuleSpec
 	for _, rule := range content.Rules {
 		if !sets[rule.RuleSetRef] {
 			continue
@@ -176,7 +142,7 @@ func resolve(policy *policymodel.DetectionPolicy, content ContentSnapshot) []Rul
 				rule.Severity = override.Severity
 			}
 			if override.ResponseIntent != nil {
-				rule.ResponseIntent = &ResponseIntent{Action: override.ResponseIntent.Action, Confidence: override.ResponseIntent.Confidence, Reason: override.ResponseIntent.Reason}
+				rule.ResponseIntent = &detectionmodel.ResponseIntent{Action: override.ResponseIntent.Action, Confidence: override.ResponseIntent.Confidence, Reason: override.ResponseIntent.Reason}
 			}
 		}
 		out = append(out, rule)

@@ -7,8 +7,8 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 )
 
 func TestContentRuntimeUsesProjectedManagementIdentity(t *testing.T) {
@@ -37,7 +37,7 @@ func TestContentControllerPersistenceFailureKeepsPreviousDetection(t *testing.T)
 		Config:  config.Config{Agent: config.AgentConfig{TenantID: "tenant-a", ID: "agent-a"}},
 		content: store,
 	}
-	previousDetection := &detection.Engine{}
+	previousDetection := &detectionruntime.State{}
 	runner.setDetection(previousDetection)
 	if err := os.RemoveAll(contentDir); err != nil {
 		t.Fatal(err)

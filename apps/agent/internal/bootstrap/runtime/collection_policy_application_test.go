@@ -5,17 +5,17 @@ import (
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
-	detection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
+	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
 func TestCollectionReportDetailsPreserveCompileAndCoverageWarnings(t *testing.T) {
 	details := collectionReportDetails(
 		contract.CollectionCompileReport{Backend: "fake", GeneratedPolicyHash: "hash-a", Warnings: []string{"compile warning"}},
-		detection.CoverageReport{Status: "degraded", Warnings: []string{"coverage warning"}},
+		detectionruntime.CoverageReport{Status: "degraded", Warnings: []string{"coverage warning"}},
 	)
 	for _, want := range []string{"generated_policy_hash=hash-a", "warning=compile warning", "coverage_warning=coverage warning"} {
 		if !slices.Contains(details, want) {
