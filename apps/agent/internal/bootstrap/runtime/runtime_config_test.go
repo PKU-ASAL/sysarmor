@@ -10,7 +10,7 @@ import (
 )
 
 func TestRuntimeRejectsStartupDetectionWithoutRuleSet(t *testing.T) {
-	runner := &Runtime{content: agentcontent.NewStore()}
+	runner := &Coordinator{policyRuntime: policyRuntime{content: agentcontent.NewStore()}}
 	err := runner.applyStartupDetection(policymodel.DefaultPolicy("default"))
 	if err == nil || !strings.Contains(err.Error(), "explicit ruleset") {
 		t.Fatalf("applyStartupDetection() error = %v, want explicit ruleset error", err)
@@ -18,7 +18,7 @@ func TestRuntimeRejectsStartupDetectionWithoutRuleSet(t *testing.T) {
 }
 
 func TestDetectionStatusIncludesDefaultManifestVersion(t *testing.T) {
-	runner := &Runtime{}
+	runner := &Coordinator{}
 	policy := policymodel.DefaultPolicy("default")
 	policy.Detection = &policymodel.DetectionPolicy{PolicyID: "detection-test"}
 	runner.setDetectionStatus(policy, detectionruntime.ApplyReport{Status: "applied"}, agentcontent.Snapshot{DefaultManifestVersion: "release-v1"})

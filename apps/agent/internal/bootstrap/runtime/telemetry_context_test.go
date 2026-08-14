@@ -8,7 +8,7 @@ import (
 )
 
 func TestRuntimeProjectsCurrentTelemetryContext(t *testing.T) {
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{
 		ID: "device-a", HostID: "host-a", TenantID: "local", Labels: map[string]string{"site": "lab"},
 	}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})

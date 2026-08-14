@@ -28,7 +28,7 @@ func newUnenrollmentCompletionReporter(store *sqlite.Store, send func(context.Co
 	return &unenrollmentCompletionReporter{store: store, send: send, retryInitial: retryInitial, retryMax: retryMax}
 }
 
-func (r *Runtime) configureUnenrollmentCompletionReporter() *unenrollmentCompletionReporter {
+func (r *Coordinator) configureUnenrollmentCompletionReporter() *unenrollmentCompletionReporter {
 	if r.completionReporter != nil {
 		return r.completionReporter
 	}
@@ -39,7 +39,7 @@ func (r *Runtime) configureUnenrollmentCompletionReporter() *unenrollmentComplet
 	return r.completionReporter
 }
 
-func (r *Runtime) startUnenrollmentCompletionReporter(ctx context.Context) func() {
+func (r *Coordinator) startUnenrollmentCompletionReporter(ctx context.Context) func() {
 	reporterCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {

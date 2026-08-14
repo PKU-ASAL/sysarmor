@@ -25,18 +25,18 @@ func (c *telemetryCandidate) ReportJSON() string {
 }
 
 type telemetryPolicyApplication struct {
-	runner  *Runtime
+	runner  *Coordinator
 	batcher *telemetryadapter.Batcher
 	service *applicationpolicy.TelemetryService
 }
 
-func newTelemetryPolicyApplication(runner *Runtime, batcher *telemetryadapter.Batcher) *telemetryPolicyApplication {
+func newTelemetryPolicyApplication(runner *Coordinator, batcher *telemetryadapter.Batcher) *telemetryPolicyApplication {
 	application := &telemetryPolicyApplication{runner: runner, batcher: batcher}
 	application.service = applicationpolicy.NewTelemetryService(application, application)
 	return application
 }
 
-func NewTelemetryPolicyApplication(runner *Runtime, batcher *telemetryadapter.Batcher) agentcontrol.TelemetryApplication {
+func NewTelemetryPolicyApplication(runner *Coordinator, batcher *telemetryadapter.Batcher) agentcontrol.TelemetryApplication {
 	return newTelemetryPolicyApplication(runner, batcher)
 }
 

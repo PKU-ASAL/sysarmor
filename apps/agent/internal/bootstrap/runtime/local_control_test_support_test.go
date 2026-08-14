@@ -36,7 +36,7 @@ func (u *recordingUploader) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev
 	return (&noopUploader{}).SendBatch(batch)
 }
 
-func newTestTelemetry(t testing.TB, runner *Runtime) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender) {
+func newTestTelemetry(t testing.TB, runner *Coordinator) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender) {
 	t.Helper()
 	runner.policyController = newApplicationPolicyController
 	ensureTestLocalStore(t, runner)
@@ -47,7 +47,7 @@ func newTestTelemetry(t testing.TB, runner *Runtime) (*telemetryadapter.Bus, *te
 	return bus, batcher, sender
 }
 
-func ensureTestLocalStore(t testing.TB, runner *Runtime) {
+func ensureTestLocalStore(t testing.TB, runner *Coordinator) {
 	t.Helper()
 	if runner.localStore == nil {
 		store, err := sqlite.Open(context.Background(), sqlite.Options{RootDir: t.TempDir()})

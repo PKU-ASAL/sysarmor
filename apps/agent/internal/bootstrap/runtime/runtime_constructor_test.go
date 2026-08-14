@@ -8,7 +8,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/fake"
 )
 
-func TestNewRuntimeRejectsMissingCompositionDependencies(t *testing.T) {
+func TestNewCoordinatorRejectsMissingCompositionDependencies(t *testing.T) {
 	tests := []struct {
 		name         string
 		dependencies Dependencies
@@ -20,9 +20,9 @@ func TestNewRuntimeRejectsMissingCompositionDependencies(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewRuntime(test.dependencies)
+			_, err := NewCoordinator(test.dependencies)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("NewRuntime() error = %v, want missing %s error", err, test.want)
+				t.Fatalf("NewCoordinator() error = %v, want missing %s error", err, test.want)
 			}
 		})
 	}

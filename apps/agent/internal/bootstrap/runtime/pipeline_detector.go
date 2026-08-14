@@ -5,7 +5,7 @@ import (
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 )
 
-type runtimeDetector struct{ runner *Runtime }
+type runtimeDetector struct{ runner *Coordinator }
 
 func (detector *runtimeDetector) Process(event domainevent.Event) []*domaindetection.Signal {
 	if detector == nil || detector.runner == nil || detector.runner.currentDetection() == nil {

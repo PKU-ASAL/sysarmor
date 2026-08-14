@@ -22,7 +22,7 @@ import (
 )
 
 type Runner struct {
-	runtime   *agentruntime.Runtime
+	runtime   *agentruntime.Coordinator
 	store     *sqlite.Store
 	resources *Resources
 }
@@ -77,7 +77,7 @@ func NewRunner(ctx context.Context, cfg config.Config) (*Runner, error) {
 	if store != nil {
 		resources.Add("sqlite store", store.Close)
 	}
-	runtime, err := agentruntime.NewRuntime(dependencies)
+	runtime, err := agentruntime.NewCoordinator(dependencies)
 	if err != nil {
 		return nil, errors.Join(err, resources.Close())
 	}

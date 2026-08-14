@@ -9,7 +9,7 @@ import (
 )
 
 type TransportRuntime struct {
-	runner        *Runtime
+	runner        *Coordinator
 	sensor        sensorruntime.Runtime
 	bus           *telemetryadapter.Bus
 	batcher       *telemetryadapter.Batcher
@@ -19,7 +19,7 @@ type TransportRuntime struct {
 	scopeSelector string
 }
 
-func NewTransportRuntime(runner *Runtime, sensor sensorruntime.Runtime, source any, rest ...any) *TransportRuntime {
+func NewTransportRuntime(runner *Coordinator, sensor sensorruntime.Runtime, source any, rest ...any) *TransportRuntime {
 	bus, batcher, sender, startedAt, scopeType, scopeSelector := transportArgs(runner, source, rest...)
 	return &TransportRuntime{
 		runner:        runner,
@@ -33,7 +33,7 @@ func NewTransportRuntime(runner *Runtime, sensor sensorruntime.Runtime, source a
 	}
 }
 
-func transportArgs(runner *Runtime, source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time, string, string) {
+func transportArgs(runner *Coordinator, source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time, string, string) {
 	var bus *telemetryadapter.Bus
 	var batcher *telemetryadapter.Batcher
 	var sender *telemetryadapter.RuntimeSender

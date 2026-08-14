@@ -37,17 +37,17 @@ func (c *detectionCandidate) BuildReport() applicationpolicy.DetectionReport {
 }
 
 type detectionPolicyApplication struct {
-	runner  *Runtime
+	runner  *Coordinator
 	service *applicationpolicy.DetectionService
 }
 
-func newDetectionPolicyApplication(runner *Runtime) *detectionPolicyApplication {
+func newDetectionPolicyApplication(runner *Coordinator) *detectionPolicyApplication {
 	application := &detectionPolicyApplication{runner: runner}
 	application.service = applicationpolicy.NewDetectionService(application, application)
 	return application
 }
 
-func NewDetectionPolicyApplication(runner *Runtime) agentcontrol.DetectionApplication {
+func NewDetectionPolicyApplication(runner *Coordinator) agentcontrol.DetectionApplication {
 	return newDetectionPolicyApplication(runner)
 }
 

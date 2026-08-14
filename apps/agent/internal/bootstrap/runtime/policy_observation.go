@@ -10,7 +10,7 @@ import (
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 )
 
-func (r *Runtime) pendingPolicyStatus(ctx context.Context) (agenthealth.PendingPolicyStatus, error) {
+func (r *Coordinator) pendingPolicyStatus(ctx context.Context) (agenthealth.PendingPolicyStatus, error) {
 	if r.localStore == nil {
 		return agenthealth.PendingPolicyStatus{}, nil
 	}

@@ -12,14 +12,14 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 )
 
-func (r *Runtime) batchSender() (dataappend.BatchSender, error) {
+func (r *Coordinator) batchSender() (dataappend.BatchSender, error) {
 	if r.localStore != nil {
 		return &localStoreBatchSender{store: r.localStore}, nil
 	}
 	return newBatchSender(r.Config.Manager.Address, r.Config.Manager.Transport, r.Config.Local.Export.RequestTimeout, r.Config.Agent.Token, r.managerTLS())
 }
 
-func (r *Runtime) managerTLS() tlsconfig.ClientConfig {
+func (r *Coordinator) managerTLS() tlsconfig.ClientConfig {
 	return tlsconfig.ClientConfig{
 		CAFile:     r.Config.Manager.TLSCA,
 		CertFile:   r.Config.Manager.TLSCert,
@@ -29,7 +29,7 @@ func (r *Runtime) managerTLS() tlsconfig.ClientConfig {
 	}
 }
 
-func (r *Runtime) runManagedNetwork(ctx context.Context, enrollment sqlite.Enrollment) {
+func (r *Coordinator) runManagedNetwork(ctx context.Context, enrollment sqlite.Enrollment) {
 	tlsCfg := tlsconfig.ClientConfig{CAFile: enrollment.TLSCAPath, CertFile: enrollment.TLSCertPath, KeyFile: enrollment.TLSKeyPath, ServerName: enrollment.TLSServerName}
 	sender := dataappend.NewGRPCAppenderWithTLS(enrollment.GatewayAddress, r.Config.Local.Export.RequestTimeout, "", tlsCfg)
 	cloud := telemetryadapter.NewCloudSender(sender)

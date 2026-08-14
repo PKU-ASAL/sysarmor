@@ -9,7 +9,7 @@ import (
 )
 
 func TestResponseContextProjectsIdentityPolicyAndScope(t *testing.T) {
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}
@@ -31,7 +31,7 @@ func TestResponseContextProjectsIdentityPolicyAndScope(t *testing.T) {
 }
 
 func TestResponseContextPolicyIsIsolatedFromActivePolicy(t *testing.T) {
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}

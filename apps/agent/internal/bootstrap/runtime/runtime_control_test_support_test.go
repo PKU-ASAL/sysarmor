@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *Runtime {
+func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *Coordinator {
 	t.Helper()
 	var sensor contract.Sensor
 	switch cfg.Sensor.Backend {
@@ -61,7 +61,7 @@ func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *Runtime {
 		}
 		dependencies.LocalStore, dependencies.EventSeq, dependencies.SignalSeq = store, cursor.Event, cursor.Signal
 	}
-	runtime, err := NewRuntime(dependencies)
+	runtime, err := NewCoordinator(dependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func (s *contentUpdateControlServer) Connect(stream controlplanev1.AgentControlP
 	}
 }
 
-func runTestControlChannel(t *testing.T, dir string, server *contentUpdateControlServer, agentID string) (*Runtime, <-chan error, context.CancelFunc) {
+func runTestControlChannel(t *testing.T, dir string, server *contentUpdateControlServer, agentID string) (*Coordinator, <-chan error, context.CancelFunc) {
 	t.Helper()
 	if server.acks == nil {
 		server.acks = make(chan *controlplanev1.ControlAck, 1)
@@ -174,7 +174,7 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 	}()
 	t.Cleanup(grpcServer.Stop)
 
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: agentID, HostID: "host-" + agentID, TenantID: "default"},
 			Manager: config.ManagerConfig{Address: lis.Addr().String(), Transport: "grpc"},
@@ -182,11 +182,11 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 			Health:  config.HealthConfig{Interval: time.Hour},
 		},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, PolicyLoaded: true, EventsSeen: 3}},
-		capability: contract.Capability{
+		sensorRuntime: sensorRuntime{capability: contract.Capability{
 			Backend:        "fake",
 			Version:        "long",
 			SupportsHealth: true,
-		},
+		}},
 	}
 	runner.policyController = newApplicationPolicyController
 	installTestDetection(t, runner)

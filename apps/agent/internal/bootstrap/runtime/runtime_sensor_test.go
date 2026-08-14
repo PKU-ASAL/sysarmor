@@ -75,7 +75,7 @@ func TestRuntimeTetragonRequiresEventSource(t *testing.T) {
 }
 
 func TestRuntimeProcessesTamperSignalFromHealth(t *testing.T) {
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:     config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default", Token: "dev-token"},
 			Sensor:    config.SensorConfig{Backend: "fake", Mode: "managed", ObserveOnly: true, RestartWindow: time.Hour},
@@ -143,7 +143,7 @@ func TestRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T) {
 		Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Hour, RetryMax: time.Hour, RequestTimeout: 5 * time.Millisecond, MaxInflight: 1}},
 		Health:    config.HealthConfig{Interval: time.Hour},
 	}
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: cfg,
 		Sensor: &healthOnlySensor{health: contract.Health{
 			Backend:      "tetragon",

@@ -12,7 +12,7 @@ import (
 )
 
 type runtimeHealthSource struct {
-	runner    *Runtime
+	runner    *Coordinator
 	runtime   sensorruntime.Runtime
 	bus       *telemetryadapter.Bus
 	batcher   *telemetryadapter.Batcher
@@ -20,7 +20,7 @@ type runtimeHealthSource struct {
 	startedAt time.Time
 }
 
-func newRuntimeHealthSource(runner *Runtime, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) *runtimeHealthSource {
+func newRuntimeHealthSource(runner *Coordinator, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) *runtimeHealthSource {
 	return &runtimeHealthSource{runner: runner, runtime: rt, bus: bus, batcher: batcher, sender: sender, startedAt: startedAt}
 }
 
@@ -179,7 +179,7 @@ func (s *runtimeHealthSource) Lifecycle(ctx context.Context) (domainhealth.Lifec
 	return value, nil
 }
 
-func (r *Runtime) domainCapability() domainhealth.Capability {
+func (r *Coordinator) domainCapability() domainhealth.Capability {
 	collection := make([]domainhealth.CollectionCapability, 0, len(r.capability.Collection))
 	for _, item := range r.capability.Collection {
 		collection = append(collection, domainhealth.CollectionCapability{

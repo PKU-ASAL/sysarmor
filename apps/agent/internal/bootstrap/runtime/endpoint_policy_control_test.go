@@ -360,7 +360,7 @@ func TestDuplicateManagedPolicyDoesNotDeadlockStartupPendingActivation(t *testin
 	}
 }
 
-func setupPendingEndpointPolicyTest(t *testing.T) (*sqlite.Store, *Runtime, sensorruntime.Runtime, *agentcontrol.EndpointPolicyController) {
+func setupPendingEndpointPolicyTest(t *testing.T) (*sqlite.Store, *Coordinator, sensorruntime.Runtime, *agentcontrol.EndpointPolicyController) {
 	t.Helper()
 	store := openEndpointPolicyStore(t)
 	standalone := parseEndpointPolicy(t, standaloneEndpointPolicyJSON)
@@ -387,9 +387,17 @@ func openEndpointPolicyStore(t *testing.T) *sqlite.Store {
 	return store
 }
 
-func newEndpointPolicyRunner(t *testing.T, store *sqlite.Store, sensor contract.Sensor) *Runtime {
+func newEndpointPolicyRunner(t *testing.T, store *sqlite.Store, sensor contract.Sensor) *Coordinator {
 	t.Helper()
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", TenantID: "local"}, Telemetry: config.DefaultTelemetryConfig()}, Sensor: sensor, localStore: store, capability: contract.Capability{Backend: "fake", SupportsExec: true}, reportUnenrollment: func(context.Context) (bool, error) { return true, nil }}
+	runner := &Coordinator{
+		Config:        config.Config{Agent: config.AgentConfig{ID: "device-a", TenantID: "local"}, Telemetry: config.DefaultTelemetryConfig()},
+		Sensor:        sensor,
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		managementRuntime: managementRuntime{
+			localStore:         store,
+			reportUnenrollment: func(context.Context) (bool, error) { return true, nil },
+		},
+	}
 	installTestDetection(t, runner)
 	return runner
 }

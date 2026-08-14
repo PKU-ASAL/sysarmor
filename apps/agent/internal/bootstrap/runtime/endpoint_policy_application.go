@@ -37,19 +37,19 @@ func (c *endpointCandidate) PolicyVersion() uint64                  { return c.e
 func (c *endpointCandidate) PolicySource() applicationpolicy.Source { return c.source }
 
 type endpointPolicyApplication struct {
-	runner  *Runtime
+	runner  *Coordinator
 	runtime sensorruntime.Runtime
 	batcher *telemetryadapter.Batcher
 	service *applicationpolicy.EndpointService
 }
 
-func newEndpointPolicyApplication(runner *Runtime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *endpointPolicyApplication {
+func newEndpointPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *endpointPolicyApplication {
 	application := &endpointPolicyApplication{runner: runner, runtime: runtime, batcher: batcher}
 	application.service = applicationpolicy.NewEndpointService(application, application)
 	return application
 }
 
-func NewEndpointPolicyApplication(runner *Runtime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) agentcontrol.EndpointApplication {
+func NewEndpointPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) agentcontrol.EndpointApplication {
 	return newEndpointPolicyApplication(runner, runtime, batcher)
 }
 

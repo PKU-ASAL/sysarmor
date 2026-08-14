@@ -126,7 +126,7 @@ func TestRuntimeControlChannelProcessesPendingResponse(t *testing.T) {
 	server := &responseControlContractServer{observed: make(chan responseControlObservation, 1)}
 	address := startControlContractServer(t, server)
 
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-runner-long", HostID: "host-runner-long", TenantID: "default"},
 			Manager: config.ManagerConfig{Address: address, Transport: "grpc"},
@@ -134,11 +134,11 @@ func TestRuntimeControlChannelProcessesPendingResponse(t *testing.T) {
 			Health:  config.HealthConfig{Interval: 10 * time.Millisecond},
 		},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, PolicyLoaded: true, EventsSeen: 3}},
-		capability: contract.Capability{
+		sensorRuntime: sensorRuntime{capability: contract.Capability{
 			Backend:        "fake",
 			Version:        "long",
 			SupportsHealth: true,
-		},
+		}},
 	}
 	runner.policyController = newApplicationPolicyController
 	rt := sensorruntime.New(runner.Sensor)

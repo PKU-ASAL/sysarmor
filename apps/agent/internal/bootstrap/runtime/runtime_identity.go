@@ -30,47 +30,47 @@ type runtimeIdentity struct {
 	TenantID string
 }
 
-func (r *Runtime) bindControlAckIdentity(ack *controlplanev1.ControlAck) *controlplanev1.ControlAck {
+func (r *Coordinator) bindControlAckIdentity(ack *controlplanev1.ControlAck) *controlplanev1.ControlAck {
 	return bindControlAckToSession(ack, r.currentIdentity())
 }
 
-func (r *Runtime) setRuntimeIdentity(identity runtimeIdentity) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Coordinator) setRuntimeIdentity(identity runtimeIdentity) {
+	r.managementRuntime.mu.Lock()
 	r.identity = identity
 	if r.standaloneIdentity.AgentID == "" {
 		r.standaloneIdentity = identity
 	}
-	if r.normalizer != nil {
-		r.normalizer.SetIdentity(identity.AgentID, identity.HostID, identity.TenantID)
+	r.managementRuntime.mu.Unlock()
+	r.telemetryRuntime.mu.RLock()
+	normalizer := r.normalizer
+	r.telemetryRuntime.mu.RUnlock()
+	if normalizer != nil {
+		normalizer.SetIdentity(identity.AgentID, identity.HostID, identity.TenantID)
 	}
 }
 
-func (r *Runtime) currentIdentity() runtimeIdentity {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Coordinator) currentIdentity() runtimeIdentity {
+	r.managementRuntime.mu.RLock()
+	defer r.managementRuntime.mu.RUnlock()
 	if r.identity.AgentID != "" {
 		return r.identity
 	}
 	return runtimeIdentity{AgentID: r.Config.Agent.ID, HostID: r.Config.Agent.HostID, TenantID: r.Config.Agent.TenantID}
 }
 
-func (r *Runtime) standaloneRuntimeIdentity() runtimeIdentity {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Coordinator) standaloneRuntimeIdentity() runtimeIdentity {
+	r.managementRuntime.mu.RLock()
+	defer r.managementRuntime.mu.RUnlock()
 	if r.standaloneIdentity.AgentID != "" {
 		return r.standaloneIdentity
 	}
 	return runtimeIdentity{AgentID: r.Config.Agent.ID, HostID: r.Config.Agent.HostID, TenantID: r.Config.Agent.TenantID}
 }
 
-func (r *Runtime) setNormalizer(normalizer *eventadapter.EventNormalizer) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Coordinator) setNormalizer(normalizer *eventadapter.EventNormalizer) {
+	identity := r.currentIdentity()
+	r.telemetryRuntime.mu.Lock()
 	r.normalizer = normalizer
-	identity := r.identity
-	if identity.AgentID == "" {
-		identity = runtimeIdentity{AgentID: r.Config.Agent.ID, HostID: r.Config.Agent.HostID, TenantID: r.Config.Agent.TenantID}
-	}
+	r.telemetryRuntime.mu.Unlock()
 	normalizer.SetIdentity(identity.AgentID, identity.HostID, identity.TenantID)
 }

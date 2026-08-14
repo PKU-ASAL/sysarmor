@@ -10,7 +10,7 @@ import (
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
-func (r *Runtime) beginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
+func (r *Coordinator) beginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
 	if !mutation {
 		return func() {}, nil
 	}
@@ -36,14 +36,14 @@ func (r *Runtime) beginLocalPolicyMutation(ctx context.Context, mutation bool) (
 }
 
 type policyProjectionRuntime struct {
-	runner *Runtime
+	runner *Coordinator
 }
 
-func newPolicyProjectionRuntime(runner *Runtime) *policyProjectionRuntime {
+func newPolicyProjectionRuntime(runner *Coordinator) *policyProjectionRuntime {
 	return &policyProjectionRuntime{runner: runner}
 }
 
-func NewPolicyProjectionRuntime(runner *Runtime) agentcontrol.PolicyControllerRuntime {
+func NewPolicyProjectionRuntime(runner *Coordinator) agentcontrol.PolicyControllerRuntime {
 	return newPolicyProjectionRuntime(runner)
 }
 

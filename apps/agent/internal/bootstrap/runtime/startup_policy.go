@@ -11,7 +11,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-func (r *Runtime) loadStartupPolicy(ctx context.Context) (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
+func (r *Coordinator) loadStartupPolicy(ctx context.Context) (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
 	if r.localStore == nil {
 		return r.loadLegacyRuntimePolicy()
 	}
@@ -47,31 +47,31 @@ func (r *Runtime) loadStartupPolicy(ctx context.Context) (contract.CollectionInt
 	return intent, policy, effectiveTelemetry, nil
 }
 
-func (r *Runtime) setEffectiveTelemetry(value config.EffectiveTelemetry) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Coordinator) setEffectiveTelemetry(value config.EffectiveTelemetry) {
+	r.policyRuntime.mu.Lock()
+	defer r.policyRuntime.mu.Unlock()
 	r.effectiveTelemetry = value
 }
 
-func (r *Runtime) currentEffectiveTelemetry() config.EffectiveTelemetry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Coordinator) currentEffectiveTelemetry() config.EffectiveTelemetry {
+	r.policyRuntime.mu.RLock()
+	defer r.policyRuntime.mu.RUnlock()
 	return r.effectiveTelemetry
 }
 
-func (r *Runtime) setEndpointPolicy(policy policymodel.EndpointPolicy) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Coordinator) setEndpointPolicy(policy policymodel.EndpointPolicy) {
+	r.policyRuntime.mu.Lock()
+	defer r.policyRuntime.mu.Unlock()
 	r.endpointPolicy = policy
 }
 
-func (r *Runtime) currentEndpointPolicy() policymodel.EndpointPolicy {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Coordinator) currentEndpointPolicy() policymodel.EndpointPolicy {
+	r.policyRuntime.mu.RLock()
+	defer r.policyRuntime.mu.RUnlock()
 	return r.endpointPolicy
 }
 
-func (r *Runtime) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy policymodel.EndpointPolicy) error {
+func (r *Coordinator) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy policymodel.EndpointPolicy) error {
 	if r.localStore == nil {
 		r.setEndpointPolicy(policy)
 		return nil
@@ -89,7 +89,7 @@ func (r *Runtime) persistEndpointPolicy(ctx context.Context, source sqlite.Polic
 	return nil
 }
 
-func (r *Runtime) loadLegacyRuntimePolicy() (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
+func (r *Coordinator) loadLegacyRuntimePolicy() (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
 	intent, err := agentpolicy.LoadCollectionIntent(r.Config.Sensor.PolicyPath, r.Config.Sensor.ObserveOnly)
 	if err != nil {
 		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err

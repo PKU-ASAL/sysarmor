@@ -11,10 +11,10 @@ import (
 )
 
 type contentApplicationAdapter struct {
-	runner *Runtime
+	runner *Coordinator
 }
 
-func newContentApplicationAdapter(runner *Runtime) *contentApplicationAdapter {
+func newContentApplicationAdapter(runner *Coordinator) *contentApplicationAdapter {
 	return &contentApplicationAdapter{runner: runner}
 }
 

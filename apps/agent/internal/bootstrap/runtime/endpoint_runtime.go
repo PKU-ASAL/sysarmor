@@ -14,13 +14,13 @@ import (
 )
 
 type EndpointRuntime struct {
-	runner     *Runtime
+	runner     *Coordinator
 	normalizer *eventadapter.EventNormalizer
 	pipeline   *applicationpipeline.Service
 	batches    *telemetryadapter.BatchBuilder
 }
 
-func NewEndpointRuntime(runner *Runtime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder) *EndpointRuntime {
+func NewEndpointRuntime(runner *Coordinator, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder) *EndpointRuntime {
 	return &EndpointRuntime{runner: runner, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{runner: runner}), batches: batches}
 }
 

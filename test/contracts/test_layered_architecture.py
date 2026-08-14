@@ -149,6 +149,36 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         self.assertNotIn('"os"', enrollment_runtime)
         self.assertNotIn("os.Remove(", enrollment_runtime)
 
+    def test_task12_bootstrap_coordinator_only_composes_runtime_components(self):
+        source = (
+            self.repo / "apps/agent/internal/bootstrap/runtime/runtime.go"
+        ).read_text()
+        self.assertNotIn("type Runtime struct", source)
+        self.assertNotIn("func NewRuntime(", source)
+
+        coordinator = re.search(
+            r"type Coordinator struct \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        self.assertIsNotNone(coordinator, "missing bootstrap Coordinator")
+        body = coordinator.group("body")
+        for component in ("policyRuntime", "managementRuntime", "telemetryRuntime", "sensorRuntime"):
+            self.assertIn(component, body, f"Coordinator does not compose {component}")
+        for field in (
+            "detectionUpdateMu",
+            "enrollmentCoordinator",
+            "identity",
+            "normalizer",
+            "telemetryBatcher",
+            "sensorSupervisor",
+            "endpointPolicy",
+            "detectionStatus",
+        ):
+            self.assertNotRegex(
+                body,
+                rf"(?m)^\s*{field}\s+",
+                f"Coordinator still owns flattened runtime state: {field}",
+            )
+
     def test_product_layer_roots_exist(self):
         for product in ("agent", "manager"):
             for layer in LAYERS:

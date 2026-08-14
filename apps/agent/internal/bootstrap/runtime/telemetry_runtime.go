@@ -12,7 +12,7 @@ import (
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 )
 
-func (r *Runtime) newTelemetryBatchBuilder() *telemetryadapter.BatchBuilder {
+func (r *Coordinator) newTelemetryBatchBuilder() *telemetryadapter.BatchBuilder {
 	return telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
 }
 
@@ -58,7 +58,7 @@ func (s *localStoreBatchSender) SendBatch(batch *dataplanev1.DataBatch) (*datapl
 	return &dataplanev1.DataAck{Accepted: true, Status: dataplanev1.DataAck_STATUS_ACCEPTED, BatchId: batch.GetHeader().GetBatchId(), CommittedCursor: batch.GetHeader().GetBatchId()}, nil
 }
 
-func (r *Runtime) runtimeLabels(scopeType, scopeSelector, sensorRuntime string) map[string]string {
+func (r *Coordinator) runtimeLabels(scopeType, scopeSelector, sensorRuntime string) map[string]string {
 	labels := cloneStringMap(r.Config.Agent.Labels)
 	if sensorRuntime != "" {
 		labels["sensor_runtime"] = sensorRuntime
@@ -75,7 +75,7 @@ func (r *Runtime) runtimeLabels(scopeType, scopeSelector, sensorRuntime string) 
 	return labels
 }
 
-func (r *Runtime) policyLabels() map[string]string {
+func (r *Coordinator) policyLabels() map[string]string {
 	context := r.TelemetryContext()
 	labels := map[string]string{}
 	if context.PolicyID != "" {
@@ -93,7 +93,7 @@ func (r *Runtime) policyLabels() map[string]string {
 	return labels
 }
 
-func (r *Runtime) TelemetryContext() ports.TelemetryContext {
+func (r *Coordinator) TelemetryContext() ports.TelemetryContext {
 	identity := r.currentIdentity()
 	policy := r.activePolicy()
 	return ports.TelemetryContext{

@@ -182,7 +182,7 @@ func sensorEventEnvelope(behavior string, pid uint32, binary, filePath, dst stri
 	}
 }
 
-func runRuntimeUntilUploadedBatch(t *testing.T, runner *Runtime, out *bytes.Buffer) *dataplanev1.DataBatch {
+func runRuntimeUntilUploadedBatch(t *testing.T, runner *Coordinator, out *bytes.Buffer) *dataplanev1.DataBatch {
 	t.Helper()
 	uploader := newRecordingUploader()
 	prev := newLocalBatchSender
@@ -219,7 +219,7 @@ func runRuntimeUntilUploadedBatch(t *testing.T, runner *Runtime, out *bytes.Buff
 	}
 }
 
-func runRuntimeUntilOutput(t *testing.T, runner *Runtime, out interface {
+func runRuntimeUntilOutput(t *testing.T, runner *Coordinator, out interface {
 	Write([]byte) (int, error)
 	String() string
 }, want string) {

@@ -107,7 +107,7 @@ func TestHealthReportsCompletionOutboxLifecycle(t *testing.T) {
 	assertManagerCompletionStatus(t, runner, "endpoint_completion_pending", "manager unavailable")
 }
 
-func assertManagerCompletionStatus(t *testing.T, runner *Runtime, wantStatus, wantError string) {
+func assertManagerCompletionStatus(t *testing.T, runner *Coordinator, wantStatus, wantError string) {
 	t.Helper()
 	status, err := (&runtimeHealthSource{runner: runner}).Lifecycle(t.Context())
 	if err != nil {

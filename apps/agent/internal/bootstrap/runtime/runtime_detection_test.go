@@ -90,7 +90,7 @@ func TestDetectionCorrelateConversion(t *testing.T) {
 const testCollectionPolicyJSON = `{"behaviors":["process.exec","process.exit","process.fork","file.read","file.write","network.connect"],"observe_only":true}
 `
 
-func appendEndpointEventForTest(t testing.TB, runner *Runtime, bus *telemetryadapter.Bus, norm *eventadapter.EventNormalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
+func appendEndpointEventForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, norm *eventadapter.EventNormalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
 	t.Helper()
 	batch, err := NewEndpointRuntime(runner, norm, telemetryadapter.NewBatchBuilder(runner, runner.initialSignalSequence)).ProcessEvent(ev)
 	if err != nil {
@@ -100,7 +100,7 @@ func appendEndpointEventForTest(t testing.TB, runner *Runtime, bus *telemetryada
 	return batch
 }
 
-func appendEndpointSignalsForTest(t testing.TB, runner *Runtime, bus *telemetryadapter.Bus, signals []*signalv1.Signal) *dataplanev1.DataBatch {
+func appendEndpointSignalsForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, signals []*signalv1.Signal) *dataplanev1.DataBatch {
 	t.Helper()
 	batch, err := NewEndpointRuntime(runner, nil, telemetryadapter.NewBatchBuilder(runner, runner.initialSignalSequence)).ProcessSignals(signals)
 	if err != nil {
@@ -110,7 +110,7 @@ func appendEndpointSignalsForTest(t testing.TB, runner *Runtime, bus *telemetrya
 	return batch
 }
 
-func commitEndpointBatchForTest(t testing.TB, runner *Runtime, bus *telemetryadapter.Bus, batch *dataplanev1.DataBatch) {
+func commitEndpointBatchForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, batch *dataplanev1.DataBatch) {
 	t.Helper()
 	if runner.localStore == nil {
 		if bus != nil {
@@ -131,7 +131,7 @@ func commitEndpointBatchForTest(t testing.TB, runner *Runtime, bus *telemetryada
 	}
 }
 
-func installTestDetection(t testing.TB, runner *Runtime) {
+func installTestDetection(t testing.TB, runner *Coordinator) {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "..", "..", "deployments", "agent", "content", "*.json"))
 	if err != nil {

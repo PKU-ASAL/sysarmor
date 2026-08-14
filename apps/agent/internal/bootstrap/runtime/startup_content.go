@@ -8,7 +8,7 @@ import (
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
-func (r *Runtime) applyStartupDetection(policy policymodel.Policy) error {
+func (r *Coordinator) applyStartupDetection(policy policymodel.Policy) error {
 	policy = policymodel.Normalize(policy)
 	engine, report := detectionadapter.NewWithRuntimeLimits(
 		policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits(),

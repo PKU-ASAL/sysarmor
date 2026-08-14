@@ -10,7 +10,7 @@ import (
 )
 
 func TestStandaloneTelemetryFailsClosedWithoutStore(t *testing.T) {
-	runner := &Runtime{Config: config.Config{
+	runner := &Coordinator{Config: config.Config{
 		Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}, Telemetry: config.DefaultTelemetryConfig(),
 	}}
 	runner.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 7})

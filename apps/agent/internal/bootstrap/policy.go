@@ -7,7 +7,7 @@ import (
 	agentruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/bootstrap/runtime"
 )
 
-func newPolicyController(runner *agentruntime.Runtime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
+func newPolicyController(runner *agentruntime.Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
 	return agentcontrol.NewApplicationPolicyController(
 		agentruntime.NewPolicyProjectionRuntime(runner),
 		agentcontrol.PolicyUseCases{

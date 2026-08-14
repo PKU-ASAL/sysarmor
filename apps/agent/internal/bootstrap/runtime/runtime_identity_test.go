@@ -13,7 +13,7 @@ import (
 )
 
 func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 	builder := telemetryadapter.NewBatchBuilder(runner, 0)
 	runner.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
@@ -49,7 +49,7 @@ func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 }
 
 func TestRuntimeKeepsPendingBatchForUnchangedIdentity(t *testing.T) {
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 	builder := telemetryadapter.NewBatchBuilder(runner, 0)
 	runner.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)

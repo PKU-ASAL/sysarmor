@@ -35,18 +35,18 @@ func (c *collectionCandidate) ValidationReport() applicationpolicy.CollectionRep
 }
 
 type collectionPolicyApplication struct {
-	runner  *Runtime
+	runner  *Coordinator
 	runtime sensorruntime.Runtime
 	service *applicationpolicy.CollectionService
 }
 
-func newCollectionPolicyApplication(runner *Runtime, runtime sensorruntime.Runtime) *collectionPolicyApplication {
+func newCollectionPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime) *collectionPolicyApplication {
 	application := &collectionPolicyApplication{runner: runner, runtime: runtime}
 	application.service = applicationpolicy.NewCollectionService(application, application)
 	return application
 }
 
-func NewCollectionPolicyApplication(runner *Runtime, runtime sensorruntime.Runtime) agentcontrol.CollectionApplication {
+func NewCollectionPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime) agentcontrol.CollectionApplication {
 	return newCollectionPolicyApplication(runner, runtime)
 }
 

@@ -21,7 +21,7 @@ import (
 func TestLocalControlServerOverUnixSocket(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:     config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control:   config.ControlConfig{SocketPath: socketPath},
@@ -34,7 +34,7 @@ func TestLocalControlServerOverUnixSocket(t *testing.T) {
 			Installed:    true,
 			PolicyLoaded: true,
 		}},
-		capability: contract.Capability{
+		sensorRuntime: sensorRuntime{capability: contract.Capability{
 			Backend:         "fake",
 			Version:         "test",
 			SupportsExec:    true,
@@ -44,7 +44,7 @@ func TestLocalControlServerOverUnixSocket(t *testing.T) {
 				Behavior: "network.connect",
 				Fields:   []string{"socket.port", "process.binary", "lineage_id"},
 			}},
-		},
+		}},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
@@ -149,7 +149,7 @@ func TestManagementLifecycleStatusRejectsInvalidState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := &Runtime{localStore: store}
+	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}}
 	_, err = (&runtimeHealthSource{runner: runner}).Lifecycle(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "unsupported management state") {
 		t.Fatalf("error=%v", err)

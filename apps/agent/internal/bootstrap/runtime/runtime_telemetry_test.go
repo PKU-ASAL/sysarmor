@@ -98,7 +98,7 @@ func TestStandaloneRuntimeResumesPersistentSequences(t *testing.T) {
 }
 
 func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
-	runner := &Runtime{initialSignalSequence: 17}
+	runner := &Coordinator{telemetryRuntime: telemetryRuntime{initialSignalSequence: 17}}
 	builder := runner.newTelemetryBatchBuilder()
 	parent := &eventv1.CanonicalEvent{
 		Id: "event-parent", Behavior: "process.exec",
@@ -231,15 +231,15 @@ func TestRuntimeUploadsConfiguredLabels(t *testing.T) {
 }
 
 func TestRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:     config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default", Token: "dev-token"},
 			Sensor:    config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 			Telemetry: config.TelemetryConfig{MaxBatchItems: 10, MaxBatchBytes: 256 << 10, FlushInterval: time.Hour},
 			Local:     config.LocalConfig{Export: config.LocalExportConfig{RequestTimeout: 200 * time.Millisecond, MaxInflight: 1}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsHealth: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsHealth: true}},
 	}
 	bus := telemetryadapter.NewBus(16)
 	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
@@ -269,7 +269,7 @@ func TestRuntimeRefreshesEndpointPolicy(t *testing.T) {
 	cfg := config.Config{
 		Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default", Token: "dev-token", Labels: map[string]string{"scenario": "refresh-scenario"}},
 	}
-	runner := &Runtime{Config: cfg}
+	runner := &Coordinator{Config: cfg}
 	installTestDetection(t, runner)
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	norm := eventadapter.NewEventNormalizer(cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})

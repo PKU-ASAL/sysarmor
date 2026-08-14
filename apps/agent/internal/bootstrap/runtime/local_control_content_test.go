@@ -19,14 +19,14 @@ import (
 func TestLocalControlApplyListGetContent(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,9 +77,9 @@ func TestLocalControlApplyListGetContent(t *testing.T) {
 }
 
 func TestDetectionPolicyWaitsForContentTransaction(t *testing.T) {
-	runner := &Runtime{
-		Config:     config.Config{Agent: config.AgentConfig{TenantID: "default"}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+	runner := &Coordinator{
+		Config:        config.Config{Agent: config.AgentConfig{TenantID: "default"}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	ensureTestLocalStore(t, runner)
@@ -114,14 +114,14 @@ func TestDetectionPolicyWaitsForContentTransaction(t *testing.T) {
 func TestLocalControlContentApplyRebuildsDetection(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
@@ -183,14 +183,14 @@ func TestLocalControlContentApplyRebuildsDetection(t *testing.T) {
 func TestLocalControlContentRebuildFailureKeepsPreviousDetection(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
@@ -258,14 +258,14 @@ func TestLocalControlContentRebuildFailureKeepsPreviousDetection(t *testing.T) {
 func TestLocalControlDetectionPolicyRebuildFailureKeepsPreviousPolicy(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)

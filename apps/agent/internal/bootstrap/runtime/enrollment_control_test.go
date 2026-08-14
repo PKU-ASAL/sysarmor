@@ -109,7 +109,7 @@ func TestEnrollReturnsPendingWithoutRequestingAnotherCertificate(t *testing.T) {
 	if err := store.SetEnrolling(t.Context(), enrollment); err != nil {
 		t.Fatal(err)
 	}
-	runner := &Runtime{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, localStore: store}
+	runner := &Coordinator{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, managementRuntime: managementRuntime{localStore: store}}
 	controller := newEnrollmentCoordinator(t.Context(), runner, nil)
 	result := controller.Enroll(t.Context(), appenrollment.EnrollmentCommand{ManagerURL: "://invalid"})
 	if result.Status != "pending" || !strings.Contains(result.Message, "already waiting") {
@@ -124,7 +124,7 @@ func TestEnrollRejectsManagedAgentWithoutRequestingAnotherCertificate(t *testing
 	}
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
-	runner := &Runtime{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, localStore: store}
+	runner := &Coordinator{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, managementRuntime: managementRuntime{localStore: store}}
 	controller := newEnrollmentCoordinator(t.Context(), runner, nil)
 	result := controller.Enroll(t.Context(), appenrollment.EnrollmentCommand{ManagerURL: "://invalid"})
 	if result.Status != "rejected" || !strings.Contains(result.Message, "already managed") {

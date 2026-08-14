@@ -17,7 +17,7 @@ func TestTelemetryProductionPathAcceptsNestedDocumentAndReconfiguresBatcher(t *t
 	if err := agentpolicy.SaveEffectiveEndpointPolicy(t.Context(), store, endpoint); err != nil {
 		t.Fatal(err)
 	}
-	runner := &Runtime{Config: config.Config{Telemetry: config.DefaultTelemetryConfig()}, localStore: store}
+	runner := &Coordinator{Config: config.Config{Telemetry: config.DefaultTelemetryConfig()}, managementRuntime: managementRuntime{localStore: store}}
 	runner.setEndpointPolicy(endpoint)
 	batcher := telemetryadapter.NewBatcher(nil, 10, time.Hour, 2, 12345)
 	result := newApplicationPolicyController(runner, nil, batcher).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{

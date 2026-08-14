@@ -20,7 +20,7 @@ type enrollmentCoordinator struct {
 }
 
 type enrollmentRuntime struct {
-	runner  *Runtime
+	runner  *Coordinator
 	runtime sensorruntime.Runtime
 }
 
@@ -33,7 +33,7 @@ type enrollmentPreparationState struct {
 
 func (s enrollmentPreparationState) PreparedEnrollment() ports.Enrollment { return s.enrollment }
 
-func newEnrollmentCoordinator(lifecycleCtx context.Context, runner *Runtime, runtime sensorruntime.Runtime) *enrollmentCoordinator {
+func newEnrollmentCoordinator(lifecycleCtx context.Context, runner *Coordinator, runtime sensorruntime.Runtime) *enrollmentCoordinator {
 	coordinator := &enrollmentCoordinator{}
 	if runner.localStore == nil {
 		coordinator.Service = appenrollment.NewService(lifecycleCtx, nil, newEnrollmentRuntime(runner, runtime))
@@ -50,7 +50,7 @@ func newEnrollmentCoordinator(lifecycleCtx context.Context, runner *Runtime, run
 	return coordinator
 }
 
-func newEnrollmentRuntime(runner *Runtime, runtime sensorruntime.Runtime) *enrollmentRuntime {
+func newEnrollmentRuntime(runner *Coordinator, runtime sensorruntime.Runtime) *enrollmentRuntime {
 	return &enrollmentRuntime{runner: runner, runtime: runtime}
 }
 

@@ -6,7 +6,7 @@ import (
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 )
 
-func newApplicationPolicyController(runner *Runtime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
+func newApplicationPolicyController(runner *Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
 	return agentcontrol.NewApplicationPolicyController(
 		newPolicyProjectionRuntime(runner),
 		agentcontrol.PolicyUseCases{

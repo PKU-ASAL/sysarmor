@@ -21,14 +21,14 @@ func TestLocalControlExplainCollectionPolicyDryRunDoesNotApply(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
 	sensor := &recordingCollectionSensor{healthOnlySensor: healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}}}
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}, ObserveOnly: true},
 		},
-		Sensor:     sensor,
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        sensor,
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,14 +66,14 @@ func TestLocalControlExplainCollectionPolicyDryRunDoesNotApply(t *testing.T) {
 func TestLocalControlApplyPolicyUpdatesCurrentPolicy(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
@@ -121,10 +121,11 @@ func TestManagedAgentRejectsLocalEndpointPolicyMutation(t *testing.T) {
 	}
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
-	runner := &Runtime{
-		Config:     config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true}, localStore: store,
+	runner := &Coordinator{
+		Config:            config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}},
+		Sensor:            &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime:     sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		managementRuntime: managementRuntime{localStore: store},
 	}
 	installTestDetection(t, runner)
 	controller := newApplicationPolicyController(runner, sensorruntime.New(runner.Sensor), nil)
@@ -144,7 +145,7 @@ func TestManagedAgentRejectsLocalContentMutation(t *testing.T) {
 	}
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}}, localStore: store}
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}}, managementRuntime: managementRuntime{localStore: store}}
 	result := agentcontrol.NewContentController(newContentApplicationAdapter(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
 		Document: "{}", AllowUnsigned: true, Source: agentcontrol.PolicySourceStandalone,
 	})
@@ -159,7 +160,7 @@ func TestManagedTransitionWaitsForLocalPolicyMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	runner := &Runtime{localStore: store}
+	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}}
 	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +193,7 @@ func TestEnrollingAgentRejectsLocalPolicyMutation(t *testing.T) {
 	if err := store.SetEnrolling(t.Context(), testRemoteEnrollment()); err != nil {
 		t.Fatal(err)
 	}
-	runner := &Runtime{localStore: store}
+	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}}
 
 	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
 
@@ -202,7 +203,7 @@ func TestEnrollingAgentRejectsLocalPolicyMutation(t *testing.T) {
 }
 
 func TestLocalPolicyMutationFailsClosedWithoutStore(t *testing.T) {
-	runner := &Runtime{}
+	runner := &Coordinator{}
 
 	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
 
@@ -219,7 +220,7 @@ func TestLocalPolicyMutationFailsClosedWithoutStore(t *testing.T) {
 func TestLocalControlApplyTelemetryPolicyContract(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:     config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control:   config.ControlConfig{SocketPath: socketPath},
@@ -227,8 +228,8 @@ func TestLocalControlApplyTelemetryPolicyContract(t *testing.T) {
 			Telemetry: config.TelemetryConfig{MaxBatchItems: 10, MaxBatchBytes: 256 << 10, FlushInterval: time.Second},
 			Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Second, RetryMax: 30 * time.Second, RequestTimeout: 10 * time.Second, MaxInflight: 1}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -277,7 +278,7 @@ func TestApplyTelemetryPolicyPersistsUnifiedEndpointPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	runner := &Runtime{localStore: store, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
+	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
 	runner.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
 	result := newApplicationPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "telemetry", Source: agentcontrol.PolicySourceStandalone,
@@ -303,14 +304,14 @@ func TestLocalControlApplyCollectionPolicyUpdatesSensorRuntime(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
 	sensor := &recordingCollectionSensor{healthOnlySensor: healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}}}
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}, ObserveOnly: true},
 		},
-		Sensor:     sensor,
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        sensor,
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -407,14 +408,14 @@ func TestLocalControlPushesNetworkProcessBinarySelector(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
 	sensor := &recordingCollectionSensor{healthOnlySensor: healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}}}
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}, ObserveOnly: true},
 		},
-		Sensor:     sensor,
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        sensor,
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -6,12 +6,12 @@ import (
 )
 
 type responseContext struct {
-	runner        *Runtime
+	runner        *Coordinator
 	scopeType     string
 	scopeSelector string
 }
 
-func newResponseContext(runner *Runtime, scopeType, scopeSelector string) *responseContext {
+func newResponseContext(runner *Coordinator, scopeType, scopeSelector string) *responseContext {
 	return &responseContext{runner: runner, scopeType: scopeType, scopeSelector: scopeSelector}
 }
 

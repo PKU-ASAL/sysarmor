@@ -8,7 +8,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 )
 
-func (r *Runtime) reconcileManagementContext(enrollment sqlite.Enrollment) error {
+func (r *Coordinator) reconcileManagementContext(enrollment sqlite.Enrollment) error {
 	mode, err := management.Resolve(enrollment.State)
 	if err != nil {
 		return err
@@ -26,7 +26,7 @@ func (r *Runtime) reconcileManagementContext(enrollment sqlite.Enrollment) error
 	return nil
 }
 
-func (r *Runtime) identityForManagementContext(enrollment sqlite.Enrollment, mode management.Context) (runtimeIdentity, error) {
+func (r *Coordinator) identityForManagementContext(enrollment sqlite.Enrollment, mode management.Context) (runtimeIdentity, error) {
 	if mode.IdentitySource == management.IdentityStandalone {
 		return r.standaloneRuntimeIdentity(), nil
 	}
@@ -37,7 +37,7 @@ func (r *Runtime) identityForManagementContext(enrollment sqlite.Enrollment, mod
 	return runtimeIdentity{AgentID: enrollment.AgentID, HostID: standalone.HostID, TenantID: enrollment.TenantID}, nil
 }
 
-func (r *Runtime) applyProjectedIdentity(identity runtimeIdentity) {
+func (r *Coordinator) applyProjectedIdentity(identity runtimeIdentity) {
 	if identity == r.currentIdentity() {
 		return
 	}

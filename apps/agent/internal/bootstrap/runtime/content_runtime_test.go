@@ -12,7 +12,7 @@ import (
 )
 
 func TestContentRuntimeUsesProjectedManagementIdentity(t *testing.T) {
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}}}
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
 	runtime := newContentApplicationAdapter(runner)
 
@@ -33,9 +33,9 @@ func TestContentControllerPersistenceFailureKeepsPreviousDetection(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := &Runtime{
-		Config:  config.Config{Agent: config.AgentConfig{TenantID: "tenant-a", ID: "agent-a"}},
-		content: store,
+	runner := &Coordinator{
+		Config:        config.Config{Agent: config.AgentConfig{TenantID: "tenant-a", ID: "agent-a"}},
+		policyRuntime: policyRuntime{content: store},
 	}
 	previousDetection := &detectionruntime.State{}
 	runner.setDetection(previousDetection)

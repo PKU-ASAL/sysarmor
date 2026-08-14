@@ -12,7 +12,7 @@ import (
 )
 
 func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
 
 	policyRuntimes := []interface {
@@ -107,8 +107,8 @@ func TestReconcileManagementContextRejectsUnknownState(t *testing.T) {
 	}
 }
 
-func managementContextTestRuntime() *Runtime {
-	runner := &Runtime{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+func managementContextTestRuntime() *Coordinator {
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
 	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 	return runner
 }

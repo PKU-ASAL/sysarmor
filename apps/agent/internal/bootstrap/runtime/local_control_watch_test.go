@@ -17,14 +17,14 @@ import (
 func TestLocalControlWatchRecentEventsAndSignals(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
-	runner := &Runtime{
+	runner := &Coordinator{
 		Config: config.Config{
 			Agent:   config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default"},
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:     &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		capability: contract.Capability{Backend: "fake", SupportsExec: true},
+		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())

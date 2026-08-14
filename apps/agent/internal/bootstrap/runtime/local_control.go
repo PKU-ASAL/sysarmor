@@ -12,7 +12,7 @@ import (
 	appdiagnostics "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/diagnostics"
 )
 
-func (r *Runtime) startLocalControlServer(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (func(), error) {
+func (r *Coordinator) startLocalControlServer(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (func(), error) {
 	coordinator := r.configureEnrollmentCoordinator(ctx, rt)
 	bus, batcher, sender, startedAt := r.localControlTelemetryArgs(source, rest...)
 	socketPath := r.Config.Control.SocketPath
@@ -37,7 +37,7 @@ func (r *Runtime) startLocalControlServer(ctx context.Context, rt sensorruntime.
 	return localapi.New(socketPath, handler, r.Out).Start(ctx)
 }
 
-func (r *Runtime) localControlTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
+func (r *Coordinator) localControlTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
 	if bus, ok := source.(*telemetryadapter.Bus); ok {
 		var batcher *telemetryadapter.Batcher
 		var sender *telemetryadapter.RuntimeSender
@@ -70,7 +70,7 @@ func (r *Runtime) localControlTelemetryArgs(source any, rest ...any) (*telemetry
 }
 
 type localStatusService struct {
-	runner    *Runtime
+	runner    *Coordinator
 	runtime   sensorruntime.Runtime
 	bus       *telemetryadapter.Bus
 	batcher   *telemetryadapter.Batcher
@@ -79,11 +79,11 @@ type localStatusService struct {
 }
 
 type localTelemetryService struct {
-	runner *Runtime
+	runner *Coordinator
 	bus    *telemetryadapter.Bus
 }
 
-func (r *Runtime) configureEnrollmentCoordinator(ctx context.Context, rt sensorruntime.Runtime) *enrollmentCoordinator {
+func (r *Coordinator) configureEnrollmentCoordinator(ctx context.Context, rt sensorruntime.Runtime) *enrollmentCoordinator {
 	r.enrollmentCoordinatorMu.Lock()
 	defer r.enrollmentCoordinatorMu.Unlock()
 	if r.enrollmentCoordinator == nil {

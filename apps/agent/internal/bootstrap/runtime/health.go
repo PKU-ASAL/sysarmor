@@ -24,13 +24,13 @@ type healthReporter interface {
 	Report(context.Context, agenthealth.AgentHealth) error
 }
 
-func (r *Runtime) reportSensorDegraded(stage string, err error) {
+func (r *Coordinator) reportSensorDegraded(stage string, err error) {
 	if r.Out != nil {
 		fmt.Fprintf(r.Out, "agent sensor degraded: stage=%s error=%v; retrying in background\n", stage, err)
 	}
 }
 
-func (r *Runtime) reportStartupFailure(reporter healthReporter, startedAt time.Time, stage string, startupErr error) {
+func (r *Coordinator) reportStartupFailure(reporter healthReporter, startedAt time.Time, stage string, startupErr error) {
 	if reporter == nil || startupErr == nil {
 		return
 	}
@@ -66,23 +66,23 @@ func (r *Runtime) reportStartupFailure(reporter healthReporter, startedAt time.T
 	}
 }
 
-func (r *Runtime) healthReporter() healthReporter {
+func (r *Coordinator) healthReporter() healthReporter {
 	return localHealthReporter{}
 }
 
-func (r *Runtime) collectHealth(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (agenthealth.AgentHealth, error) {
+func (r *Coordinator) collectHealth(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (agenthealth.AgentHealth, error) {
 	snapshot := r.collectHealthSnapshot(ctx, rt, source, rest...)
 	return contractadapter.AgentHealth(snapshot), nil
 }
 
-func (r *Runtime) collectHealthSnapshot(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) domainhealth.Snapshot {
+func (r *Coordinator) collectHealthSnapshot(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) domainhealth.Snapshot {
 	bus, batcher, sender, startedAt := r.healthTelemetryArgs(source, rest...)
 	return applicationhealth.NewService(newRuntimeHealthSource(r, rt, bus, batcher, sender, startedAt)).Snapshot(ctx)
 }
 
-func (r *Runtime) currentSensorSupervisor() *sensorruntime.SubscriptionSupervisor {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Coordinator) currentSensorSupervisor() *sensorruntime.SubscriptionSupervisor {
+	r.sensorRuntime.mu.RLock()
+	defer r.sensorRuntime.mu.RUnlock()
 	return r.sensorSupervisor
 }
 
@@ -112,7 +112,7 @@ func resolveSensorHealth(sensor contract.Health, healthErr error, status *sensor
 	return sensor, nil
 }
 
-func (r *Runtime) healthTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
+func (r *Coordinator) healthTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
 	bus, _ := source.(*telemetryadapter.Bus)
 	var batcher *telemetryadapter.Batcher
 	var sender *telemetryadapter.RuntimeSender
@@ -143,7 +143,7 @@ func (r *Runtime) healthTelemetryArgs(source any, rest ...any) (*telemetryadapte
 	return bus, batcher, sender, startedAt
 }
 
-func (r *Runtime) runtimeCapability() agenthealth.SensorCapability {
+func (r *Coordinator) runtimeCapability() agenthealth.SensorCapability {
 	collection := make([]agenthealth.CollectionBehaviorCapability, 0, len(r.capability.Collection))
 	for _, behavior := range r.capability.Collection {
 		collection = append(collection, agenthealth.CollectionBehaviorCapability{
@@ -170,7 +170,7 @@ func (r *Runtime) runtimeCapability() agenthealth.SensorCapability {
 	}
 }
 
-func (r *Runtime) runtimeScope() agenthealth.RuntimeScope {
+func (r *Coordinator) runtimeScope() agenthealth.RuntimeScope {
 	scope, err := r.Config.Sensor.EffectiveScope()
 	if err != nil {
 		return agenthealth.RuntimeScope{Type: "host"}
@@ -178,7 +178,7 @@ func (r *Runtime) runtimeScope() agenthealth.RuntimeScope {
 	return agenthealth.RuntimeScope{Type: scope.Type, Selector: scope.Selector}
 }
 
-func (r *Runtime) policyMode() string {
+func (r *Coordinator) policyMode() string {
 	if mode := r.activePolicy().Mode; mode != "" {
 		return mode
 	}
@@ -188,9 +188,9 @@ func (r *Runtime) policyMode() string {
 	return "enforce"
 }
 
-func (r *Runtime) detectionHealth() agenthealth.DetectionHealth {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Coordinator) detectionHealth() agenthealth.DetectionHealth {
+	r.policyRuntime.mu.RLock()
+	defer r.policyRuntime.mu.RUnlock()
 	health := r.detectionStatus
 	health.FeatureFlags = r.featureFlags
 	return health
