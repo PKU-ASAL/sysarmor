@@ -184,18 +184,6 @@ func authorizeApproval(command Command, policy Policy) Decision {
 	return Decision{Allowed: true}
 }
 
-func approvalCount(approvals []Approval, roles []string) uint32 {
-	seen := map[string]struct{}{}
-	for _, approval := range approvals {
-		key := strings.TrimSpace(approval.Actor)
-		if !approval.Approved || key == "" || (!contains(roles, approval.Role) && len(roles) > 0 && approval.Role != "admin") {
-			continue
-		}
-		seen[key] = struct{}{}
-	}
-	return uint32(len(seen))
-}
-
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if strings.TrimSpace(value) == strings.TrimSpace(want) {

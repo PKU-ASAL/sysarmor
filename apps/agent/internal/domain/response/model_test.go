@@ -52,6 +52,23 @@ func TestAuthorizeRequiresDistinctAllowedApprovers(t *testing.T) {
 	}
 }
 
+func TestAuthorizeAndApprovalCountUseSameRoleNormalization(t *testing.T) {
+	command := Command{
+		TenantID: "tenant-a", AgentID: "agent-a", PolicyID: "policy-a", PolicyVersion: 1,
+		Action: "collect", Approvals: []Approval{{Actor: "root", Role: " admin ", Approved: true}},
+	}
+	policy := Policy{
+		ID: "policy-a", Version: 1, ApprovalRequired: true,
+		AllowedActions: []string{"collect"}, AllowedModes: []Mode{ModeObserve}, ApprovalRoles: []string{"operator"},
+	}
+	if got := ApprovalCount(Command{ApprovalRoles: policy.ApprovalRoles, Approvals: command.Approvals}); got != 1 {
+		t.Fatalf("approval count = %d", got)
+	}
+	if decision := Authorize(command, policy, AuthorizationContext{TenantID: "tenant-a", AgentID: "agent-a"}); !decision.Allowed {
+		t.Fatalf("decision = %+v", decision)
+	}
+}
+
 func TestAuthorizeScope(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -31,21 +31,29 @@ func ApprovalThreshold(command Command) uint32 {
 }
 
 func ApprovalRoleAllowed(command Command, role string) bool {
-	if len(command.ApprovalRoles) == 0 {
-		return true
-	}
-	role = strings.TrimSpace(role)
-	return role == "admin" || contains(command.ApprovalRoles, role)
+	return approvalRoleAllowed(command.ApprovalRoles, role)
 }
 
 func ApprovalCount(command Command) uint32 {
-	seen := make(map[string]struct{}, len(command.Approvals))
-	for _, approval := range command.Approvals {
+	return approvalCount(command.Approvals, command.ApprovalRoles)
+}
+
+func approvalCount(approvals []Approval, roles []string) uint32 {
+	seen := make(map[string]struct{}, len(approvals))
+	for _, approval := range approvals {
 		actor := strings.TrimSpace(approval.Actor)
-		if !approval.Approved || actor == "" || !ApprovalRoleAllowed(command, approval.Role) {
+		if !approval.Approved || actor == "" || !approvalRoleAllowed(roles, approval.Role) {
 			continue
 		}
 		seen[actor] = struct{}{}
 	}
 	return uint32(len(seen))
+}
+
+func approvalRoleAllowed(roles []string, role string) bool {
+	if len(roles) == 0 {
+		return true
+	}
+	role = strings.TrimSpace(role)
+	return role == "admin" || contains(roles, role)
 }
