@@ -99,6 +99,23 @@ func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSeque
 	if len(seq.steps) == 0 {
 		return nil
 	}
+	st, ruleState, groupKey, ok := e.sequenceCandidateState(view, candidate)
+	if !ok || !e.recordSequenceStep(view, rule, st) {
+		return nil
+	}
+	if st.StepIndex < len(seq.steps) {
+		e.updateSequenceWait(rule.rule.spec.RuleID, seq, st)
+		return nil
+	}
+	refs := appendRefs(nil, st.Refs...)
+	e.deactivateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
+	delete(ruleState.Groups, groupKey)
+	return e.signal(view.ev, rule.rule, refs, rule.rule.terminal(true), st.Entities...)
+}
+
+func (e *Engine) sequenceCandidateState(view eventView, candidate compiledSequenceCandidate) (*cepGroupState, *cepRuleState, string, bool) {
+	rule := candidate.rule
+	seq := rule.sequence
 	ruleState := e.cep[rule.rule.spec.RuleID]
 	if ruleState == nil {
 		ruleState = &cepRuleState{Groups: make(map[string]*cepGroupState)}
@@ -115,18 +132,13 @@ func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSeque
 	}
 	if !candidate.firstStep {
 		if st == nil || st.StepIndex != candidate.stepIndex {
-			return nil
+			return nil, nil, "", false
 		}
 	} else if st != nil && st.StepIndex > 0 {
 		if !e.matchCompiledStep(view, seq.steps[0], &cepGroupState{Values: make(map[string]map[string]string)}) {
-			return nil
+			return nil, nil, "", false
 		}
-		e.deactivateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
-		st.StepIndex = 0
-		st.Refs = nil
-		st.Entities = nil
-		st.Values = make(map[string]map[string]string)
-		st.WaitingBehavior = ""
+		e.resetSequenceGroup(rule.rule.spec.RuleID, st)
 	}
 	if st == nil {
 		e.evictCEPGroups(rule.rule.spec.RuleID, ruleState, now)
@@ -134,16 +146,25 @@ func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSeque
 		ruleState.Groups[groupKey] = st
 	}
 	if st.StepIndex >= len(seq.steps) {
-		e.deactivateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
-		st.StepIndex = 0
-		st.Refs = nil
-		st.Entities = nil
-		st.Values = make(map[string]map[string]string)
-		st.WaitingBehavior = ""
+		e.resetSequenceGroup(rule.rule.spec.RuleID, st)
 	}
+	return st, ruleState, groupKey, true
+}
+
+func (e *Engine) resetSequenceGroup(ruleID string, st *cepGroupState) {
+	e.deactivateSequenceWait(ruleID, st.WaitingBehavior)
+	st.StepIndex = 0
+	st.Refs = nil
+	st.Entities = nil
+	st.Values = make(map[string]map[string]string)
+	st.WaitingBehavior = ""
+}
+
+func (e *Engine) recordSequenceStep(view eventView, rule compiledRule, st *cepGroupState) bool {
+	seq := rule.sequence
 	step := seq.steps[st.StepIndex]
 	if !e.matchCompiledStep(view, step, st) {
-		return nil
+		return false
 	}
 	st.Refs = appendUnique(st.Refs, view.eventID)
 	st.Entities = appendUniqueEntities(st.Entities, eventEntities(view.ev)...)
@@ -159,19 +180,16 @@ func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSeque
 		st.Values[step.id] = saved
 	}
 	if st.StepIndex == 0 && seq.within > 0 {
-		st.ExpiresAt = now + uint64(seq.within.Nanoseconds())
+		st.ExpiresAt = view.eventTime() + uint64(seq.within.Nanoseconds())
 	}
 	st.StepIndex++
-	if st.StepIndex < len(seq.steps) {
-		e.deactivateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
-		st.WaitingBehavior = seq.steps[st.StepIndex].behavior
-		e.activateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
-		return nil
-	}
-	refs := appendRefs(nil, st.Refs...)
-	e.deactivateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
-	delete(ruleState.Groups, groupKey)
-	return e.signal(view.ev, rule.rule, refs, rule.rule.terminal(true), st.Entities...)
+	return true
+}
+
+func (e *Engine) updateSequenceWait(ruleID string, seq compiledSequence, st *cepGroupState) {
+	e.deactivateSequenceWait(ruleID, st.WaitingBehavior)
+	st.WaitingBehavior = seq.steps[st.StepIndex].behavior
+	e.activateSequenceWait(ruleID, st.WaitingBehavior)
 }
 
 func (e *Engine) activateSequenceWait(ruleID, behavior string) {
