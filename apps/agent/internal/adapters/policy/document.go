@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
@@ -14,11 +15,24 @@ func DecodePolicyDocument(document []byte) (domainpolicy.Policy, error) {
 	if err := json.Unmarshal(document, &wire); err != nil {
 		return domainpolicy.Policy{}, fmt.Errorf("decode policy document: %w", err)
 	}
+	if err := validatePolicyWire(wire); err != nil {
+		return domainpolicy.Policy{}, fmt.Errorf("decode policy document: %w", err)
+	}
 	value, err := domainPolicy(wire)
 	if err != nil {
 		return domainpolicy.Policy{}, err
 	}
 	return value, nil
+}
+
+func validatePolicyWire(wire policyWire) error {
+	if strings.TrimSpace(wire.PolicyID) == "" {
+		return fmt.Errorf("policy_id is required")
+	}
+	if wire.Version == 0 {
+		return fmt.Errorf("version must be positive")
+	}
+	return nil
 }
 
 func EncodePolicyDocument(value domainpolicy.Policy) ([]byte, error) {

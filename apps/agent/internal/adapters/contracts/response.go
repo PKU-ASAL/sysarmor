@@ -3,6 +3,7 @@ package contracts
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	domainresponse "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/response"
@@ -52,7 +53,46 @@ func DecodeResponseCommand(document []byte) (domainresponse.Command, error) {
 	if err := json.Unmarshal(document, &wire); err != nil {
 		return domainresponse.Command{}, fmt.Errorf("decode response command: %w", err)
 	}
+	if err := validateResponseCommandWire(wire); err != nil {
+		return domainresponse.Command{}, fmt.Errorf("decode response command: %w", err)
+	}
 	return domainResponseCommand(wire), nil
+}
+
+func validateResponseCommandWire(wire responseCommandWire) error {
+	required := []struct {
+		name  string
+		value string
+	}{
+		{name: "response_id", value: wire.ResponseID},
+		{name: "tenant_id", value: wire.TenantID},
+		{name: "agent_id", value: wire.AgentID},
+		{name: "policy_id", value: wire.PolicyID},
+	}
+	for _, field := range required {
+		if strings.TrimSpace(field.value) == "" {
+			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	if wire.PolicyVersion == 0 {
+		return fmt.Errorf("policy_version must be positive")
+	}
+	if !knownResponseAction(wire.Action) {
+		return fmt.Errorf("action %q is unsupported", wire.Action)
+	}
+	if wire.Mode != string(domainresponse.ModeObserve) && wire.Mode != string(domainresponse.ModeEnforce) {
+		return fmt.Errorf("mode %q is unsupported", wire.Mode)
+	}
+	return nil
+}
+
+func knownResponseAction(action string) bool {
+	switch action {
+	case "collect", "noop", "kill", "block", "quarantine":
+		return true
+	default:
+		return false
+	}
 }
 
 func EncodeResponseCommand(command domainresponse.Command) ([]byte, error) {

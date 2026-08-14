@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
@@ -26,6 +27,26 @@ func TestPolicyDocumentRoundTripPreservesPublishedContract(t *testing.T) {
 	}
 	if _, legacy := document["data_plane"]; legacy {
 		t.Fatal("legacy data_plane emitted")
+	}
+}
+
+func TestDecodePolicyDocumentRejectsMissingIdentity(t *testing.T) {
+	tests := []struct {
+		name     string
+		document string
+		field    string
+	}{
+		{name: "null document", document: `null`, field: "policy_id"},
+		{name: "missing policy id", document: `{"version":1}`, field: "policy_id"},
+		{name: "missing version", document: `{"policy_id":"policy-a"}`, field: "version"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := DecodePolicyDocument([]byte(tt.document))
+			if err == nil || !strings.Contains(err.Error(), tt.field) {
+				t.Fatalf("error = %v, want field %q", err, tt.field)
+			}
+		})
 	}
 }
 
