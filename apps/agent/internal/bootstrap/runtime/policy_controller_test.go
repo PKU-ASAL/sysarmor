@@ -13,7 +13,7 @@ func TestStandaloneTelemetryFailsClosedWithoutStore(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{
 		Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}, Telemetry: config.DefaultTelemetryConfig(),
 	}}
-	runner.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 7})
+	runner.policyState.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 7})
 	controller := newApplicationPolicyController(runner, nil, nil)
 
 	result := controller.ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
@@ -25,10 +25,10 @@ func TestStandaloneTelemetryFailsClosedWithoutStore(t *testing.T) {
 	if result.Status != "rejected" || !strings.Contains(result.Message, "local store is unavailable") {
 		t.Fatalf("result=%+v", result)
 	}
-	if endpoint := runner.currentEndpointPolicy(); endpoint.PolicyID != "endpoint-a" || endpoint.Version != 7 {
+	if endpoint := runner.policyState.currentEndpointPolicy(); endpoint.PolicyID != "endpoint-a" || endpoint.Version != 7 {
 		t.Fatalf("endpoint=%+v", endpoint)
 	}
-	if effective := runner.currentEffectiveTelemetry(); effective.MaxBatchItems != 0 {
+	if effective := runner.policyState.currentEffectiveTelemetry(); effective.MaxBatchItems != 0 {
 		t.Fatalf("effective=%+v", effective)
 	}
 }

@@ -12,26 +12,26 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/tlsconfig"
 )
 
-func (r *Coordinator) batchSender() (dataappend.BatchSender, error) {
+func (r *managementRuntime) batchSender() (dataappend.BatchSender, error) {
 	if r.localStore != nil {
 		return &localStoreBatchSender{store: r.localStore}, nil
 	}
-	return newBatchSender(r.Config.Manager.Address, r.Config.Manager.Transport, r.Config.Local.Export.RequestTimeout, r.Config.Agent.Token, r.managerTLS())
+	return newBatchSender(r.config.Manager.Address, r.config.Manager.Transport, r.config.Local.Export.RequestTimeout, r.config.Agent.Token, r.managerTLS())
 }
 
-func (r *Coordinator) managerTLS() tlsconfig.ClientConfig {
+func (r *managementRuntime) managerTLS() tlsconfig.ClientConfig {
 	return tlsconfig.ClientConfig{
-		CAFile:     r.Config.Manager.TLSCA,
-		CertFile:   r.Config.Manager.TLSCert,
-		KeyFile:    r.Config.Manager.TLSKey,
-		ServerName: r.Config.Manager.TLSServerName,
-		Insecure:   r.Config.Manager.TLSInsecure,
+		CAFile:     r.config.Manager.TLSCA,
+		CertFile:   r.config.Manager.TLSCert,
+		KeyFile:    r.config.Manager.TLSKey,
+		ServerName: r.config.Manager.TLSServerName,
+		Insecure:   r.config.Manager.TLSInsecure,
 	}
 }
 
-func (r *Coordinator) runManagedNetwork(ctx context.Context, enrollment sqlite.Enrollment) {
+func (r *managementRuntime) runManagedNetwork(ctx context.Context, enrollment sqlite.Enrollment) {
 	tlsCfg := tlsconfig.ClientConfig{CAFile: enrollment.TLSCAPath, CertFile: enrollment.TLSCertPath, KeyFile: enrollment.TLSKeyPath, ServerName: enrollment.TLSServerName}
-	sender := dataappend.NewGRPCAppenderWithTLS(enrollment.GatewayAddress, r.Config.Local.Export.RequestTimeout, "", tlsCfg)
+	sender := dataappend.NewGRPCAppenderWithTLS(enrollment.GatewayAddress, r.config.Local.Export.RequestTimeout, "", tlsCfg)
 	cloud := telemetryadapter.NewCloudSender(sender)
 	exportDone := make(chan struct{})
 	go func() {

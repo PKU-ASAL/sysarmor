@@ -2,78 +2,47 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
-func (r *Coordinator) beginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
-	if !mutation {
-		return func() {}, nil
-	}
-	r.policyAuthorityMu.RLock()
-	if r.localStore == nil {
-		r.policyAuthorityMu.RUnlock()
-		return nil, fmt.Errorf("local store is unavailable")
-	}
-	enrollment, err := r.localStore.Enrollment(ctx)
-	if err != nil {
-		r.policyAuthorityMu.RUnlock()
-		return nil, fmt.Errorf("read enrollment state: %w", err)
-	}
-	mode, err := management.Resolve(enrollment.State)
-	if err == nil {
-		err = mode.Authorize(management.PolicyWriteLocal)
-	}
-	if err != nil {
-		r.policyAuthorityMu.RUnlock()
-		return nil, err
-	}
-	return r.policyAuthorityMu.RUnlock, nil
-}
-
 type policyProjectionRuntime struct {
-	runner *Coordinator
+	policy *policyRuntime
 }
 
-func newPolicyProjectionRuntime(runner *Coordinator) *policyProjectionRuntime {
-	return &policyProjectionRuntime{runner: runner}
-}
-
-func NewPolicyProjectionRuntime(runner *Coordinator) agentcontrol.PolicyControllerRuntime {
-	return newPolicyProjectionRuntime(runner)
+func newPolicyProjectionRuntime(policy *policyRuntime) *policyProjectionRuntime {
+	return &policyProjectionRuntime{policy: policy}
 }
 
 func (r *policyProjectionRuntime) PolicyIdentity() agentcontrol.PolicyIdentity {
-	identity := r.runner.currentIdentity()
+	identity := r.policy.management.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (r *policyProjectionRuntime) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {
-	return r.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
+	return r.policy.management.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
 func (r *policyProjectionRuntime) BeginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
-	return r.runner.beginLocalPolicyMutation(ctx, mutation)
+	return r.policy.beginLocalPolicyMutation(ctx, mutation)
 }
 
 func (r *policyProjectionRuntime) CurrentPolicySnapshot(ctx context.Context) (agentcontrol.PolicySnapshot, error) {
-	policy := policymodel.Normalize(r.runner.activePolicy())
+	policy := policymodel.Normalize(r.policy.activePolicy())
 	raw, err := agentpolicy.EncodePolicyDocument(policy)
 	if err != nil {
 		return agentcontrol.PolicySnapshot{}, err
 	}
-	if endpoint := r.runner.currentEndpointPolicy(); endpoint.PolicyID != "" {
+	if endpoint := r.policy.currentEndpointPolicy(); endpoint.PolicyID != "" {
 		raw, err = agentpolicy.EncodeEndpointPolicy(endpoint)
 		if err != nil {
 			return agentcontrol.PolicySnapshot{}, err
 		}
 		policy.PolicyID, policy.Version = endpoint.PolicyID, endpoint.Version
 	}
-	status, err := r.runner.pendingPolicyStatus(ctx)
+	status, err := r.policy.pendingPolicyStatus(ctx)
 	if err != nil {
 		return agentcontrol.PolicySnapshot{}, err
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 )
 
-func (r *Coordinator) reconcileManagementContext(enrollment sqlite.Enrollment) error {
+func (r *managementRuntime) reconcileManagementContext(enrollment sqlite.Enrollment) error {
 	mode, err := management.Resolve(enrollment.State)
 	if err != nil {
 		return err
@@ -26,7 +26,7 @@ func (r *Coordinator) reconcileManagementContext(enrollment sqlite.Enrollment) e
 	return nil
 }
 
-func (r *Coordinator) identityForManagementContext(enrollment sqlite.Enrollment, mode management.Context) (runtimeIdentity, error) {
+func (r *managementRuntime) identityForManagementContext(enrollment sqlite.Enrollment, mode management.Context) (runtimeIdentity, error) {
 	if mode.IdentitySource == management.IdentityStandalone {
 		return r.standaloneRuntimeIdentity(), nil
 	}
@@ -37,12 +37,12 @@ func (r *Coordinator) identityForManagementContext(enrollment sqlite.Enrollment,
 	return runtimeIdentity{AgentID: enrollment.AgentID, HostID: standalone.HostID, TenantID: enrollment.TenantID}, nil
 }
 
-func (r *Coordinator) applyProjectedIdentity(identity runtimeIdentity) {
+func (r *managementRuntime) applyProjectedIdentity(identity runtimeIdentity) {
 	if identity == r.currentIdentity() {
 		return
 	}
-	if r.telemetryBatcher != nil {
-		r.telemetryBatcher.FlushAndApply("identity", func() {
+	if r.telemetry != nil && r.telemetry.telemetryBatcher != nil {
+		r.telemetry.telemetryBatcher.FlushAndApply("identity", func() {
 			r.setRuntimeIdentity(identity)
 		})
 		return

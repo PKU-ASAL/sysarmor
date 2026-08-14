@@ -37,31 +37,27 @@ func (c *detectionCandidate) BuildReport() applicationpolicy.DetectionReport {
 }
 
 type detectionPolicyApplication struct {
-	runner  *Coordinator
+	policy  *policyRuntime
 	service *applicationpolicy.DetectionService
 }
 
-func newDetectionPolicyApplication(runner *Coordinator) *detectionPolicyApplication {
-	application := &detectionPolicyApplication{runner: runner}
+func newDetectionPolicyApplication(policy *policyRuntime) *detectionPolicyApplication {
+	application := &detectionPolicyApplication{policy: policy}
 	application.service = applicationpolicy.NewDetectionService(application, application)
 	return application
 }
 
-func NewDetectionPolicyApplication(runner *Coordinator) agentcontrol.DetectionApplication {
-	return newDetectionPolicyApplication(runner)
-}
-
 func (a *detectionPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
-	identity := a.runner.currentIdentity()
+	identity := a.policy.management.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (a *detectionPolicyApplication) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {
-	return a.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
+	return a.policy.management.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
 func (a *detectionPolicyApplication) BeginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
-	return a.runner.beginLocalPolicyMutation(ctx, mutation)
+	return a.policy.beginLocalPolicyMutation(ctx, mutation)
 }
 
 func (a *detectionPolicyApplication) ValidateDetection(ctx context.Context, document string) (applicationpolicy.DetectionCandidate, error) {
@@ -71,7 +67,7 @@ func (a *detectionPolicyApplication) ValidateDetection(ctx context.Context, docu
 func (a *detectionPolicyApplication) ActivateDetection(ctx context.Context, document string) (applicationpolicy.DetectionResult, error) {
 	var result applicationpolicy.DetectionResult
 	var activationErr error
-	a.runner.withDetectionUpdateTransaction(func() {
+	a.policy.withDetectionUpdateTransaction(func() {
 		result, activationErr = a.service.Activate(ctx, document)
 	})
 	return result, activationErr
@@ -83,10 +79,10 @@ func (a *detectionPolicyApplication) PrepareDetection(_ context.Context, documen
 		return nil, err
 	}
 	policy = policymodel.NormalizeDetectionPolicy(policy)
-	engine, report := detectionadapter.NewWithRuntimeLimits(&policy, a.runner.currentCollectionIntent(), a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
-	active := policymodel.Normalize(a.runner.activePolicy())
+	engine, report := detectionadapter.NewWithRuntimeLimits(&policy, a.policy.currentCollectionIntent(), a.policy.detectionContentSnapshot(), a.policy.detectionLimits())
+	active := policymodel.Normalize(a.policy.activePolicy())
 	active.Detection = &policy
-	endpoint := a.runner.currentEndpointPolicy()
+	endpoint := a.policy.currentEndpointPolicy()
 	endpoint.Detection = policy
 	endpoint.Version++
 	return &detectionCandidate{detection: policy, endpoint: endpoint, policy: active, engine: engine, report: report}, nil
@@ -101,10 +97,10 @@ func (a *detectionPolicyApplication) PersistDetection(ctx context.Context, candi
 	if err != nil {
 		return err
 	}
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return nil
 	}
-	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.runner.localStore, prepared.endpoint)
+	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.policy.management.localStore, prepared.endpoint)
 }
 
 func (a *detectionPolicyApplication) RecordRejectedDetection(candidate applicationpolicy.DetectionCandidate) {
@@ -112,7 +108,7 @@ func (a *detectionPolicyApplication) RecordRejectedDetection(candidate applicati
 	if err != nil {
 		return
 	}
-	a.runner.setDetectionStatus(prepared.policy, prepared.report, a.runner.contentStore().Snapshot())
+	a.policy.setDetectionStatus(prepared.policy, prepared.report, a.policy.contentStore().Snapshot())
 }
 
 func (a *detectionPolicyApplication) PublishDetection(candidate applicationpolicy.DetectionCandidate) {
@@ -120,10 +116,10 @@ func (a *detectionPolicyApplication) PublishDetection(candidate applicationpolic
 	if err != nil {
 		return
 	}
-	a.runner.setEndpointPolicy(prepared.endpoint)
-	a.runner.setPolicy(prepared.policy)
-	a.runner.setDetection(prepared.engine)
-	a.runner.setDetectionStatus(prepared.policy, prepared.report, a.runner.contentStore().Snapshot())
+	a.policy.setEndpointPolicy(prepared.endpoint)
+	a.policy.setPolicy(prepared.policy)
+	a.policy.setDetection(prepared.engine)
+	a.policy.setDetectionStatus(prepared.policy, prepared.report, a.policy.contentStore().Snapshot())
 }
 
 func preparedDetection(candidate applicationpolicy.DetectionCandidate) (*detectionCandidate, error) {

@@ -15,7 +15,7 @@ func TestDetectionProductionPathPersistsUnifiedEndpointBeforePublish(t *testing.
 		t.Fatal(err)
 	}
 	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{})
-	runner.setEndpointPolicy(endpoint)
+	runner.policyState.setEndpointPolicy(endpoint)
 	result := newApplicationPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "detection", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"policy_id":"detection-a","version":2,"rulesets":[{"ref":"ruleset:cep-endpoint"}]}`,
@@ -31,21 +31,21 @@ func TestDetectionProductionPathPersistsUnifiedEndpointBeforePublish(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Version != 2 || persisted.Detection.PolicyID != "detection-a" || runner.currentEndpointPolicy().Detection.PolicyID != "detection-a" {
-		t.Fatalf("persisted=%+v runtime=%+v", persisted, runner.currentEndpointPolicy())
+	if persisted.Version != 2 || persisted.Detection.PolicyID != "detection-a" || runner.policyState.currentEndpointPolicy().Detection.PolicyID != "detection-a" {
+		t.Fatalf("persisted=%+v runtime=%+v", persisted, runner.policyState.currentEndpointPolicy())
 	}
 }
 
 func TestDetectionRejectedBuildKeepsCurrentRuntime(t *testing.T) {
 	runner := newEndpointPolicyRunner(t, nil, &healthOnlySensor{})
 	endpoint := parseEndpointPolicy(t, standaloneEndpointPolicyJSON)
-	runner.setEndpointPolicy(endpoint)
-	before := runner.currentDetection()
+	runner.policyState.setEndpointPolicy(endpoint)
+	before := runner.policyState.currentDetection()
 	result := newApplicationPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "detection", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"policy_id":"bad","version":2,"rulesets":[{"ref":"ruleset:missing"}]}`,
 	})
-	if result.Status != "rejected" || runner.currentEndpointPolicy().PolicyID != "standalone" || runner.currentDetection() != before {
-		t.Fatalf("result=%+v endpoint=%+v", result, runner.currentEndpointPolicy())
+	if result.Status != "rejected" || runner.policyState.currentEndpointPolicy().PolicyID != "standalone" || runner.policyState.currentDetection() != before {
+		t.Fatalf("result=%+v endpoint=%+v", result, runner.policyState.currentEndpointPolicy())
 	}
 }

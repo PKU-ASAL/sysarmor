@@ -25,13 +25,13 @@ type Options struct {
 }
 
 type Coordinator struct {
-	Config config.Config
-	Sensor contract.Sensor
-	Out    io.Writer
-	policyRuntime
-	managementRuntime
-	telemetryRuntime
-	sensorRuntime
+	Config          config.Config
+	Sensor          contract.Sensor
+	Out             io.Writer
+	policyState     policyRuntime
+	managementState managementRuntime
+	telemetryState  telemetryRuntime
+	sensorState     sensorRuntime
 }
 
 type policyRuntime struct {
@@ -46,7 +46,12 @@ type policyRuntime struct {
 	content            *agentcontent.Store
 	featureFlags       agenthealth.RuntimeFeatureFlags
 	detectionStatus    agenthealth.DetectionHealth
-	policyController   PolicyControllerFactory
+	config             config.Config
+	management         *managementRuntime
+	telemetry          *telemetryRuntime
+	sensor             *sensorRuntime
+	out                io.Writer
+	controller         PolicyControllerFactory
 }
 
 type managementRuntime struct {
@@ -58,24 +63,30 @@ type managementRuntime struct {
 	completionReporter      *unenrollmentCompletionReporter
 	identity                runtimeIdentity
 	standaloneIdentity      runtimeIdentity
+	normalizer              *eventadapter.EventNormalizer
 	managedControl          *TransportRuntime
 	revokeEnrollment        func(context.Context, sqlite.Enrollment, string) (string, time.Time, error)
 	reportUnenrollment      func(context.Context) (bool, error)
+	config                  config.Config
+	policy                  *policyRuntime
+	telemetry               *telemetryRuntime
 }
 
 type telemetryRuntime struct {
-	mu                    sync.RWMutex
-	normalizer            *eventadapter.EventNormalizer
 	telemetryBatcher      *telemetryadapter.Batcher
 	eventSeq              uint64
 	initialSignalSequence uint64
 	telemetrySeq          uint64
+	config                config.Config
+	management            *managementRuntime
+	policy                *policyRuntime
 }
 
 type sensorRuntime struct {
 	mu               sync.RWMutex
 	capability       contract.Capability
 	sensorSupervisor *sensorruntime.SubscriptionSupervisor
+	config           config.Config
 }
 
 type Dependencies struct {
@@ -89,13 +100,15 @@ type Dependencies struct {
 	Policy       PolicyControllerFactory
 }
 
-type PolicyControllerFactory func(*Coordinator, sensorruntime.Runtime, *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController
-
-func (r *Coordinator) withDetectionUpdateTransaction(fn func()) {
-	r.detectionUpdateMu.Lock()
-	defer r.detectionUpdateMu.Unlock()
-	fn()
+type PolicyApplications struct {
+	StandaloneEndpoint agentcontrol.EndpointApplication
+	ManagedEndpoint    agentcontrol.EndpointApplication
+	Collection         agentcontrol.CollectionApplication
+	Detection          agentcontrol.DetectionApplication
+	Telemetry          agentcontrol.TelemetryApplication
 }
+
+type PolicyControllerFactory func(agentcontrol.PolicyControllerRuntime, PolicyApplications) *agentcontrol.ApplicationPolicyController
 
 func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	if dependencies.Sensor == nil {
@@ -108,13 +121,14 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 		return nil, fmt.Errorf("runtime policy controller factory is required")
 	}
 	runtime := &Coordinator{Config: dependencies.Config, Sensor: dependencies.Sensor}
-	runtime.policyRuntime.content = dependencies.Content
-	runtime.policyRuntime.featureFlags = dependencies.FeatureFlags
-	runtime.managementRuntime.localStore = dependencies.LocalStore
-	runtime.telemetryRuntime.eventSeq = dependencies.EventSeq
-	runtime.telemetryRuntime.initialSignalSequence = dependencies.SignalSeq
-	runtime.policyController = dependencies.Policy
-	runtime.setRuntimeIdentity(runtimeIdentity{
+	runtime.policyState.content = dependencies.Content
+	runtime.policyState.featureFlags = dependencies.FeatureFlags
+	runtime.policyState.controller = dependencies.Policy
+	runtime.managementState.localStore = dependencies.LocalStore
+	runtime.telemetryState.eventSeq = dependencies.EventSeq
+	runtime.telemetryState.initialSignalSequence = dependencies.SignalSeq
+	runtime.wireComponents()
+	runtime.managementState.setRuntimeIdentity(runtimeIdentity{
 		AgentID:  dependencies.Config.Agent.ID,
 		HostID:   dependencies.Config.Agent.HostID,
 		TenantID: dependencies.Config.Agent.TenantID,
@@ -122,24 +136,41 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	return runtime, nil
 }
 
+func (r *Coordinator) wireComponents() {
+	r.policyState.config = r.Config
+	r.policyState.management = &r.managementState
+	r.policyState.telemetry = &r.telemetryState
+	r.policyState.sensor = &r.sensorState
+	r.policyState.out = r.Out
+	r.managementState.config = r.Config
+	r.managementState.policy = &r.policyState
+	r.managementState.telemetry = &r.telemetryState
+	r.telemetryState.config = r.Config
+	r.telemetryState.management = &r.managementState
+	r.telemetryState.policy = &r.policyState
+	r.sensorState.config = r.Config
+}
+
 func (r *Coordinator) Run(ctx context.Context, opts Options) error {
 	if opts.Out != nil {
 		r.Out = opts.Out
 	}
-	if r.localStore != nil {
-		defer r.startUnenrollmentCompletionReporter(ctx)()
+	r.wireComponents()
+	if r.managementState.localStore != nil {
+		defer r.managementState.startUnenrollmentCompletionReporter(ctx)()
 	}
 	startedAt := time.Now()
-	reporter := r.healthReporter()
+	health := r.healthRuntime()
+	reporter := health.reporter()
 	failStartup := func(stage string, err error) error {
-		r.reportStartupFailure(reporter, startedAt, stage, err)
+		health.reportStartupFailure(reporter, startedAt, stage, err)
 		return err
 	}
 	startup, err := r.prepareRuntime(ctx, failStartup)
 	if err != nil {
 		return err
 	}
-	active, err := r.startRuntime(ctx, startup, reporter, startedAt, failStartup)
+	active, err := r.startRuntime(ctx, &startup, reporter, startedAt, failStartup)
 	if err != nil {
 		return err
 	}

@@ -14,18 +14,18 @@ import (
 )
 
 type EndpointRuntime struct {
-	runner     *Coordinator
+	policy     *policyRuntime
 	normalizer *eventadapter.EventNormalizer
 	pipeline   *applicationpipeline.Service
 	batches    *telemetryadapter.BatchBuilder
 }
 
-func NewEndpointRuntime(runner *Coordinator, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder) *EndpointRuntime {
-	return &EndpointRuntime{runner: runner, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{runner: runner}), batches: batches}
+func NewEndpointRuntime(policy *policyRuntime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder) *EndpointRuntime {
+	return &EndpointRuntime{policy: policy, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{policy: policy}), batches: batches}
 }
 
 func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.DataBatch, error) {
-	if r == nil || r.runner == nil || r.normalizer == nil || r.batches == nil {
+	if r == nil || r.policy == nil || r.normalizer == nil || r.batches == nil {
 		return nil, fmt.Errorf("endpoint runtime is not initialized")
 	}
 	if ev.SensorEvent == nil {
@@ -35,7 +35,7 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 		ev.SensorEvent.RawRef = ev.RawRef
 	}
 	domainEvent := r.normalizer.NormalizeDomain(ev.SensorEvent)
-	result, err := r.pipeline.Process(domainEvent, r.runner.policyLabels())
+	result, err := r.pipeline.Process(domainEvent, r.policy.policyLabels())
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 }
 
 func (r *EndpointRuntime) ProcessSignals(signals []*signalv1.Signal) (*dataplanev1.DataBatch, error) {
-	if r == nil || r.runner == nil || r.batches == nil {
+	if r == nil || r.policy == nil || r.batches == nil {
 		return nil, fmt.Errorf("endpoint runtime is not initialized")
 	}
 	return r.batches.ForSignals(time.Now().UTC(), signals), nil

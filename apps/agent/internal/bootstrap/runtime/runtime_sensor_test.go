@@ -93,11 +93,12 @@ func TestRuntimeProcessesTamperSignalFromHealth(t *testing.T) {
 			LastError:      "exit status 7",
 		}},
 	}
+	runner.wireComponents()
 	health := domainhealth.Snapshot{
 		Runtime: domainhealth.Runtime{
 			AgentID: runner.Config.Agent.ID, HostID: runner.Config.Agent.HostID,
-			TenantID: runner.Config.Agent.TenantID, PolicyID: runner.activePolicy().PolicyID,
-			PolicyVersion: runner.activePolicy().Version, PolicyMode: runner.policyMode(),
+			TenantID: runner.Config.Agent.TenantID, PolicyID: runner.policyState.activePolicy().PolicyID,
+			PolicyVersion: runner.policyState.activePolicy().Version, PolicyMode: runner.healthRuntime().policyMode(),
 		},
 		Status: domainhealth.StatusDegraded, UptimeSeconds: 1, ObservedAt: time.Now().UTC(),
 		Sensor: domainhealth.Sensor{
@@ -124,7 +125,7 @@ func TestRuntimeProcessesTamperSignalFromHealth(t *testing.T) {
 	if sig.GetName() != domainhealth.SensorTamperSignalName || !sig.GetTerminal() || sig.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT {
 		t.Fatalf("tamper signal = %+v", sig)
 	}
-	if sig.GetLabels()["policy_id"] != runner.activePolicy().PolicyID || sig.GetLabels()["policy_version"] != fmt.Sprint(runner.activePolicy().Version) {
+	if sig.GetLabels()["policy_id"] != runner.policyState.activePolicy().PolicyID || sig.GetLabels()["policy_version"] != fmt.Sprint(runner.policyState.activePolicy().Version) {
 		t.Fatalf("tamper policy labels = %+v", sig.GetLabels())
 	}
 }
@@ -153,8 +154,9 @@ func TestRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T) {
 			ParseErrors:  2,
 		}},
 	}
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
-	if err := runner.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "managed-agent", TenantID: "managed-tenant"}); err != nil {
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "managed-agent", TenantID: "managed-tenant"}); err != nil {
 		t.Fatal(err)
 	}
 	rt := sensorruntime.New(runner.Sensor)
@@ -165,9 +167,9 @@ func TestRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T) {
 		t.Fatal(err)
 	}
 	bus := telemetryadapter.NewBus(1024)
-	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
+	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
-	health, err := runner.collectHealth(context.Background(), rt, bus, batcher, sender, time.Now())
+	health, err := runner.healthRuntime().collect(context.Background(), rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

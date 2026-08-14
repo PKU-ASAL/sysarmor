@@ -134,20 +134,20 @@ func TestRuntimeControlChannelProcessesPendingResponse(t *testing.T) {
 			Health:  config.HealthConfig{Interval: 10 * time.Millisecond},
 		},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, PolicyLoaded: true, EventsSeen: 3}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{
+		sensorState: sensorRuntime{capability: contract.Capability{
 			Backend:        "fake",
 			Version:        "long",
 			SupportsHealth: true,
 		}},
 	}
-	runner.policyController = newApplicationPolicyController
+	runner.wireComponents()
 	rt := sensorruntime.New(runner.Sensor)
-	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
+	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- NewTransportRuntime(runner, rt, batcher, sender, time.Now().UTC(), "host", "").RunControlChannel(ctx)
+		done <- newTestTransportRuntime(runner, rt, batcher, sender, time.Now().UTC(), "host", "").RunControlChannel(ctx)
 	}()
 	var observation responseControlObservation
 	select {
@@ -192,7 +192,7 @@ func TestRuntimeControlChannelAppliesContentUpdate(t *testing.T) {
 	if ack.GetStatus() != "applied" || ack.GetPolicyId() != "ioc:c2-control-port-feed" {
 		t.Fatalf("content ack = %+v", ack)
 	}
-	if record, ok := runner.contentStore().Get("ioc:c2-control-port-feed"); !ok || record.Version != "control-9443" {
+	if record, ok := runner.policyState.contentStore().Get("ioc:c2-control-port-feed"); !ok || record.Version != "control-9443" {
 		t.Fatalf("content record = %+v ok=%t", record, ok)
 	}
 
@@ -258,7 +258,7 @@ func TestRuntimeControlChannelRejectsBadContentUpdateWithoutReplacingDetection(t
 	if ack.GetStatus() != "rejected" || !strings.Contains(ack.GetMessage(), "detection rebuild failed") {
 		t.Fatalf("bad content ack = %+v", ack)
 	}
-	if record, ok := runner.contentStore().Get("rulepack:bad-runtime"); !ok || record.Version != "v1" {
+	if record, ok := runner.policyState.contentStore().Get("rulepack:bad-runtime"); !ok || record.Version != "v1" {
 		t.Fatalf("content after rejected update = %+v ok=%t, want previous v1", record, ok)
 	}
 	batch := appendEndpointEventForTest(t, runner, nil, eventadapter.NewEventNormalizer("agent-bad-content-update", "host-bad-content-update", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("file.write", 101, "/usr/bin/curl", "/dev/shm/kept-control.sh", ""))

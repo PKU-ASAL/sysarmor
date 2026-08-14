@@ -12,7 +12,7 @@ import (
 )
 
 type runtimeHealthSource struct {
-	runner    *Coordinator
+	health    runtimeHealth
 	runtime   sensorruntime.Runtime
 	bus       *telemetryadapter.Bus
 	batcher   *telemetryadapter.Batcher
@@ -20,24 +20,24 @@ type runtimeHealthSource struct {
 	startedAt time.Time
 }
 
-func newRuntimeHealthSource(runner *Coordinator, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) *runtimeHealthSource {
-	return &runtimeHealthSource{runner: runner, runtime: rt, bus: bus, batcher: batcher, sender: sender, startedAt: startedAt}
+func newRuntimeHealthSource(health runtimeHealth, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) *runtimeHealthSource {
+	return &runtimeHealthSource{health: health, runtime: rt, bus: bus, batcher: batcher, sender: sender, startedAt: startedAt}
 }
 
 func (s *runtimeHealthSource) Runtime(ctx context.Context) (domainhealth.Runtime, error) {
-	identity := s.runner.currentIdentity()
-	policy := s.runner.activePolicy()
+	identity := s.health.management.currentIdentity()
+	policy := s.health.policy.activePolicy()
 	value := domainhealth.Runtime{StartedAt: s.startedAt}
 	value.AgentID, value.HostID, value.TenantID = identity.AgentID, identity.HostID, identity.TenantID
-	value.PolicyID, value.PolicyVersion, value.PolicyMode = policy.PolicyID, policy.Version, s.runner.policyMode()
-	scope, err := s.runner.Config.Sensor.EffectiveScope()
+	value.PolicyID, value.PolicyVersion, value.PolicyMode = policy.PolicyID, policy.Version, s.health.policyMode()
+	scope, err := s.health.config.Sensor.EffectiveScope()
 	if err != nil {
 		value.ScopeType = "host"
 	} else {
 		value.ScopeType, value.ScopeSelector = scope.Type, scope.Selector
 	}
-	value.Capability = s.runner.domainCapability()
-	pending, err := s.runner.pendingPolicyStatus(ctx)
+	value.Capability = s.health.sensor.domainCapability()
+	pending, err := s.health.policy.pendingPolicyStatus(ctx)
 	if err != nil {
 		return value, err
 	}
@@ -49,9 +49,9 @@ func (s *runtimeHealthSource) Runtime(ctx context.Context) (domainhealth.Runtime
 
 func (s *runtimeHealthSource) Sensor(ctx context.Context) (domainhealth.Sensor, error) {
 	value, err := s.runtime.Health(ctx)
-	if supervisor := s.runner.currentSensorSupervisor(); supervisor != nil {
+	if supervisor := s.health.sensor.currentSupervisor(); supervisor != nil {
 		status := supervisor.Status()
-		value, _ = resolveSensorHealth(value, err, &status, s.runner.Config.Sensor.Backend)
+		value, _ = resolveSensorHealth(value, err, &status, s.health.config.Sensor.Backend)
 		err = nil
 	}
 	return domainhealth.Sensor{
@@ -59,7 +59,7 @@ func (s *runtimeHealthSource) Sensor(ctx context.Context) (domainhealth.Sensor, 
 		PolicyLoaded: value.PolicyLoaded, EventsSeen: value.EventsSeen, EventsDropped: value.EventsDropped,
 		ParseErrors: value.ParseErrors, RestartCount: value.RestartCount, LastEventAt: value.LastEventAt,
 		LastExitReason: value.LastExitReason, LastError: value.LastError,
-		MaxParseErrors: s.runner.Config.Sensor.MaxParseErrors, MaxDroppedEvents: s.runner.Config.Sensor.MaxDroppedEvents,
+		MaxParseErrors: s.health.config.Sensor.MaxParseErrors, MaxDroppedEvents: s.health.config.Sensor.MaxDroppedEvents,
 	}, err
 }
 
@@ -95,12 +95,12 @@ func (s *runtimeHealthSource) Telemetry(context.Context) (domainhealth.Telemetry
 }
 
 func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detection, error) {
-	status := s.runner.detectionHealth()
+	status := s.health.detectionHealth()
 	refs := make([]domainhealth.ContentRef, 0, len(status.ContentRefs))
 	for _, ref := range status.ContentRefs {
 		refs = append(refs, domainhealth.ContentRef{Ref: ref.Ref, Kind: ref.Kind, Version: ref.Version, Digest: ref.Digest})
 	}
-	metrics := s.runner.currentDetection().Metrics()
+	metrics := s.health.policy.currentDetection().Metrics()
 	degraded := metrics.EvictedCEPGroups > 0 || metrics.DroppedEventRefs > 0 || metrics.CEPEvalErrors > 0
 	return domainhealth.Detection{
 		PolicyID: status.PolicyID, PolicyVersion: status.PolicyVersion, ContentRefs: refs,
@@ -113,22 +113,22 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 }
 
 func (s *runtimeHealthSource) Storage(ctx context.Context) (domainhealth.Storage, error) {
-	if s.runner.localStore == nil {
+	if s.health.management.localStore == nil {
 		return domainhealth.Storage{}, nil
 	}
-	stats, err := s.runner.localStore.Stats(ctx)
+	stats, err := s.health.management.localStore.Stats(ctx)
 	if err != nil {
 		return domainhealth.Storage{}, err
 	}
-	identity, err := s.runner.localStore.DeviceIdentity(ctx)
+	identity, err := s.health.management.localStore.DeviceIdentity(ctx)
 	if err != nil {
 		return domainhealth.Storage{}, err
 	}
-	enrollment, err := s.runner.localStore.Enrollment(ctx)
+	enrollment, err := s.health.management.localStore.Enrollment(ctx)
 	if err != nil {
 		return domainhealth.Storage{}, err
 	}
-	checkpoint, err := s.runner.localStore.Checkpoint(ctx)
+	checkpoint, err := s.health.management.localStore.Checkpoint(ctx)
 	if err != nil {
 		return domainhealth.Storage{}, err
 	}
@@ -143,10 +143,10 @@ func (s *runtimeHealthSource) Storage(ctx context.Context) (domainhealth.Storage
 }
 
 func (s *runtimeHealthSource) Lifecycle(ctx context.Context) (domainhealth.Lifecycle, error) {
-	if s.runner.localStore == nil {
+	if s.health.management.localStore == nil {
 		return domainhealth.Lifecycle{Mode: "standalone"}, nil
 	}
-	enrollment, err := s.runner.localStore.Enrollment(ctx)
+	enrollment, err := s.health.management.localStore.Enrollment(ctx)
 	if err != nil {
 		return domainhealth.Lifecycle{}, err
 	}
@@ -159,7 +159,7 @@ func (s *runtimeHealthSource) Lifecycle(ctx context.Context) (domainhealth.Lifec
 		RevocationConfirmed: enrollment.RevocationConfirmed, LastError: enrollment.LastTransitionError,
 		UpdatedAt: enrollment.UpdatedAt,
 	}
-	completion, ok, err := s.runner.localStore.UnenrollmentCompletion(ctx)
+	completion, ok, err := s.health.management.localStore.UnenrollmentCompletion(ctx)
 	if err != nil {
 		return domainhealth.Lifecycle{}, err
 	}
@@ -179,7 +179,7 @@ func (s *runtimeHealthSource) Lifecycle(ctx context.Context) (domainhealth.Lifec
 	return value, nil
 }
 
-func (r *Coordinator) domainCapability() domainhealth.Capability {
+func (r *sensorRuntime) domainCapability() domainhealth.Capability {
 	collection := make([]domainhealth.CollectionCapability, 0, len(r.capability.Collection))
 	for _, item := range r.capability.Collection {
 		collection = append(collection, domainhealth.CollectionCapability{

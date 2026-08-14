@@ -13,12 +13,13 @@ func TestResponseContextProjectsIdentityPolicyAndScope(t *testing.T) {
 		Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}
-	runner.setPolicy(runner.activePolicy())
-	runner.policy.Response = domainresponse.Policy{
+	runner.wireComponents()
+	runner.policyState.setPolicy(runner.policyState.activePolicy())
+	runner.policyState.policy.Response = domainresponse.Policy{
 		AllowedActions: []string{"kill"}, AllowedModes: []domainresponse.Mode{domainresponse.ModeEnforce}, AllowDestructive: true,
 	}
-	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
-	responseContext := newResponseContext(runner, "container", "abc123")
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
+	responseContext := newResponseContext(&runner.policyState, "container", "abc123")
 	if identity := responseContext.Identity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 		t.Fatalf("identity=%+v", identity)
 	}
@@ -35,19 +36,20 @@ func TestResponseContextPolicyIsIsolatedFromActivePolicy(t *testing.T) {
 		Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake"}},
 	}
-	runner.setPolicy(runner.activePolicy())
-	runner.policy.Response = domainresponse.Policy{
+	runner.wireComponents()
+	runner.policyState.setPolicy(runner.policyState.activePolicy())
+	runner.policyState.policy.Response = domainresponse.Policy{
 		AllowedActions: []string{"kill"},
 		AllowedModes:   []domainresponse.Mode{domainresponse.ModeEnforce},
 		ApprovalRoles:  []string{"operator"},
 	}
 
-	projected := newResponseContext(runner, "", "").Policy()
+	projected := newResponseContext(&runner.policyState, "", "").Policy()
 	projected.AllowedActions[0] = "noop"
 	projected.AllowedModes[0] = domainresponse.ModeObserve
 	projected.ApprovalRoles[0] = "viewer"
 
-	active := runner.activePolicy().Response
+	active := runner.policyState.activePolicy().Response
 	if active.AllowedActions[0] != "kill" || active.AllowedModes[0] != domainresponse.ModeEnforce || active.ApprovalRoles[0] != "operator" {
 		t.Fatalf("active response policy mutated: %+v", active)
 	}

@@ -40,7 +40,7 @@ func (r *Coordinator) shutdownAndReport(ctx context.Context, rt sensorruntime.Ru
 }
 
 func (r *Coordinator) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) (agenthealth.AgentHealth, error) {
-	health, err := r.collectHealth(ctx, rt, bus, batcher, sender, startedAt)
+	health, err := r.healthRuntime().collect(ctx, rt, bus, batcher, sender, startedAt)
 	if err != nil {
 		return agenthealth.AgentHealth{}, err
 	}

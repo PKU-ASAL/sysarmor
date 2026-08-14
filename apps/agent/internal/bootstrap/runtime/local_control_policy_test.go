@@ -27,14 +27,14 @@ func TestLocalControlExplainCollectionPolicyDryRunDoesNotApply(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}, ObserveOnly: true},
 		},
-		Sensor:        sensor,
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      sensor,
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -72,15 +72,15 @@ func TestLocalControlApplyPolicyUpdatesCurrentPolicy(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -122,10 +122,10 @@ func TestManagedAgentRejectsLocalEndpointPolicyMutation(t *testing.T) {
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
 	runner := &Coordinator{
-		Config:            config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}},
-		Sensor:            &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime:     sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
-		managementRuntime: managementRuntime{localStore: store},
+		Config:          config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}},
+		Sensor:          &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState:     sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		managementState: managementRuntime{localStore: store},
 	}
 	installTestDetection(t, runner)
 	controller := newApplicationPolicyController(runner, sensorruntime.New(runner.Sensor), nil)
@@ -145,8 +145,8 @@ func TestManagedAgentRejectsLocalContentMutation(t *testing.T) {
 	}
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
-	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}}, managementRuntime: managementRuntime{localStore: store}}
-	result := agentcontrol.NewContentController(newContentApplicationAdapter(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", TenantID: "tenant-a"}}, managementState: managementRuntime{localStore: store}}
+	result := agentcontrol.NewContentController(newTestContentApplicationAdapter(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
 		Document: "{}", AllowUnsigned: true, Source: agentcontrol.PolicySourceStandalone,
 	})
 	if result.Status != "rejected" || !strings.Contains(result.Message, "managed policy authority") {
@@ -160,16 +160,17 @@ func TestManagedTransitionWaitsForLocalPolicyMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}}
-	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
+	runner := &Coordinator{managementState: managementRuntime{localStore: store}}
+	runner.wireComponents()
+	release, err := runner.policyState.beginLocalPolicyMutation(t.Context(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	transitioned := make(chan struct{})
 	go func() {
-		runner.policyAuthorityMu.Lock()
+		runner.policyState.policyAuthorityMu.Lock()
 		close(transitioned)
-		runner.policyAuthorityMu.Unlock()
+		runner.policyState.policyAuthorityMu.Unlock()
 	}()
 	select {
 	case <-transitioned:
@@ -193,9 +194,10 @@ func TestEnrollingAgentRejectsLocalPolicyMutation(t *testing.T) {
 	if err := store.SetEnrolling(t.Context(), testRemoteEnrollment()); err != nil {
 		t.Fatal(err)
 	}
-	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}}
+	runner := &Coordinator{managementState: managementRuntime{localStore: store}}
+	runner.wireComponents()
 
-	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
+	release, err := runner.policyState.beginLocalPolicyMutation(t.Context(), true)
 
 	if err == nil || release != nil || !strings.Contains(err.Error(), "managed policy authority") {
 		t.Fatalf("release_present=%t error=%v", release != nil, err)
@@ -204,13 +206,14 @@ func TestEnrollingAgentRejectsLocalPolicyMutation(t *testing.T) {
 
 func TestLocalPolicyMutationFailsClosedWithoutStore(t *testing.T) {
 	runner := &Coordinator{}
+	runner.wireComponents()
 
-	release, err := runner.beginLocalPolicyMutation(t.Context(), true)
+	release, err := runner.policyState.beginLocalPolicyMutation(t.Context(), true)
 
 	if err == nil || release != nil || !strings.Contains(err.Error(), "local store is unavailable") {
 		t.Fatalf("release_present=%t error=%v", release != nil, err)
 	}
-	readRelease, err := runner.beginLocalPolicyMutation(t.Context(), false)
+	readRelease, err := runner.policyState.beginLocalPolicyMutation(t.Context(), false)
 	if err != nil || readRelease == nil {
 		t.Fatalf("read-only release_present=%t error=%v", readRelease != nil, err)
 	}
@@ -228,14 +231,14 @@ func TestLocalControlApplyTelemetryPolicyContract(t *testing.T) {
 			Telemetry: config.TelemetryConfig{MaxBatchItems: 10, MaxBatchBytes: 256 << 10, FlushInterval: time.Second},
 			Local:     config.LocalConfig{Export: config.LocalExportConfig{RetryInitial: time.Second, RetryMax: 30 * time.Second, RequestTimeout: 10 * time.Second, MaxInflight: 1}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -260,7 +263,7 @@ func TestLocalControlApplyTelemetryPolicyContract(t *testing.T) {
 	if runner.Config.Manager.Transport != "grpc" || runner.Config.Manager.Address != "127.0.0.1:9443" {
 		t.Fatalf("manager config = %+v", runner.Config.Manager)
 	}
-	effective := runner.currentEffectiveTelemetry()
+	effective := runner.policyState.currentEffectiveTelemetry()
 	if effective.MaxBatchItems != 64 || effective.MaxBatchBytes != 131072 || effective.FlushInterval != 2*time.Second {
 		t.Fatalf("effective telemetry = %+v", effective)
 	}
@@ -278,8 +281,8 @@ func TestApplyTelemetryPolicyPersistsUnifiedEndpointPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
-	runner.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
+	runner := &Coordinator{managementState: managementRuntime{localStore: store}, Config: config.Config{Telemetry: config.TelemetryConfig{MaxBatchItems: 256, MaxBatchBytes: 256 << 10, FlushInterval: time.Second}}}
+	runner.policyState.setEndpointPolicy(policymodel.EndpointPolicy{PolicyID: "endpoint-a", Version: 1})
 	result := newApplicationPolicyController(runner, nil, nil).ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
 		PolicyType: "telemetry", Source: agentcontrol.PolicySourceStandalone,
 		Document: `{"max_batch_items":512,"max_batch_bytes":524288,"flush_interval":"2s"}`,
@@ -310,14 +313,14 @@ func TestLocalControlApplyCollectionPolicyUpdatesSensorRuntime(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}, ObserveOnly: true},
 		},
-		Sensor:        sensor,
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      sensor,
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -414,14 +417,14 @@ func TestLocalControlPushesNetworkProcessBinarySelector(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}, ObserveOnly: true},
 		},
-		Sensor:        sensor,
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      sensor,
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}

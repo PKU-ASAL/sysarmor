@@ -12,7 +12,7 @@ import (
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 )
 
-func (r *Coordinator) newTelemetryBatchBuilder() *telemetryadapter.BatchBuilder {
+func (r *telemetryRuntime) newBatchBuilder() *telemetryadapter.BatchBuilder {
 	return telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
 }
 
@@ -58,8 +58,8 @@ func (s *localStoreBatchSender) SendBatch(batch *dataplanev1.DataBatch) (*datapl
 	return &dataplanev1.DataAck{Accepted: true, Status: dataplanev1.DataAck_STATUS_ACCEPTED, BatchId: batch.GetHeader().GetBatchId(), CommittedCursor: batch.GetHeader().GetBatchId()}, nil
 }
 
-func (r *Coordinator) runtimeLabels(scopeType, scopeSelector, sensorRuntime string) map[string]string {
-	labels := cloneStringMap(r.Config.Agent.Labels)
+func (r *telemetryRuntime) runtimeLabels(scopeType, scopeSelector, sensorRuntime string) map[string]string {
+	labels := cloneStringMap(r.config.Agent.Labels)
 	if sensorRuntime != "" {
 		labels["sensor_runtime"] = sensorRuntime
 	}
@@ -75,8 +75,8 @@ func (r *Coordinator) runtimeLabels(scopeType, scopeSelector, sensorRuntime stri
 	return labels
 }
 
-func (r *Coordinator) policyLabels() map[string]string {
-	context := r.TelemetryContext()
+func (r *policyRuntime) policyLabels() map[string]string {
+	context := r.telemetry.TelemetryContext()
 	labels := map[string]string{}
 	if context.PolicyID != "" {
 		labels["policy_id"] = context.PolicyID
@@ -93,13 +93,13 @@ func (r *Coordinator) policyLabels() map[string]string {
 	return labels
 }
 
-func (r *Coordinator) TelemetryContext() ports.TelemetryContext {
-	identity := r.currentIdentity()
-	policy := r.activePolicy()
+func (r *telemetryRuntime) TelemetryContext() ports.TelemetryContext {
+	identity := r.management.currentIdentity()
+	policy := r.policy.activePolicy()
 	return ports.TelemetryContext{
 		TenantID: identity.TenantID, AgentID: identity.AgentID, HostID: identity.HostID,
 		PolicyID: policy.PolicyID, PolicyVersion: policy.Version, PolicyMode: policy.Mode,
-		Labels: cloneStringMap(r.Config.Agent.Labels),
+		Labels: cloneStringMap(r.config.Agent.Labels),
 	}
 }
 

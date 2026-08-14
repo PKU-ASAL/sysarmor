@@ -18,18 +18,18 @@ import (
 )
 
 func (r *TransportRuntime) runControlFlow(ctx context.Context) {
-	runner := r.runner
-	backoff := runner.Config.Local.Export.RetryInitial
+	dependencies := r.dependencies
+	backoff := dependencies.config.Local.Export.RetryInitial
 	if backoff <= 0 {
 		backoff = time.Second
 	}
-	maxBackoff := runner.Config.Local.Export.RetryMax
+	maxBackoff := dependencies.config.Local.Export.RetryMax
 	if maxBackoff <= 0 {
 		maxBackoff = 30 * time.Second
 	}
 	for {
-		if err := r.RunControlChannel(ctx); err != nil && ctx.Err() == nil && runner.Out != nil {
-			fmt.Fprintf(runner.Out, "agent control channel disconnected: %v\n", err)
+		if err := r.RunControlChannel(ctx); err != nil && ctx.Err() == nil && dependencies.out != nil {
+			fmt.Fprintf(dependencies.out, "agent control channel disconnected: %v\n", err)
 		}
 		if ctx.Err() != nil {
 			return
@@ -49,14 +49,14 @@ func (r *TransportRuntime) runControlFlow(ctx context.Context) {
 }
 
 func (r *TransportRuntime) RunControlChannel(ctx context.Context) error {
-	runner := r.runner
-	identity := runner.currentIdentity()
-	return r.runControlChannel(ctx, runner.Config.Manager.Address, runner.Config.Agent.Token, runner.managerTLS(), identity)
+	dependencies := r.dependencies
+	identity := dependencies.management.currentIdentity()
+	return r.runControlChannel(ctx, dependencies.config.Manager.Address, dependencies.config.Agent.Token, dependencies.management.managerTLS(), identity)
 }
 
 func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token string, tlsCfg tlsconfig.ClientConfig, identity runtimeIdentity) error {
-	runner := r.runner
-	connectCtx, cancel := context.WithTimeout(ctx, runner.Config.Local.Export.RequestTimeout)
+	dependencies := r.dependencies
+	connectCtx, cancel := context.WithTimeout(ctx, dependencies.config.Local.Export.RequestTimeout)
 	defer cancel()
 	session := grpcoutbound.NewControlChannel(manager, token, tlsCfg)
 	if err := session.OpenSession(connectCtx, ctx); err != nil {
@@ -67,36 +67,61 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	if err != nil {
 		return err
 	}
-	dispatcher := grpcinbound.NewDispatcher(grpcinbound.Dependencies{
-		Policy:  runner.policyController(runner, r.sensor, r.batcher),
-		Content: agentcontrol.NewContentController(newContentApplicationAdapter(runner)),
-		Response: appresponse.NewService(
-			newResponseContext(runner, r.scopeType, r.scopeSelector),
-			adapterresponse.NewEnforcer(runner.Sensor),
-		),
-	}, runner.Out)
+	dispatcher := r.newControlDispatcher()
 	remoteIdentity := grpcinbound.Identity{TenantID: identity.TenantID, AgentID: identity.AgentID}
+	if err := handleInitialControlFrames(ctx, session, dispatcher, remoteIdentity, frames); err != nil {
+		return err
+	}
+	healthRuntime := newRuntimeHealth(dependencies.config, dependencies.out, dependencies.policy, dependencies.management, dependencies.telemetry, dependencies.sensorState)
+	if err := r.sendRuntimeHealth(ctx, session, healthRuntime, identity, false); err != nil {
+		return err
+	}
+	return r.serveControlChannel(ctx, session, dispatcher, remoteIdentity, healthRuntime, identity)
+}
+
+func (r *TransportRuntime) newControlDispatcher() *grpcinbound.Dispatcher {
+	dependencies := r.dependencies
+	return grpcinbound.NewDispatcher(grpcinbound.Dependencies{
+		Policy:  dependencies.policy.policyController(r.sensor, r.batcher),
+		Content: agentcontrol.NewContentController(newContentApplicationAdapter(dependencies.policy)),
+		Response: appresponse.NewService(
+			newResponseContext(dependencies.policy, r.scopeType, r.scopeSelector),
+			adapterresponse.NewEnforcer(dependencies.sensorPort),
+		),
+	}, dependencies.out)
+}
+
+func handleInitialControlFrames(ctx context.Context, session *grpcoutbound.ControlChannel, dispatcher *grpcinbound.Dispatcher, identity grpcinbound.Identity, frames []*controlplanev1.ControlFrame) error {
 	for _, frame := range frames {
 		if frame.GetType() == "policy_update" {
-			if err := dispatcher.HandleSnapshot(ctx, remoteIdentity, frame); err != nil {
+			if err := dispatcher.HandleSnapshot(ctx, identity, frame); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := dispatcher.Handle(ctx, session, remoteIdentity, frame); err != nil {
+		if err := dispatcher.Handle(ctx, session, identity, frame); err != nil {
 			return err
 		}
 	}
-	health, err := runner.collectHealth(ctx, r.sensor, r.bus, r.batcher, r.sender, r.startedAt)
-	if err == nil {
-		health = bindHealthToSession(health, identity)
-		if err := session.SendHealth(ctx, healthResponse(health)); err != nil {
+	return nil
+}
+
+func (r *TransportRuntime) sendRuntimeHealth(ctx context.Context, session *grpcoutbound.ControlChannel, healthRuntime runtimeHealth, identity runtimeIdentity, required bool) error {
+	health, err := healthRuntime.collect(ctx, r.sensor, r.bus, r.batcher, r.sender, r.startedAt)
+	if err != nil {
+		if required {
 			return err
 		}
-		if err := session.SendCapability(ctx, remoteCapabilityResponse(health)); err != nil {
-			return err
-		}
+		return nil
 	}
+	health = bindHealthToSession(health, identity)
+	if err := session.SendHealth(ctx, healthResponse(health)); err != nil {
+		return err
+	}
+	return session.SendCapability(ctx, remoteCapabilityResponse(health))
+}
+
+func receiveControlFrames(ctx context.Context, session *grpcoutbound.ControlChannel) (<-chan *controlplanev1.ControlFrame, <-chan error) {
 	recvCh := make(chan *controlplanev1.ControlFrame, 1)
 	errCh := make(chan error, 1)
 	go func() {
@@ -113,7 +138,12 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 			}
 		}
 	}()
-	interval := runner.Config.Health.Interval
+	return recvCh, errCh
+}
+
+func (r *TransportRuntime) serveControlChannel(ctx context.Context, session *grpcoutbound.ControlChannel, dispatcher *grpcinbound.Dispatcher, remoteIdentity grpcinbound.Identity, healthRuntime runtimeHealth, identity runtimeIdentity) error {
+	recvCh, errCh := receiveControlFrames(ctx, session)
+	interval := r.dependencies.config.Health.Interval
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -133,15 +163,7 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 				return err
 			}
 		case <-ticker.C:
-			health, err := runner.collectHealth(ctx, r.sensor, r.bus, r.batcher, r.sender, r.startedAt)
-			if err != nil {
-				return err
-			}
-			health = bindHealthToSession(health, identity)
-			if err := session.SendHealth(ctx, healthResponse(health)); err != nil {
-				return err
-			}
-			if err := session.SendCapability(ctx, remoteCapabilityResponse(health)); err != nil {
+			if err := r.sendRuntimeHealth(ctx, session, healthRuntime, identity, true); err != nil {
 				return err
 			}
 		}
@@ -151,9 +173,9 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 func (r *TransportRuntime) runControlFlowForEnrollment(ctx context.Context, enrollment sqlite.Enrollment, tlsCfg tlsconfig.ClientConfig) {
 	backoff := time.Second
 	for ctx.Err() == nil {
-		identity := runtimeIdentity{TenantID: enrollment.TenantID, AgentID: enrollment.AgentID, HostID: r.runner.currentIdentity().HostID}
-		if err := r.runControlChannel(ctx, enrollment.GatewayAddress, "", tlsCfg, identity); err != nil && ctx.Err() == nil && r.runner.Out != nil {
-			fmt.Fprintf(r.runner.Out, "agent managed control channel disconnected: %v\n", err)
+		identity := runtimeIdentity{TenantID: enrollment.TenantID, AgentID: enrollment.AgentID, HostID: r.dependencies.management.currentIdentity().HostID}
+		if err := r.runControlChannel(ctx, enrollment.GatewayAddress, "", tlsCfg, identity); err != nil && ctx.Err() == nil && r.dependencies.out != nil {
+			fmt.Fprintf(r.dependencies.out, "agent managed control channel disconnected: %v\n", err)
 		}
 		timer := time.NewTimer(backoff)
 		select {

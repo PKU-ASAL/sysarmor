@@ -25,14 +25,14 @@ func TestLocalControlApplyListGetContent(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -78,15 +78,15 @@ func TestLocalControlApplyListGetContent(t *testing.T) {
 
 func TestDetectionPolicyWaitsForContentTransaction(t *testing.T) {
 	runner := &Coordinator{
-		Config:        config.Config{Agent: config.AgentConfig{TenantID: "default"}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Config:      config.Config{Agent: config.AgentConfig{TenantID: "default"}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	ensureTestLocalStore(t, runner)
 	controller := newApplicationPolicyController(runner, nil, nil)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	go runner.withDetectionUpdateTransaction(func() {
+	go runner.policyState.withDetectionUpdateTransaction(func() {
 		entered <- struct{}{}
 		<-release
 	})
@@ -120,15 +120,15 @@ func TestLocalControlContentApplyRebuildsDetection(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestLocalControlContentApplyRebuildsDetection(t *testing.T) {
 	if ack.GetStatus() != "applied" {
 		t.Fatalf("ApplyContent() ack = %+v", ack)
 	}
-	if record, ok := runner.contentStore().Get("ioc:c2-control-port-feed"); !ok || record.Version != "local-9443" {
+	if record, ok := runner.policyState.contentStore().Get("ioc:c2-control-port-feed"); !ok || record.Version != "local-9443" {
 		t.Fatalf("content record = %+v ok=%t", record, ok)
 	}
 
@@ -189,15 +189,15 @@ func TestLocalControlContentRebuildFailureKeepsPreviousDetection(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -232,7 +232,7 @@ func TestLocalControlContentRebuildFailureKeepsPreviousDetection(t *testing.T) {
 	if badAck.GetStatus() != "rejected" || !strings.Contains(badAck.GetMessage(), "detection rebuild failed") {
 		t.Fatalf("bad content ack = %+v", badAck)
 	}
-	if _, ok := runner.contentStore().Get("rulepack:bad-runtime"); ok {
+	if _, ok := runner.policyState.contentStore().Get("rulepack:bad-runtime"); ok {
 		t.Fatalf("rejected content was committed")
 	}
 
@@ -264,15 +264,15 @@ func TestLocalControlDetectionPolicyRebuildFailureKeepsPreviousPolicy(t *testing
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -302,7 +302,7 @@ func TestLocalControlDetectionPolicyRebuildFailureKeepsPreviousPolicy(t *testing
 	if ack.GetStatus() != "rejected" {
 		t.Fatalf("ack = %+v, want rejected", ack)
 	}
-	if runner.activePolicy().Detection.PolicyID == "bad-runtime-policy" {
+	if runner.policyState.activePolicy().Detection.PolicyID == "bad-runtime-policy" {
 		t.Fatalf("bad detection policy replaced active policy")
 	}
 	batch := appendEndpointEventForTest(t, runner, bus, eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/kept-policy.sh", ""))

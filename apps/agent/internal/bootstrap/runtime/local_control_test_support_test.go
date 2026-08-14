@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/policy"
+	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
@@ -14,6 +15,26 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+func startTestLocalControlServer(runner *Coordinator, ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) (func(), error) {
+	runner.wireComponents()
+	runner.policyState.controller = newTestPolicyController
+	control := localControlRuntime{
+		config: runner.Config, out: runner.Out, policy: &runner.policyState, management: &runner.managementState,
+		telemetry: &runner.telemetryState, sensor: &runner.sensorState,
+	}
+	return control.start(ctx, rt, bus, batcher, sender, startedAt)
+}
+
+func newTestTransportRuntime(runner *Coordinator, sensor sensorruntime.Runtime, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time, scopeType, scopeSelector string) *TransportRuntime {
+	runner.wireComponents()
+	runner.policyState.controller = newTestPolicyController
+	bus := telemetryadapter.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
+	return NewTransportRuntime(transportRuntimeDependencies{
+		config: runner.Config, out: runner.Out, sensorPort: runner.Sensor, policy: &runner.policyState,
+		management: &runner.managementState, telemetry: &runner.telemetryState, sensorState: &runner.sensorState,
+	}, sensor, bus, batcher, sender, startedAt, scopeType, scopeSelector)
+}
 
 type noopUploader struct{}
 
@@ -38,41 +59,43 @@ func (u *recordingUploader) SendBatch(batch *dataplanev1.DataBatch) (*dataplanev
 
 func newTestTelemetry(t testing.TB, runner *Coordinator) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender) {
 	t.Helper()
-	runner.policyController = newApplicationPolicyController
+	runner.wireComponents()
+	runner.policyState.controller = newTestPolicyController
 	ensureTestLocalStore(t, runner)
 	installTestDetection(t, runner)
 	bus := telemetryadapter.NewBus(1024)
-	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
+	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	return bus, batcher, sender
 }
 
 func ensureTestLocalStore(t testing.TB, runner *Coordinator) {
 	t.Helper()
-	if runner.localStore == nil {
+	runner.wireComponents()
+	if runner.managementState.localStore == nil {
 		store, err := sqlite.Open(context.Background(), sqlite.Options{RootDir: t.TempDir()})
 		if err != nil {
 			t.Fatalf("open test local store: %v", err)
 		}
-		runner.localStore = store
+		runner.managementState.localStore = store
 		t.Cleanup(func() { _ = store.Close() })
 	}
-	stored, ok, err := agentpolicy.LoadEndpointPolicy(context.Background(), runner.localStore, sqlite.PolicySourceStandalone)
+	stored, ok, err := agentpolicy.LoadEndpointPolicy(context.Background(), runner.managementState.localStore, sqlite.PolicySourceStandalone)
 	if err != nil {
 		t.Fatalf("load standalone endpoint policy: %v", err)
 	}
 	if ok {
-		runner.setEndpointPolicy(stored)
+		runner.policyState.setEndpointPolicy(stored)
 		return
 	}
-	endpoint := runner.currentEndpointPolicy()
+	endpoint := runner.policyState.currentEndpointPolicy()
 	if endpoint.PolicyID == "" {
-		endpoint = runner.activePolicy().EndpointPolicy()
+		endpoint = runner.policyState.activePolicy().EndpointPolicy()
 	}
-	if err := agentpolicy.SaveEffectiveEndpointPolicy(context.Background(), runner.localStore, endpoint); err != nil {
+	if err := agentpolicy.SaveEffectiveEndpointPolicy(context.Background(), runner.managementState.localStore, endpoint); err != nil {
 		t.Fatalf("initialize standalone endpoint policy: %v", err)
 	}
-	runner.setEndpointPolicy(endpoint)
+	runner.policyState.setEndpointPolicy(endpoint)
 }
 
 func newUnixControlClient(t *testing.T, socketPath string) controlplanev1.AgentControlPlaneServiceClient {

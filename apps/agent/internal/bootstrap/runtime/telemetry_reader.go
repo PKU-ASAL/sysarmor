@@ -9,13 +9,13 @@ import (
 )
 
 func (s *localTelemetryService) Identity() localapi.TelemetryIdentity {
-	identity := s.runner.currentIdentity()
+	identity := s.management.currentIdentity()
 	return localapi.TelemetryIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (s *localTelemetryService) EventByID(ctx context.Context, eventID string) (*dataplanev1.EventFrame, bool, error) {
-	if s.runner.localStore != nil {
-		frames, err := s.runner.localStore.QueryEvents(ctx, sqlite.EventQuery{Limit: 1000})
+	if s.management.localStore != nil {
+		frames, err := s.management.localStore.QueryEvents(ctx, sqlite.EventQuery{Limit: 1000})
 		if err == nil {
 			for _, frame := range frames {
 				if frame.GetEvent().GetId() == eventID {
@@ -33,27 +33,27 @@ func (s *localTelemetryService) EventByID(ctx context.Context, eventID string) (
 }
 
 func (s *localTelemetryService) RecentEvents(ctx context.Context, query localapi.EventQuery) ([]*dataplanev1.EventFrame, error) {
-	if s.runner.localStore == nil {
+	if s.management.localStore == nil {
 		return s.bus.SnapshotEvents(), nil
 	}
 	limit := query.Limit
 	if limit == 0 {
 		limit = 100
 	}
-	return s.runner.localStore.QueryEvents(ctx, sqlite.EventQuery{
+	return s.management.localStore.QueryEvents(ctx, sqlite.EventQuery{
 		Behavior: query.Behavior, AfterSequence: query.AfterSequence, Limit: limit,
 	})
 }
 
 func (s *localTelemetryService) RecentSignals(ctx context.Context, query localapi.SignalQuery) ([]*dataplanev1.SignalFrame, error) {
-	if s.runner.localStore == nil {
+	if s.management.localStore == nil {
 		return s.bus.SnapshotSignals(), nil
 	}
 	limit := query.Limit
 	if limit == 0 {
 		limit = 100
 	}
-	return s.runner.localStore.QuerySignals(ctx, sqlite.SignalQuery{RuleID: query.RuleID, Limit: limit})
+	return s.management.localStore.QuerySignals(ctx, sqlite.SignalQuery{RuleID: query.RuleID, Limit: limit})
 }
 
 func (s *localTelemetryService) WatchEvents(ctx context.Context) <-chan *dataplanev1.EventFrame {

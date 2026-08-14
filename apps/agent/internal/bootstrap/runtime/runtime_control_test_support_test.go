@@ -32,7 +32,7 @@ func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *Coordinator {
 	default:
 		t.Fatalf("unsupported test sensor backend %q", cfg.Sensor.Backend)
 	}
-	dependencies := Dependencies{Config: cfg, Sensor: sensor, Content: agentcontent.NewStore(), Policy: newApplicationPolicyController}
+	dependencies := Dependencies{Config: cfg, Sensor: sensor, Content: agentcontent.NewStore(), Policy: newTestPolicyController}
 	if cfg.Manager.Transport == "" {
 		store, err := sqlite.Open(context.Background(), sqlite.Options{
 			RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes, MinFreeBytes: cfg.Local.Storage.MinFreeBytes,
@@ -182,35 +182,35 @@ func runTestControlChannel(t *testing.T, dir string, server *contentUpdateContro
 			Health:  config.HealthConfig{Interval: time.Hour},
 		},
 		Sensor: &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, PolicyLoaded: true, EventsSeen: 3}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{
+		sensorState: sensorRuntime{capability: contract.Capability{
 			Backend:        "fake",
 			Version:        "long",
 			SupportsHealth: true,
 		}},
 	}
-	runner.policyController = newApplicationPolicyController
+	runner.wireComponents()
 	installTestDetection(t, runner)
 	if server.initialContentJSON != "" {
-		if _, err := runner.contentStore().Apply(server.initialContentJSON, true, false); err != nil {
+		if _, err := runner.policyState.contentStore().Apply(server.initialContentJSON, true, false); err != nil {
 			t.Fatalf("install valid runtime content: %v", err)
 		}
 	}
 	ensureTestLocalStore(t, runner)
-	if err := runner.localStore.SetEnrolling(context.Background(), sqlite.Enrollment{
+	if err := runner.managementState.localStore.SetEnrolling(context.Background(), sqlite.Enrollment{
 		TenantID: "default", AgentID: agentID, EnrollmentID: "test-enrollment-" + agentID,
 		CertificateSerial: "test-serial", ManagerURL: "https://manager.test", GatewayAddress: "gateway",
 		TLSCAPath: "/test/ca", TLSCertPath: "/test/cert", TLSKeyPath: "/test/key",
 	}); err != nil {
 		t.Fatalf("initialize managed enrollment: %v", err)
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
-	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 16)
+	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, 10, time.Hour, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- NewTransportRuntime(runner, rt, batcher, sender, time.Now().UTC(), "host", "").RunControlChannel(ctx)
+		done <- newTestTransportRuntime(runner, rt, batcher, sender, time.Now().UTC(), "host", "").RunControlChannel(ctx)
 	}()
 	return runner, done, cancel
 }

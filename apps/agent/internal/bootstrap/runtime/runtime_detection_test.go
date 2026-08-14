@@ -92,7 +92,7 @@ const testCollectionPolicyJSON = `{"behaviors":["process.exec","process.exit","p
 
 func appendEndpointEventForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, norm *eventadapter.EventNormalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
 	t.Helper()
-	batch, err := NewEndpointRuntime(runner, norm, telemetryadapter.NewBatchBuilder(runner, runner.initialSignalSequence)).ProcessEvent(ev)
+	batch, err := NewEndpointRuntime(&runner.policyState, norm, telemetryadapter.NewBatchBuilder(&runner.telemetryState, runner.telemetryState.initialSignalSequence)).ProcessEvent(ev)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func appendEndpointEventForTest(t testing.TB, runner *Coordinator, bus *telemetr
 
 func appendEndpointSignalsForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, signals []*signalv1.Signal) *dataplanev1.DataBatch {
 	t.Helper()
-	batch, err := NewEndpointRuntime(runner, nil, telemetryadapter.NewBatchBuilder(runner, runner.initialSignalSequence)).ProcessSignals(signals)
+	batch, err := NewEndpointRuntime(&runner.policyState, nil, telemetryadapter.NewBatchBuilder(&runner.telemetryState, runner.telemetryState.initialSignalSequence)).ProcessSignals(signals)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,17 +112,17 @@ func appendEndpointSignalsForTest(t testing.TB, runner *Coordinator, bus *teleme
 
 func commitEndpointBatchForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, batch *dataplanev1.DataBatch) {
 	t.Helper()
-	if runner.localStore == nil {
+	if runner.managementState.localStore == nil {
 		if bus != nil {
 			bus.PublishBatch(batch)
 		}
 		return
 	}
-	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 1, time.Hour, 1)
+	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, 1, time.Hour, 1)
 	batcher.Add(batch)
 	batch = <-batcher.Batches()
 	batcher.CloseAndFlush("test")
-	sender := &localStoreBatchSender{store: runner.localStore}
+	sender := &localStoreBatchSender{store: runner.managementState.localStore}
 	if bus != nil {
 		sender.onCommit = bus.PublishBatch
 	}
@@ -133,6 +133,7 @@ func commitEndpointBatchForTest(t testing.TB, runner *Coordinator, bus *telemetr
 
 func installTestDetection(t testing.TB, runner *Coordinator) {
 	t.Helper()
+	runner.wireComponents()
 	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "..", "..", "deployments", "agent", "content", "*.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +143,7 @@ func installTestDetection(t testing.TB, runner *Coordinator) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := runner.contentStore().Apply(string(raw), true, false); err != nil {
+		if _, err := runner.policyState.contentStore().Apply(string(raw), true, false); err != nil {
 			t.Fatalf("load test content %s: %v", path, err)
 		}
 	}
@@ -151,7 +152,7 @@ func installTestDetection(t testing.TB, runner *Coordinator) {
 		PolicyID: "daemon-test-detection", Version: 1, Mode: "observe",
 		RuleSets: []policymodel.RuleSetRef{{Ref: "ruleset:cep-endpoint"}},
 	}
-	if report, ok := runner.tryApplyRuntimePolicy(policy); !ok {
+	if report, ok := runner.policyState.tryApplyRuntimePolicy(policy); !ok {
 		t.Fatalf("install test detection: %+v", report)
 	}
 }

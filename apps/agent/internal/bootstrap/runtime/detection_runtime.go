@@ -10,16 +10,16 @@ import (
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
-func (r *Coordinator) contentStore() *agentcontent.Store {
-	r.policyRuntime.mu.Lock()
-	defer r.policyRuntime.mu.Unlock()
+func (r *policyRuntime) contentStore() *agentcontent.Store {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.content == nil {
 		r.content = agentcontent.NewStore()
 	}
 	return r.content
 }
 
-func (r *Coordinator) detectionContentSnapshot() detectionruntime.ContentSnapshot {
+func (r *policyRuntime) detectionContentSnapshot() detectionruntime.ContentSnapshot {
 	return detectionContentSnapshotFromContent(r.contentStore().Snapshot())
 }
 

@@ -6,22 +6,22 @@ import (
 )
 
 type responseContext struct {
-	runner        *Coordinator
+	policy        *policyRuntime
 	scopeType     string
 	scopeSelector string
 }
 
-func newResponseContext(runner *Coordinator, scopeType, scopeSelector string) *responseContext {
-	return &responseContext{runner: runner, scopeType: scopeType, scopeSelector: scopeSelector}
+func newResponseContext(policy *policyRuntime, scopeType, scopeSelector string) *responseContext {
+	return &responseContext{policy: policy, scopeType: scopeType, scopeSelector: scopeSelector}
 }
 
 func (r *responseContext) Identity() ports.ResponseIdentity {
-	identity := r.runner.currentIdentity()
+	identity := r.policy.management.currentIdentity()
 	return ports.ResponseIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (r *responseContext) Policy() domainresponse.Policy {
-	policy := r.runner.activePolicy()
+	policy := r.policy.activePolicy()
 	response := policy.Response
 	response.ID, response.Version = policy.PolicyID, policy.Version
 	response.AllowedActions = append([]string(nil), response.AllowedActions...)

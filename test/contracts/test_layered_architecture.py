@@ -161,8 +161,18 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         )
         self.assertIsNotNone(coordinator, "missing bootstrap Coordinator")
         body = coordinator.group("body")
-        for component in ("policyRuntime", "managementRuntime", "telemetryRuntime", "sensorRuntime"):
-            self.assertIn(component, body, f"Coordinator does not compose {component}")
+        components = {
+            "policyState": "policyRuntime",
+            "managementState": "managementRuntime",
+            "telemetryState": "telemetryRuntime",
+            "sensorState": "sensorRuntime",
+        }
+        for field, component in components.items():
+            self.assertRegex(
+                body,
+                rf"(?m)^\s*{field}\s+{component}$",
+                f"Coordinator does not name its {component} boundary",
+            )
         for field in (
             "detectionUpdateMu",
             "enrollmentCoordinator",
@@ -177,6 +187,52 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                 body,
                 rf"(?m)^\s*{field}\s+",
                 f"Coordinator still owns flattened runtime state: {field}",
+            )
+
+        management = re.search(
+            r"type managementRuntime struct \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        telemetry = re.search(
+            r"type telemetryRuntime struct \{(?P<body>.*?)\n\}", source, re.DOTALL
+        )
+        self.assertIsNotNone(management)
+        self.assertIsNotNone(telemetry)
+        self.assertRegex(management.group("body"), r"(?m)^\s*normalizer\s+")
+        self.assertNotRegex(telemetry.group("body"), r"(?m)^\s*normalizer\s+")
+
+        lifecycle = (
+            self.repo / "apps/agent/internal/bootstrap/runtime/lifecycle.go"
+        ).read_text()
+        self.assertIn("startRuntime(ctx context.Context, startup *runtimeStartup", lifecycle)
+        self.assertIn("r.startRuntime(ctx, &startup", source)
+
+        runtime_root = self.repo / "apps/agent/internal/bootstrap/runtime"
+        production = {
+            path.name: path.read_text()
+            for path in runtime_root.glob("*.go")
+            if not path.name.endswith("_test.go")
+        }
+        for name, text in production.items():
+            self.assertNotRegex(
+                text,
+                r"(?m)^\s*runner\s+\*Coordinator\s*$",
+                f"{name} still stores the complete Coordinator",
+            )
+            if name not in {"runtime.go", "lifecycle.go", "shutdown.go"}:
+                self.assertNotIn(
+                    "*Coordinator",
+                    text,
+                    f"{name} still depends on the complete Coordinator",
+                )
+                self.assertNotRegex(
+                    text,
+                    r"func\s+\(\w+\s+\*Coordinator\)",
+                    f"{name} still assigns non-lifecycle behavior to Coordinator",
+                )
+            self.assertNotRegex(
+                text,
+                r"(?:source\s+any|rest\s+\.\.\.any)",
+                f"{name} still exposes an untyped compatibility call path",
             )
 
     def test_product_layer_roots_exist(self):

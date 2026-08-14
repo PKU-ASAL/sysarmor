@@ -13,8 +13,9 @@ import (
 
 func TestContentRuntimeUsesProjectedManagementIdentity(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{TenantID: "local", ID: "device-a"}}}
-	runner.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
-	runtime := newContentApplicationAdapter(runner)
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{TenantID: "tenant-a", AgentID: "agent-a"})
+	runtime := newTestContentApplicationAdapter(runner)
 
 	if identity := runtime.ContentIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 		t.Fatalf("result identity=%+v", identity)
@@ -34,16 +35,17 @@ func TestContentControllerPersistenceFailureKeepsPreviousDetection(t *testing.T)
 		t.Fatal(err)
 	}
 	runner := &Coordinator{
-		Config:        config.Config{Agent: config.AgentConfig{TenantID: "tenant-a", ID: "agent-a"}},
-		policyRuntime: policyRuntime{content: store},
+		Config:      config.Config{Agent: config.AgentConfig{TenantID: "tenant-a", ID: "agent-a"}},
+		policyState: policyRuntime{content: store},
 	}
+	runner.wireComponents()
 	previousDetection := &detectionruntime.State{}
-	runner.setDetection(previousDetection)
+	runner.policyState.setDetection(previousDetection)
 	if err := os.RemoveAll(contentDir); err != nil {
 		t.Fatal(err)
 	}
 
-	result := agentcontrol.NewContentController(newContentApplicationAdapter(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
+	result := agentcontrol.NewContentController(newTestContentApplicationAdapter(runner)).ApplyContent(t.Context(), agentcontrol.ContentCommand{
 		Context: agentcontrol.RequestContext{TenantID: "tenant-a", AgentID: "agent-a"},
 		Document: `{
 			"api_version":"sysarmor.content/v1",
@@ -58,10 +60,10 @@ func TestContentControllerPersistenceFailureKeepsPreviousDetection(t *testing.T)
 	if result.Status != "rejected" {
 		t.Fatalf("result=%+v", result)
 	}
-	if runner.currentDetection() != previousDetection {
+	if runner.policyState.currentDetection() != previousDetection {
 		t.Fatal("detection changed after content persistence failure")
 	}
-	if _, ok := runner.contentStore().Get("ioc:test-feed"); ok {
+	if _, ok := runner.policyState.contentStore().Get("ioc:test-feed"); ok {
 		t.Fatal("content remained active after persistence failure")
 	}
 }

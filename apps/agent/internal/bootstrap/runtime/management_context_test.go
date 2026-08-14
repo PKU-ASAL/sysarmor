@@ -13,23 +13,24 @@ import (
 
 func TestManagementRuntimeAdaptersUseProjectedIdentity(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
 
 	policyRuntimes := []interface {
 		PolicyIdentity() agentcontrol.PolicyIdentity
 	}{
-		newEndpointPolicyApplication(runner, nil, nil),
-		newCollectionPolicyApplication(runner, nil),
-		newDetectionPolicyApplication(runner),
-		newTelemetryPolicyApplication(runner, nil),
-		newPolicyProjectionRuntime(runner),
+		newEndpointPolicyApplication(&runner.policyState, nil, nil),
+		newCollectionPolicyApplication(&runner.policyState, nil),
+		newDetectionPolicyApplication(&runner.policyState),
+		newTelemetryPolicyApplication(&runner.policyState, nil),
+		newPolicyProjectionRuntime(&runner.policyState),
 	}
 	for _, runtime := range policyRuntimes {
 		if identity := runtime.PolicyIdentity(); identity.TenantID != "tenant-a" || identity.AgentID != "agent-a" {
 			t.Fatalf("policy identity=%+v", identity)
 		}
 	}
-	status := &localStatusService{runner: runner}
+	status := &localStatusService{health: runner.healthRuntime()}
 	capability, err := status.Capability(t.Context(), &controlplanev1.CapabilityRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -46,11 +47,11 @@ func TestManagedRestartLoadsPolicyWithProjectedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runner.reconcileManagementContext(enrollment); err != nil {
+	if err := runner.managementState.reconcileManagementContext(enrollment); err != nil {
 		t.Fatal(err)
 	}
 
-	_, policy, _, err := runner.loadStartupPolicy(t.Context())
+	_, policy, _, err := runner.policyState.loadStartupPolicy(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +63,11 @@ func TestManagedRestartLoadsPolicyWithProjectedIdentity(t *testing.T) {
 func TestReconcileManagementContextUsesEnrollmentIdentityWhileEnrolling(t *testing.T) {
 	runner := managementContextTestRuntime()
 
-	err := runner.reconcileManagementContext(sqlite.Enrollment{
+	err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{
 		State: sqlite.StateEnrolling, AgentID: "agent-a", TenantID: "tenant-a",
 	})
 
-	identity := runner.currentIdentity()
+	identity := runner.managementState.currentIdentity()
 	if err != nil || identity.AgentID != "agent-a" || identity.TenantID != "tenant-a" || identity.HostID != "host-a" {
 		t.Fatalf("identity=%+v error=%v", identity, err)
 	}
@@ -74,11 +75,11 @@ func TestReconcileManagementContextUsesEnrollmentIdentityWhileEnrolling(t *testi
 
 func TestReconcileManagementContextRestoresStandaloneIdentity(t *testing.T) {
 	runner := managementContextTestRuntime()
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
 
-	err := runner.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateStandalone})
+	err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateStandalone})
 
-	identity := runner.currentIdentity()
+	identity := runner.managementState.currentIdentity()
 	if err != nil || identity.AgentID != "device-a" || identity.TenantID != "local" || identity.HostID != "host-a" {
 		t.Fatalf("identity=%+v error=%v", identity, err)
 	}
@@ -87,12 +88,12 @@ func TestReconcileManagementContextRestoresStandaloneIdentity(t *testing.T) {
 func TestReconcileManagementContextRejectsIncompleteEnrollmentIdentity(t *testing.T) {
 	runner := managementContextTestRuntime()
 
-	err := runner.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateEnrolling, AgentID: "agent-a"})
+	err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateEnrolling, AgentID: "agent-a"})
 
 	if err == nil || !strings.Contains(err.Error(), "enrollment identity is incomplete") {
 		t.Fatalf("error=%v", err)
 	}
-	if identity := runner.currentIdentity(); identity.AgentID != "device-a" || identity.TenantID != "local" {
+	if identity := runner.managementState.currentIdentity(); identity.AgentID != "device-a" || identity.TenantID != "local" {
 		t.Fatalf("identity changed after rejected context: %+v", identity)
 	}
 }
@@ -100,7 +101,7 @@ func TestReconcileManagementContextRejectsIncompleteEnrollmentIdentity(t *testin
 func TestReconcileManagementContextRejectsUnknownState(t *testing.T) {
 	runner := managementContextTestRuntime()
 
-	err := runner.reconcileManagementContext(sqlite.Enrollment{State: management.State("corrupt")})
+	err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: management.State("corrupt")})
 
 	if err == nil || !strings.Contains(err.Error(), "unsupported management state") {
 		t.Fatalf("error=%v", err)
@@ -109,6 +110,7 @@ func TestReconcileManagementContextRejectsUnknownState(t *testing.T) {
 
 func managementContextTestRuntime() *Coordinator {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 	return runner
 }

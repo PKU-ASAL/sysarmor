@@ -23,14 +23,14 @@ func TestLocalControlContentApplyEnablesCEPRulePack(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true, SupportsFile: true, SupportsConnect: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}

@@ -28,18 +28,18 @@ func newUnenrollmentCompletionReporter(store *sqlite.Store, send func(context.Co
 	return &unenrollmentCompletionReporter{store: store, send: send, retryInitial: retryInitial, retryMax: retryMax}
 }
 
-func (r *Coordinator) configureUnenrollmentCompletionReporter() *unenrollmentCompletionReporter {
+func (r *managementRuntime) configureUnenrollmentCompletionReporter() *unenrollmentCompletionReporter {
 	if r.completionReporter != nil {
 		return r.completionReporter
 	}
-	export := r.Config.Local.Export
+	export := r.config.Local.Export
 	r.completionReporter = newUnenrollmentCompletionReporter(r.localStore, func(ctx context.Context, completion sqlite.UnenrollmentCompletion) error {
-		return adapterenrollment.ReportCompletion(ctx, completion, r.Config.Manager.TLSInsecure, export.RequestTimeout)
+		return adapterenrollment.ReportCompletion(ctx, completion, r.config.Manager.TLSInsecure, export.RequestTimeout)
 	}, export.RetryInitial, export.RetryMax)
 	return r.completionReporter
 }
 
-func (r *Coordinator) startUnenrollmentCompletionReporter(ctx context.Context) func() {
+func (r *managementRuntime) startUnenrollmentCompletionReporter(ctx context.Context) func() {
 	reporterCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {

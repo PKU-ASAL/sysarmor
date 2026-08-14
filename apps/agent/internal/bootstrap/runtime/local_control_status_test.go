@@ -34,7 +34,7 @@ func TestLocalControlServerOverUnixSocket(t *testing.T) {
 			Installed:    true,
 			PolicyLoaded: true,
 		}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{
+		sensorState: sensorRuntime{capability: contract.Capability{
 			Backend:         "fake",
 			Version:         "test",
 			SupportsExec:    true,
@@ -46,12 +46,12 @@ func TestLocalControlServerOverUnixSocket(t *testing.T) {
 			}},
 		}},
 	}
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
@@ -149,8 +149,8 @@ func TestManagementLifecycleStatusRejectsInvalidState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := &Coordinator{managementRuntime: managementRuntime{localStore: store}}
-	_, err = (&runtimeHealthSource{runner: runner}).Lifecycle(t.Context())
+	runner := &Coordinator{managementState: managementRuntime{localStore: store}}
+	_, err = (&runtimeHealthSource{health: runner.healthRuntime()}).Lifecycle(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "unsupported management state") {
 		t.Fatalf("error=%v", err)
 	}
@@ -168,7 +168,7 @@ func TestHealthReportsUnenrollmentLifecycle(t *testing.T) {
 		Backend: "fake", Installed: true, Running: true, PolicyLoaded: true,
 	}})
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	server := &localStatusService{runner: runner, runtime: sensorruntime.New(runner.Sensor), bus: bus, batcher: batcher, sender: sender, startedAt: time.Now()}
+	server := &localStatusService{health: newRuntimeHealth(runner.Config, runner.Out, &runner.policyState, &runner.managementState, &runner.telemetryState, &runner.sensorState), runtime: sensorruntime.New(runner.Sensor), bus: bus, batcher: batcher, sender: sender, startedAt: time.Now()}
 
 	response, err := server.Health(t.Context(), &controlplanev1.HealthRequest{})
 	if err != nil {

@@ -109,7 +109,7 @@ func TestHealthReportsCompletionOutboxLifecycle(t *testing.T) {
 
 func assertManagerCompletionStatus(t *testing.T, runner *Coordinator, wantStatus, wantError string) {
 	t.Helper()
-	status, err := (&runtimeHealthSource{runner: runner}).Lifecycle(t.Context())
+	status, err := (&runtimeHealthSource{health: runner.healthRuntime()}).Lifecycle(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

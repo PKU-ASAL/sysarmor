@@ -14,15 +14,16 @@ import (
 
 func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
-	builder := telemetryadapter.NewBatchBuilder(runner, 0)
-	runner.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
-	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	builder := telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0)
+	runner.telemetryState.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryState.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
-	if err := runner.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
 		t.Fatal(err)
 	}
-	boundary := <-runner.telemetryBatcher.Batches()
+	boundary := <-runner.telemetryState.telemetryBatcher.Batches()
 	if boundary.GetHeader().GetAgentId() != "device-a" || boundary.GetHeader().GetTenantId() != "local" {
 		t.Fatalf("boundary batch identity = %+v", boundary.GetHeader())
 	}
@@ -31,15 +32,15 @@ func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 		t.Fatalf("managed batch identity = %+v", managed.GetHeader())
 	}
 	managedContext := &controlplanev1.RequestContext{AgentId: "agent-a", TenantId: "tenant-a"}
-	if err := runner.validateControlContext(managedContext); err != nil {
+	if err := runner.managementState.validateControlContext(managedContext); err != nil {
 		t.Fatalf("managed control context rejected: %v", err)
 	}
-	ack := runner.bindControlAckIdentity(&controlplanev1.ControlAck{AgentId: "device-a", TenantId: "local"})
+	ack := runner.managementState.bindControlAckIdentity(&controlplanev1.ControlAck{AgentId: "device-a", TenantId: "local"})
 	if ack.GetAgentId() != "agent-a" || ack.GetTenantId() != "tenant-a" {
 		t.Fatalf("managed ack identity = %+v", ack)
 	}
 
-	if err := runner.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateStandalone}); err != nil {
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateStandalone}); err != nil {
 		t.Fatal(err)
 	}
 	standalone := builder.NewBatch(time.Now())
@@ -50,14 +51,15 @@ func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 
 func TestRuntimeKeepsPendingBatchForUnchangedIdentity(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
-	builder := telemetryadapter.NewBatchBuilder(runner, 0)
-	runner.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
-	runner.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	builder := telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0)
+	runner.telemetryState.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryState.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
-	runner.applyProjectedIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	runner.managementState.applyProjectedIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
 
-	stats := runner.telemetryBatcher.Stats()
+	stats := runner.telemetryState.telemetryBatcher.Stats()
 	if stats.PendingEvents != 1 || stats.QueuedBatches != 0 {
 		t.Fatalf("batcher stats = %+v, want pending event without flush", stats)
 	}

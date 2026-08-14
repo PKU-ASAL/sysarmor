@@ -2,14 +2,27 @@ package runtime
 
 import (
 	"context"
+	"io"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
+type transportRuntimeDependencies struct {
+	config      config.Config
+	out         io.Writer
+	sensorPort  contract.Sensor
+	policy      *policyRuntime
+	management  *managementRuntime
+	telemetry   *telemetryRuntime
+	sensorState *sensorRuntime
+}
+
 type TransportRuntime struct {
-	runner        *Coordinator
+	dependencies  transportRuntimeDependencies
 	sensor        sensorruntime.Runtime
 	bus           *telemetryadapter.Bus
 	batcher       *telemetryadapter.Batcher
@@ -19,10 +32,9 @@ type TransportRuntime struct {
 	scopeSelector string
 }
 
-func NewTransportRuntime(runner *Coordinator, sensor sensorruntime.Runtime, source any, rest ...any) *TransportRuntime {
-	bus, batcher, sender, startedAt, scopeType, scopeSelector := transportArgs(runner, source, rest...)
+func NewTransportRuntime(dependencies transportRuntimeDependencies, sensor sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time, scopeType, scopeSelector string) *TransportRuntime {
 	return &TransportRuntime{
-		runner:        runner,
+		dependencies:  dependencies,
 		sensor:        sensor,
 		bus:           bus,
 		batcher:       batcher,
@@ -33,65 +45,8 @@ func NewTransportRuntime(runner *Coordinator, sensor sensorruntime.Runtime, sour
 	}
 }
 
-func transportArgs(runner *Coordinator, source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time, string, string) {
-	var bus *telemetryadapter.Bus
-	var batcher *telemetryadapter.Batcher
-	var sender *telemetryadapter.RuntimeSender
-	var startedAt time.Time
-	var scopeType, scopeSelector string
-	if b, ok := source.(*telemetryadapter.Bus); ok {
-		bus = b
-		if len(rest) > 0 {
-			batcher, _ = rest[0].(*telemetryadapter.Batcher)
-		}
-		if len(rest) > 1 {
-			sender, _ = rest[1].(*telemetryadapter.RuntimeSender)
-		}
-		if len(rest) > 2 {
-			startedAt, _ = rest[2].(time.Time)
-		}
-		if len(rest) > 3 {
-			scopeType, _ = rest[3].(string)
-		}
-		if len(rest) > 4 {
-			scopeSelector, _ = rest[4].(string)
-		}
-	} else if b, ok := source.(*telemetryadapter.Batcher); ok {
-		batcher = b
-		if len(rest) > 0 {
-			sender, _ = rest[0].(*telemetryadapter.RuntimeSender)
-		}
-		if len(rest) > 1 {
-			startedAt, _ = rest[1].(time.Time)
-		}
-		if len(rest) > 2 {
-			scopeType, _ = rest[2].(string)
-		}
-		if len(rest) > 3 {
-			scopeSelector, _ = rest[3].(string)
-		}
-	}
-	if runner == nil {
-		batcher := telemetryadapter.NewBatcher(nil, 0, 0, 0)
-		return telemetryadapter.NewBus(0), batcher, telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0), time.Now().UTC(), "", ""
-	}
-	if bus == nil {
-		bus = telemetryadapter.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
-	}
-	if batcher == nil {
-		batcher = telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, runner.Config.Telemetry.MaxBatchItems, runner.Config.Telemetry.FlushInterval, 64, runner.Config.Telemetry.MaxBatchBytes)
-	}
-	if sender == nil {
-		sender = telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
-	}
-	if startedAt.IsZero() {
-		startedAt = time.Now().UTC()
-	}
-	return bus, batcher, sender, startedAt, scopeType, scopeSelector
-}
-
 func (r *TransportRuntime) RunDataFlow(ctx context.Context) {
-	if r == nil || r.runner == nil {
+	if r == nil || r.dependencies.policy == nil {
 		return
 	}
 	go r.batcher.Run(ctx)
@@ -99,7 +54,7 @@ func (r *TransportRuntime) RunDataFlow(ctx context.Context) {
 }
 
 func (r *TransportRuntime) RunControlFlow(ctx context.Context) {
-	if r == nil || r.runner == nil || r.runner.Config.Manager.Transport != "grpc" {
+	if r == nil || r.dependencies.policy == nil || r.dependencies.config.Manager.Transport != "grpc" {
 		return
 	}
 	r.runControlFlow(ctx)

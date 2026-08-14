@@ -11,10 +11,11 @@ func TestRuntimeProjectsCurrentTelemetryContext(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{
 		ID: "device-a", HostID: "host-a", TenantID: "local", Labels: map[string]string{"site": "lab"},
 	}}}
-	runner.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
-	runner.setPolicy(policymodel.Policy{PolicyID: "managed-policy", Version: 7, Mode: "enforcing"})
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"})
+	runner.policyState.setPolicy(policymodel.Policy{PolicyID: "managed-policy", Version: 7, Mode: "enforcing"})
 
-	context := runner.TelemetryContext()
+	context := runner.telemetryState.TelemetryContext()
 
 	if context.AgentID != "agent-a" || context.HostID != "host-a" || context.TenantID != "tenant-a" {
 		t.Fatalf("identity context = %+v", context)

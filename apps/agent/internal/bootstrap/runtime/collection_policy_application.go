@@ -35,32 +35,28 @@ func (c *collectionCandidate) ValidationReport() applicationpolicy.CollectionRep
 }
 
 type collectionPolicyApplication struct {
-	runner  *Coordinator
+	policy  *policyRuntime
 	runtime sensorruntime.Runtime
 	service *applicationpolicy.CollectionService
 }
 
-func newCollectionPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime) *collectionPolicyApplication {
-	application := &collectionPolicyApplication{runner: runner, runtime: runtime}
+func newCollectionPolicyApplication(policy *policyRuntime, runtime sensorruntime.Runtime) *collectionPolicyApplication {
+	application := &collectionPolicyApplication{policy: policy, runtime: runtime}
 	application.service = applicationpolicy.NewCollectionService(application, application)
 	return application
 }
 
-func NewCollectionPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime) agentcontrol.CollectionApplication {
-	return newCollectionPolicyApplication(runner, runtime)
-}
-
 func (a *collectionPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
-	identity := a.runner.currentIdentity()
+	identity := a.policy.management.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (a *collectionPolicyApplication) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {
-	return a.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
+	return a.policy.management.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
 func (a *collectionPolicyApplication) BeginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
-	return a.runner.beginLocalPolicyMutation(ctx, mutation)
+	return a.policy.beginLocalPolicyMutation(ctx, mutation)
 }
 
 func (a *collectionPolicyApplication) ValidateCollection(ctx context.Context, document string, scope applicationpolicy.CollectionScope) (applicationpolicy.CollectionCandidate, error) {
@@ -70,21 +66,21 @@ func (a *collectionPolicyApplication) ValidateCollection(ctx context.Context, do
 func (a *collectionPolicyApplication) ActivateCollection(ctx context.Context, document string, scope applicationpolicy.CollectionScope) (applicationpolicy.CollectionResult, error) {
 	var result applicationpolicy.CollectionResult
 	var activationErr error
-	a.runner.withDetectionUpdateTransaction(func() {
+	a.policy.withDetectionUpdateTransaction(func() {
 		result, activationErr = a.service.Activate(ctx, document, scope)
 	})
 	return result, activationErr
 }
 
 func (a *collectionPolicyApplication) PrepareCollection(_ context.Context, document string, scope applicationpolicy.CollectionScope) (applicationpolicy.CollectionCandidate, error) {
-	policy, err := agentpolicy.ParseCollectionPolicyJSON([]byte(document), a.runner.Config.Sensor.ObserveOnly)
+	policy, err := agentpolicy.ParseCollectionPolicyJSON([]byte(document), a.policy.config.Sensor.ObserveOnly)
 	if err != nil {
 		return nil, fmt.Errorf("invalid collection policy: %w", err)
 	}
-	if err := applyCollectionScope(&policy, scope, a.runner.Config.Sensor); err != nil {
+	if err := applyCollectionScope(&policy, scope, a.policy.config.Sensor); err != nil {
 		return nil, err
 	}
-	policy, expansion, err := agentpolicy.ExpandCollectionPolicyRefs(policy, collectionContentSnapshot(a.runner.contentStore().Snapshot()))
+	policy, expansion, err := agentpolicy.ExpandCollectionPolicyRefs(policy, collectionContentSnapshot(a.policy.contentStore().Snapshot()))
 	if err != nil {
 		return nil, fmt.Errorf("resolve collection policy refs: %w", err)
 	}
@@ -99,14 +95,14 @@ func (a *collectionPolicyApplication) PrepareCollection(_ context.Context, docum
 	}
 	detectionIntent := intent
 	if len(detectionIntent.Capabilities) == 0 {
-		detectionIntent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), a.runner.capability.Collection...)
+		detectionIntent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), a.policy.sensor.capability.Collection...)
 	}
-	engine, report := detectionadapter.NewWithRuntimeLimits(a.runner.activePolicy().Detection, detectionIntent, a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
-	endpoint := a.runner.currentEndpointPolicy()
+	engine, report := detectionadapter.NewWithRuntimeLimits(a.policy.activePolicy().Detection, detectionIntent, a.policy.detectionContentSnapshot(), a.policy.detectionLimits())
+	endpoint := a.policy.currentEndpointPolicy()
 	endpoint.Collection = policy
 	endpoint.Version++
 	return &collectionCandidate{
-		policy: policy, endpoint: endpoint, intent: intent, previous: a.runner.currentCollectionIntent(),
+		policy: policy, endpoint: endpoint, intent: intent, previous: a.policy.currentCollectionIntent(),
 		compile: compile, engine: engine, report: report, result: collectionValidationReport(compile, report),
 	}, nil
 }
@@ -116,10 +112,10 @@ func (a *collectionPolicyApplication) PersistCollection(ctx context.Context, can
 	if err != nil {
 		return err
 	}
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return nil
 	}
-	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.runner.localStore, prepared.endpoint)
+	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.policy.management.localStore, prepared.endpoint)
 }
 
 func (a *collectionPolicyApplication) ApplyCollection(ctx context.Context, candidate applicationpolicy.CollectionCandidate) error {
@@ -127,7 +123,7 @@ func (a *collectionPolicyApplication) ApplyCollection(ctx context.Context, candi
 	if err != nil {
 		return err
 	}
-	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.runner.currentSensorSupervisor()}
+	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.policy.sensor.currentSupervisor()}
 	_, err = reconciler.Apply(ctx, prepared.intent)
 	return err
 }
@@ -137,7 +133,7 @@ func (a *collectionPolicyApplication) RollbackCollection(ctx context.Context, ca
 	if err != nil {
 		return err
 	}
-	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.runner.currentSensorSupervisor()}
+	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.policy.sensor.currentSupervisor()}
 	_, err = reconciler.Apply(ctx, prepared.previous)
 	return err
 }
@@ -147,9 +143,9 @@ func (a *collectionPolicyApplication) PublishCollection(candidate applicationpol
 	if err != nil {
 		return
 	}
-	a.runner.setEndpointPolicy(prepared.endpoint)
-	a.runner.setCollectionIntent(prepared.intent)
-	a.runner.setDetection(prepared.engine)
+	a.policy.setEndpointPolicy(prepared.endpoint)
+	a.policy.setCollectionIntent(prepared.intent)
+	a.policy.setDetection(prepared.engine)
 	prepared.result = collectionActivationReport(prepared.compile, prepared.report)
 }
 

@@ -37,33 +37,29 @@ func (c *endpointCandidate) PolicyVersion() uint64                  { return c.e
 func (c *endpointCandidate) PolicySource() applicationpolicy.Source { return c.source }
 
 type endpointPolicyApplication struct {
-	runner  *Coordinator
+	policy  *policyRuntime
 	runtime sensorruntime.Runtime
 	batcher *telemetryadapter.Batcher
 	service *applicationpolicy.EndpointService
 }
 
-func newEndpointPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *endpointPolicyApplication {
-	application := &endpointPolicyApplication{runner: runner, runtime: runtime, batcher: batcher}
+func newEndpointPolicyApplication(policy *policyRuntime, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *endpointPolicyApplication {
+	application := &endpointPolicyApplication{policy: policy, runtime: runtime, batcher: batcher}
 	application.service = applicationpolicy.NewEndpointService(application, application)
 	return application
 }
 
-func NewEndpointPolicyApplication(runner *Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) agentcontrol.EndpointApplication {
-	return newEndpointPolicyApplication(runner, runtime, batcher)
-}
-
 func (a *endpointPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
-	identity := a.runner.currentIdentity()
+	identity := a.policy.management.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (a *endpointPolicyApplication) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {
-	return a.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
+	return a.policy.management.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
 func (a *endpointPolicyApplication) BeginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
-	return a.runner.beginLocalPolicyMutation(ctx, mutation)
+	return a.policy.beginLocalPolicyMutation(ctx, mutation)
 }
 
 func (a *endpointPolicyApplication) ValidateEndpoint(ctx context.Context, document string, source applicationpolicy.Source) (applicationpolicy.EndpointCandidate, error) {
@@ -73,7 +69,7 @@ func (a *endpointPolicyApplication) ValidateEndpoint(ctx context.Context, docume
 func (a *endpointPolicyApplication) ActivateStandaloneEndpoint(ctx context.Context, document string) (applicationpolicy.EndpointResult, error) {
 	var result applicationpolicy.EndpointResult
 	var activationErr error
-	a.runner.withDetectionUpdateTransaction(func() {
+	a.policy.withDetectionUpdateTransaction(func() {
 		result, activationErr = a.service.ActivateStandalone(ctx, document)
 	})
 	return result, activationErr
@@ -92,7 +88,7 @@ func (a *endpointPolicyApplication) PrepareEndpoint(_ context.Context, document 
 }
 
 func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy, source applicationpolicy.Source) (*endpointCandidate, error) {
-	collection, expansion, err := agentpolicy.ExpandCollectionPolicyRefs(endpoint.Collection, collectionContentSnapshot(a.runner.contentStore().Snapshot()))
+	collection, expansion, err := agentpolicy.ExpandCollectionPolicyRefs(endpoint.Collection, collectionContentSnapshot(a.policy.contentStore().Snapshot()))
 	if err != nil {
 		return nil, err
 	}
@@ -106,21 +102,21 @@ func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy,
 	if len(compile.UnsupportedSelectors) > 0 {
 		return nil, fmt.Errorf("unsupported collection selectors: %+v", compile.UnsupportedSelectors)
 	}
-	effective, err := config.ResolveTelemetry(a.runner.Config.Telemetry, &endpoint.Telemetry)
+	effective, err := config.ResolveTelemetry(a.policy.config.Telemetry, &endpoint.Telemetry)
 	if err != nil {
 		return nil, err
 	}
 	detectionIntent := intent
 	if len(detectionIntent.Capabilities) == 0 {
-		detectionIntent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), a.runner.capability.Collection...)
+		detectionIntent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), a.policy.sensor.capability.Collection...)
 	}
-	runtimePolicy := endpointRuntimePolicy(a.runner.currentIdentity().TenantID, endpoint)
-	engine, report := detectionadapter.NewWithRuntimeLimits(runtimePolicy.Detection, detectionIntent, a.runner.detectionContentSnapshot(), a.runner.detectionLimits())
+	runtimePolicy := endpointRuntimePolicy(a.policy.management.currentIdentity().TenantID, endpoint)
+	engine, report := detectionadapter.NewWithRuntimeLimits(runtimePolicy.Detection, detectionIntent, a.policy.detectionContentSnapshot(), a.policy.detectionLimits())
 	if report.Status == "rejected" {
 		return nil, fmt.Errorf("detection policy rejected: %s", strings.Join(report.Details, "; "))
 	}
 	return &endpointCandidate{
-		endpoint: endpoint, intent: intent, previous: a.runner.currentCollectionIntent(), policy: runtimePolicy,
+		endpoint: endpoint, intent: intent, previous: a.policy.currentCollectionIntent(), policy: runtimePolicy,
 		detection: engine, report: report, telemetry: effective, compile: compile, source: source,
 	}, nil
 }
@@ -140,10 +136,10 @@ func (a *endpointPolicyApplication) PersistEndpoint(ctx context.Context, candida
 	if err != nil {
 		return err
 	}
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return fmt.Errorf("local store is unavailable")
 	}
-	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.runner.localStore, prepared.endpoint)
+	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.policy.management.localStore, prepared.endpoint)
 }
 
 func (a *endpointPolicyApplication) SaveDesiredManaged(ctx context.Context, candidate applicationpolicy.EndpointCandidate) error {
@@ -151,12 +147,12 @@ func (a *endpointPolicyApplication) SaveDesiredManaged(ctx context.Context, cand
 	if err != nil {
 		return err
 	}
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return fmt.Errorf("local store is unavailable")
 	}
-	a.runner.policyAuthorityMu.Lock()
-	defer a.runner.policyAuthorityMu.Unlock()
-	return agentpolicy.SaveDesiredManagedEndpointPolicy(ctx, a.runner.localStore, prepared.endpoint)
+	a.policy.policyAuthorityMu.Lock()
+	defer a.policy.policyAuthorityMu.Unlock()
+	return agentpolicy.SaveDesiredManagedEndpointPolicy(ctx, a.policy.management.localStore, prepared.endpoint)
 }
 
 func (a *endpointPolicyApplication) BeginManagedTransition(ctx context.Context, candidate applicationpolicy.EndpointCandidate) (func(), error) {
@@ -164,16 +160,16 @@ func (a *endpointPolicyApplication) BeginManagedTransition(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	a.runner.policyAuthorityMu.Lock()
-	a.runner.detectionUpdateMu.Lock()
+	a.policy.policyAuthorityMu.Lock()
+	a.policy.detectionUpdateMu.Lock()
 	if err := a.requireCurrentPending(ctx, prepared); err != nil {
-		a.runner.detectionUpdateMu.Unlock()
-		a.runner.policyAuthorityMu.Unlock()
+		a.policy.detectionUpdateMu.Unlock()
+		a.policy.policyAuthorityMu.Unlock()
 		return nil, err
 	}
 	return func() {
-		a.runner.detectionUpdateMu.Unlock()
-		a.runner.policyAuthorityMu.Unlock()
+		a.policy.detectionUpdateMu.Unlock()
+		a.policy.policyAuthorityMu.Unlock()
 	}, nil
 }
 
@@ -182,38 +178,38 @@ func (a *endpointPolicyApplication) ActivateManagedDurable(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return fmt.Errorf("local store is unavailable")
 	}
-	return agentpolicy.ActivateManagedEndpointPolicy(ctx, a.runner.localStore, prepared.endpoint)
+	return agentpolicy.ActivateManagedEndpointPolicy(ctx, a.policy.management.localStore, prepared.endpoint)
 }
 
 func (a *endpointPolicyApplication) PromoteManaged(ctx context.Context, _ applicationpolicy.EndpointCandidate) error {
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return fmt.Errorf("local store is unavailable")
 	}
-	enrollment, err := a.runner.localStore.Enrollment(ctx)
+	enrollment, err := a.policy.management.localStore.Enrollment(ctx)
 	if err != nil {
 		return fmt.Errorf("read enrollment for managed policy activation: %w", err)
 	}
 	if enrollment.State != sqlite.StateManaged {
 		return fmt.Errorf("managed policy authority promotion requires managed enrollment, got %s", enrollment.State)
 	}
-	return a.runner.reconcileManagementContext(enrollment)
+	return a.policy.management.reconcileManagementContext(enrollment)
 }
 
 func (a *endpointPolicyApplication) PendingManaged(ctx context.Context) (applicationpolicy.EndpointCandidate, bool, error) {
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return nil, false, nil
 	}
-	record, status, ok, err := a.runner.localStore.DesiredPolicy(ctx, "endpoint", sqlite.PolicySourceManaged)
+	record, status, ok, err := a.policy.management.localStore.DesiredPolicy(ctx, "endpoint", sqlite.PolicySourceManaged)
 	if err != nil {
 		return nil, false, err
 	}
 	if ok && status == sqlite.PolicyStatusPending {
 		return a.prepareDocument(record.Document, applicationpolicy.SourceManaged, "prepare pending managed endpoint policy")
 	}
-	record, source, ok, err := a.runner.localStore.ActivePolicy(ctx, "endpoint")
+	record, source, ok, err := a.policy.management.localStore.ActivePolicy(ctx, "endpoint")
 	if err != nil || !ok || source != sqlite.PolicySourceManaged {
 		return nil, false, err
 	}
@@ -221,10 +217,10 @@ func (a *endpointPolicyApplication) PendingManaged(ctx context.Context) (applica
 }
 
 func (a *endpointPolicyApplication) LoadStandalone(ctx context.Context) (applicationpolicy.EndpointCandidate, bool, error) {
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return nil, false, nil
 	}
-	endpoint, ok, err := agentpolicy.LoadEndpointPolicy(ctx, a.runner.localStore, sqlite.PolicySourceStandalone)
+	endpoint, ok, err := agentpolicy.LoadEndpointPolicy(ctx, a.policy.management.localStore, sqlite.PolicySourceStandalone)
 	if err != nil || !ok {
 		return nil, ok, err
 	}
@@ -245,7 +241,7 @@ func (a *endpointPolicyApplication) ApplyEndpoint(ctx context.Context, candidate
 	if err != nil {
 		return applicationpolicy.EndpointReport{}, err
 	}
-	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.runner.currentSensorSupervisor()}
+	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.policy.sensor.currentSupervisor()}
 	if _, err := reconciler.Apply(ctx, prepared.intent); err != nil {
 		return applicationpolicy.EndpointReport{}, err
 	}
@@ -257,7 +253,7 @@ func (a *endpointPolicyApplication) RollbackEndpoint(ctx context.Context, candid
 	if err != nil {
 		return err
 	}
-	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.runner.currentSensorSupervisor()}
+	reconciler := endpointPolicyReconciler{runtime: a.runtime, supervisor: a.policy.sensor.currentSupervisor()}
 	_, err = reconciler.Apply(ctx, prepared.previous)
 	return err
 }
@@ -267,12 +263,12 @@ func (a *endpointPolicyApplication) ActivateEndpoint(candidate applicationpolicy
 	if err != nil {
 		return
 	}
-	a.runner.setEndpointPolicy(prepared.endpoint)
-	a.runner.setCollectionIntent(prepared.intent)
-	a.runner.setPolicy(prepared.policy)
-	a.runner.setDetection(prepared.detection)
-	a.runner.setDetectionStatus(prepared.policy, prepared.report, a.runner.contentStore().Snapshot())
-	a.runner.setEffectiveTelemetry(prepared.telemetry)
+	a.policy.setEndpointPolicy(prepared.endpoint)
+	a.policy.setCollectionIntent(prepared.intent)
+	a.policy.setPolicy(prepared.policy)
+	a.policy.setDetection(prepared.detection)
+	a.policy.setDetectionStatus(prepared.policy, prepared.report, a.policy.contentStore().Snapshot())
+	a.policy.setEffectiveTelemetry(prepared.telemetry)
 	if a.batcher != nil && prepared.source == applicationpolicy.SourceStandalone {
 		a.batcher.Reconfigure(telemetryadapter.BatchSettings{
 			MaxItems: prepared.telemetry.MaxBatchItems, MaxBytes: prepared.telemetry.MaxBatchBytes,
@@ -308,20 +304,20 @@ func (a *endpointPolicyApplication) PendingIntent(ctx context.Context) (contract
 
 func (a *endpointPolicyApplication) RestoreStandalone(ctx context.Context, activate func(context.Context) error) error {
 	var restoreErr error
-	a.runner.withDetectionUpdateTransaction(func() {
+	a.policy.withDetectionUpdateTransaction(func() {
 		restoreErr = a.service.RestoreStandalone(ctx, activate)
 	})
 	return restoreErr
 }
 
 func (a *endpointPolicyApplication) requireCurrentPending(ctx context.Context, candidate *endpointCandidate) error {
-	record, status, ok, err := a.runner.localStore.DesiredPolicy(ctx, "endpoint", sqlite.PolicySourceManaged)
+	record, status, ok, err := a.policy.management.localStore.DesiredPolicy(ctx, "endpoint", sqlite.PolicySourceManaged)
 	if err != nil {
 		return err
 	}
 	if !ok || status != sqlite.PolicyStatusPending {
 		var source sqlite.PolicySource
-		record, source, ok, err = a.runner.localStore.ActivePolicy(ctx, "endpoint")
+		record, source, ok, err = a.policy.management.localStore.ActivePolicy(ctx, "endpoint")
 		if err != nil {
 			return err
 		}

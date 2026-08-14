@@ -48,6 +48,10 @@ type activeRuntime struct {
 	longControl bool
 }
 
+func (r *Coordinator) healthRuntime() runtimeHealth {
+	return newRuntimeHealth(r.Config, r.Out, &r.policyState, &r.managementState, &r.telemetryState, &r.sensorState)
+}
+
 func (a *activeRuntime) Close() {
 	if a.network != nil {
 		a.network.Stop()
@@ -65,21 +69,21 @@ func (r *Coordinator) prepareRuntime(ctx context.Context, fail startupFailure) (
 	capability, err := rt.Probe(ctx)
 	if err != nil {
 		capability = contract.Capability{Backend: r.Config.Sensor.Backend, Version: "unknown"}
-		r.reportSensorDegraded("probe", err)
+		r.healthRuntime().reportSensorDegraded("probe", err)
 	}
-	r.capability = capability
-	intent, effectivePolicy, effectiveTelemetry, err := r.loadStartupPolicy(ctx)
+	r.sensorState.capability = capability
+	intent, effectivePolicy, effectiveTelemetry, err := r.policyState.loadStartupPolicy(ctx)
 	if err != nil {
 		return runtimeStartup{}, fail("policy", err)
 	}
-	r.setEffectiveTelemetry(effectiveTelemetry)
+	r.policyState.setEffectiveTelemetry(effectiveTelemetry)
 	scope, err := r.Config.Sensor.EffectiveScope()
 	if err != nil {
 		return runtimeStartup{}, err
 	}
 	intent = policy.WithScope(intent, scope.Type, scope.Selector)
-	r.setCollectionIntent(r.withCollectionCapabilities(intent))
-	if err := r.applyStartupDetection(effectivePolicy); err != nil {
+	r.policyState.setCollectionIntent(r.policyState.withCollectionCapabilities(intent))
+	if err := r.policyState.applyStartupDetection(effectivePolicy); err != nil {
 		return runtimeStartup{}, fail("detection", err)
 	}
 	return runtimeStartup{
@@ -89,38 +93,38 @@ func (r *Coordinator) prepareRuntime(ctx context.Context, fail startupFailure) (
 }
 
 func (r *Coordinator) restoreManagementContext(ctx context.Context) (string, error) {
-	if r.localStore == nil {
+	if r.managementState.localStore == nil {
 		return "", nil
 	}
-	enrollment, err := r.localStore.Enrollment(ctx)
+	enrollment, err := r.managementState.localStore.Enrollment(ctx)
 	if err != nil {
 		return "enrollment", err
 	}
-	return "management_context", r.reconcileManagementContext(enrollment)
+	return "management_context", r.managementState.reconcileManagementContext(enrollment)
 }
 
-func (r *Coordinator) startRuntime(ctx context.Context, startup runtimeStartup, reporter healthReporter, startedAt time.Time, fail startupFailure) (*activeRuntime, error) {
-	events, err := r.startSensor(ctx, startup, fail)
+func (r *Coordinator) startRuntime(ctx context.Context, startup *runtimeStartup, reporter healthReporter, startedAt time.Time, fail startupFailure) (*activeRuntime, error) {
+	events, err := r.startSensor(ctx, *startup, fail)
 	if err != nil {
 		return nil, err
 	}
-	active, transport, err := r.startDataPlane(ctx, startup, reporter, startedAt, fail)
+	active, transport, err := r.startDataPlane(ctx, *startup, reporter, startedAt, fail)
 	if err != nil {
 		return nil, err
 	}
 	active.events = events
-	if err := r.startNetwork(ctx, &startup, active, transport, fail); err != nil {
+	if err := r.startNetwork(ctx, startup, active, transport, fail); err != nil {
 		active.Close()
 		return nil, err
 	}
-	r.applyRuntimePolicy(startup.policy)
+	r.policyState.applyRuntimePolicy(startup.policy)
 	return active, nil
 }
 
 func (r *Coordinator) startSensor(ctx context.Context, startup runtimeStartup, fail startupFailure) (<-chan contract.EventEnvelope, error) {
 	supervisor := sensorruntime.NewSubscriptionSupervisor(sensorruntime.AdaptManager(startup.sensor), startup.intent, sensorruntime.RetryOptions{})
-	r.setSensorSupervisor(supervisor)
-	endpointApplication := newEndpointPolicyApplication(r, startup.sensor, nil)
+	r.policyState.setSensorSupervisor(supervisor)
+	endpointApplication := newEndpointPolicyApplication(&r.policyState, startup.sensor, nil)
 	supervisor.OnApplied(endpointApplication.ResumeApplied)
 	pendingIntent, hasPending, err := endpointApplication.PendingIntent(ctx)
 	if err != nil {
@@ -134,7 +138,7 @@ func (r *Coordinator) startSensor(ctx context.Context, startup runtimeStartup, f
 }
 
 func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup, reporter healthReporter, startedAt time.Time, fail startupFailure) (*activeRuntime, *TransportRuntime, error) {
-	appender, err := r.batchSender()
+	appender, err := r.managementState.batchSender()
 	if err != nil {
 		return nil, nil, fail("data_plane", err)
 	}
@@ -142,11 +146,15 @@ func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup
 	if local, ok := appender.(*localStoreBatchSender); ok {
 		local.onCommit = bus.PublishBatch
 	}
-	builder := telemetryadapter.NewBatchBuilder(r, r.initialSignalSequence)
+	builder := r.telemetryState.newBatchBuilder()
 	batcher := telemetryadapter.NewBatcher(builder.NewBatch, startup.telemetry.MaxBatchItems, startup.telemetry.FlushInterval, r.Config.Local.Export.MaxInflight*64, startup.telemetry.MaxBatchBytes)
-	r.telemetryBatcher = batcher
+	r.telemetryState.telemetryBatcher = batcher
 	sender := telemetryadapter.NewRuntimeSender(batcher, appender, r.Config.Local.Export.RetryInitial, r.Config.Local.Export.RetryMax)
-	stopLocal, err := r.startLocalControlServer(ctx, startup.sensor, bus, batcher, sender, startedAt)
+	localControl := localControlRuntime{
+		config: r.Config, out: r.Out, policy: &r.policyState, management: &r.managementState,
+		telemetry: &r.telemetryState, sensor: &r.sensorState,
+	}
+	stopLocal, err := localControl.start(ctx, startup.sensor, bus, batcher, sender, startedAt)
 	if err != nil {
 		return nil, nil, fail("local_control", err)
 	}
@@ -154,21 +162,24 @@ func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup
 	dataCtx, cancel := context.WithCancel(ctx)
 	active := &activeRuntime{
 		sensor: startup.sensor, bus: bus, batcher: batcher, sender: sender,
-		endpoint: NewEndpointRuntime(r, norm, builder), cancel: cancel, local: NewLocalRuntime(stopLocal),
+		endpoint: NewEndpointRuntime(&r.policyState, norm, builder), cancel: cancel, local: NewLocalRuntime(stopLocal),
 		dataContext: dataCtx, longControl: r.Config.Manager.Transport == "grpc",
 	}
 	active.stopSensor = idempotentSensorStop(startup.sensor)
-	transport := NewTransportRuntime(r, startup.sensor, bus, batcher, sender, startedAt, startup.scopeType, startup.scopeSelector)
+	transport := NewTransportRuntime(transportRuntimeDependencies{
+		config: r.Config, out: r.Out, sensorPort: r.Sensor, policy: &r.policyState,
+		management: &r.managementState, telemetry: &r.telemetryState, sensorState: &r.sensorState,
+	}, startup.sensor, bus, batcher, sender, startedAt, startup.scopeType, startup.scopeSelector)
 	return active, transport, nil
 }
 
 func (r *Coordinator) startEventNormalizer(startup runtimeStartup) *eventadapter.EventNormalizer {
-	identity := r.currentIdentity()
+	identity := r.managementState.currentIdentity()
 	norm := eventadapter.NewEventNormalizer(identity.AgentID, identity.HostID, eventadapter.EventNormalizerOptions{
 		TenantID: identity.TenantID, ScopeType: startup.scopeType, ScopeSelector: startup.scopeSelector,
-		Labels: r.runtimeLabels(startup.scopeType, startup.scopeSelector, startup.capability.Backend), InitialSequence: r.eventSeq,
+		Labels: r.telemetryState.runtimeLabels(startup.scopeType, startup.scopeSelector, startup.capability.Backend), InitialSequence: r.telemetryState.eventSeq,
 	})
-	r.setNormalizer(norm)
+	r.managementState.setNormalizer(norm)
 	return norm
 }
 
@@ -184,16 +195,16 @@ func idempotentSensorStop(sensor sensorruntime.Runtime) func() {
 }
 
 func (r *Coordinator) startNetwork(ctx context.Context, startup *runtimeStartup, active *activeRuntime, transport *TransportRuntime, fail startupFailure) error {
-	if r.localStore == nil {
+	if r.managementState.localStore == nil {
 		go transport.RunDataFlow(active.dataContext)
 		go transport.RunControlFlow(active.dataContext)
 		return nil
 	}
 	go transport.RunDataFlow(active.dataContext)
-	r.managedControl = transport
-	r.network = newNetworkSupervisor(active.dataContext, transport.RunControlFlow, r.runManagedNetwork)
-	active.network = r.network
-	enrollment, err := r.localStore.Enrollment(ctx)
+	r.managementState.managedControl = transport
+	r.managementState.network = newNetworkSupervisor(active.dataContext, transport.RunControlFlow, r.managementState.runManagedNetwork)
+	active.network = r.managementState.network
+	enrollment, err := r.managementState.localStore.Enrollment(ctx)
 	if err != nil {
 		return fail("enrollment", err)
 	}
@@ -201,24 +212,24 @@ func (r *Coordinator) startNetwork(ctx context.Context, startup *runtimeStartup,
 		if err := r.finalizeStartupUnenrollment(ctx, startup, fail); err != nil {
 			return err
 		}
-		enrollment, err = r.localStore.Enrollment(ctx)
+		enrollment, err = r.managementState.localStore.Enrollment(ctx)
 		if err != nil {
 			return fail("enrollment", err)
 		}
 	}
-	return failIfError(fail, "management_context", r.reconcileManagementContext(enrollment))
+	return failIfError(fail, "management_context", r.managementState.reconcileManagementContext(enrollment))
 }
 
 func (r *Coordinator) finalizeStartupUnenrollment(ctx context.Context, startup *runtimeStartup, fail startupFailure) error {
-	if err := r.configureEnrollmentCoordinator(ctx, startup.sensor).Resume(ctx); err != nil {
+	if err := r.managementState.configureEnrollmentCoordinator(ctx, startup.sensor).Resume(ctx); err != nil {
 		return fail("unenrollment_finalize", err)
 	}
-	intent, effectivePolicy, effectiveTelemetry, err := r.loadStartupPolicy(ctx)
+	intent, effectivePolicy, effectiveTelemetry, err := r.policyState.loadStartupPolicy(ctx)
 	if err != nil {
 		return fail("standalone_policy", err)
 	}
 	startup.intent, startup.policy, startup.telemetry = intent, effectivePolicy, effectiveTelemetry
-	r.setEffectiveTelemetry(effectiveTelemetry)
+	r.policyState.setEffectiveTelemetry(effectiveTelemetry)
 	return nil
 }
 
@@ -273,7 +284,7 @@ func (r *Coordinator) handleRuntimeEvent(event contract.EventEnvelope, active *a
 }
 
 func (r *Coordinator) handleHealthTick(ctx context.Context, active *activeRuntime, reporter healthReporter, startedAt time.Time, tamper *domainhealth.TamperDetector) error {
-	snapshot := r.collectHealthSnapshot(ctx, active.sensor, active.bus, active.batcher, active.sender, startedAt)
+	snapshot := r.healthRuntime().snapshot(ctx, active.sensor, active.bus, active.batcher, active.sender, startedAt)
 	health := contractadapter.AgentHealth(snapshot)
 	if err := r.publishTamperSignal(snapshot, active, tamper); err != nil {
 		return err
@@ -308,7 +319,7 @@ func (r *Coordinator) publishTamperSignal(snapshot domainhealth.Snapshot, active
 }
 
 func (r *Coordinator) publishRuntimeBatch(batch *dataplanev1.DataBatch, active *activeRuntime) {
-	if r.localStore == nil {
+	if r.managementState.localStore == nil {
 		active.bus.PublishBatch(batch)
 	}
 	active.batcher.Add(batch)
@@ -318,7 +329,7 @@ func (r *Coordinator) logRuntimeStarted(startup runtimeStartup) {
 	if r.Out == nil {
 		return
 	}
-	identity := r.currentIdentity()
+	identity := r.managementState.currentIdentity()
 	fmt.Fprintf(r.Out, "agent runtime started: agent=%s host=%s tenant=%s sensor=%s version=%s behaviors=%d policy=%s version=%d mode=%s\n",
 		identity.AgentID, identity.HostID, identity.TenantID, startup.capability.Backend, startup.capability.Version,
 		len(startup.intent.Behaviors), startup.policy.PolicyID, startup.policy.Version, startup.policy.Mode)

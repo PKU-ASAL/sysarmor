@@ -23,21 +23,21 @@ func TestLocalControlWatchRecentEventsAndSignals(t *testing.T) {
 			Control: config.ControlConfig{SocketPath: socketPath},
 			Sensor:  config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsExec: true}},
 	}
 	rt := sensorruntime.New(runner.Sensor)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	stop, err := runner.startLocalControlServer(ctx, rt, bus, batcher, sender, time.Now())
+	stop, err := startTestLocalControlServer(runner, ctx, rt, bus, batcher, sender, time.Now())
 	if err != nil {
 		t.Fatalf("startLocalControlServer() error = %v", err)
 	}
 	defer stop()
 
 	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host", Labels: map[string]string{"benchmark_run": "run-a"}})
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 
 	client := newUnixControlClient(t, socketPath)

@@ -7,14 +7,22 @@ import (
 )
 
 func newApplicationPolicyController(runner *Coordinator, runtime sensorruntime.Runtime, batcher *telemetryadapter.Batcher) *agentcontrol.ApplicationPolicyController {
-	return agentcontrol.NewApplicationPolicyController(
-		newPolicyProjectionRuntime(runner),
-		agentcontrol.PolicyUseCases{
-			StandaloneEndpoint: agentcontrol.NewEndpointPolicyController(newEndpointPolicyApplication(runner, runtime, batcher)),
-			ManagedEndpoint:    agentcontrol.NewEndpointPolicyController(newEndpointPolicyApplication(runner, runtime, nil)),
-			Collection:         agentcontrol.NewCollectionPolicyController(newCollectionPolicyApplication(runner, runtime)),
-			Detection:          agentcontrol.NewDetectionPolicyController(newDetectionPolicyApplication(runner)),
-			Telemetry:          agentcontrol.NewTelemetryPolicyController(newTelemetryPolicyApplication(runner, batcher)),
-		},
-	)
+	runner.wireComponents()
+	runner.policyState.controller = newTestPolicyController
+	return runner.policyState.policyController(runtime, batcher)
+}
+
+func newTestPolicyController(runtime agentcontrol.PolicyControllerRuntime, applications PolicyApplications) *agentcontrol.ApplicationPolicyController {
+	return agentcontrol.NewApplicationPolicyController(runtime, agentcontrol.PolicyUseCases{
+		StandaloneEndpoint: agentcontrol.NewEndpointPolicyController(applications.StandaloneEndpoint),
+		ManagedEndpoint:    agentcontrol.NewEndpointPolicyController(applications.ManagedEndpoint),
+		Collection:         agentcontrol.NewCollectionPolicyController(applications.Collection),
+		Detection:          agentcontrol.NewDetectionPolicyController(applications.Detection),
+		Telemetry:          agentcontrol.NewTelemetryPolicyController(applications.Telemetry),
+	})
+}
+
+func newTestContentApplicationAdapter(runner *Coordinator) *contentApplicationAdapter {
+	runner.wireComponents()
+	return newContentApplicationAdapter(&runner.policyState)
 }

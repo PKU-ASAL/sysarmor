@@ -11,15 +11,15 @@ import (
 )
 
 type contentApplicationAdapter struct {
-	runner *Coordinator
+	policy *policyRuntime
 }
 
-func newContentApplicationAdapter(runner *Coordinator) *contentApplicationAdapter {
-	return &contentApplicationAdapter{runner: runner}
+func newContentApplicationAdapter(policy *policyRuntime) *contentApplicationAdapter {
+	return &contentApplicationAdapter{policy: policy}
 }
 
 func (r *contentApplicationAdapter) ContentIdentity() agentcontrol.ContentIdentity {
-	identity := r.runner.currentIdentity()
+	identity := r.policy.management.currentIdentity()
 	return agentcontrol.ContentIdentity{
 		TenantID: identity.TenantID,
 		AgentID:  identity.AgentID,
@@ -27,15 +27,15 @@ func (r *contentApplicationAdapter) ContentIdentity() agentcontrol.ContentIdenti
 }
 
 func (r *contentApplicationAdapter) BeginLocalContentMutation(ctx context.Context, mutation bool) (func(), error) {
-	return r.runner.beginLocalPolicyMutation(ctx, mutation)
+	return r.policy.beginLocalPolicyMutation(ctx, mutation)
 }
 
 func (r *contentApplicationAdapter) ValidateContentContext(ctx agentcontrol.RequestContext) error {
-	return r.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
+	return r.policy.management.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
 func (r *contentApplicationAdapter) ValidateContent(document string, allowUnsigned bool) (agentcontrol.ContentRecord, error) {
-	record, err := r.runner.contentStore().Apply(document, allowUnsigned, true)
+	record, err := r.policy.contentStore().Apply(document, allowUnsigned, true)
 	return contentApplicationRecord(record), err
 }
 
@@ -43,30 +43,30 @@ func (r *contentApplicationAdapter) Activate(document string, allowUnsigned bool
 	var record agentcontent.Record
 	var report detectionruntime.ApplyReport
 	var activationErr error
-	r.runner.withDetectionUpdateTransaction(func() {
+	r.policy.withDetectionUpdateTransaction(func() {
 		var snapshot agentcontent.Snapshot
-		record, snapshot, activationErr = r.runner.contentStore().Prepare(document, allowUnsigned)
+		record, snapshot, activationErr = r.policy.contentStore().Prepare(document, allowUnsigned)
 		if activationErr != nil {
 			return
 		}
-		engine, buildReport := r.runner.buildDetectionWithSnapshot(snapshot)
+		engine, buildReport := r.policy.buildDetectionWithSnapshot(snapshot)
 		report = buildReport
 		if buildReport.Status == "rejected" {
-			r.runner.setDetectionStatus(r.runner.activePolicy(), buildReport, r.runner.contentStore().Snapshot())
+			r.policy.setDetectionStatus(r.policy.activePolicy(), buildReport, r.policy.contentStore().Snapshot())
 			activationErr = fmt.Errorf("content rejected; detection rebuild failed: %s", strings.Join(buildReport.Details, "; "))
 			return
 		}
-		if activationErr = r.runner.contentStore().Commit(record); activationErr != nil {
+		if activationErr = r.policy.contentStore().Commit(record); activationErr != nil {
 			return
 		}
-		r.runner.setDetection(engine)
-		r.runner.setDetectionStatus(r.runner.activePolicy(), buildReport, snapshot)
+		r.policy.setDetection(engine)
+		r.policy.setDetectionStatus(r.policy.activePolicy(), buildReport, snapshot)
 	})
 	return contentApplicationRecord(record), agentcontrol.ContentApplyReport{Status: report.Status, Warnings: append([]string(nil), report.Warnings...)}, activationErr
 }
 
 func (r *contentApplicationAdapter) ListContent(kind string) []agentcontrol.ContentRecord {
-	records := r.runner.contentStore().List(kind)
+	records := r.policy.contentStore().List(kind)
 	result := make([]agentcontrol.ContentRecord, 0, len(records))
 	for _, record := range records {
 		result = append(result, contentApplicationRecord(record))
@@ -75,7 +75,7 @@ func (r *contentApplicationAdapter) ListContent(kind string) []agentcontrol.Cont
 }
 
 func (r *contentApplicationAdapter) GetContent(ref string) (agentcontrol.ContentRecord, bool) {
-	record, ok := r.runner.contentStore().Get(ref)
+	record, ok := r.policy.contentStore().Get(ref)
 	return contentApplicationRecord(record), ok
 }
 

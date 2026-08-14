@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -9,30 +11,62 @@ import (
 	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-func (r *Coordinator) activePolicy() policymodel.Policy {
-	r.policyRuntime.mu.RLock()
+func (r *policyRuntime) withDetectionUpdateTransaction(fn func()) {
+	r.detectionUpdateMu.Lock()
+	defer r.detectionUpdateMu.Unlock()
+	fn()
+}
+
+func (r *policyRuntime) beginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
+	if !mutation {
+		return func() {}, nil
+	}
+	r.policyAuthorityMu.RLock()
+	if r.management.localStore == nil {
+		r.policyAuthorityMu.RUnlock()
+		return nil, fmt.Errorf("local store is unavailable")
+	}
+	enrollment, err := r.management.localStore.Enrollment(ctx)
+	if err != nil {
+		r.policyAuthorityMu.RUnlock()
+		return nil, fmt.Errorf("read enrollment state: %w", err)
+	}
+	mode, err := management.Resolve(enrollment.State)
+	if err == nil {
+		err = mode.Authorize(management.PolicyWriteLocal)
+	}
+	if err != nil {
+		r.policyAuthorityMu.RUnlock()
+		return nil, err
+	}
+	return r.policyAuthorityMu.RUnlock, nil
+}
+
+func (r *policyRuntime) activePolicy() policymodel.Policy {
+	r.mu.RLock()
 	policy := r.policy
-	r.policyRuntime.mu.RUnlock()
+	r.mu.RUnlock()
 	if policy.PolicyID != "" {
 		return policy
 	}
-	return policymodel.DefaultPolicy(r.currentIdentity().TenantID)
+	return policymodel.DefaultPolicy(r.management.currentIdentity().TenantID)
 }
 
-func (r *Coordinator) setPolicy(policy policymodel.Policy) {
-	r.policyRuntime.mu.Lock()
-	defer r.policyRuntime.mu.Unlock()
+func (r *policyRuntime) setPolicy(policy policymodel.Policy) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.policy = policy
 }
 
-func (r *Coordinator) currentDetection() *detectionruntime.State {
-	r.policyRuntime.mu.RLock()
-	defer r.policyRuntime.mu.RUnlock()
+func (r *policyRuntime) currentDetection() *detectionruntime.State {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if r.detection != nil {
 		return r.detection
 	}
@@ -40,47 +74,53 @@ func (r *Coordinator) currentDetection() *detectionruntime.State {
 	return engine
 }
 
-func (r *Coordinator) setDetection(engine *detectionruntime.State) {
-	r.policyRuntime.mu.Lock()
-	defer r.policyRuntime.mu.Unlock()
+func (r *policyRuntime) setDetection(engine *detectionruntime.State) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.detection = engine
 }
 
-func (r *Coordinator) setCollectionIntent(intent contract.CollectionIntent) {
+func (r *policyRuntime) setCollectionIntent(intent contract.CollectionIntent) {
 	intent = r.withCollectionCapabilities(intent)
-	r.policyRuntime.mu.Lock()
+	r.mu.Lock()
 	r.collection = intent
-	r.policyRuntime.mu.Unlock()
+	r.mu.Unlock()
 }
 
-func (r *Coordinator) setSensorSupervisor(supervisor *sensorruntime.SubscriptionSupervisor) {
-	r.sensorRuntime.mu.Lock()
-	r.sensorSupervisor = supervisor
-	r.sensorRuntime.mu.Unlock()
-	r.policyRuntime.mu.RLock()
+func (r *policyRuntime) setSensorSupervisor(supervisor *sensorruntime.SubscriptionSupervisor) {
+	r.sensor.mu.Lock()
+	r.sensor.sensorSupervisor = supervisor
+	r.sensor.mu.Unlock()
+	r.mu.RLock()
 	intent := r.collection
-	r.policyRuntime.mu.RUnlock()
+	r.mu.RUnlock()
 	supervisor.UpdateIntent(intent)
 }
 
-func (r *Coordinator) currentCollectionIntent() contract.CollectionIntent {
-	r.policyRuntime.mu.RLock()
-	defer r.policyRuntime.mu.RUnlock()
+func (r *sensorRuntime) currentSupervisor() *sensorruntime.SubscriptionSupervisor {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.sensorSupervisor
+}
+
+func (r *policyRuntime) currentCollectionIntent() contract.CollectionIntent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.collection
 }
 
-func (r *Coordinator) withCollectionCapabilities(intent contract.CollectionIntent) contract.CollectionIntent {
-	if len(intent.Capabilities) == 0 && len(r.capability.Collection) > 0 {
-		intent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), r.capability.Collection...)
+func (r *policyRuntime) withCollectionCapabilities(intent contract.CollectionIntent) contract.CollectionIntent {
+	if len(intent.Capabilities) == 0 && len(r.sensor.capability.Collection) > 0 {
+		intent.Capabilities = append([]contract.CollectionBehaviorCapability(nil), r.sensor.capability.Collection...)
 	}
 	return intent
 }
 
-func (r *Coordinator) applyRuntimePolicy(policy policymodel.Policy) {
+func (r *policyRuntime) applyRuntimePolicy(policy policymodel.Policy) {
 	r.tryApplyRuntimePolicy(policy)
 }
 
-func (r *Coordinator) tryApplyRuntimePolicy(policy policymodel.Policy) (detectionruntime.ApplyReport, bool) {
+func (r *policyRuntime) tryApplyRuntimePolicy(policy policymodel.Policy) (detectionruntime.ApplyReport, bool) {
 	policy = policymodel.Normalize(policy)
 	engine, report := detectionadapter.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits())
 	if report.Status == "rejected" {
@@ -93,7 +133,7 @@ func (r *Coordinator) tryApplyRuntimePolicy(policy policymodel.Policy) (detectio
 	return report, true
 }
 
-func (r *Coordinator) rebuildDetection() detectionruntime.ApplyReport {
+func (r *policyRuntime) rebuildDetection() detectionruntime.ApplyReport {
 	policy := policymodel.Normalize(r.activePolicy())
 	engine, report := detectionadapter.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), r.detectionContentSnapshot(), r.detectionLimits())
 	if report.Status == "rejected" {
@@ -105,13 +145,13 @@ func (r *Coordinator) rebuildDetection() detectionruntime.ApplyReport {
 	return report
 }
 
-func (r *Coordinator) buildDetectionWithSnapshot(snapshot agentcontent.Snapshot) (*detectionruntime.State, detectionruntime.ApplyReport) {
+func (r *policyRuntime) buildDetectionWithSnapshot(snapshot agentcontent.Snapshot) (*detectionruntime.State, detectionruntime.ApplyReport) {
 	policy := policymodel.Normalize(r.activePolicy())
 	engine, report := detectionadapter.NewWithRuntimeLimits(policy.Detection, r.currentCollectionIntent(), detectionContentSnapshotFromContent(snapshot), r.detectionLimits())
 	return engine, report
 }
 
-func (r *Coordinator) setDetectionStatus(policy policymodel.Policy, report detectionruntime.ApplyReport, snapshot agentcontent.Snapshot) {
+func (r *policyRuntime) setDetectionStatus(policy policymodel.Policy, report detectionruntime.ApplyReport, snapshot agentcontent.Snapshot) {
 	status := agenthealth.DetectionHealth{
 		PolicyID:               firstNonEmptyString(policy.Detection.PolicyID, policy.PolicyID),
 		PolicyVersion:          policy.Detection.Version,
@@ -124,8 +164,8 @@ func (r *Coordinator) setDetectionStatus(policy policymodel.Policy, report detec
 	if report.Status == "rejected" {
 		status.LastApplyError = strings.Join(report.Details, "; ")
 	}
-	r.policyRuntime.mu.Lock()
-	defer r.policyRuntime.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.detectionStatus = status
 }
 
@@ -138,10 +178,10 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func (r *Coordinator) detectionLimits() detectionruntime.EngineLimits {
+func (r *policyRuntime) detectionLimits() detectionruntime.EngineLimits {
 	return detectionruntime.EngineLimits{
-		MaxCEPGroups: r.Config.Resource.MaxActiveCEPGroups,
-		MaxCEPRefs:   r.Config.Resource.MaxEventRefsPerSignal,
+		MaxCEPGroups: r.config.Resource.MaxActiveCEPGroups,
+		MaxCEPRefs:   r.config.Resource.MaxEventRefsPerSignal,
 	}
 }
 

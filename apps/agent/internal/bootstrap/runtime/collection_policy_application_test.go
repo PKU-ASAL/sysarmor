@@ -34,7 +34,7 @@ func TestCollectionProductionPathPersistsUnifiedEndpointAfterSensorApply(t *test
 	sensor := &recordingCollectionSensor{healthOnlySensor: healthOnlySensor{health: contract.Health{Backend: "fake"}}}
 	runner := newEndpointPolicyRunner(t, store, sensor)
 	runner.Config.Sensor = config.SensorConfig{Scope: config.RuntimeScope{Type: "host"}}
-	runner.setEndpointPolicy(endpoint)
+	runner.policyState.setEndpointPolicy(endpoint)
 	controller := newApplicationPolicyController(runner, sensorruntime.New(sensor), nil)
 
 	result := controller.ApplyPolicy(t.Context(), agentcontrol.PolicyCommand{
@@ -54,7 +54,7 @@ func TestCollectionProductionPathPersistsUnifiedEndpointAfterSensorApply(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Version != 2 || persisted.Collection.Identity.ID != "collection-a" || runner.currentEndpointPolicy().Version != 2 {
-		t.Fatalf("persisted=%+v runtime=%+v", persisted, runner.currentEndpointPolicy())
+	if persisted.Version != 2 || persisted.Collection.Identity.ID != "collection-a" || runner.policyState.currentEndpointPolicy().Version != 2 {
+		t.Fatalf("persisted=%+v runtime=%+v", persisted, runner.policyState.currentEndpointPolicy())
 	}
 }

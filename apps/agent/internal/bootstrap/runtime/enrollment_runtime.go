@@ -20,8 +20,8 @@ type enrollmentCoordinator struct {
 }
 
 type enrollmentRuntime struct {
-	runner  *Coordinator
-	runtime sensorruntime.Runtime
+	management *managementRuntime
+	runtime    sensorruntime.Runtime
 }
 
 type enrollmentPreparationState struct {
@@ -33,38 +33,38 @@ type enrollmentPreparationState struct {
 
 func (s enrollmentPreparationState) PreparedEnrollment() ports.Enrollment { return s.enrollment }
 
-func newEnrollmentCoordinator(lifecycleCtx context.Context, runner *Coordinator, runtime sensorruntime.Runtime) *enrollmentCoordinator {
+func newEnrollmentCoordinator(lifecycleCtx context.Context, management *managementRuntime, runtime sensorruntime.Runtime) *enrollmentCoordinator {
 	coordinator := &enrollmentCoordinator{}
-	if runner.localStore == nil {
-		coordinator.Service = appenrollment.NewService(lifecycleCtx, nil, newEnrollmentRuntime(runner, runtime))
+	if management.localStore == nil {
+		coordinator.Service = appenrollment.NewService(lifecycleCtx, nil, newEnrollmentRuntime(management, runtime))
 		return coordinator
 	}
 	complete := func(ctx context.Context, kind string) error {
 		if coordinator.completeUnenrollment != nil {
 			return coordinator.completeUnenrollment(ctx, kind)
 		}
-		return runner.localStore.CompleteUnenrollment(ctx, kind)
+		return management.localStore.CompleteUnenrollment(ctx, kind)
 	}
-	store := adapterenrollment.NewStore(runner.localStore, complete)
-	coordinator.Service = appenrollment.NewService(lifecycleCtx, store, newEnrollmentRuntime(runner, runtime))
+	store := adapterenrollment.NewStore(management.localStore, complete)
+	coordinator.Service = appenrollment.NewService(lifecycleCtx, store, newEnrollmentRuntime(management, runtime))
 	return coordinator
 }
 
-func newEnrollmentRuntime(runner *Coordinator, runtime sensorruntime.Runtime) *enrollmentRuntime {
-	return &enrollmentRuntime{runner: runner, runtime: runtime}
+func newEnrollmentRuntime(management *managementRuntime, runtime sensorruntime.Runtime) *enrollmentRuntime {
+	return &enrollmentRuntime{management: management, runtime: runtime}
 }
 
 func (r *enrollmentRuntime) Identity() ports.EnrollmentIdentity {
-	identity := r.runner.currentIdentity()
+	identity := r.management.currentIdentity()
 	return ports.EnrollmentIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (r *enrollmentRuntime) PrepareEnrollment(ctx context.Context, managerURL, token string) (ports.EnrollmentPreparation, error) {
-	certificate, keyPEM, pendingKeyPath, err := adapterenrollment.RequestCertificate(ctx, managerURL, token, r.runner.Config.Local.StatePath)
+	certificate, keyPEM, pendingKeyPath, err := adapterenrollment.RequestCertificate(ctx, managerURL, token, r.management.config.Local.StatePath)
 	if err != nil {
 		return nil, err
 	}
-	paths, created, err := adapterenrollment.WriteCredentials(r.runner.Config.Local.StatePath, certificate, keyPEM)
+	paths, created, err := adapterenrollment.WriteCredentials(r.management.config.Local.StatePath, certificate, keyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("write credentials: %v", err)
 	}
@@ -94,30 +94,30 @@ func (r *enrollmentRuntime) FinalizeEnrollment(preparation ports.EnrollmentPrepa
 }
 
 func (r *enrollmentRuntime) StopEnrollmentNetwork() {
-	if r.runner.network != nil {
-		r.runner.network.Stop()
+	if r.management.network != nil {
+		r.management.network.Stop()
 	}
 }
 
 func (r *enrollmentRuntime) ReconcileEnrollment(enrollment ports.Enrollment) error {
-	return r.runner.reconcileManagementContext(localEnrollment(enrollment))
+	return r.management.reconcileManagementContext(localEnrollment(enrollment))
 }
 
 func (r *enrollmentRuntime) WithPolicyAuthority(run func() error) error {
-	r.runner.policyAuthorityMu.Lock()
-	defer r.runner.policyAuthorityMu.Unlock()
+	r.management.policy.policyAuthorityMu.Lock()
+	defer r.management.policy.policyAuthorityMu.Unlock()
 	return run()
 }
 
 func (r *enrollmentRuntime) RevokeEnrollment(ctx context.Context, enrollment ports.Enrollment, tokenHash string) (string, time.Time, error) {
-	if r.runner.revokeEnrollment != nil {
-		return r.runner.revokeEnrollment(ctx, localEnrollment(enrollment), tokenHash)
+	if r.management.revokeEnrollment != nil {
+		return r.management.revokeEnrollment(ctx, localEnrollment(enrollment), tokenHash)
 	}
 	return adapterenrollment.Revoke(ctx, localEnrollment(enrollment), tokenHash)
 }
 
 func (r *enrollmentRuntime) RestoreStandalonePolicy(ctx context.Context, activate func(context.Context) error) error {
-	return newEndpointPolicyApplication(r.runner, r.runtime, nil).RestoreStandalone(ctx, activate)
+	return newEndpointPolicyApplication(r.management.policy, r.runtime, nil).RestoreStandalone(ctx, activate)
 }
 
 func (r *enrollmentRuntime) RemoveEnrollmentCredentials(enrollment ports.Enrollment) error {
@@ -142,11 +142,11 @@ func localEnrollment(value ports.Enrollment) sqlite.Enrollment {
 }
 
 func (r *enrollmentRuntime) ReportUnenrollmentCompletion(ctx context.Context) (bool, error) {
-	if r.runner.reportUnenrollment != nil {
-		return r.runner.reportUnenrollment(ctx)
+	if r.management.reportUnenrollment != nil {
+		return r.management.reportUnenrollment(ctx)
 	}
-	if r.runner.completionReporter == nil {
+	if r.management.completionReporter == nil {
 		return false, fmt.Errorf("unenrollment completion reporter is unavailable")
 	}
-	return r.runner.completionReporter.ReportOnce(ctx)
+	return r.management.completionReporter.ReportOnce(ctx)
 }

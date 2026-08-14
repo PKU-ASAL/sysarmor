@@ -25,10 +25,10 @@ func TestEnrollmentControllerKeepsManagedAuthorityUntilRevocation(t *testing.T) 
 	}
 	setManagedEnrollmentForTest(t, store)
 	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{health: contract.Health{Backend: "fake"}})
-	runner.revokeEnrollment = func(context.Context, sqlite.Enrollment, string) (string, time.Time, error) {
+	runner.managementState.revokeEnrollment = func(context.Context, sqlite.Enrollment, string) (string, time.Time, error) {
 		return "", time.Time{}, context.DeadlineExceeded
 	}
-	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
+	controller := newEnrollmentCoordinator(t.Context(), &runner.managementState, sensorruntime.New(runner.Sensor))
 	result := controller.Unenroll(t.Context(), appenrollment.UnenrollmentCommand{})
 	enrollment, err := store.Enrollment(t.Context())
 	_, source, ok, activeErr := store.ActivePolicy(t.Context(), "endpoint")
@@ -46,22 +46,22 @@ func TestUnenrollDoesNotWaitForManagedFlowWhileHoldingPolicyAuthority(t *testing
 	}
 	setManagedEnrollmentForTest(t, store)
 	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{health: contract.Health{Backend: "fake"}})
-	runner.revokeEnrollment = func(context.Context, sqlite.Enrollment, string) (string, time.Time, error) {
+	runner.managementState.revokeEnrollment = func(context.Context, sqlite.Enrollment, string) (string, time.Time, error) {
 		return "receipt-a", time.Now().UTC(), nil
 	}
-	runner.setEndpointPolicy(standalone)
+	runner.policyState.setEndpointPolicy(standalone)
 	flowStarted := make(chan struct{})
 	var flowStartedOnce sync.Once
-	runner.network = newNetworkSupervisor(t.Context(), func(ctx context.Context) { <-ctx.Done() }, func(ctx context.Context, _ sqlite.Enrollment) {
+	runner.managementState.network = newNetworkSupervisor(t.Context(), func(ctx context.Context) { <-ctx.Done() }, func(ctx context.Context, _ sqlite.Enrollment) {
 		flowStartedOnce.Do(func() { close(flowStarted) })
 		<-ctx.Done()
-		runner.policyAuthorityMu.Lock()
-		runner.policyAuthorityMu.Unlock()
+		runner.policyState.policyAuthorityMu.Lock()
+		runner.policyState.policyAuthorityMu.Unlock()
 	})
 	enrollment := sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "agent-a"}
-	runner.network.ApplyEnrollment(enrollment, managementContextForTest(t, enrollment.State))
+	runner.managementState.network.ApplyEnrollment(enrollment, managementContextForTest(t, enrollment.State))
 	<-flowStarted
-	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
+	controller := newEnrollmentCoordinator(t.Context(), &runner.managementState, sensorruntime.New(runner.Sensor))
 	done := make(chan lifecycle.Result, 1)
 	go func() {
 		done <- controller.Unenroll(t.Context(), appenrollment.UnenrollmentCommand{})
@@ -84,10 +84,10 @@ func TestUnenrollRemainsManagedWhenManagerRevocationIsUnconfirmed(t *testing.T) 
 	}
 	setManagedEnrollmentForTest(t, store)
 	runner := newEndpointPolicyRunner(t, store, &healthOnlySensor{health: contract.Health{Backend: "fake"}})
-	runner.revokeEnrollment = func(context.Context, sqlite.Enrollment, string) (string, time.Time, error) {
+	runner.managementState.revokeEnrollment = func(context.Context, sqlite.Enrollment, string) (string, time.Time, error) {
 		return "", time.Time{}, context.DeadlineExceeded
 	}
-	controller := newEnrollmentCoordinator(t.Context(), runner, sensorruntime.New(runner.Sensor))
+	controller := newEnrollmentCoordinator(t.Context(), &runner.managementState, sensorruntime.New(runner.Sensor))
 	result := controller.Unenroll(t.Context(), appenrollment.UnenrollmentCommand{})
 	got, readErr := store.Enrollment(t.Context())
 	if result.Status != "pending" || readErr != nil || got.State != sqlite.StateUnenrolling || got.RevocationConfirmed {
@@ -109,8 +109,8 @@ func TestEnrollReturnsPendingWithoutRequestingAnotherCertificate(t *testing.T) {
 	if err := store.SetEnrolling(t.Context(), enrollment); err != nil {
 		t.Fatal(err)
 	}
-	runner := &Coordinator{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, managementRuntime: managementRuntime{localStore: store}}
-	controller := newEnrollmentCoordinator(t.Context(), runner, nil)
+	runner := &Coordinator{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, managementState: managementRuntime{localStore: store}}
+	controller := newEnrollmentCoordinator(t.Context(), &runner.managementState, nil)
 	result := controller.Enroll(t.Context(), appenrollment.EnrollmentCommand{ManagerURL: "://invalid"})
 	if result.Status != "pending" || !strings.Contains(result.Message, "already waiting") {
 		t.Fatalf("result=%+v", result)
@@ -124,8 +124,8 @@ func TestEnrollRejectsManagedAgentWithoutRequestingAnotherCertificate(t *testing
 	}
 	defer store.Close()
 	setManagedEnrollmentForTest(t, store)
-	runner := &Coordinator{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, managementRuntime: managementRuntime{localStore: store}}
-	controller := newEnrollmentCoordinator(t.Context(), runner, nil)
+	runner := &Coordinator{Config: config.Config{Local: config.LocalConfig{StatePath: t.TempDir()}}, managementState: managementRuntime{localStore: store}}
+	controller := newEnrollmentCoordinator(t.Context(), &runner.managementState, nil)
 	result := controller.Enroll(t.Context(), appenrollment.EnrollmentCommand{ManagerURL: "://invalid"})
 	if result.Status != "rejected" || !strings.Contains(result.Message, "already managed") {
 		t.Fatalf("result=%+v", result)

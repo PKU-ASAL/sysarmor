@@ -11,20 +11,20 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-func (r *Coordinator) loadStartupPolicy(ctx context.Context) (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
-	if r.localStore == nil {
+func (r *policyRuntime) loadStartupPolicy(ctx context.Context) (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
+	if r.management.localStore == nil {
 		return r.loadLegacyRuntimePolicy()
 	}
-	if _, err := agentpolicy.EnsureStandaloneEndpointPolicy(ctx, r.localStore, r.Config.Policy.Path); err != nil {
-		_, source, ok, activeErr := r.localStore.ActivePolicy(ctx, "endpoint")
+	if _, err := agentpolicy.EnsureStandaloneEndpointPolicy(ctx, r.management.localStore, r.config.Policy.Path); err != nil {
+		_, source, ok, activeErr := r.management.localStore.ActivePolicy(ctx, "endpoint")
 		if activeErr != nil || !ok || source != sqlite.PolicySourceManaged {
 			return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
 		}
-		if r.Out != nil {
-			fmt.Fprintf(r.Out, "agent standalone fallback unavailable: %v\n", err)
+		if r.out != nil {
+			fmt.Fprintf(r.out, "agent standalone fallback unavailable: %v\n", err)
 		}
 	}
-	endpoint, err := agentpolicy.LoadEffectiveEndpointPolicy(ctx, r.localStore, r.Config.Policy.Path)
+	endpoint, err := agentpolicy.LoadEffectiveEndpointPolicy(ctx, r.management.localStore, r.config.Policy.Path)
 	if err != nil {
 		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
 	}
@@ -32,11 +32,11 @@ func (r *Coordinator) loadStartupPolicy(ctx context.Context) (contract.Collectio
 	if err != nil {
 		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
 	}
-	effectiveTelemetry, err := config.ResolveTelemetry(r.Config.Telemetry, &endpoint.Telemetry)
+	effectiveTelemetry, err := config.ResolveTelemetry(r.config.Telemetry, &endpoint.Telemetry)
 	if err != nil {
 		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
 	}
-	policy := policymodel.DefaultPolicy(r.currentIdentity().TenantID)
+	policy := policymodel.DefaultPolicy(r.management.currentIdentity().TenantID)
 	policy.PolicyID = endpoint.PolicyID
 	policy.Version = endpoint.Version
 	policy.Detection = &endpoint.Detection
@@ -47,40 +47,40 @@ func (r *Coordinator) loadStartupPolicy(ctx context.Context) (contract.Collectio
 	return intent, policy, effectiveTelemetry, nil
 }
 
-func (r *Coordinator) setEffectiveTelemetry(value config.EffectiveTelemetry) {
-	r.policyRuntime.mu.Lock()
-	defer r.policyRuntime.mu.Unlock()
+func (r *policyRuntime) setEffectiveTelemetry(value config.EffectiveTelemetry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.effectiveTelemetry = value
 }
 
-func (r *Coordinator) currentEffectiveTelemetry() config.EffectiveTelemetry {
-	r.policyRuntime.mu.RLock()
-	defer r.policyRuntime.mu.RUnlock()
+func (r *policyRuntime) currentEffectiveTelemetry() config.EffectiveTelemetry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.effectiveTelemetry
 }
 
-func (r *Coordinator) setEndpointPolicy(policy policymodel.EndpointPolicy) {
-	r.policyRuntime.mu.Lock()
-	defer r.policyRuntime.mu.Unlock()
+func (r *policyRuntime) setEndpointPolicy(policy policymodel.EndpointPolicy) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.endpointPolicy = policy
 }
 
-func (r *Coordinator) currentEndpointPolicy() policymodel.EndpointPolicy {
-	r.policyRuntime.mu.RLock()
-	defer r.policyRuntime.mu.RUnlock()
+func (r *policyRuntime) currentEndpointPolicy() policymodel.EndpointPolicy {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.endpointPolicy
 }
 
-func (r *Coordinator) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy policymodel.EndpointPolicy) error {
-	if r.localStore == nil {
+func (r *policyRuntime) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy policymodel.EndpointPolicy) error {
+	if r.management.localStore == nil {
 		r.setEndpointPolicy(policy)
 		return nil
 	}
 	var err error
 	if source == sqlite.PolicySourceManaged {
-		err = agentpolicy.ActivateManagedEndpointPolicy(ctx, r.localStore, policy)
+		err = agentpolicy.ActivateManagedEndpointPolicy(ctx, r.management.localStore, policy)
 	} else {
-		err = agentpolicy.SaveEffectiveEndpointPolicy(ctx, r.localStore, policy)
+		err = agentpolicy.SaveEffectiveEndpointPolicy(ctx, r.management.localStore, policy)
 	}
 	if err != nil {
 		return err
@@ -89,12 +89,12 @@ func (r *Coordinator) persistEndpointPolicy(ctx context.Context, source sqlite.P
 	return nil
 }
 
-func (r *Coordinator) loadLegacyRuntimePolicy() (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
-	intent, err := agentpolicy.LoadCollectionIntent(r.Config.Sensor.PolicyPath, r.Config.Sensor.ObserveOnly)
+func (r *policyRuntime) loadLegacyRuntimePolicy() (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
+	intent, err := agentpolicy.LoadCollectionIntent(r.config.Sensor.PolicyPath, r.config.Sensor.ObserveOnly)
 	if err != nil {
 		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
 	}
 	policy := r.activePolicy()
-	effectiveTelemetry, err := config.ResolveTelemetry(r.Config.Telemetry, policy.Telemetry)
+	effectiveTelemetry, err := config.ResolveTelemetry(r.config.Telemetry, policy.Telemetry)
 	return intent, policy, effectiveTelemetry, err
 }

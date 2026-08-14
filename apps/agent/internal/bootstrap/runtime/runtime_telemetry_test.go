@@ -68,7 +68,7 @@ func TestStandaloneRuntimePersistsBeforeAcknowledging(t *testing.T) {
 	if runner.Config.Agent.ID == "" || runner.Config.Agent.HostID == "" || runner.Config.Agent.TenantID != "local" {
 		t.Fatalf("identity=%+v", runner.Config.Agent)
 	}
-	sender, err := runner.batchSender()
+	sender, err := runner.managementState.batchSender()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestStandaloneRuntimePersistsBeforeAcknowledging(t *testing.T) {
 	if err != nil || !dataappend.AckCommitted(ack) {
 		t.Fatalf("ack=%+v err=%v", ack, err)
 	}
-	batches, err := runner.localStore.ReadBatches(t.Context(), sqlite.ReadOptions{Limit: 10})
+	batches, err := runner.managementState.localStore.ReadBatches(t.Context(), sqlite.ReadOptions{Limit: 10})
 	if err != nil || len(batches) != 1 || batches[0].Batch.GetHeader().GetBatchId() != "standalone-1" {
 		t.Fatalf("batches=%+v err=%v", batches, err)
 	}
@@ -92,14 +92,15 @@ func TestStandaloneRuntimeResumesPersistentSequences(t *testing.T) {
 	}
 	cfg := standaloneTestConfig(t, dir, statePath)
 	runner := newConfiguredTestRuntime(t, cfg)
-	if runner.eventSeq != 41 || runner.initialSignalSequence != 17 {
-		t.Fatalf("eventSeq=%d signalSeq=%d, want 41/17", runner.eventSeq, runner.initialSignalSequence)
+	if runner.telemetryState.eventSeq != 41 || runner.telemetryState.initialSignalSequence != 17 {
+		t.Fatalf("eventSeq=%d signalSeq=%d, want 41/17", runner.telemetryState.eventSeq, runner.telemetryState.initialSignalSequence)
 	}
 }
 
 func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
-	runner := &Coordinator{telemetryRuntime: telemetryRuntime{initialSignalSequence: 17}}
-	builder := runner.newTelemetryBatchBuilder()
+	runner := &Coordinator{telemetryState: telemetryRuntime{initialSignalSequence: 17}}
+	runner.wireComponents()
+	builder := runner.telemetryState.newBatchBuilder()
 	parent := &eventv1.CanonicalEvent{
 		Id: "event-parent", Behavior: "process.exec",
 		SubjectProc: &eventv1.ProcessRef{StableId: "node-parent", Binary: "/usr/bin/node"},
@@ -238,11 +239,12 @@ func TestRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
 			Telemetry: config.TelemetryConfig{MaxBatchItems: 10, MaxBatchBytes: 256 << 10, FlushInterval: time.Hour},
 			Local:     config.LocalConfig{Export: config.LocalExportConfig{RequestTimeout: 200 * time.Millisecond, MaxInflight: 1}},
 		},
-		Sensor:        &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
-		sensorRuntime: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsHealth: true}},
+		Sensor:      &healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}},
+		sensorState: sensorRuntime{capability: contract.Capability{Backend: "fake", SupportsHealth: true}},
 	}
+	runner.wireComponents()
 	bus := telemetryadapter.NewBus(16)
-	batcher := telemetryadapter.NewBatcher(runner.newTelemetryBatchBuilder().NewBatch, 10, time.Hour, 4)
+	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, 10, time.Hour, 4)
 	uploader := newRecordingUploader()
 	sender := telemetryadapter.NewRuntimeSender(batcher, uploader, 0, 0)
 	ctx, cancelSender := context.WithCancel(context.Background())
@@ -270,22 +272,23 @@ func TestRuntimeRefreshesEndpointPolicy(t *testing.T) {
 		Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "default", Token: "dev-token", Labels: map[string]string{"scenario": "refresh-scenario"}},
 	}
 	runner := &Coordinator{Config: cfg}
+	runner.wireComponents()
 	installTestDetection(t, runner)
-	runner.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
+	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	norm := eventadapter.NewEventNormalizer(cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})
 	first := appendEndpointEventForTest(t, runner, nil, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
-	updated := runner.activePolicy()
+	updated := runner.policyState.activePolicy()
 	updated.PolicyID = "no-payload-after-refresh"
 	updated.Version = 2
 	disabled := false
 	updated.Detection.RuleOverrides = append(updated.Detection.RuleOverrides, policymodel.RuleOverride{RuleID: "payload_dropped", Enabled: &disabled})
-	runner.applyRuntimePolicy(updated)
+	runner.policyState.applyRuntimePolicy(updated)
 	second := appendEndpointEventForTest(t, runner, nil, norm, sensorEventEnvelope("file.write", 101, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 	signalCounts := []int{len(first.GetSignals()), len(second.GetSignals())}
 	if !containsInt(signalCounts, 1) || !containsInt(signalCounts, 0) {
 		t.Fatalf("signal counts = %v, want one pre-refresh signal and one post-refresh suppressed signal", signalCounts)
 	}
-	if runner.activePolicy().PolicyID != "no-payload-after-refresh" || runner.activePolicy().Version != 2 {
-		t.Fatalf("active policy = %+v", runner.activePolicy())
+	if runner.policyState.activePolicy().PolicyID != "no-payload-after-refresh" || runner.policyState.activePolicy().Version != 2 {
+		t.Fatalf("active policy = %+v", runner.policyState.activePolicy())
 	}
 }

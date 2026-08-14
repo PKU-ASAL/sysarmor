@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"context"
+	"io"
 	"time"
 
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/inbound/unix"
 	sensorruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/runtime"
 	systemadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/system"
@@ -12,65 +14,41 @@ import (
 	appdiagnostics "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/diagnostics"
 )
 
-func (r *Coordinator) startLocalControlServer(ctx context.Context, rt sensorruntime.Runtime, source any, rest ...any) (func(), error) {
-	coordinator := r.configureEnrollmentCoordinator(ctx, rt)
-	bus, batcher, sender, startedAt := r.localControlTelemetryArgs(source, rest...)
-	socketPath := r.Config.Control.SocketPath
+type localControlRuntime struct {
+	config     config.Config
+	out        io.Writer
+	policy     *policyRuntime
+	management *managementRuntime
+	telemetry  *telemetryRuntime
+	sensor     *sensorRuntime
+}
+
+func (r localControlRuntime) start(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) (func(), error) {
+	coordinator := r.management.configureEnrollmentCoordinator(ctx, rt)
+	socketPath := r.config.Control.SocketPath
 	statusService := &localStatusService{
-		runner:    r,
+		health:    newRuntimeHealth(r.config, r.out, r.policy, r.management, r.telemetry, r.sensor),
 		runtime:   rt,
 		bus:       bus,
 		batcher:   batcher,
 		sender:    sender,
 		startedAt: startedAt,
 	}
-	telemetryService := &localTelemetryService{runner: r, bus: bus}
+	telemetryService := &localTelemetryService{management: r.management, bus: bus}
 	handler := localapi.NewHandler(localapi.Dependencies{
 		Status:      statusService,
 		Telemetry:   telemetryService,
-		Policy:      r.policyController(r, rt, batcher),
-		Content:     agentcontrol.NewContentController(newContentApplicationAdapter(r)),
+		Policy:      r.policy.policyController(rt, batcher),
+		Content:     agentcontrol.NewContentController(newContentApplicationAdapter(r.policy)),
 		Enrollment:  coordinator,
 		Diagnostics: appdiagnostics.NewService(systemadapter.NewProfileCapturer()),
-		Validate:    r.validateControlContext,
+		Validate:    r.management.validateControlContext,
 	})
-	return localapi.New(socketPath, handler, r.Out).Start(ctx)
-}
-
-func (r *Coordinator) localControlTelemetryArgs(source any, rest ...any) (*telemetryadapter.Bus, *telemetryadapter.Batcher, *telemetryadapter.RuntimeSender, time.Time) {
-	if bus, ok := source.(*telemetryadapter.Bus); ok {
-		var batcher *telemetryadapter.Batcher
-		var sender *telemetryadapter.RuntimeSender
-		var startedAt time.Time
-		if len(rest) > 0 {
-			batcher, _ = rest[0].(*telemetryadapter.Batcher)
-		}
-		if len(rest) > 1 {
-			sender, _ = rest[1].(*telemetryadapter.RuntimeSender)
-		}
-		if len(rest) > 2 {
-			startedAt, _ = rest[2].(time.Time)
-		}
-		if batcher == nil {
-			batcher = telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
-		}
-		if sender == nil {
-			sender = telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
-		}
-		if startedAt.IsZero() {
-			startedAt = time.Now().UTC()
-		}
-		return bus, batcher, sender, startedAt
-	}
-	bus := telemetryadapter.NewBus(r.Config.Telemetry.MaxBatchItems * 16)
-	batcher := telemetryadapter.NewBatcher(r.newTelemetryBatchBuilder().NewBatch, r.Config.Telemetry.MaxBatchItems, r.Config.Telemetry.FlushInterval, 64, r.Config.Telemetry.MaxBatchBytes)
-	sender := telemetryadapter.NewRuntimeSender(batcher, localBatchSender{}, 0, 0)
-	startedAt := time.Now().UTC()
-	return bus, batcher, sender, startedAt
+	return localapi.New(socketPath, handler, r.out).Start(ctx)
 }
 
 type localStatusService struct {
-	runner    *Coordinator
+	health    runtimeHealth
 	runtime   sensorruntime.Runtime
 	bus       *telemetryadapter.Bus
 	batcher   *telemetryadapter.Batcher
@@ -79,11 +57,11 @@ type localStatusService struct {
 }
 
 type localTelemetryService struct {
-	runner *Coordinator
-	bus    *telemetryadapter.Bus
+	management *managementRuntime
+	bus        *telemetryadapter.Bus
 }
 
-func (r *Coordinator) configureEnrollmentCoordinator(ctx context.Context, rt sensorruntime.Runtime) *enrollmentCoordinator {
+func (r *managementRuntime) configureEnrollmentCoordinator(ctx context.Context, rt sensorruntime.Runtime) *enrollmentCoordinator {
 	r.enrollmentCoordinatorMu.Lock()
 	defer r.enrollmentCoordinatorMu.Unlock()
 	if r.enrollmentCoordinator == nil {

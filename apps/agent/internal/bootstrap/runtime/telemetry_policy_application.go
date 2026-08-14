@@ -25,32 +25,28 @@ func (c *telemetryCandidate) ReportJSON() string {
 }
 
 type telemetryPolicyApplication struct {
-	runner  *Coordinator
+	policy  *policyRuntime
 	batcher *telemetryadapter.Batcher
 	service *applicationpolicy.TelemetryService
 }
 
-func newTelemetryPolicyApplication(runner *Coordinator, batcher *telemetryadapter.Batcher) *telemetryPolicyApplication {
-	application := &telemetryPolicyApplication{runner: runner, batcher: batcher}
+func newTelemetryPolicyApplication(policy *policyRuntime, batcher *telemetryadapter.Batcher) *telemetryPolicyApplication {
+	application := &telemetryPolicyApplication{policy: policy, batcher: batcher}
 	application.service = applicationpolicy.NewTelemetryService(application, application)
 	return application
 }
 
-func NewTelemetryPolicyApplication(runner *Coordinator, batcher *telemetryadapter.Batcher) agentcontrol.TelemetryApplication {
-	return newTelemetryPolicyApplication(runner, batcher)
-}
-
 func (a *telemetryPolicyApplication) PolicyIdentity() agentcontrol.PolicyIdentity {
-	identity := a.runner.currentIdentity()
+	identity := a.policy.management.currentIdentity()
 	return agentcontrol.PolicyIdentity{TenantID: identity.TenantID, AgentID: identity.AgentID}
 }
 
 func (a *telemetryPolicyApplication) ValidatePolicyContext(ctx agentcontrol.RequestContext) error {
-	return a.runner.validateControlIdentity(ctx.TenantID, ctx.AgentID)
+	return a.policy.management.validateControlIdentity(ctx.TenantID, ctx.AgentID)
 }
 
 func (a *telemetryPolicyApplication) BeginLocalPolicyMutation(ctx context.Context, mutation bool) (func(), error) {
-	return a.runner.beginLocalPolicyMutation(ctx, mutation)
+	return a.policy.beginLocalPolicyMutation(ctx, mutation)
 }
 
 func (a *telemetryPolicyApplication) ValidateTelemetry(ctx context.Context, document string, input *applicationpolicy.TelemetryInput) (applicationpolicy.TelemetryCandidate, error) {
@@ -69,11 +65,11 @@ func (a *telemetryPolicyApplication) PrepareTelemetry(_ context.Context, documen
 	if _, err := config.ResolveTelemetry(config.DefaultTelemetryConfig(), &policy); err != nil {
 		return nil, err
 	}
-	effective, err := config.ResolveTelemetry(a.runner.Config.Telemetry, &policy)
+	effective, err := config.ResolveTelemetry(a.policy.config.Telemetry, &policy)
 	if err != nil {
 		return nil, err
 	}
-	endpoint := a.runner.currentEndpointPolicy()
+	endpoint := a.policy.currentEndpointPolicy()
 	endpoint.Telemetry = policy
 	endpoint.Version++
 	return &telemetryCandidate{policy: policy, effective: effective, endpoint: endpoint}, nil
@@ -108,10 +104,10 @@ func (a *telemetryPolicyApplication) PersistTelemetry(ctx context.Context, candi
 	if err != nil {
 		return err
 	}
-	if a.runner.localStore == nil {
+	if a.policy.management.localStore == nil {
 		return nil
 	}
-	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.runner.localStore, prepared.endpoint)
+	return agentpolicy.SaveEffectiveEndpointPolicy(ctx, a.policy.management.localStore, prepared.endpoint)
 }
 
 func (a *telemetryPolicyApplication) PublishTelemetry(candidate applicationpolicy.TelemetryCandidate) {
@@ -119,8 +115,8 @@ func (a *telemetryPolicyApplication) PublishTelemetry(candidate applicationpolic
 	if err != nil {
 		return
 	}
-	a.runner.setEndpointPolicy(prepared.endpoint)
-	a.runner.setEffectiveTelemetry(prepared.effective)
+	a.policy.setEndpointPolicy(prepared.endpoint)
+	a.policy.setEffectiveTelemetry(prepared.effective)
 	if a.batcher != nil {
 		a.batcher.Reconfigure(telemetryadapter.BatchSettings{
 			MaxItems: prepared.effective.MaxBatchItems, MaxBytes: prepared.effective.MaxBatchBytes,

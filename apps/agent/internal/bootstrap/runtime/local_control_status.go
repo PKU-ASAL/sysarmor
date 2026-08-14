@@ -11,18 +11,18 @@ import (
 )
 
 func (s *localStatusService) Health(ctx context.Context, req *controlplanev1.HealthRequest) (*controlplanev1.HealthResponse, error) {
-	snapshot := s.runner.collectHealthSnapshot(ctx, s.runtime, s.bus, s.batcher, s.sender, s.startedAt)
+	snapshot := s.health.snapshot(ctx, s.runtime, s.bus, s.batcher, s.sender, s.startedAt)
 	return healthResponseSnapshot(snapshot), nil
 }
 
 func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1.CapabilityRequest) (*controlplanev1.CapabilityResponse, error) {
-	identity := s.runner.currentIdentity()
+	identity := s.health.management.currentIdentity()
 	return &controlplanev1.CapabilityResponse{
 		AgentId:  identity.AgentID,
 		HostId:   identity.HostID,
 		TenantId: identity.TenantID,
-		Scope:    scopeMessage(s.runner.runtimeScope()),
-		Sensor:   capabilityMessage(s.runner.runtimeCapability()),
+		Scope:    scopeMessage(s.health.runtimeScope()),
+		Sensor:   capabilityMessage(s.health.runtimeCapability()),
 		SupportedPolicySections: []string{
 			"collection",
 			"detection",
@@ -33,7 +33,7 @@ func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1
 		SupportedResponseActions: []string{
 			"collect_evidence",
 		},
-		CollectionBehaviors: collectionBehaviorMessages(s.runner.runtimeCapability().Collection),
+		CollectionBehaviors: collectionBehaviorMessages(s.health.runtimeCapability().Collection),
 	}, nil
 }
 
