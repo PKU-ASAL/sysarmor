@@ -2,12 +2,14 @@ package detection
 
 import (
 	"fmt"
+	"slices"
+	"strings"
+
 	detectionmodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	domainruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
-	"strings"
 )
 
 type Engine struct{ state *domainruntime.State }
@@ -61,6 +63,21 @@ func coverage(policy *policymodel.DetectionPolicy, collection contract.Collectio
 	if policy == nil || len(collection.Behaviors) == 0 {
 		return CoverageReport{Status: "unknown"}
 	}
+	behaviors, capabilities := coverageInputs(collection)
+	report := CoverageReport{Status: "covered"}
+	for _, rule := range rules {
+		item := ruleCoverage(rule, behaviors, capabilities)
+		if item.Status == "missing_inputs" {
+			report.Status = "degraded"
+			missing := append(append([]string(nil), item.MissingBehaviors...), item.MissingFields...)
+			report.Warnings = append(report.Warnings, fmt.Sprintf("rule %s missing collection inputs: %s", rule.RuleID, strings.Join(missing, ",")))
+		}
+		report.Rules = append(report.Rules, item)
+	}
+	return report
+}
+
+func coverageInputs(collection contract.CollectionIntent) (map[string]bool, map[string]map[string]bool) {
 	behaviors := map[string]bool{}
 	for _, behavior := range collection.Behaviors {
 		behaviors[strings.ToLower(strings.TrimSpace(behavior))] = true
@@ -75,39 +92,43 @@ func coverage(policy *policymodel.DetectionPolicy, collection contract.Collectio
 			capabilities[behavior][field] = true
 		}
 	}
-	report := CoverageReport{Status: "covered"}
-	for _, rule := range rules {
-		item := domainruntime.RuleCoverage{RuleID: rule.RuleID, Status: "covered"}
-		for _, required := range rule.RequiredBehaviors {
-			required = strings.ToLower(strings.TrimSpace(required))
-			if required == "" {
-				continue
-			}
-			item.RequiredBehaviors = append(item.RequiredBehaviors, required)
-			if !behaviors[required] {
-				item.MissingBehaviors = append(item.MissingBehaviors, required)
-			}
+	return behaviors, capabilities
+}
+
+func ruleCoverage(rule RuleSpec, behaviors map[string]bool, capabilities map[string]map[string]bool) domainruntime.RuleCoverage {
+	item := domainruntime.RuleCoverage{RuleID: rule.RuleID, Status: "covered"}
+	for _, required := range rule.RequiredBehaviors {
+		required = strings.ToLower(strings.TrimSpace(required))
+		if required == "" {
+			continue
 		}
-		for _, required := range rule.RequiredEvents {
-			behavior := strings.ToLower(strings.TrimSpace(required.Behavior))
-			if behavior != "" && !behaviors[behavior] {
-				item.MissingBehaviors = append(item.MissingBehaviors, behavior)
-			}
-			for _, field := range required.Fields {
-				if behavior != "" && len(capabilities) > 0 && !capabilities[behavior][field] {
-					item.MissingFields = append(item.MissingFields, behavior+":"+field)
-				}
-			}
+		item.RequiredBehaviors = append(item.RequiredBehaviors, required)
+		if !behaviors[required] {
+			item.MissingBehaviors = appendUnique(item.MissingBehaviors, required)
 		}
-		if len(item.MissingBehaviors) > 0 || len(item.MissingFields) > 0 {
-			item.Status = "missing_inputs"
-			report.Status = "degraded"
-			missing := append(append([]string(nil), item.MissingBehaviors...), item.MissingFields...)
-			report.Warnings = append(report.Warnings, fmt.Sprintf("rule %s missing collection inputs: %s", rule.RuleID, strings.Join(missing, ",")))
-		}
-		report.Rules = append(report.Rules, item)
 	}
-	return report
+	for _, required := range rule.RequiredEvents {
+		behavior := strings.ToLower(strings.TrimSpace(required.Behavior))
+		if behavior != "" && !behaviors[behavior] {
+			item.MissingBehaviors = appendUnique(item.MissingBehaviors, behavior)
+		}
+		for _, field := range required.Fields {
+			if behavior != "" && len(capabilities) > 0 && !capabilities[behavior][field] {
+				item.MissingFields = append(item.MissingFields, behavior+":"+field)
+			}
+		}
+	}
+	if len(item.MissingBehaviors) > 0 || len(item.MissingFields) > 0 {
+		item.Status = "missing_inputs"
+	}
+	return item
+}
+
+func appendUnique(values []string, value string) []string {
+	if slices.Contains(values, value) {
+		return values
+	}
+	return append(values, value)
 }
 
 func (e *Engine) Process(event domainevent.Event) []*detectionmodel.Signal {
