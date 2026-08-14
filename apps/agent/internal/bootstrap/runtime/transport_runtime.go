@@ -72,8 +72,8 @@ func (r *TransportRuntime) runControlChannel(ctx context.Context, manager, token
 	if err := handleInitialControlFrames(ctx, session, dispatcher, remoteIdentity, frames); err != nil {
 		return err
 	}
-	healthRuntime := newRuntimeHealth(dependencies.config, dependencies.out, dependencies.policy, dependencies.management, dependencies.telemetry, dependencies.sensorState)
-	if err := r.sendRuntimeHealth(ctx, session, healthRuntime, identity, false); err != nil {
+	healthRuntime := newRuntimeHealth(dependencies.config, dependencies.out, dependencies.policy, dependencies.management, dependencies.sensorState)
+	if err := r.sendRuntimeHealth(ctx, session, healthRuntime, identity); err != nil {
 		return err
 	}
 	return r.serveControlChannel(ctx, session, dispatcher, remoteIdentity, healthRuntime, identity)
@@ -106,14 +106,8 @@ func handleInitialControlFrames(ctx context.Context, session *grpcoutbound.Contr
 	return nil
 }
 
-func (r *TransportRuntime) sendRuntimeHealth(ctx context.Context, session *grpcoutbound.ControlChannel, healthRuntime runtimeHealth, identity runtimeIdentity, required bool) error {
-	health, err := healthRuntime.collect(ctx, r.sensor, r.bus, r.batcher, r.sender, r.startedAt)
-	if err != nil {
-		if required {
-			return err
-		}
-		return nil
-	}
+func (r *TransportRuntime) sendRuntimeHealth(ctx context.Context, session *grpcoutbound.ControlChannel, healthRuntime runtimeHealth, identity runtimeIdentity) error {
+	health := healthRuntime.collect(ctx, r.sensor, r.bus, r.batcher, r.sender, r.startedAt)
 	health = bindHealthToSession(health, identity)
 	if err := session.SendHealth(ctx, healthResponse(health)); err != nil {
 		return err
@@ -163,7 +157,7 @@ func (r *TransportRuntime) serveControlChannel(ctx context.Context, session *grp
 				return err
 			}
 		case <-ticker.C:
-			if err := r.sendRuntimeHealth(ctx, session, healthRuntime, identity, true); err != nil {
+			if err := r.sendRuntimeHealth(ctx, session, healthRuntime, identity); err != nil {
 				return err
 			}
 		}

@@ -45,11 +45,10 @@ type activeRuntime struct {
 	local       *LocalRuntime
 	network     *networkSupervisor
 	stopSensor  func()
-	longControl bool
 }
 
 func (r *Coordinator) healthRuntime() runtimeHealth {
-	return newRuntimeHealth(r.Config, r.Out, &r.policyState, &r.managementState, &r.telemetryState, &r.sensorState)
+	return newRuntimeHealth(r.Config, r.Out, &r.policyState, &r.managementState, &r.sensorState)
 }
 
 func (a *activeRuntime) Close() {
@@ -103,12 +102,12 @@ func (r *Coordinator) restoreManagementContext(ctx context.Context) (string, err
 	return "management_context", r.managementState.reconcileManagementContext(enrollment)
 }
 
-func (r *Coordinator) startRuntime(ctx context.Context, startup *runtimeStartup, reporter healthReporter, startedAt time.Time, fail startupFailure) (*activeRuntime, error) {
+func (r *Coordinator) startRuntime(ctx context.Context, startup *runtimeStartup, startedAt time.Time, fail startupFailure) (*activeRuntime, error) {
 	events, err := r.startSensor(ctx, *startup, fail)
 	if err != nil {
 		return nil, err
 	}
-	active, transport, err := r.startDataPlane(ctx, *startup, reporter, startedAt, fail)
+	active, transport, err := r.startDataPlane(ctx, *startup, startedAt, fail)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +136,7 @@ func (r *Coordinator) startSensor(ctx context.Context, startup runtimeStartup, f
 	return supervisor.Events(), nil
 }
 
-func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup, reporter healthReporter, startedAt time.Time, fail startupFailure) (*activeRuntime, *TransportRuntime, error) {
+func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup, startedAt time.Time, fail startupFailure) (*activeRuntime, *TransportRuntime, error) {
 	appender, err := r.managementState.batchSender()
 	if err != nil {
 		return nil, nil, fail("data_plane", err)
@@ -152,7 +151,7 @@ func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup
 	sender := telemetryadapter.NewRuntimeSender(batcher, appender, r.Config.Local.Export.RetryInitial, r.Config.Local.Export.RetryMax)
 	localControl := localControlRuntime{
 		config: r.Config, out: r.Out, policy: &r.policyState, management: &r.managementState,
-		telemetry: &r.telemetryState, sensor: &r.sensorState,
+		sensor: &r.sensorState,
 	}
 	stopLocal, err := localControl.start(ctx, startup.sensor, bus, batcher, sender, startedAt)
 	if err != nil {
@@ -163,12 +162,12 @@ func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup
 	active := &activeRuntime{
 		sensor: startup.sensor, bus: bus, batcher: batcher, sender: sender,
 		endpoint: NewEndpointRuntime(&r.policyState, norm, builder), cancel: cancel, local: NewLocalRuntime(stopLocal),
-		dataContext: dataCtx, longControl: r.Config.Manager.Transport == "grpc",
+		dataContext: dataCtx,
 	}
 	active.stopSensor = idempotentSensorStop(startup.sensor)
 	transport := NewTransportRuntime(transportRuntimeDependencies{
 		config: r.Config, out: r.Out, sensorPort: r.Sensor, policy: &r.policyState,
-		management: &r.managementState, telemetry: &r.telemetryState, sensorState: &r.sensorState,
+		management: &r.managementState, sensorState: &r.sensorState,
 	}, startup.sensor, bus, batcher, sender, startedAt, startup.scopeType, startup.scopeSelector)
 	return active, transport, nil
 }
@@ -240,31 +239,31 @@ func failIfError(fail startupFailure, stage string, err error) error {
 	return fail(stage, err)
 }
 
-func (r *Coordinator) serveRuntime(ctx context.Context, active *activeRuntime, reporter healthReporter, startedAt time.Time) error {
+func (r *Coordinator) serveRuntime(ctx context.Context, active *activeRuntime, startedAt time.Time) error {
 	ticker := time.NewTicker(r.Config.Health.Interval)
 	defer ticker.Stop()
 	tamper := &domainhealth.TamperDetector{}
 	for {
 		select {
 		case <-ctx.Done():
-			return r.finishRuntime(ctx.Err(), active, reporter, startedAt)
+			return r.finishRuntime(ctx.Err(), active, startedAt)
 		case event, ok := <-active.events:
 			if !ok {
-				return r.finishRuntime(nil, active, reporter, startedAt)
+				return r.finishRuntime(nil, active, startedAt)
 			}
 			if err := r.handleRuntimeEvent(event, active); err != nil {
 				return err
 			}
 		case <-ticker.C:
-			if err := r.handleHealthTick(ctx, active, reporter, startedAt, tamper); err != nil {
+			if err := r.handleHealthTick(ctx, active, startedAt, tamper); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (r *Coordinator) finishRuntime(result error, active *activeRuntime, reporter healthReporter, startedAt time.Time) error {
-	drainErr := r.shutdownAndReport(context.Background(), active.sensor, active.bus, active.batcher, active.sender, reporter, startedAt, active.cancel, active.stopSensor)
+func (r *Coordinator) finishRuntime(result error, active *activeRuntime, startedAt time.Time) error {
+	drainErr := r.shutdownAndReport(context.Background(), active.sensor, active.bus, active.batcher, active.sender, startedAt, active.cancel, active.stopSensor)
 	if drainErr != nil && !errors.Is(drainErr, context.DeadlineExceeded) && !errors.Is(drainErr, context.Canceled) {
 		return drainErr
 	}
@@ -283,16 +282,11 @@ func (r *Coordinator) handleRuntimeEvent(event contract.EventEnvelope, active *a
 	return nil
 }
 
-func (r *Coordinator) handleHealthTick(ctx context.Context, active *activeRuntime, reporter healthReporter, startedAt time.Time, tamper *domainhealth.TamperDetector) error {
+func (r *Coordinator) handleHealthTick(ctx context.Context, active *activeRuntime, startedAt time.Time, tamper *domainhealth.TamperDetector) error {
 	snapshot := r.healthRuntime().snapshot(ctx, active.sensor, active.bus, active.batcher, active.sender, startedAt)
 	health := contractadapter.AgentHealth(snapshot)
 	if err := r.publishTamperSignal(snapshot, active, tamper); err != nil {
 		return err
-	}
-	if !active.longControl {
-		if err := reporter.Report(ctx, health); err != nil && r.Out != nil {
-			fmt.Fprintf(r.Out, "agent health report error: %v\n", err)
-		}
 	}
 	r.logRuntimeHealth(health)
 	return nil

@@ -11,7 +11,7 @@ func AgentHealth(value domainhealth.Snapshot) agenthealth.AgentHealth {
 		Scope:  agenthealth.RuntimeScope{Type: value.ScopeType, Selector: value.ScopeSelector},
 		Status: string(value.Status), PolicyID: value.PolicyID, PolicyVersion: value.PolicyVersion,
 		PolicyMode: value.PolicyMode, PendingPolicy: pendingPolicy(value.PendingPolicy),
-		UptimeSeconds: value.UptimeSeconds, Capability: healthCapability(value.Capability),
+		UptimeSeconds: value.UptimeSeconds, Capability: SensorCapability(value.Capability),
 		Sensor: sensorHealth(value.Sensor), TelemetryBus: busHealth(value.Telemetry.Bus),
 		TelemetryBatcher: batcherHealth(value.Telemetry.Batcher), TelemetrySender: senderHealth(value.Telemetry.Sender),
 		Detection: detectionHealth(value.Detection), CEP: cepHealth(value.Detection.CEP),
@@ -25,7 +25,7 @@ func pendingPolicy(value domainhealth.PendingPolicy) agenthealth.PendingPolicySt
 	}
 }
 
-func healthCapability(value domainhealth.Capability) agenthealth.SensorCapability {
+func SensorCapability(value domainhealth.Capability) agenthealth.SensorCapability {
 	collection := make([]agenthealth.CollectionBehaviorCapability, 0, len(value.Collection))
 	for _, item := range value.Collection {
 		collection = append(collection, agenthealth.CollectionBehaviorCapability{

@@ -19,7 +19,6 @@ type localControlRuntime struct {
 	out        io.Writer
 	policy     *policyRuntime
 	management *managementRuntime
-	telemetry  *telemetryRuntime
 	sensor     *sensorRuntime
 }
 
@@ -27,7 +26,7 @@ func (r localControlRuntime) start(ctx context.Context, rt sensorruntime.Runtime
 	coordinator := r.management.configureEnrollmentCoordinator(ctx, rt)
 	socketPath := r.config.Control.SocketPath
 	statusService := &localStatusService{
-		health:    newRuntimeHealth(r.config, r.out, r.policy, r.management, r.telemetry, r.sensor),
+		health:    newRuntimeHealth(r.config, r.out, r.policy, r.management, r.sensor),
 		runtime:   rt,
 		bus:       bus,
 		batcher:   batcher,

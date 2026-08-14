@@ -11,7 +11,7 @@ import (
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 )
 
-func (r *Coordinator) shutdownAndReport(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, reporter healthReporter, startedAt time.Time, cancelDataPlane func(), stopRuntime func()) error {
+func (r *Coordinator) shutdownAndReport(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time, cancelDataPlane func(), stopRuntime func()) error {
 	stopRuntime()
 	grace := shutdownDrainTimeout(r.Config)
 	shutdownStarted := time.Now()
@@ -26,30 +26,22 @@ func (r *Coordinator) shutdownAndReport(ctx context.Context, rt sensorruntime.Ru
 		fmt.Fprintf(r.Out, "agent shutdown telemetry: grace=%s elapsed=%s flushed_batches=%d queued_batches=%d sent_batches=%d sent_events=%d sent_signals=%d drained=%t timeout=%t last_batcher_error=%q last_sender_error=%q\n",
 			grace, elapsed.Round(time.Millisecond), batcherStats.FlushedBatches, batcherStats.QueuedBatches, stats.SentBatches, stats.SentEvents, stats.SentSignals, drained, timedOut, batcherStats.LastError, stats.LastError)
 	}
-	finalHealth, healthErr := r.collectShutdownHealth(ctx, rt, bus, batcher, sender, startedAt)
-	if healthErr == nil {
-		if err := reporter.Report(context.Background(), finalHealth); err != nil && r.Out != nil {
-			fmt.Fprintf(r.Out, "agent final health report error: %v\n", err)
-		}
-		if r.Out != nil {
-			fmt.Fprintf(r.Out, "agent final health: sensor=%s running=%t policy_loaded=%t status=%s queued_batches=%d last_data_plane_error=%q\n",
-				finalHealth.Sensor.Backend, finalHealth.Sensor.Running, finalHealth.Sensor.PolicyLoaded, finalHealth.Status, finalHealth.TelemetryBatcher.QueuedBatches, finalHealth.TelemetrySender.LastError)
-		}
+	finalHealth := r.collectShutdownHealth(ctx, rt, bus, batcher, sender, startedAt)
+	if r.Out != nil {
+		fmt.Fprintf(r.Out, "agent final health: sensor=%s running=%t policy_loaded=%t status=%s queued_batches=%d last_data_plane_error=%q\n",
+			finalHealth.Sensor.Backend, finalHealth.Sensor.Running, finalHealth.Sensor.PolicyLoaded, finalHealth.Status, finalHealth.TelemetryBatcher.QueuedBatches, finalHealth.TelemetrySender.LastError)
 	}
 	return nil
 }
 
-func (r *Coordinator) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) (agenthealth.AgentHealth, error) {
-	health, err := r.healthRuntime().collect(ctx, rt, bus, batcher, sender, startedAt)
-	if err != nil {
-		return agenthealth.AgentHealth{}, err
-	}
+func (r *Coordinator) collectShutdownHealth(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) agenthealth.AgentHealth {
+	health := r.healthRuntime().collect(ctx, rt, bus, batcher, sender, startedAt)
 	health.Sensor.Running = false
 	if health.Status == "ok" {
 		health.Status = "degraded"
 	}
 	health.ObservedAt = time.Now().UTC()
-	return health, nil
+	return health
 }
 
 func shutdownDrainTimeout(cfg config.Config) time.Duration {

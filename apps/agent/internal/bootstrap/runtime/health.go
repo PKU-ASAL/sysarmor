@@ -16,27 +16,16 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
-type localHealthReporter struct{}
-
-func (localHealthReporter) Report(context.Context, agenthealth.AgentHealth) error {
-	return nil
-}
-
-type healthReporter interface {
-	Report(context.Context, agenthealth.AgentHealth) error
-}
-
 type runtimeHealth struct {
 	config     config.Config
 	out        io.Writer
 	policy     *policyRuntime
 	management *managementRuntime
-	telemetry  *telemetryRuntime
 	sensor     *sensorRuntime
 }
 
-func newRuntimeHealth(cfg config.Config, out io.Writer, policy *policyRuntime, management *managementRuntime, telemetry *telemetryRuntime, sensor *sensorRuntime) runtimeHealth {
-	return runtimeHealth{config: cfg, out: out, policy: policy, management: management, telemetry: telemetry, sensor: sensor}
+func newRuntimeHealth(cfg config.Config, out io.Writer, policy *policyRuntime, management *managementRuntime, sensor *sensorRuntime) runtimeHealth {
+	return runtimeHealth{config: cfg, out: out, policy: policy, management: management, sensor: sensor}
 }
 
 func (r runtimeHealth) reportSensorDegraded(stage string, err error) {
@@ -45,49 +34,18 @@ func (r runtimeHealth) reportSensorDegraded(stage string, err error) {
 	}
 }
 
-func (r runtimeHealth) reportStartupFailure(reporter healthReporter, startedAt time.Time, stage string, startupErr error) {
-	if reporter == nil || startupErr == nil {
+func (r runtimeHealth) reportStartupFailure(stage string, startupErr error) {
+	if startupErr == nil {
 		return
-	}
-	identity := r.management.currentIdentity()
-	health := agenthealth.AgentHealth{
-		AgentID:       identity.AgentID,
-		HostID:        identity.HostID,
-		TenantID:      identity.TenantID,
-		Scope:         r.runtimeScope(),
-		Status:        "degraded",
-		PolicyID:      r.policy.activePolicy().PolicyID,
-		PolicyVersion: r.policy.activePolicy().Version,
-		PolicyMode:    r.policyMode(),
-		UptimeSeconds: int64(time.Since(startedAt).Seconds()),
-		ObservedAt:    time.Now().UTC(),
-		Sensor: agenthealth.SensorHealth{
-			Backend:      r.config.Sensor.Backend,
-			Installed:    false,
-			Running:      false,
-			PolicyLoaded: false,
-			LastError:    fmt.Sprintf("%s: %v", stage, startupErr),
-		},
-		Capability:       r.runtimeCapability(),
-		TelemetryBus:     agenthealth.TelemetryBusHealth{},
-		TelemetryBatcher: agenthealth.TelemetryBatcherHealth{},
-		TelemetrySender:  agenthealth.TelemetrySenderHealth{},
-	}
-	if err := reporter.Report(context.Background(), health); err != nil && r.out != nil {
-		fmt.Fprintf(r.out, "agent startup health report error: %v\n", err)
 	}
 	if r.out != nil {
 		fmt.Fprintf(r.out, "agent startup failure: stage=%s error=%q\n", stage, startupErr)
 	}
 }
 
-func (r runtimeHealth) reporter() healthReporter {
-	return localHealthReporter{}
-}
-
-func (r runtimeHealth) collect(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) (agenthealth.AgentHealth, error) {
+func (r runtimeHealth) collect(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) agenthealth.AgentHealth {
 	snapshot := r.snapshot(ctx, rt, bus, batcher, sender, startedAt)
-	return contractadapter.AgentHealth(snapshot), nil
+	return contractadapter.AgentHealth(snapshot)
 }
 
 func (r runtimeHealth) snapshot(ctx context.Context, rt sensorruntime.Runtime, bus *telemetryadapter.Bus, batcher *telemetryadapter.Batcher, sender *telemetryadapter.RuntimeSender, startedAt time.Time) domainhealth.Snapshot {
@@ -121,30 +79,7 @@ func resolveSensorHealth(sensor contract.Health, healthErr error, status *sensor
 }
 
 func (r runtimeHealth) runtimeCapability() agenthealth.SensorCapability {
-	collection := make([]agenthealth.CollectionBehaviorCapability, 0, len(r.sensor.capability.Collection))
-	for _, behavior := range r.sensor.capability.Collection {
-		collection = append(collection, agenthealth.CollectionBehaviorCapability{
-			Behavior:             behavior.Behavior,
-			SensorMapping:        behavior.SensorMapping,
-			Fields:               append([]string(nil), behavior.Fields...),
-			PushdownSelectors:    append([]string(nil), behavior.PushdownSelectors...),
-			AgentSideSelectors:   append([]string(nil), behavior.AgentSideSelectors...),
-			UnsupportedSelectors: append([]string(nil), behavior.UnsupportedSelectors...),
-		})
-	}
-	return agenthealth.SensorCapability{
-		Backend:         r.sensor.capability.Backend,
-		Version:         r.sensor.capability.Version,
-		SupportsExec:    r.sensor.capability.SupportsExec,
-		SupportsConnect: r.sensor.capability.SupportsConnect,
-		SupportsFile:    r.sensor.capability.SupportsFile,
-		SupportsEnforce: r.sensor.capability.SupportsEnforce,
-		SupportsHealth:  r.sensor.capability.SupportsHealth,
-		KernelRelease:   r.sensor.capability.KernelRelease,
-		BTFAvailable:    r.sensor.capability.BTFAvailable,
-		BPFFSAvailable:  r.sensor.capability.BPFFSAvailable,
-		Collection:      collection,
-	}
+	return contractadapter.SensorCapability(r.sensor.domainCapability())
 }
 
 func (r runtimeHealth) runtimeScope() agenthealth.RuntimeScope {

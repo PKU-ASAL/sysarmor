@@ -17,7 +17,6 @@ type transportRuntimeDependencies struct {
 	sensorPort  contract.Sensor
 	policy      *policyRuntime
 	management  *managementRuntime
-	telemetry   *telemetryRuntime
 	sensorState *sensorRuntime
 }
 

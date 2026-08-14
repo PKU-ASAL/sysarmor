@@ -559,6 +559,30 @@ import (
         self.assertIn("applicationtelemetry.NewDelivery", network)
         self.assertNotIn("exportPipeline", network)
 
+    def test_agent_runtime_health_has_no_inert_reporting_path(self):
+        runtime = self.repo / "apps/agent/internal/bootstrap/runtime"
+        production = "\n".join(
+            source.read_text()
+            for source in runtime.glob("*.go")
+            if not source.name.endswith("_test.go")
+        )
+        for retired in (
+            "healthReporter",
+            "localHealthReporter",
+            "reporter()",
+            "longControl",
+        ):
+            self.assertNotIn(retired, production)
+
+        health = (runtime / "health.go").read_text()
+        self.assertRegex(health, r"func \(r runtimeHealth\) collect\([^)]*\) agenthealth\.AgentHealth")
+        self.assertNotRegex(health, r"(?m)^\s*telemetry\s+\*telemetryRuntime$")
+
+        transport = (runtime / "transport_runtime_component.go").read_text()
+        self.assertNotRegex(transport, r"(?m)^\s*telemetry\s+\*telemetryRuntime$")
+        control = (runtime / "transport_runtime.go").read_text()
+        self.assertNotRegex(control, r"sendRuntimeHealth\([^)]*required bool")
+
     def test_agent_endpoint_candidate_keeps_only_activation_state(self):
         source = (
             self.repo
@@ -570,6 +594,22 @@ import (
         self.assertIsNotNone(candidate)
         self.assertNotRegex(candidate.group("body"), r"(?m)^\s*compile\s+")
         self.assertNotIn("compile.ResolvedRefs", source)
+
+    def test_agent_capability_has_one_domain_to_wire_mapper(self):
+        runtime = self.repo / "apps/agent/internal/bootstrap/runtime"
+        health = (runtime / "health.go").read_text()
+        self.assertIn(
+            "contractadapter.SensorCapability(r.sensor.domainCapability())", health
+        )
+
+        mapper = (
+            self.repo / "apps/agent/internal/adapters/contracts/health.go"
+        ).read_text()
+        self.assertIn("func SensorCapability(value domainhealth.Capability)", mapper)
+        self.assertNotIn("healthCapability(", mapper)
+
+        status = (runtime / "local_control_status.go").read_text()
+        self.assertEqual(1, status.count("s.health.runtimeCapability()"))
 
     def test_agent_endpoint_runtime_uses_pipeline_application(self):
         source = (

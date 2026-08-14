@@ -17,12 +17,13 @@ func (s *localStatusService) Health(ctx context.Context, req *controlplanev1.Hea
 
 func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1.CapabilityRequest) (*controlplanev1.CapabilityResponse, error) {
 	identity := s.health.management.currentIdentity()
+	capability := s.health.runtimeCapability()
 	return &controlplanev1.CapabilityResponse{
 		AgentId:  identity.AgentID,
 		HostId:   identity.HostID,
 		TenantId: identity.TenantID,
 		Scope:    scopeMessage(s.health.runtimeScope()),
-		Sensor:   capabilityMessage(s.health.runtimeCapability()),
+		Sensor:   capabilityMessage(capability),
 		SupportedPolicySections: []string{
 			"collection",
 			"detection",
@@ -33,7 +34,7 @@ func (s *localStatusService) Capability(ctx context.Context, req *controlplanev1
 		SupportedResponseActions: []string{
 			"collect_evidence",
 		},
-		CollectionBehaviors: collectionBehaviorMessages(s.health.runtimeCapability().Collection),
+		CollectionBehaviors: collectionBehaviorMessages(capability.Collection),
 	}, nil
 }
 

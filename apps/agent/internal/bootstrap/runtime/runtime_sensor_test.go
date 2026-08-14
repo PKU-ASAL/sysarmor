@@ -169,10 +169,7 @@ func TestRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T) {
 	bus := telemetryadapter.NewBus(1024)
 	batcher := telemetryadapter.NewBatcher(runner.telemetryState.newBatchBuilder().NewBatch, cfg.Telemetry.MaxBatchItems, cfg.Telemetry.FlushInterval, 16)
 	sender := telemetryadapter.NewRuntimeSender(batcher, noopUploader{}, 0, 0)
-	health, err := runner.healthRuntime().collect(context.Background(), rt, bus, batcher, sender, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
+	health := runner.healthRuntime().collect(context.Background(), rt, bus, batcher, sender, time.Now())
 	if health.Status != "degraded" || health.Sensor.ParseErrors != 2 {
 		t.Fatalf("health = %+v", health)
 	}

@@ -21,7 +21,7 @@ func startTestLocalControlServer(runner *Coordinator, ctx context.Context, rt se
 	runner.policyState.controller = newTestPolicyController
 	control := localControlRuntime{
 		config: runner.Config, out: runner.Out, policy: &runner.policyState, management: &runner.managementState,
-		telemetry: &runner.telemetryState, sensor: &runner.sensorState,
+		sensor: &runner.sensorState,
 	}
 	return control.start(ctx, rt, bus, batcher, sender, startedAt)
 }
@@ -32,7 +32,7 @@ func newTestTransportRuntime(runner *Coordinator, sensor sensorruntime.Runtime, 
 	bus := telemetryadapter.NewBus(runner.Config.Telemetry.MaxBatchItems * 16)
 	return NewTransportRuntime(transportRuntimeDependencies{
 		config: runner.Config, out: runner.Out, sensorPort: runner.Sensor, policy: &runner.policyState,
-		management: &runner.managementState, telemetry: &runner.telemetryState, sensorState: &runner.sensorState,
+		management: &runner.managementState, sensorState: &runner.sensorState,
 	}, sensor, bus, batcher, sender, startedAt, scopeType, scopeSelector)
 }
 

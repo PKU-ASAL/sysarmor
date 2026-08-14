@@ -168,7 +168,7 @@ func TestHealthReportsUnenrollmentLifecycle(t *testing.T) {
 		Backend: "fake", Installed: true, Running: true, PolicyLoaded: true,
 	}})
 	bus, batcher, sender := newTestTelemetry(t, runner)
-	server := &localStatusService{health: newRuntimeHealth(runner.Config, runner.Out, &runner.policyState, &runner.managementState, &runner.telemetryState, &runner.sensorState), runtime: sensorruntime.New(runner.Sensor), bus: bus, batcher: batcher, sender: sender, startedAt: time.Now()}
+	server := &localStatusService{health: newRuntimeHealth(runner.Config, runner.Out, &runner.policyState, &runner.managementState, &runner.sensorState), runtime: sensorruntime.New(runner.Sensor), bus: bus, batcher: batcher, sender: sender, startedAt: time.Now()}
 
 	response, err := server.Health(t.Context(), &controlplanev1.HealthRequest{})
 	if err != nil {

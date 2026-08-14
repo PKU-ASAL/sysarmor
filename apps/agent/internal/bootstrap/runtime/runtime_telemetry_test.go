@@ -255,7 +255,7 @@ func TestRuntimeShutdownFlushesTelemetryBestEffort(t *testing.T) {
 	var out bytes.Buffer
 	runner.Out = &out
 	rt := sensorruntime.New(runner.Sensor)
-	if err := runner.shutdownAndReport(context.Background(), rt, bus, batcher, sender, localHealthReporter{}, time.Now(), cancelSender, func() {}); err != nil {
+	if err := runner.shutdownAndReport(context.Background(), rt, bus, batcher, sender, time.Now(), cancelSender, func() {}); err != nil {
 		t.Fatalf("shutdownAndReport() error = %v", err)
 	}
 	stats := sender.Stats()

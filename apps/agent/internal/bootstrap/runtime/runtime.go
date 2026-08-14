@@ -161,20 +161,19 @@ func (r *Coordinator) Run(ctx context.Context, opts Options) error {
 	}
 	startedAt := time.Now()
 	health := r.healthRuntime()
-	reporter := health.reporter()
 	failStartup := func(stage string, err error) error {
-		health.reportStartupFailure(reporter, startedAt, stage, err)
+		health.reportStartupFailure(stage, err)
 		return err
 	}
 	startup, err := r.prepareRuntime(ctx, failStartup)
 	if err != nil {
 		return err
 	}
-	active, err := r.startRuntime(ctx, &startup, reporter, startedAt, failStartup)
+	active, err := r.startRuntime(ctx, &startup, startedAt, failStartup)
 	if err != nil {
 		return err
 	}
 	defer active.Close()
 	r.logRuntimeStarted(startup)
-	return r.serveRuntime(ctx, active, reporter, startedAt)
+	return r.serveRuntime(ctx, active, startedAt)
 }

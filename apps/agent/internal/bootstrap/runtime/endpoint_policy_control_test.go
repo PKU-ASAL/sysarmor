@@ -166,7 +166,7 @@ func TestHealthReportsPendingManagedPolicy(t *testing.T) {
 	if result.Status != "pending" {
 		t.Fatalf("result=%+v", result)
 	}
-	server := &localStatusService{health: newRuntimeHealth(runner.Config, runner.Out, &runner.policyState, &runner.managementState, &runner.telemetryState, &runner.sensorState), runtime: runtime}
+	server := &localStatusService{health: newRuntimeHealth(runner.Config, runner.Out, &runner.policyState, &runner.managementState, &runner.sensorState), runtime: runtime}
 	health, err := server.Health(t.Context(), &controlplanev1.HealthRequest{})
 	if err != nil {
 		t.Fatal(err)
