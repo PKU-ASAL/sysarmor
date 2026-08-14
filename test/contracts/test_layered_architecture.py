@@ -60,10 +60,8 @@ STANDARD_LIBRARY = {
 }
 ADAPTER_BRIDGE_IMPORTS = {
     f"{MODULE}apps/agent/internal/adapters/sqlite",
-    f"{MODULE}packages/policy",
-    f"{MODULE}packages/response",
     f"{MODULE}packages/sensor-sdk/contract",
-	f"{MODULE}packages/tlsconfig",
+    f"{MODULE}packages/tlsconfig",
 }
 IMPORT_PATTERN = re.compile(r'^\s*(?:[._\w]+\s+)?"([^"]+)"', re.MULTILINE)
 
@@ -237,6 +235,27 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                 self.assertNotIn("packages/response", text)
                 self.assertNotIn("sensor-sdk/contract", text)
                 self.assertNotIn("packages/contracts/proto", text)
+
+    def test_task11_agent_business_models_are_domain_owned(self):
+        root = self.repo / "apps/agent/internal"
+        for relative in ("domain/policy", "domain/response"):
+            self.assertTrue((root / relative).is_dir(), f"missing Agent domain: {relative}")
+        forbidden = ("packages/policy", "packages/response", "packages/eventmodel")
+        for source in (root / "domain").rglob("*.go"):
+            text = source.read_text()
+            for imported in forbidden:
+                self.assertNotIn(
+                    imported, text, f"domain imports retired model: {source}"
+                )
+
+    def test_task11_has_no_retired_model_imports_or_compatibility_facades(self):
+        forbidden = ("packages/policy", "packages/response", "packages/eventmodel")
+        for source in self.repo.rglob("*.go"):
+            text = source.read_text()
+            for imported in forbidden:
+                self.assertNotIn(
+                    imported, text, f"retired model import remains: {source}"
+                )
 
     def test_policy_application_uses_typed_services_only(self):
         root = self.repo / "apps/agent/internal/application/policy"

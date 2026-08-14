@@ -41,9 +41,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "packages/contracts/schema",
             "packages/contracts/controlmodel",
             "packages/contracts/health",
-            "packages/eventmodel",
-            "packages/policy",
-            "packages/response",
             "packages/sensor-sdk/contract",
             "packages/tlsconfig",
         )
@@ -51,6 +48,14 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         for path in expected:
             with self.subTest(path=path):
                 self.assertTrue((self.repo / path).is_dir(), f"missing {path}")
+
+    def test_task11_retires_agent_owned_shared_business_models(self):
+        retired = ("packages/eventmodel", "packages/policy", "packages/response")
+        for path in retired:
+            with self.subTest(path=path):
+                self.assertFalse(
+                    (self.repo / path).exists(), f"retired package remains: {path}"
+                )
 
     def test_legacy_shared_capability_paths_are_absent(self):
         legacy = (
