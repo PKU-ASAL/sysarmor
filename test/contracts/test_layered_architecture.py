@@ -196,6 +196,27 @@ class LayeredArchitectureContractTest(unittest.TestCase):
                 f"policy domain imports adapter bridge: {source}",
             )
 
+    def test_task11_agent_domains_do_not_import_external_formats_or_infrastructure(self):
+        root = self.repo / "apps/agent/internal/domain"
+        forbidden = (
+            "encoding/json",
+            "encoding/yaml",
+            "database/sql",
+            "packages/contracts/proto",
+            "packages/sensor-sdk",
+            "modernc.org/sqlite",
+            "github.com/mattn/go-sqlite3",
+            "internal/adapters/",
+        )
+        for relative in ("policy", "response"):
+            for source in (root / relative).glob("*.go"):
+                imports = IMPORT_PATTERN.findall(source.read_text())
+                for imported in forbidden:
+                    self.assertFalse(
+                        any(imported in value for value in imports),
+                        f"{relative} domain imports {imported}: {source}",
+                    )
+
     def test_agent_content_activation_is_layered(self):
         root = self.repo / "apps/agent/internal"
         self.assertTrue((root / "domain/content").is_dir())
