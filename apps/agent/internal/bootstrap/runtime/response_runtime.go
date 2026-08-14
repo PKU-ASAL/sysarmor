@@ -24,6 +24,9 @@ func (r *responseContext) Policy() domainresponse.Policy {
 	policy := r.runner.activePolicy()
 	response := policy.Response
 	response.ID, response.Version = policy.PolicyID, policy.Version
+	response.AllowedActions = append([]string(nil), response.AllowedActions...)
+	response.AllowedModes = append([]domainresponse.Mode(nil), response.AllowedModes...)
+	response.ApprovalRoles = append([]string(nil), response.ApprovalRoles...)
 	return response
 }
 
