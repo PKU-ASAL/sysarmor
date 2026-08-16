@@ -153,6 +153,27 @@ def score(event: dict[str, Any], bundle: dict[str, Any]) -> float:
     return float32(math.sqrt(distance))
 
 
+def next_float32(value: float) -> float:
+    current = float32(value)
+    if not math.isfinite(current) or current < 0:
+        raise ValueError("float32 successor requires a finite non-negative value")
+    bits = struct.unpack("!I", struct.pack("!f", current))[0]
+    if bits == 0x7F800000:
+        raise ValueError("float32 successor is undefined for infinity")
+    return struct.unpack("!f", struct.pack("!I", bits + 1))[0]
+
+
+def calibrate_threshold(scores: list[float], target_rate: float) -> tuple[float, int]:
+    if not scores:
+        raise ValueError("calibration scores are required")
+    if not 0 < target_rate < 1:
+        raise ValueError("target rate must be between zero and one")
+    normalized = [float32(score) for score in scores]
+    allowed = math.floor(len(normalized) * target_rate)
+    boundary = sorted(normalized, reverse=True)[allowed]
+    return next_float32(boundary), allowed
+
+
 def float32(value: float) -> float:
     return struct.unpack("!f", struct.pack("!f", value))[0]
 
