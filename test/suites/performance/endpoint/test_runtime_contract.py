@@ -112,6 +112,19 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn("SYSARMOR_VM_INCLUDE_BENCH_CONTENT", script)
         self.assertIn("/tmp/sysarmor-bench-content.upload", script)
 
+    def test_learning_sync_requires_a_complete_enabled_configuration(self):
+        script = SYNC_AGENT.read_text()
+        self.assertIn("SYSARMOR_LEARNING_MODEL", script)
+        self.assertIn("SYSARMOR_LEARNING_TRUST_KEYS", script)
+        self.assertIn("learning:", script)
+        self.assertIn("model_path:", script)
+
+    def test_endpoint_runner_records_learning_provenance(self):
+        script = ENDPOINT_RUNNER.read_text()
+        self.assertIn("SYSARMOR_BENCH_LEARNING_MODEL", script)
+        self.assertIn("SYSARMOR_BENCH_LEARNING_TRUST_KEYS", script)
+        self.assertIn("learning_model", script)
+
     def test_managed_policy_uses_manager_without_local_policy_apply(self):
         calls = self.temp / "vagrant.calls"
         self.write_executable(

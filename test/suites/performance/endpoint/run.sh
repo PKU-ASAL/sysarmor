@@ -35,11 +35,32 @@ else
 fi
 SCENARIO="${SYSARMOR_BENCH_SCENARIO:-}"
 VARIANT="${SYSARMOR_BENCH_VARIANT:-}"
+LEARNING_MODEL="${SYSARMOR_BENCH_LEARNING_MODEL:-}"
+LEARNING_TRUST_KEYS="${SYSARMOR_BENCH_LEARNING_TRUST_KEYS:-}"
+LEARNING_VARIANT="${SYSARMOR_BENCH_LEARNING_VARIANT:-}"
 MATCHER_STRATEGY="${SYSARMOR_BENCH_MATCHER_STRATEGY:-${SYSARMOR_TEST_MATCHER_STRATEGY:-}}"
 POLICIES_RAW="${SYSARMOR_BENCH_POLICIES:-${POLICIES:-test/data/policies/collection-minimal.json test/data/policies/collection-balanced.json test/data/policies/collection-deep.json}}"
 CONTENT_DIR="${SYSARMOR_BENCH_CONTENT_DIR:-test/data/content}"
 DETECTION_POLICY="${SYSARMOR_BENCH_DETECTION_POLICY:-test/data/policies/detection-cep-endpoint.json}"
 APPLY_DETECTION="${SYSARMOR_BENCH_APPLY_DETECTION:-1}"
+if [[ -n "$LEARNING_MODEL" || -n "$LEARNING_TRUST_KEYS" ]]; then
+  if [[ -z "$LEARNING_MODEL" || -z "$LEARNING_TRUST_KEYS" ]]; then
+    echo "[performance-endpoint][ERROR] Learning model and trust keys must be configured together" >&2
+    exit 1
+  fi
+  [[ -f "$LEARNING_MODEL" ]] || {
+    echo "[performance-endpoint][ERROR] Learning model not found: $LEARNING_MODEL" >&2
+    exit 1
+  }
+fi
+if [[ "$LEARNING_VARIANT" == "enabled" && -z "$LEARNING_MODEL" ]]; then
+  echo "[performance-endpoint][ERROR] enabled Learning variant requires a model" >&2
+  exit 1
+fi
+if [[ "$LEARNING_VARIANT" == "disabled" && -n "$LEARNING_MODEL" ]]; then
+  echo "[performance-endpoint][ERROR] disabled Learning variant cannot load a model" >&2
+  exit 1
+fi
 case "$BENCH_PROFILE" in
   quick|medium|long)
     # Profiles provide defaults only; SYSARMOR_BENCH_* env vars may override them.
@@ -89,6 +110,8 @@ cat >"$OUT_DIR/manifest.json" <<EOF
   "workload": "$WORKLOAD",
   "scenario": "$SCENARIO",
   "agent_mode": "$AGENT_MODE",
+  "learning_variant": "$LEARNING_VARIANT",
+  "learning_model": "${LEARNING_MODEL:+configured}",
   "policies": "$POLICIES_RAW",
   "host_baseline_seconds": $HOST_BASELINE_SECONDS,
   "agent_idle_seconds": $AGENT_IDLE_SECONDS,
@@ -537,6 +560,7 @@ if [[ "$SYNC_VM_AGENT" == "1" ]]; then
   include_bench_content=0
   [[ "$AGENT_MODE" == "managed" ]] && include_bench_content=1
   SYSARMOR_VM_ENV="$VM_ENV" SYSARMOR_VM_INCLUDE_BENCH_CONTENT="$include_bench_content" \
+    SYSARMOR_LEARNING_MODEL="$LEARNING_MODEL" SYSARMOR_LEARNING_TRUST_KEYS="$LEARNING_TRUST_KEYS" \
     bash "$ROOT/shared/vm/sync-agent.sh"
   cd "$ENVDIR"
   vagrant rsync node-a >/dev/null 2>&1 || true
@@ -651,6 +675,8 @@ for policy in $POLICIES_RAW; do
   "workload": "$case_workload",
   "scenario": "$case_scenario",
   "variant": "$VARIANT",
+  "learning_variant": "$LEARNING_VARIANT",
+  "learning_model": "${LEARNING_MODEL:+configured}",
   "matcher_strategy": "$MATCHER_STRATEGY",
   "agent_id": "$AGENT_ID",
   "tenant_id": "$TENANT_ID",
