@@ -12,7 +12,7 @@ ENV       ?= container
 SCENARIO  ?= apt-fileless-c2
 DUR       ?= 30
 RUN_ID    ?= manual
-SYSARMOR_BENCH_PROFILE ?= quick
+SYSARMOR_BENCH_PROFILE ?= $(if $(PROFILE),$(PROFILE),quick)
 SYSARMOR_BENCH_WORKLOAD ?= business-normal
 SYSARMOR_BENCH_SCENARIO ?=
 SYSARMOR_BENCH_POLICIES ?=
@@ -176,7 +176,7 @@ performance-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint SYSARMOR_BENCH_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_BENCH_WORKLOAD=$(SYSARMOR_BENCH_WORKLOAD) SYSARMOR_BENCH_SCENARIO=$(SYSARMOR_BENCH_SCENARIO) SYSARMOR_BENCH_POLICIES="$(SYSARMOR_BENCH_POLICIES)" bash suites/performance/endpoint/run.sh
 
 performance-learning: doctor
-	SYSARMOR_LEARNING_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_LEARNING_TRAINING_DATA="$(TRAINING_DATA)" SYSARMOR_LEARNING_CALIBRATION_DATA="$(CALIBRATION_DATA)" bash suites/performance/learning/run.sh
+	SYSARMOR_LEARNING_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_LEARNING_TRAINING_DATA="$(if $(wildcard $(TRAINING_DATA)),$(abspath $(TRAINING_DATA)),$(abspath ../$(TRAINING_DATA)))" SYSARMOR_LEARNING_CALIBRATION_DATA="$(if $(wildcard $(CALIBRATION_DATA)),$(abspath $(CALIBRATION_DATA)),$(abspath ../$(CALIBRATION_DATA)))" bash suites/performance/learning/run.sh
 
 performance-local-store:
 	bash suites/performance/endpoint/local-store.sh
