@@ -31,3 +31,16 @@ func TestDigestSignalsIncludesStageAndDetectorKind(t *testing.T) {
 		t.Fatal("detector kind must affect signal digest")
 	}
 }
+
+func TestDigestSignalsIncludesModelProvenance(t *testing.T) {
+	base := domaintelemetry.Signal{
+		Name: "model_anomaly", Stage: domaintelemetry.SignalStageCandidate, DetectorKind: domaintelemetry.DetectorKindModel,
+		ModelRef: "model:normal-v1", ModelVersion: "1", ModelDigest: "sha256:a", FeatureSchema: "FeatureSchemaV1",
+	}
+	changed := base
+	changed.ModelVersion = "2"
+
+	if DigestSignals([]domaintelemetry.Signal{base}, nil) == DigestSignals([]domaintelemetry.Signal{changed}, nil) {
+		t.Fatal("model provenance must affect signal digest")
+	}
+}

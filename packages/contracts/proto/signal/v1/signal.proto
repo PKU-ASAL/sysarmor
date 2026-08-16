@@ -80,4 +80,8 @@ message Signal {
   map<string, string> labels = 24;
   SignalStage stage = 25;
   DetectorKind detector_kind = 26;
+  string model_ref = 27;
+  string model_version = 28;
+  string model_digest = 29;
+  string feature_schema = 30;
 }

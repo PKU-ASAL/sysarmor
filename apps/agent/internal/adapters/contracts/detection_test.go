@@ -11,6 +11,7 @@ import (
 func TestSignalMapsDomainDetectionResult(t *testing.T) {
 	value := detection.Signal{
 		ID: "signal-a", Name: "rule-a", RuleID: "rule-a", RuleVersion: 7, RuleSetRef: "ruleset:a",
+		ModelRef: "model:normal-v1", ModelVersion: "1", ModelDigest: "sha256:model", FeatureSchema: "FeatureSchemaV1",
 		Where: detection.SignalWhereEndpoint, BaseRisk: 80, Severity: "critical", Confidence: 91,
 		Stage: detection.SignalStageConclusion, DetectorKind: detection.DetectorKindRule,
 		Mode: "observe", LocalRarity: 0.5, GlobalRarity: 0.25, LineageID: "lineage-a",
@@ -40,6 +41,9 @@ func TestSignalMapsDomainDetectionResult(t *testing.T) {
 	}
 	if wire.GetContextRefs()[0].GetDigest() != "sha256:a" || wire.GetIocRefs()[0].GetVersion() != "v2" || wire.GetLabels()["env"] != "test" {
 		t.Fatalf("signal provenance = %+v", wire)
+	}
+	if wire.GetModelRef() != "model:normal-v1" || wire.GetModelVersion() != "1" || wire.GetModelDigest() != "sha256:model" || wire.GetFeatureSchema() != "FeatureSchemaV1" {
+		t.Fatalf("model provenance = %+v", wire)
 	}
 }
 

@@ -1,6 +1,8 @@
 package contracts
 
 import (
+	"math"
+	"strings"
 	"testing"
 
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
@@ -92,6 +94,47 @@ func TestSignalToDomainRejectsUnspecifiedClassification(t *testing.T) {
 	}
 }
 
+func TestSignalToDomainRejectsInvalidModelSemantics(t *testing.T) {
+	valid := modelSignal()
+	tests := []struct {
+		name   string
+		mutate func(*signalv1.Signal)
+	}{
+		{name: "conclusion", mutate: func(signal *signalv1.Signal) { signal.Stage = signalv1.SignalStage_SIGNAL_STAGE_CONCLUSION }},
+		{name: "missing provenance", mutate: func(signal *signalv1.Signal) { signal.ModelDigest = "" }},
+		{name: "rule provenance", mutate: func(signal *signalv1.Signal) { signal.RuleId = "rule-a" }},
+		{name: "response intent", mutate: func(signal *signalv1.Signal) {
+			signal.ResponseIntent = &signalv1.ResponseIntent{ResponseIntent: "contain"}
+		}},
+		{name: "global rarity", mutate: func(signal *signalv1.Signal) { signal.GlobalRarity = 2 }},
+		{name: "malformed digest", mutate: func(signal *signalv1.Signal) { signal.ModelDigest = "sha256:not-a-digest" }},
+		{name: "unsupported schema", mutate: func(signal *signalv1.Signal) { signal.FeatureSchema = "FeatureSchemaV2" }},
+		{name: "negative score", mutate: func(signal *signalv1.Signal) { signal.LocalRarity = -1 }},
+		{name: "non-finite score", mutate: func(signal *signalv1.Signal) { signal.LocalRarity = float32(math.Inf(1)) }},
+		{name: "non-endpoint", mutate: func(signal *signalv1.Signal) { signal.Where = signalv1.SignalWhere_SIGNAL_WHERE_CLOUD }},
+		{name: "missing event ref", mutate: func(signal *signalv1.Signal) { signal.EventRefs = nil }},
+		{name: "blank event ref", mutate: func(signal *signalv1.Signal) { signal.EventRefs = []string{" "} }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			signal := proto.Clone(valid).(*signalv1.Signal)
+			test.mutate(signal)
+			if _, err := SignalToDomain(signal); err == nil {
+				t.Fatal("invalid model signal accepted")
+			}
+		})
+	}
+}
+
+func TestSignalToDomainRejectsUnknownClassification(t *testing.T) {
+	if _, err := SignalToDomain(&signalv1.Signal{Stage: signalv1.SignalStage(99), DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_RULE}); err == nil {
+		t.Fatal("unknown signal stage accepted")
+	}
+	if _, err := SignalToDomain(&signalv1.Signal{Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, DetectorKind: signalv1.DetectorKind(99)}); err == nil {
+		t.Fatal("unknown detector kind accepted")
+	}
+}
+
 func TestWireToDomainRejectsNilMessages(t *testing.T) {
 	if _, err := EventToDomain(nil); err == nil {
 		t.Fatal("nil event accepted")
@@ -120,5 +163,14 @@ func fullSignal() *signalv1.Signal {
 		ContextRefs: []*signalv1.ContentRef{{Ref: "context-a", Version: "1", Digest: "sha256:a"}},
 		IocRefs:     []*signalv1.ContentRef{{Ref: "ioc-a", Version: "1", Digest: "sha256:b"}},
 		Severity:    "high", Confidence: 88, Mode: "observe", Labels: map[string]string{"scenario": "one"},
+	}
+}
+
+func modelSignal() *signalv1.Signal {
+	return &signalv1.Signal{
+		Id: "model-a", Name: "model_anomaly", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
+		Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_MODEL,
+		ModelRef: "model:normal-v1", ModelVersion: "1", ModelDigest: "sha256:" + strings.Repeat("a", 64), FeatureSchema: "FeatureSchemaV1",
+		LocalRarity: 4, EventRefs: []string{"event-a"}, Mode: "shadow",
 	}
 }

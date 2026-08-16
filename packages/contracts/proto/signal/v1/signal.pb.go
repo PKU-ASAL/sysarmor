@@ -464,6 +464,10 @@ type Signal struct {
 	Labels         map[string]string      `protobuf:"bytes,24,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Stage          SignalStage            `protobuf:"varint,25,opt,name=stage,proto3,enum=sysarmor.signal.v1.SignalStage" json:"stage,omitempty"`
 	DetectorKind   DetectorKind           `protobuf:"varint,26,opt,name=detector_kind,json=detectorKind,proto3,enum=sysarmor.signal.v1.DetectorKind" json:"detector_kind,omitempty"`
+	ModelRef       string                 `protobuf:"bytes,27,opt,name=model_ref,json=modelRef,proto3" json:"model_ref,omitempty"`
+	ModelVersion   string                 `protobuf:"bytes,28,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	ModelDigest    string                 `protobuf:"bytes,29,opt,name=model_digest,json=modelDigest,proto3" json:"model_digest,omitempty"`
+	FeatureSchema  string                 `protobuf:"bytes,30,opt,name=feature_schema,json=featureSchema,proto3" json:"feature_schema,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -666,6 +670,34 @@ func (x *Signal) GetDetectorKind() DetectorKind {
 	return DetectorKind_DETECTOR_KIND_UNSPECIFIED
 }
 
+func (x *Signal) GetModelRef() string {
+	if x != nil {
+		return x.ModelRef
+	}
+	return ""
+}
+
+func (x *Signal) GetModelVersion() string {
+	if x != nil {
+		return x.ModelVersion
+	}
+	return ""
+}
+
+func (x *Signal) GetModelDigest() string {
+	if x != nil {
+		return x.ModelDigest
+	}
+	return ""
+}
+
+func (x *Signal) GetFeatureSchema() string {
+	if x != nil {
+		return x.FeatureSchema
+	}
+	return ""
+}
+
 var File_packages_contracts_proto_signal_v1_signal_proto protoreflect.FileDescriptor
 
 const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
@@ -693,7 +725,7 @@ const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
 	"ContentRef\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
-	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xd8\b\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xe4\t\n" +
 	"\x06Signal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x125\n" +
@@ -725,7 +757,11 @@ const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
 	"\x04mode\x18\x17 \x01(\tR\x04mode\x12>\n" +
 	"\x06labels\x18\x18 \x03(\v2&.sysarmor.signal.v1.Signal.LabelsEntryR\x06labels\x125\n" +
 	"\x05stage\x18\x19 \x01(\x0e2\x1f.sysarmor.signal.v1.SignalStageR\x05stage\x12E\n" +
-	"\rdetector_kind\x18\x1a \x01(\x0e2 .sysarmor.signal.v1.DetectorKindR\fdetectorKind\x1a9\n" +
+	"\rdetector_kind\x18\x1a \x01(\x0e2 .sysarmor.signal.v1.DetectorKindR\fdetectorKind\x12\x1b\n" +
+	"\tmodel_ref\x18\x1b \x01(\tR\bmodelRef\x12#\n" +
+	"\rmodel_version\x18\x1c \x01(\tR\fmodelVersion\x12!\n" +
+	"\fmodel_digest\x18\x1d \x01(\tR\vmodelDigest\x12%\n" +
+	"\x0efeature_schema\x18\x1e \x01(\tR\rfeatureSchema\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\v\x10\fJ\x04\b\r\x10\x0eR\bterminalR\bscenario*^\n" +

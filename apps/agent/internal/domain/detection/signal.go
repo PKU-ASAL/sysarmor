@@ -65,6 +65,10 @@ type Signal struct {
 	RuleID         string
 	RuleVersion    uint64
 	RuleSetRef     string
+	ModelRef       string
+	ModelVersion   string
+	ModelDigest    string
+	FeatureSchema  string
 	ContextRefs    []ContentRef
 	IOCRefs        []ContentRef
 	Severity       string

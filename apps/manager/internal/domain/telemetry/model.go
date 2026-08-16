@@ -96,30 +96,34 @@ const (
 )
 
 type Signal struct {
-	ID           string
-	Name         string
-	Where        SignalWhere
-	BaseRisk     uint32
-	LocalRarity  float32
-	GlobalRarity float32
-	Entities     []Entity
-	Labels       map[string]string
-	LineageID    string
-	Stage        SignalStage
-	DetectorKind DetectorKind
-	CrossLineage bool
-	EventRefs    []string
-	SignalRefs   []string
-	Evidence     *EvidenceBundle
-	Response     *ResponseIntent
-	RuleID       string
-	RuleVersion  uint64
-	RulesetRef   string
-	ContextRefs  []ContentRef
-	IOCRefs      []ContentRef
-	Severity     string
-	Confidence   uint32
-	Mode         string
+	ID            string
+	Name          string
+	Where         SignalWhere
+	BaseRisk      uint32
+	LocalRarity   float32
+	GlobalRarity  float32
+	Entities      []Entity
+	Labels        map[string]string
+	LineageID     string
+	Stage         SignalStage
+	DetectorKind  DetectorKind
+	CrossLineage  bool
+	EventRefs     []string
+	SignalRefs    []string
+	Evidence      *EvidenceBundle
+	Response      *ResponseIntent
+	RuleID        string
+	RuleVersion   uint64
+	RulesetRef    string
+	ModelRef      string
+	ModelVersion  string
+	ModelDigest   string
+	FeatureSchema string
+	ContextRefs   []ContentRef
+	IOCRefs       []ContentRef
+	Severity      string
+	Confidence    uint32
+	Mode          string
 }
 
 type EvidenceBundle struct {

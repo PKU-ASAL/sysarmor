@@ -13,7 +13,8 @@ func Signal(value detection.Signal) *signalv1.Signal {
 		Stage: signalStage(value.Stage), DetectorKind: detectorKind(value.DetectorKind),
 		Evidence: evidence(value.Evidence), CrossLineage: value.CrossLineage,
 		ResponseIntent: responseIntent(value.ResponseIntent), RuleId: value.RuleID, RuleVersion: value.RuleVersion,
-		RulesetRef: value.RuleSetRef, ContextRefs: contentRefs(value.ContextRefs), IocRefs: contentRefs(value.IOCRefs),
+		RulesetRef: value.RuleSetRef, ModelRef: value.ModelRef, ModelVersion: value.ModelVersion, ModelDigest: value.ModelDigest, FeatureSchema: value.FeatureSchema,
+		ContextRefs: contentRefs(value.ContextRefs), IocRefs: contentRefs(value.IOCRefs),
 		Severity: value.Severity, Confidence: value.Confidence, Mode: value.Mode, Labels: cloneLabels(value.Labels),
 	}
 }
