@@ -1,0 +1,6 @@
+{"id":"normal-001","behavior":"process.exec","subjectProc":{"stableId":"proc-001","binary":"/usr/bin/git","argv":["git","status"],"uid":1000},"labels":{"class":"normal"}}
+{"id":"normal-002","behavior":"process.exec","subjectProc":{"stableId":"proc-002","binary":"/usr/bin/python3","argv":["python3","-m","http.server"],"uid":1000},"labels":{"class":"normal"}}
+{"id":"normal-003","behavior":"file.read","subjectProc":{"stableId":"proc-003","binary":"/usr/bin/cat","argv":["cat","README.md"],"uid":1000},"object":{"kind":"file","filePath":"README.md"},"labels":{"class":"normal"}}
+{"id":"normal-004","behavior":"file.write","subjectProc":{"stableId":"proc-004","binary":"/usr/bin/vim","argv":["vim","notes.txt"],"uid":1000},"object":{"kind":"file","filePath":"notes.txt"},"labels":{"class":"normal"}}
+{"id":"normal-005","behavior":"process.exec","subjectProc":{"stableId":"proc-005","binary":"/usr/bin/make","argv":["make","test"],"parentStableId":"proc-parent"},"parentStableId":"proc-parent","labels":{"class":"normal"}}
+{"id":"normal-006","behavior":"network.connect","subjectProc":{"stableId":"proc-006","binary":"/usr/bin/curl","argv":["curl","https://packages.example"],"uid":1000},"object":{"kind":"socket","socketAddr":"packages.example:443"},"labels":{"class":"normal"}}

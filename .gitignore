@@ -32,6 +32,7 @@ deployments/pki/agent-plane-mtls/runtime/
 **/.vagrant/
 
 # python
+.venv/
 __pycache__/
 *.pyc
 
