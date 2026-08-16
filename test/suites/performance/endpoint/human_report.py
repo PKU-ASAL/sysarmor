@@ -261,16 +261,19 @@ def render_performance(summary):
 
 def render_health(health):
     sensor = health.get("sensor", {})
-    bus = health.get("telemetryBus", {})
+    batcher = health.get("telemetryBatcher", {})
     sender = health.get("telemetrySender", {})
+    streams = health.get("streams", {})
     detection = health.get("detection", {})
     rows = [
         ["Status", text(health.get("status"))], ["Sensor", f"running={text(sensor.get('running'))}, policyLoaded={text(sensor.get('policyLoaded'))}, restarts={text(sensor.get('restartCount'))}"],
-        ["Sensor drops / parse errors", f"{text(sensor.get('eventsDropped'), '0')} / {text(sensor.get('parseErrors'), '0')}"], ["Telemetry bus eventDropped", text(bus.get("eventDropped"), "0")],
+        ["Sensor drops / parse errors", f"{text(sensor.get('eventsDropped'), '0')} / {text(sensor.get('parseErrors'), '0')}"],
+        ["Batcher drops (events / signals)", f"{text(batcher.get('droppedEvents'), '0')} / {text(batcher.get('droppedSignals'), '0')}"],
+        ["Stream evictions (events / signals)", f"{text(streams.get('eventEvicted'), '0')} / {text(streams.get('signalEvicted'), '0')}"],
         ["Telemetry sender", f"events={text(sender.get('sentEvents'), '0')}, signals={text(sender.get('sentSignals'), '0')}"], ["Detection", f"policy={text(detection.get('policyId'))}, apply={text(detection.get('lastApplyStatus'))}"],
     ]
-    if integer(bus.get("eventDropped")) > 0:
-        rows.append(["Interpretation", "观察流 Ring Buffer 覆盖旧事件；需结合 sender.sentEvents 判断是否为主链路丢失"])
+    if integer(streams.get("eventEvicted")) > 0 or integer(streams.get("signalEvicted")) > 0:
+        rows.append(["Interpretation", "观察窗口已滚动；eviction 不表示 Sensor、Batcher 或 Storage 数据丢失"])
     return markdown_table(["Field", "Value"], rows)
 
 

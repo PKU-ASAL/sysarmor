@@ -109,8 +109,9 @@ class HumanReportTest(unittest.TestCase):
         self.write_json(raw / "000001.health.json", {
             "status": "ok",
             "sensor": {"running": True, "policyLoaded": True, "eventsDropped": "0", "parseErrors": "0"},
-            "telemetryBus": {"eventDropped": "0"},
+            "telemetryBatcher": {"droppedEvents": "0", "droppedSignals": "0"},
             "telemetrySender": {"sentEvents": "12", "sentSignals": "1"},
+            "streams": {"eventEvicted": "4", "signalEvicted": "0"},
             "detection": {"policyId": "detection", "lastApplyStatus": "applied"},
         })
 
@@ -128,6 +129,10 @@ class HumanReportTest(unittest.TestCase):
             "read credential file",
             "file.read",
             "0.40",
+            "Stream evictions",
+            "4 / 0",
+            "Batcher drops",
+            "0 / 0",
         ):
             self.assertIn(text, report)
 
