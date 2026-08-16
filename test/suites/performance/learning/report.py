@@ -83,6 +83,8 @@ def reliability_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[
     for side in (disabled, enabled):
         health = side.get("health", {})
         reliability = side.get("reliability", {})
+        if any(reliability.get(key) is None for key in ("sensor_drop", "batcher_drop", "parse_errors")):
+            return gate("unavailable", None, 0, "missing health drop/parse metric")
         if health.get("status") != "ok" or any(reliability.get(key) != 0 for key in ("sensor_drop", "batcher_drop", "parse_errors")):
             return gate("failed", None, 0, "health/drop/parse error")
     return gate("passed", 0, 0, "health/drop/parse error")
@@ -121,11 +123,15 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
     events = [unwrap(load_json_line(line), "event") for line in read_lines(path / "events.scope.ndjson")]
     model_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_MODEL"]
     phase_data = load_matrix_phase(path, phase)
-    learning_status = manifest.get("learning_status") or ("loaded" if manifest.get("learning_variant") == "enabled" else "disabled")
+    health_document = latest_health(path)
+    detection = health_document.get("detection", {})
+    batcher = health_document.get("telemetryBatcher", health_document.get("telemetry_batcher", {}))
+    sensor = health_document.get("sensor", {})
+    learning = detection.get("learning", {})
     return {
         "manifest": manifest,
-        "health": {"status": latest_health_status(path), "learning": learning_status},
-        "reliability": {"sensor_drop": phase_data.get("dropped_events_delta", 0), "batcher_drop": summary.get("telemetry_batcher_drop", 0), "parse_errors": phase_data.get("parse_errors_delta", 0)},
+        "health": {"status": health_document.get("status"), "learning": learning.get("status")},
+        "reliability": {"sensor_drop": health_number(sensor, "eventsDropped", "events_dropped"), "batcher_drop": health_number(batcher, "droppedEvents", "dropped_events"), "parse_errors": health_number(sensor, "parseErrors", "parse_errors")},
         "performance": {"agent_cpu_avg_pct": phase_data.get("agent_cpu_avg_pct"), "agent_rss_max_mb": phase_data.get("agent_rss_max_mb"), "eps": phase_data.get("eps")},
         "stream_evictions": latest_stream_evictions(path),
         "model_signals": model_signals,
@@ -172,8 +178,22 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def latest_health_status(path: Path) -> str | None:
+    return latest_health(path).get("status")
+
+
+def latest_health(path: Path) -> dict[str, Any]:
     files = sorted((path / "raw").glob("*.health.json"))
-    return load_json(files[-1]).get("status") if files else None
+    return load_json(files[-1]) if files else {}
+
+
+def health_number(value: dict[str, Any], *names: str) -> int | None:
+    for name in names:
+        if name in value:
+            try:
+                return int(value[name])
+            except (TypeError, ValueError):
+                return None
+    return None
 
 
 def latest_stream_evictions(path: Path) -> int:
