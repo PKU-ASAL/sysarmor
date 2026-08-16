@@ -106,6 +106,7 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 		PolicyID: status.PolicyID, PolicyVersion: status.PolicyVersion, ContentRefs: refs,
 		DefaultManifestVersion: status.DefaultManifestVersion, MatcherStrategy: status.FeatureFlags.MatcherStrategy,
 		LastApplyStatus: status.LastApplyStatus, LastApplyError: status.LastApplyError, UpdatedAt: status.UpdatedAt,
+		Learning: domainhealth.Learning{Status: status.Learning.Status, LastError: status.Learning.LastError},
 		CEP: domainhealth.CEP{ActiveGroups: metrics.ActiveCEPGroups, EvictedGroups: metrics.EvictedCEPGroups,
 			ExpiredGroups: metrics.ExpiredCEPGroups, DroppedEventRefs: metrics.DroppedEventRefs,
 			EvalErrors: metrics.CEPEvalErrors, EmittedSignals: metrics.EmittedSignals, Degraded: degraded},

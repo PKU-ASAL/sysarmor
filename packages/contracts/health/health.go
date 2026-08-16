@@ -41,6 +41,12 @@ type DetectionHealth struct {
 	LastApplyStatus        string              `json:"last_apply_status,omitempty"`
 	LastApplyError         string              `json:"last_apply_error,omitempty"`
 	UpdatedAt              time.Time           `json:"updated_at,omitempty"`
+	Learning               LearningHealth      `json:"learning,omitempty"`
+}
+
+type LearningHealth struct {
+	Status    string `json:"status,omitempty"`
+	LastError string `json:"last_error,omitempty"`
 }
 
 type ContentRef struct {

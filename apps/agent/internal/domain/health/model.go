@@ -121,7 +121,10 @@ type Detection struct {
 	DroppedEventRefs       uint64
 	EvalErrors             uint64
 	LastError              string
+	Learning               Learning
 }
+
+type Learning struct{ Status, LastError string }
 
 type ContentRef struct{ Ref, Kind, Version, Digest string }
 
@@ -166,7 +169,7 @@ type Snapshot struct {
 
 func Evaluate(snapshot Snapshot) Status {
 	if snapshot.Runtime.LastError != "" || !snapshot.Sensor.Running || snapshot.Sensor.LastError != "" || snapshot.Telemetry.LastError != "" ||
-		snapshot.Detection.LastError != "" || snapshot.Detection.LastApplyError != "" || snapshot.Detection.LastApplyStatus == "rejected" ||
+		snapshot.Detection.LastError != "" || snapshot.Detection.Learning.LastError != "" || snapshot.Detection.LastApplyError != "" || snapshot.Detection.LastApplyStatus == "rejected" ||
 		snapshot.Storage.LastError != "" || snapshot.Lifecycle.LastError != "" {
 		return StatusDegraded
 	}

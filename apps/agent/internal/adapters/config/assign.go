@@ -216,6 +216,15 @@ func assign(cfg *Config, section, key, value string) error {
 		default:
 			return unknown(section, key)
 		}
+	case "learning":
+		switch key {
+		case "model_path":
+			cfg.Learning.ModelPath = value
+		case "trust_keys":
+			cfg.Learning.TrustKeys = value
+		default:
+			return unknown(section, key)
+		}
 	case "resource":
 		switch key {
 		case "max_active_cep_groups":

@@ -76,6 +76,7 @@ build-agent-binary:
 build-agent-tools: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmorctl ./apps/cli/cmd/sysarmorctl
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
+	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
 install-agent: build-agent-tools
 	sudo SYSARMOR_AGENT_BIN=$(BIN_DIR)/sysarmor-agent SYSARMOR_CTL_BIN=$(BIN_DIR)/sysarmorctl SYSARMOR_CONTENT_SIGN_BIN=$(BIN_DIR)/sysarmor-content-sign deployments/agent/install-agent.sh
@@ -93,6 +94,7 @@ build-binary: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-worker ./apps/manager/cmd/sysarmor-worker
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmorctl ./apps/cli/cmd/sysarmorctl
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
+	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
 business-docx:
 	bash tools/docs/build-business-docx.sh "$(BUSINESS_DOCX_SOURCE)" "$(BUSINESS_DOCX_OUTPUT)"

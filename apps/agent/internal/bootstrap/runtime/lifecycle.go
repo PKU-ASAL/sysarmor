@@ -161,7 +161,7 @@ func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup
 	dataCtx, cancel := context.WithCancel(ctx)
 	active := &activeRuntime{
 		sensor: startup.sensor, bus: bus, batcher: batcher, sender: sender,
-		endpoint: NewEndpointRuntime(&r.policyState, norm, builder), cancel: cancel, local: NewLocalRuntime(stopLocal),
+		endpoint: NewEndpointRuntime(&r.policyState, norm, builder, r.learningDetector), cancel: cancel, local: NewLocalRuntime(stopLocal),
 		dataContext: dataCtx,
 	}
 	active.stopSensor = idempotentSensorStop(startup.sensor)

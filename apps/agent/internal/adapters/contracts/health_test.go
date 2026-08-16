@@ -21,7 +21,8 @@ func TestAgentHealthMapsDomainSnapshot(t *testing.T) {
 		},
 		Detection: domainhealth.Detection{
 			PolicyID: "detection-a", DefaultManifestVersion: "release-v1",
-			CEP: domainhealth.CEP{ActiveGroups: 5, Degraded: true},
+			Learning: domainhealth.Learning{Status: "degraded", LastError: "invalid model bundle"},
+			CEP:      domainhealth.CEP{ActiveGroups: 5, Degraded: true},
 		},
 	}
 
@@ -34,5 +35,8 @@ func TestAgentHealthMapsDomainSnapshot(t *testing.T) {
 	}
 	if got.Detection.DefaultManifestVersion != "release-v1" || got.CEP.ActiveGroups != 5 || !got.CEP.Degraded {
 		t.Fatalf("detection=%+v cep=%+v", got.Detection, got.CEP)
+	}
+	if got.Detection.Learning.Status != "degraded" || got.Detection.Learning.LastError != "invalid model bundle" {
+		t.Fatalf("learning health = %+v", got.Detection.Learning)
 	}
 }

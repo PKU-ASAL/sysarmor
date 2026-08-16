@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"crypto/ed25519"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
+	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
 )
@@ -56,6 +58,51 @@ func TestNewRunnerAppliesMatcherFeatureFlag(t *testing.T) {
 	if got := matcher.DefaultStrategy(); got != matcher.StrategyOptimized {
 		t.Fatalf("matcher strategy = %q, want optimized", got)
 	}
+}
+
+func TestLearningDetectorFromConfigLoadsCollectedBundle(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsignedPath := filepath.Join("..", "..", "..", "..", "test", "data", "learning", "model-bundle.json")
+	raw, err := os.ReadFile(unsignedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := detectionadapter.SignModelBundle(raw, "release-test", privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTestFile(t, t.TempDir(), "model.json", string(signed))
+	trustKeys := "release-test=" + base64.StdEncoding.EncodeToString(publicKey)
+	detector, err := learningDetectorFromConfig(config.Config{Learning: config.LearningConfig{ModelPath: path, TrustKeys: trustKeys}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detector == nil {
+		t.Fatal("learning detector = nil")
+	}
+}
+
+func TestLearningDetectorFromConfigReportsInvalidBundle(t *testing.T) {
+	path := writeTestFile(t, t.TempDir(), "model.json", `{"model_ref":"model:bad"}`)
+	if _, err := learningDetectorFromConfig(config.Config{Learning: config.LearningConfig{ModelPath: path}}); err == nil {
+		t.Fatal("learningDetectorFromConfig() error = nil")
+	}
+}
+
+func TestNewRunnerKeepsCoreRuntimeWhenLearningBundleFails(t *testing.T) {
+	path := writeTestFile(t, t.TempDir(), "model.json", `{"model_ref":"model:bad"}`)
+	runner, err := NewRunner(t.Context(), config.Config{
+		Manager:  config.ManagerConfig{Transport: "local"},
+		Sensor:   config.SensorConfig{Backend: "fake"},
+		Learning: config.LearningConfig{ModelPath: path},
+	})
+	if err != nil {
+		t.Fatalf("NewRunner() error = %v", err)
+	}
+	defer runner.Close()
 }
 
 func TestNewRunnerRejectsMissingDefaultContentManifest(t *testing.T) {
@@ -159,6 +206,29 @@ func TestSignContentProducesVerifiableEnvelope(t *testing.T) {
 	}
 	if err := store.Validate(envelope, false); err != nil {
 		t.Fatalf("signed content validation failed: %v", err)
+	}
+}
+
+func TestSignLearningModelProducesVerifiableBundle(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	keyPath := writeTestFile(t, dir, "key.pem", string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})))
+	inputPath := filepath.Join("..", "..", "..", "..", "test", "data", "learning", "model-bundle.json")
+	outputPath := filepath.Join(dir, "signed-model.json")
+
+	if err := SignLearningModel(ModelSignOptions{KeyPath: keyPath, KeyID: "release-test", InputPath: inputPath, OutputPath: outputPath}); err != nil {
+		t.Fatal(err)
+	}
+	detector, err := detectionadapter.LoadModelBundle(outputPath, map[string]ed25519.PublicKey{"release-test": publicKey})
+	if err != nil || detector == nil {
+		t.Fatalf("signed model load = %v, error = %v", detector, err)
 	}
 }
 

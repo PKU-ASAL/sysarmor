@@ -13,6 +13,7 @@ type Config struct {
 	Health    HealthConfig
 	Policy    PolicyConfig
 	Content   ContentConfig
+	Learning  LearningConfig
 	Resource  ResourceConfig
 }
 
@@ -73,4 +74,5 @@ type TelemetryConfig struct {
 type HealthConfig struct{ Interval time.Duration }
 type PolicyConfig struct{ Path string }
 type ContentConfig struct{ DefaultPath, Path, TrustKeys string }
+type LearningConfig struct{ ModelPath, TrustKeys string }
 type ResourceConfig struct{ MaxActiveCEPGroups, MaxEventRefsPerSignal int }

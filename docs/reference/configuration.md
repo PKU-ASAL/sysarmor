@@ -36,6 +36,8 @@ Compose 文件定义安装与平台配置。未知 Agent section 或 key 会直�
 | `policy.path` | `/etc/sysarmor/agent/policy.json` | 统一策略文件 |
 | `content.path` | `/var/lib/sysarmor/agent/content` | 已应用内容存储目录 |
 | `content.trust_keys` | 空 | 逗号分隔的 `key_id=base64_ed25519_public_key` |
+| `learning.model_path` | 空 | 已签名模型 Bundle；空值禁用 Learning Detector |
+| `learning.trust_keys` | 空 | 模型专用的 `key_id=base64_ed25519_public_key`，不与 Content 共用权限域 |
 | `resource.max_active_cep_groups` | `4096` | 非负；CEP 活跃组上限 |
 | `resource.max_event_refs_per_signal` | `128` | 非负；Signal 事件引用上限 |
 
@@ -77,6 +79,20 @@ Compose 文件定义安装与平台配置。未知 Agent section 或 key 会直�
 | `telemetry.flush_interval` | `1s` | `100ms..1m` |
 
 统一 Policy 可在有效范围内覆盖这些基线值。
+
+### Learning Detector
+
+训练工具生成的是待签名 Bundle。发布时必须使用模型专用 Ed25519 私钥签名，再把对应公钥写入 `learning.trust_keys`：
+
+```bash
+sysarmor-model-sign \
+  --key /secure/model-signing-key.pem \
+  --key-id model-release-2026 \
+  --input model-bundle.json \
+  --output model-bundle.signed.json
+```
+
+Agent 对 Bundle 使用 1 MiB 上限和严格 JSON 解码，并依次校验模型摘要、payload 摘要与可信签名。缺少模型路径表示显式禁用；配置了但无法读取、校验或验证签名时，Learning health 为 `degraded`，规则检测与事件采集继续运行，不加载默认模型。
 
 ## Endpoint Policy
 

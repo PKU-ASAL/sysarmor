@@ -90,6 +90,7 @@ func detectionHealth(value domainhealth.Detection) agenthealth.DetectionHealth {
 		DefaultManifestVersion: value.DefaultManifestVersion,
 		FeatureFlags:           agenthealth.RuntimeFeatureFlags{MatcherStrategy: value.MatcherStrategy},
 		LastApplyStatus:        value.LastApplyStatus, LastApplyError: value.LastApplyError, UpdatedAt: value.UpdatedAt,
+		Learning: agenthealth.LearningHealth{Status: value.Learning.Status, LastError: value.Learning.LastError},
 	}
 }
 

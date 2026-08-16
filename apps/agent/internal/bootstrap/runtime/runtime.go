@@ -16,6 +16,7 @@ import (
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -25,13 +26,14 @@ type Options struct {
 }
 
 type Coordinator struct {
-	Config          config.Config
-	Sensor          contract.Sensor
-	Out             io.Writer
-	policyState     policyRuntime
-	managementState managementRuntime
-	telemetryState  telemetryRuntime
-	sensorState     sensorRuntime
+	Config           config.Config
+	Sensor           contract.Sensor
+	Out              io.Writer
+	policyState      policyRuntime
+	managementState  managementRuntime
+	telemetryState   telemetryRuntime
+	sensorState      sensorRuntime
+	learningDetector ports.EventDetector
 }
 
 type policyRuntime struct {
@@ -90,14 +92,16 @@ type sensorRuntime struct {
 }
 
 type Dependencies struct {
-	Config       config.Config
-	Sensor       contract.Sensor
-	Content      *agentcontent.Store
-	LocalStore   *sqlite.Store
-	FeatureFlags agenthealth.RuntimeFeatureFlags
-	EventSeq     uint64
-	SignalSeq    uint64
-	Policy       PolicyControllerFactory
+	Config           config.Config
+	Sensor           contract.Sensor
+	Content          *agentcontent.Store
+	LocalStore       *sqlite.Store
+	FeatureFlags     agenthealth.RuntimeFeatureFlags
+	EventSeq         uint64
+	SignalSeq        uint64
+	Policy           PolicyControllerFactory
+	LearningDetector ports.EventDetector
+	LearningError    error
 }
 
 type PolicyApplications struct {
@@ -127,6 +131,8 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	runtime.managementState.localStore = dependencies.LocalStore
 	runtime.telemetryState.eventSeq = dependencies.EventSeq
 	runtime.telemetryState.initialSignalSequence = dependencies.SignalSeq
+	runtime.learningDetector = dependencies.LearningDetector
+	runtime.policyState.detectionStatus.Learning = learningHealth(dependencies.LearningDetector, dependencies.LearningError)
 	runtime.wireComponents()
 	runtime.managementState.setRuntimeIdentity(runtimeIdentity{
 		AgentID:  dependencies.Config.Agent.ID,
@@ -134,6 +140,16 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 		TenantID: dependencies.Config.Agent.TenantID,
 	})
 	return runtime, nil
+}
+
+func learningHealth(detector ports.EventDetector, loadErr error) agenthealth.LearningHealth {
+	if loadErr != nil {
+		return agenthealth.LearningHealth{Status: "degraded", LastError: loadErr.Error()}
+	}
+	if detector != nil {
+		return agenthealth.LearningHealth{Status: "loaded"}
+	}
+	return agenthealth.LearningHealth{Status: "disabled"}
 }
 
 func (r *Coordinator) wireComponents() {

@@ -49,6 +49,10 @@ resource:
 runtime:
   feature_flags:
     matcher_strategy: optimized
+
+learning:
+  model_path: /var/lib/sysarmor/agent/models/normal-v1.json
+  trust_keys: release=base64-public-key
 `)
 	cfg, err := LoadFile(path)
 	if err != nil {
@@ -93,6 +97,12 @@ runtime:
 	}
 	if cfg.Runtime.FeatureFlags.MatcherStrategy != "optimized" {
 		t.Fatalf("runtime feature flags = %+v", cfg.Runtime.FeatureFlags)
+	}
+	if cfg.Learning.ModelPath != "/var/lib/sysarmor/agent/models/normal-v1.json" {
+		t.Fatalf("learning config = %+v", cfg.Learning)
+	}
+	if cfg.Learning.TrustKeys != "release=base64-public-key" {
+		t.Fatalf("learning trust keys = %+v", cfg.Learning)
 	}
 }
 
