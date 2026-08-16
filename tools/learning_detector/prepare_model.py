@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import argparse
 import json
 import math
 import tempfile
@@ -85,4 +86,11 @@ def prepare(training: Path, calibration: Path, output: Path, target_rate: float 
 
 
 if __name__ == "__main__":
-    raise SystemExit("use prepare_model.prepare() from the experiment runner")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--training", type=Path, required=True)
+    parser.add_argument("--calibration", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--target-rate", type=float, default=0.005)
+    args = parser.parse_args()
+    result = prepare(args.training, args.calibration, args.output, args.target_rate)
+    print(json.dumps(result, sort_keys=True))

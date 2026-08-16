@@ -29,6 +29,7 @@ FUNCTIONAL_TARGET_topology := functional-topology
 FUNCTIONAL_TARGET_all := functional-core
 FUNCTIONAL_TARGET := $(FUNCTIONAL_TARGET_$(DOMAIN))
 PERFORMANCE_TARGET_endpoint := performance-endpoint
+PERFORMANCE_TARGET_learning := performance-learning
 PERFORMANCE_TARGET_platform := performance-platform
 PERFORMANCE_TARGET_modules := performance-modules
 PERFORMANCE_TARGET_all := performance-endpoint performance-platform performance-modules
@@ -135,7 +136,9 @@ else
 		SYSARMOR_BENCH_PROFILE=$(PROFILE) \
 		SYSARMOR_BENCH_WORKLOAD=$(WORKLOAD) \
 		SYSARMOR_BENCH_SCENARIO=$(SCENARIO) \
-		SYSARMOR_BENCH_POLICIES="$(POLICIES)"
+		SYSARMOR_BENCH_POLICIES="$(POLICIES)" \
+		TRAINING_DATA="$(TRAINING_DATA)" \
+		CALIBRATION_DATA="$(CALIBRATION_DATA)"
 endif
 
 test-distribution:
@@ -305,7 +308,7 @@ help:
 	@echo "  make test-postgres-integration  run real PostgreSQL worker concurrency tests"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection    run truth-labeled detection tests"
-	@echo "  make test-performance DOMAIN=endpoint|platform|modules|all PROFILE=medium"
+	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"
 	@echo "  make test-distribution SOURCE=local|published URL=https://..."
 	@echo "  make test-release STAGE=pre-publish|post-publish URL=https://..."
 	@echo "  make test-business-docx validate the formal proposal DOCX build"

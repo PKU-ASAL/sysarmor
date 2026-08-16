@@ -26,7 +26,7 @@ export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 .PHONY: test-unit test-layered-architecture test-postgres-integration functional-core
 .PHONY: functional-endpoint functional-endpoint-local functional-endpoint-container functional-platform functional-platform-full functional-topology
 .PHONY: detection-topology detection-report distribution-package distribution-published release-candidate release-published
-.PHONY: performance-endpoint performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
+.PHONY: performance-endpoint performance-learning performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
 .PHONY: diag-endpoint recorder-start recorder-mark recorder-stop recorder-report
 .PHONY: capture-endpoint capture-topology report
 
@@ -175,6 +175,9 @@ capture-topology: doctor
 performance-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint SYSARMOR_BENCH_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_BENCH_WORKLOAD=$(SYSARMOR_BENCH_WORKLOAD) SYSARMOR_BENCH_SCENARIO=$(SYSARMOR_BENCH_SCENARIO) SYSARMOR_BENCH_POLICIES="$(SYSARMOR_BENCH_POLICIES)" bash suites/performance/endpoint/run.sh
 
+performance-learning: doctor
+	SYSARMOR_LEARNING_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_LEARNING_TRAINING_DATA="$(TRAINING_DATA)" SYSARMOR_LEARNING_CALIBRATION_DATA="$(CALIBRATION_DATA)" bash suites/performance/learning/run.sh
+
 performance-local-store:
 	bash suites/performance/endpoint/local-store.sh
 
@@ -237,7 +240,7 @@ help:
 	@echo "  make test-postgres-integration"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection"
-	@echo "  make test-performance DOMAIN=endpoint|platform|modules|all PROFILE=medium"
+	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"
 	@echo "  make test-distribution SOURCE=local|published URL=https://..."
 	@echo "  make test-release STAGE=pre-publish|post-publish URL=https://..."
 	@echo "  make test-doctor"

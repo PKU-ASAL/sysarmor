@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import math
+import argparse
+import csv
 from pathlib import Path
 from typing import Any
 
@@ -111,12 +113,14 @@ def model_recall(metrics: dict[str, Any]) -> float | None:
 
 
 def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, Any]:
+    if (path / "collection-balanced").is_dir():
+        path = path / "collection-balanced"
     manifest = load_json(path / "manifest.json")
     summary = load_json(path / "summary.json")
     signals = [unwrap(load_json_line(line), "signal") for line in read_lines(path / "signals.scope.ndjson")]
     events = [unwrap(load_json_line(line), "event") for line in read_lines(path / "events.scope.ndjson")]
     model_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_MODEL"]
-    phase_data = summary.get("phases", {}).get(phase, {})
+    phase_data = load_matrix_phase(path, phase)
     learning_status = manifest.get("learning_status") or ("loaded" if manifest.get("learning_variant") == "enabled" else "disabled")
     return {
         "manifest": manifest,
@@ -128,6 +132,22 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
         "rule_truth_ok": True,
         "events": {str(event.get("id")) for event in events if event.get("id")},
     }
+
+
+def load_matrix_phase(path: Path, phase: str) -> dict[str, Any]:
+    matrix = path.parent / "matrix.csv"
+    if matrix.exists():
+        with matrix.open(newline="") as stream:
+            for row in csv.DictReader(stream):
+                if row.get("policy_dir") == path.name:
+                    return {
+                        "agent_cpu_avg_pct": numeric(row.get(f"{phase}_agent_cpu_avg_pct")),
+                        "agent_rss_max_mb": numeric(row.get(f"{phase}_agent_rss_max_mb")),
+                        "eps": numeric(row.get(f"{phase}_eps")),
+                        "dropped_events_delta": int(float(row.get(f"{phase}_dropped_events_delta") or 0)),
+                        "parse_errors_delta": int(float(row.get(f"{phase}_parse_errors_delta") or 0)),
+                    }
+    return {}
 
 
 def read_lines(path: Path) -> list[str]:
@@ -179,3 +199,30 @@ def render_report(summary: dict[str, Any]) -> str:
         lines.append(f"- {name}: `{result.get('status', 'unavailable')}`")
     lines.extend(["", "## Observations", "", "```json", json.dumps(summary.get("observations", {}), indent=2, sort_keys=True), "```", ""])
     return "\n".join(lines)
+
+
+def aggregate_runs(run_dir: Path) -> dict[str, Any]:
+    disabled_path, enabled_path = run_dir / "disabled", run_dir / "enabled"
+    if not disabled_path.exists() or not enabled_path.exists():
+        summary = {"verdict": "failed", "status": "partial", "gates": {}, "observations": {}, "missing": [str(path.name) for path in (disabled_path, enabled_path) if not path.exists()]}
+    else:
+        summary = evaluate_ab(load_endpoint_run(disabled_path), load_endpoint_run(enabled_path), DEFAULT_GATES)
+    (run_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    (run_dir / "report.md").write_text(render_report(summary))
+    return summary
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("run_dir", type=Path)
+    parser.add_argument("--aggregate", action="store_true")
+    args = parser.parse_args()
+    if args.aggregate:
+        summary = aggregate_runs(args.run_dir)
+        return 0 if summary.get("verdict") == "passed" else 1
+    generate_report(args.run_dir, strict=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
