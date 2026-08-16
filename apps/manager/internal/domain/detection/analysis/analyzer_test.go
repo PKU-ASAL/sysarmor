@@ -45,7 +45,7 @@ func TestAnalyzeHonorsCrossLineagePolicy(t *testing.T) {
 func TestAnalyzeUsesAdditiveThreshold(t *testing.T) {
 	policy := &detection.Policy{Converge: &detection.ConvergePolicy{Mode: "additive_threshold", AdditiveRiskThreshold: 100}}
 	result := NewAnalyzer().Analyze(nil, []domaintelemetry.Signal{
-		endpoint("download", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.0.0.1:80")),
+		endpoint("download", "lin-a", domaintelemetry.SignalStageConclusion, socket("10.0.0.1:80")),
 		endpoint("download", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.0.0.1:80")),
 	}, policy)
 	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Method != "additive_threshold" {
