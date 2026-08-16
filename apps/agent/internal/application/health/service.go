@@ -31,8 +31,8 @@ func (s *Service) Snapshot(ctx context.Context) domainhealth.Snapshot {
 	snapshot.Sensor = s.sensor(ctx)
 	snapshot.Telemetry = s.telemetry(ctx)
 	snapshot.Telemetry.DroppedBatches = snapshot.Telemetry.Batcher.DroppedBatches
-	snapshot.Telemetry.DroppedEvents = snapshot.Telemetry.Bus.EventDropped + snapshot.Telemetry.Batcher.DroppedEvents
-	snapshot.Telemetry.DroppedSignals = snapshot.Telemetry.Bus.SignalDropped + snapshot.Telemetry.Batcher.DroppedSignals
+	snapshot.Telemetry.DroppedEvents = snapshot.Telemetry.Batcher.DroppedEvents
+	snapshot.Telemetry.DroppedSignals = snapshot.Telemetry.Batcher.DroppedSignals
 	if snapshot.Telemetry.LastError == "" {
 		snapshot.Telemetry.LastError = firstError(snapshot.Telemetry.Batcher.LastError, snapshot.Telemetry.Sender.LastError)
 	}

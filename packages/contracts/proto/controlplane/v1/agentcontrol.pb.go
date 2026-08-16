@@ -863,11 +863,9 @@ type TelemetryBusHealth struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	EventCapacity     uint64                 `protobuf:"varint,1,opt,name=event_capacity,json=eventCapacity,proto3" json:"event_capacity,omitempty"`
 	EventBuffered     uint64                 `protobuf:"varint,2,opt,name=event_buffered,json=eventBuffered,proto3" json:"event_buffered,omitempty"`
-	EventDropped      uint64                 `protobuf:"varint,3,opt,name=event_dropped,json=eventDropped,proto3" json:"event_dropped,omitempty"`
 	EventSubscribers  uint64                 `protobuf:"varint,4,opt,name=event_subscribers,json=eventSubscribers,proto3" json:"event_subscribers,omitempty"`
 	SignalCapacity    uint64                 `protobuf:"varint,5,opt,name=signal_capacity,json=signalCapacity,proto3" json:"signal_capacity,omitempty"`
 	SignalBuffered    uint64                 `protobuf:"varint,6,opt,name=signal_buffered,json=signalBuffered,proto3" json:"signal_buffered,omitempty"`
-	SignalDropped     uint64                 `protobuf:"varint,7,opt,name=signal_dropped,json=signalDropped,proto3" json:"signal_dropped,omitempty"`
 	SignalSubscribers uint64                 `protobuf:"varint,8,opt,name=signal_subscribers,json=signalSubscribers,proto3" json:"signal_subscribers,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -917,13 +915,6 @@ func (x *TelemetryBusHealth) GetEventBuffered() uint64 {
 	return 0
 }
 
-func (x *TelemetryBusHealth) GetEventDropped() uint64 {
-	if x != nil {
-		return x.EventDropped
-	}
-	return 0
-}
-
 func (x *TelemetryBusHealth) GetEventSubscribers() uint64 {
 	if x != nil {
 		return x.EventSubscribers
@@ -941,13 +932,6 @@ func (x *TelemetryBusHealth) GetSignalCapacity() uint64 {
 func (x *TelemetryBusHealth) GetSignalBuffered() uint64 {
 	if x != nil {
 		return x.SignalBuffered
-	}
-	return 0
-}
-
-func (x *TelemetryBusHealth) GetSignalDropped() uint64 {
-	if x != nil {
-		return x.SignalDropped
 	}
 	return 0
 }
@@ -4687,16 +4671,14 @@ const file_packages_contracts_proto_controlplane_v1_agentcontrol_proto_rawDesc =
 	" \x01(\tR\vlastEventAt\x12(\n" +
 	"\x10last_exit_reason\x18\v \x01(\tR\x0elastExitReason\x12\x1d\n" +
 	"\n" +
-	"last_error\x18\f \x01(\tR\tlastError\"\xdc\x02\n" +
+	"last_error\x18\f \x01(\tR\tlastError\"\xbb\x02\n" +
 	"\x12TelemetryBusHealth\x12%\n" +
 	"\x0eevent_capacity\x18\x01 \x01(\x04R\reventCapacity\x12%\n" +
-	"\x0eevent_buffered\x18\x02 \x01(\x04R\reventBuffered\x12#\n" +
-	"\revent_dropped\x18\x03 \x01(\x04R\feventDropped\x12+\n" +
+	"\x0eevent_buffered\x18\x02 \x01(\x04R\reventBuffered\x12+\n" +
 	"\x11event_subscribers\x18\x04 \x01(\x04R\x10eventSubscribers\x12'\n" +
 	"\x0fsignal_capacity\x18\x05 \x01(\x04R\x0esignalCapacity\x12'\n" +
-	"\x0fsignal_buffered\x18\x06 \x01(\x04R\x0esignalBuffered\x12%\n" +
-	"\x0esignal_dropped\x18\a \x01(\x04R\rsignalDropped\x12-\n" +
-	"\x12signal_subscribers\x18\b \x01(\x04R\x11signalSubscribers\"\x81\x06\n" +
+	"\x0fsignal_buffered\x18\x06 \x01(\x04R\x0esignalBuffered\x12-\n" +
+	"\x12signal_subscribers\x18\b \x01(\x04R\x11signalSubscribersJ\x04\b\x03\x10\x04J\x04\b\a\x10\bR\revent_droppedR\x0esignal_dropped\"\x81\x06\n" +
 	"\x16TelemetryBatcherHealth\x12%\n" +
 	"\x0epending_events\x18\x01 \x01(\x04R\rpendingEvents\x12'\n" +
 	"\x0fpending_signals\x18\x02 \x01(\x04R\x0ependingSignals\x12%\n" +

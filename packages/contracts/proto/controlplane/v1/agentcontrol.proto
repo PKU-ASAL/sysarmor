@@ -119,13 +119,13 @@ message SensorHealth {
 }
 
 message TelemetryBusHealth {
+  reserved 3, 7;
+  reserved "event_dropped", "signal_dropped";
   uint64 event_capacity = 1;
   uint64 event_buffered = 2;
-  uint64 event_dropped = 3;
   uint64 event_subscribers = 4;
   uint64 signal_capacity = 5;
   uint64 signal_buffered = 6;
-  uint64 signal_dropped = 7;
   uint64 signal_subscribers = 8;
 }
 

@@ -16,8 +16,9 @@ func TestAgentHealthMapsDomainSnapshot(t *testing.T) {
 		Status: domainhealth.StatusDegraded,
 		Sensor: domainhealth.Sensor{Backend: "fake", Running: true, EventsSeen: 3},
 		Telemetry: domainhealth.Telemetry{
-			Bus:     domainhealth.Bus{EventCapacity: 16, EventDropped: 2},
+			Bus:     domainhealth.Bus{EventCapacity: 16},
 			Batcher: domainhealth.Batcher{QueuedBatches: 3}, Sender: domainhealth.Sender{SentBatches: 4},
+			Streams: domainhealth.Streams{EventEvicted: 2},
 		},
 		Detection: domainhealth.Detection{
 			PolicyID: "detection-a", DefaultManifestVersion: "release-v1",
@@ -32,6 +33,9 @@ func TestAgentHealthMapsDomainSnapshot(t *testing.T) {
 	}
 	if got.TelemetryBus.EventCapacity != 16 || got.TelemetryBatcher.QueuedBatches != 3 || got.TelemetrySender.SentBatches != 4 {
 		t.Fatalf("telemetry=%+v", got)
+	}
+	if got.Streams.EventEvicted != 2 {
+		t.Fatalf("streams=%+v", got.Streams)
 	}
 	if got.Detection.DefaultManifestVersion != "release-v1" || got.CEP.ActiveGroups != 5 || !got.CEP.Degraded {
 		t.Fatalf("detection=%+v cep=%+v", got.Detection, got.CEP)

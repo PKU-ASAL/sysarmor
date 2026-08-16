@@ -54,9 +54,9 @@ func sensorHealth(value domainhealth.Sensor) agenthealth.SensorHealth {
 
 func busHealth(value domainhealth.Bus) agenthealth.TelemetryBusHealth {
 	return agenthealth.TelemetryBusHealth{
-		EventCapacity: value.EventCapacity, EventBuffered: value.EventBuffered, EventDropped: value.EventDropped,
+		EventCapacity: value.EventCapacity, EventBuffered: value.EventBuffered,
 		EventSubscribers: value.EventSubscribers, SignalCapacity: value.SignalCapacity,
-		SignalBuffered: value.SignalBuffered, SignalDropped: value.SignalDropped, SignalSubscribers: value.SignalSubscribers,
+		SignalBuffered: value.SignalBuffered, SignalSubscribers: value.SignalSubscribers,
 	}
 }
 

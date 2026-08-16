@@ -90,11 +90,9 @@ func healthResponse(health agenthealth.AgentHealth) *controlplanev1.HealthRespon
 		TelemetryBus: &controlplanev1.TelemetryBusHealth{
 			EventCapacity:     health.TelemetryBus.EventCapacity,
 			EventBuffered:     health.TelemetryBus.EventBuffered,
-			EventDropped:      health.TelemetryBus.EventDropped,
 			EventSubscribers:  health.TelemetryBus.EventSubscribers,
 			SignalCapacity:    health.TelemetryBus.SignalCapacity,
 			SignalBuffered:    health.TelemetryBus.SignalBuffered,
-			SignalDropped:     health.TelemetryBus.SignalDropped,
 			SignalSubscribers: health.TelemetryBus.SignalSubscribers,
 		},
 		TelemetryBatcher: &controlplanev1.TelemetryBatcherHealth{

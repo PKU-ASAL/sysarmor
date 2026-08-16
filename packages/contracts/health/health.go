@@ -106,11 +106,9 @@ type CollectionBehaviorCapability struct {
 type TelemetryBusHealth struct {
 	EventCapacity     uint64 `json:"event_capacity"`
 	EventBuffered     uint64 `json:"event_buffered"`
-	EventDropped      uint64 `json:"event_dropped"`
 	EventSubscribers  uint64 `json:"event_subscribers"`
 	SignalCapacity    uint64 `json:"signal_capacity"`
 	SignalBuffered    uint64 `json:"signal_buffered"`
-	SignalDropped     uint64 `json:"signal_dropped"`
 	SignalSubscribers uint64 `json:"signal_subscribers"`
 }
 

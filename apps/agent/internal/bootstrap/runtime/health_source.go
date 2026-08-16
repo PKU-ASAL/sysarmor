@@ -67,8 +67,8 @@ func (s *runtimeHealthSource) Telemetry(context.Context) (domainhealth.Telemetry
 	bus, batcher, sender := s.bus.Stats(), s.batcher.Stats(), s.sender.Stats()
 	return domainhealth.Telemetry{
 		Bus: domainhealth.Bus{
-			EventCapacity: bus.EventCapacity, EventBuffered: bus.EventBuffered, EventDropped: bus.EventDropped, EventSubscribers: bus.EventSubscribers,
-			SignalCapacity: bus.SignalCapacity, SignalBuffered: bus.SignalBuffered, SignalDropped: bus.SignalDropped, SignalSubscribers: bus.SignalSubscribers,
+			EventCapacity: bus.EventCapacity, EventBuffered: bus.EventBuffered, EventSubscribers: bus.EventSubscribers,
+			SignalCapacity: bus.SignalCapacity, SignalBuffered: bus.SignalBuffered, SignalSubscribers: bus.SignalSubscribers,
 		},
 		Batcher: domainhealth.Batcher{
 			PendingEvents: batcher.PendingEvents, PendingSignals: batcher.PendingSignals, QueuedBatches: batcher.QueuedBatches,
@@ -86,10 +86,10 @@ func (s *runtimeHealthSource) Telemetry(context.Context) (domainhealth.Telemetry
 		Streams: domainhealth.Streams{
 			EventCapacity: bus.EventCapacity, EventBuffered: bus.EventBuffered, EventNextSequence: bus.EventNextSequence,
 			EventOldestSequence: bus.EventOldestSequence, EventNewestSequence: bus.EventNewestSequence,
-			EventEvicted: bus.EventDropped, EventSubscribers: bus.EventSubscribers,
+			EventEvicted: bus.EventEvicted, EventSubscribers: bus.EventSubscribers,
 			SignalCapacity: bus.SignalCapacity, SignalBuffered: bus.SignalBuffered, SignalNextSequence: bus.SignalNextSequence,
 			SignalOldestSequence: bus.SignalOldestSequence, SignalNewestSequence: bus.SignalNewestSequence,
-			SignalEvicted: bus.SignalDropped, SignalSubscribers: bus.SignalSubscribers,
+			SignalEvicted: bus.SignalEvicted, SignalSubscribers: bus.SignalSubscribers,
 		},
 	}, nil
 }

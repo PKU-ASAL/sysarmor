@@ -75,8 +75,8 @@ type Telemetry struct {
 }
 
 type Bus struct {
-	EventCapacity, EventBuffered, EventDropped, EventSubscribers     uint64
-	SignalCapacity, SignalBuffered, SignalDropped, SignalSubscribers uint64
+	EventCapacity, EventBuffered, EventSubscribers    uint64
+	SignalCapacity, SignalBuffered, SignalSubscribers uint64
 }
 
 type Batcher struct {
