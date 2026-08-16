@@ -47,6 +47,14 @@ class PerformanceEndpointPolicyFlowTest(unittest.TestCase):
         self.assertIn('ACTIVE_REC_RUN_ID="$rec_run_id"', self.script)
         self.assertIn('ACTIVE_REC_RUN_ID=""', self.script)
 
+    def test_generates_human_readable_report_after_matrix(self):
+        matrix = self.script.index('python3 "$HERE/report.py" "$OUT_DIR"')
+        human = self.script.index('human_report.py', matrix)
+        output = self.script.index('$OUT_DIR/report.md', human)
+        self.assertLess(matrix, human)
+        self.assertIn('[performance-endpoint][WARN] human report generation failed', self.script)
+        self.assertGreater(output, human)
+
 
 if __name__ == "__main__":
     unittest.main()

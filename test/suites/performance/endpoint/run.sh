@@ -805,4 +805,8 @@ done
 
 python3 "$HERE/report.py" "$OUT_DIR"
 
+if ! python3 "$HERE/human_report.py" "$OUT_DIR" --output "$OUT_DIR/report.md"; then
+  echo "[performance-endpoint][WARN] human report generation failed; matrix remains available" >&2
+fi
+
 echo "[performance-endpoint] matrix written to $OUT_DIR/matrix.csv"
