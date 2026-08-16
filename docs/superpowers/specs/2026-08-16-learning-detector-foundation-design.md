@@ -84,11 +84,11 @@ OpenSearch 新建 `sysarmor-signals-v2`，把 v1 文档一次性转换为 `stage
 
 ## Agent Candidate Pipeline
 
-Agent 使用确定性的 `FeatureSchemaV1` 把一个短时间窗口内的 Event 聚合为 `ProcessObservation`。模型训练和端侧推理必须复用同一套特征定义和 golden replay 数据。
+最小 pipeline 使用确定性的逐 Event `FeatureSchemaV1`，固定编码 Behavior bucket、Argv 数量，以及 Subject、父进程、文件对象、Socket 对象四个存在位。Python 训练/replay 与 Go 推理使用相同的 float32 运算顺序、摘要规范和 golden replay；缺失字段显式编码，不猜测或用空字符串冒充正常值。
 
-第一版特征只使用现有 Event 已可靠提供的数据：Binary、Argv、UID、父进程、Lineage、Behavior、文件路径、Socket 地址和窗口计数。缺失字段显式编码，不猜测或用空字符串冒充正常值。
+短时间窗口 `ProcessObservation`、Binary/UID/Lineage 实值特征和窗口计数属于下一阶段模型效果工作，不混入本次 pipeline 地基。引入时必须发布新的 FeatureSchema，不能改变 `FeatureSchemaV1` 的含义。
 
-离线训练使用 Python/uv，输出带版本、digest、特征 schema、归一化参数、权重和阈值的模型 Bundle。Agent 只加载经过签名验证且 FeatureSchema 兼容的 Bundle。模型不可用时 Learning Detector 报告 degraded，规则检测和事件采集继续运行，不加载内存默认模型。
+离线训练使用 Python/uv，输出带版本、digest、特征 schema、归一化参数和阈值的待签名模型 Bundle。发布工具使用模型专用 Ed25519 密钥签名；Agent 只加载可信签名且 FeatureSchema 兼容的 Bundle。模型不可用时 Learning Detector 报告 degraded，规则检测和事件采集继续运行，不加载内存默认模型。
 
 Agent 输出：
 
