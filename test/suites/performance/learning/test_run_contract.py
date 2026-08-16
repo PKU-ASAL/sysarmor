@@ -29,6 +29,11 @@ class LearningRunContractTest(unittest.TestCase):
         self.assertIn("SYSARMOR_LEARNING_CALIBRATION_DATA", self.script)
         self.assertIn("training and calibration", self.script)
 
+    def test_persists_public_trust_key_and_dataset_digests(self):
+        self.assertIn("trust-key.txt", self.script)
+        self.assertIn('"training_digest"', self.script)
+        self.assertIn('"calibration_digest"', self.script)
+
     def test_exposes_learning_performance_make_target(self):
         self.assertIn("performance-learning", self.makefile)
         self.assertIn("PERFORMANCE_TARGET_learning", Path("Makefile").read_text())

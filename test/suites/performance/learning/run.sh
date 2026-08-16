@@ -34,6 +34,7 @@ python3 "$REPO/tools/learning_detector/prepare_model.py" \
 openssl genpkey -algorithm ED25519 -out "$PRIVATE_KEY" >/dev/null 2>&1
 chmod 0600 "$PRIVATE_KEY"
 PUBLIC_KEY="$(openssl pkey -in "$PRIVATE_KEY" -pubout -outform DER 2>/dev/null | tail -c 32 | base64 -w0)"
+printf 'learning-experiment=%s\n' "$PUBLIC_KEY" > "$MODEL_DIR/trust-key.txt"
 "$REPO/dist/bin/sysarmor-model-sign" --key "$PRIVATE_KEY" --key-id learning-experiment \
   --input "$UNSIGNED_MODEL" --output "$SIGNED_MODEL"
 rm -f "$PRIVATE_KEY"
@@ -47,6 +48,8 @@ MODEL_VERSION="$(jq -r '.model_version' "$SIGNED_MODEL")"
 MODEL_DIGEST="$(jq -r '.model_digest' "$SIGNED_MODEL")"
 FEATURE_SCHEMA="$(jq -r '.feature_schema' "$SIGNED_MODEL")"
 THRESHOLD="$(jq -r '.threshold' "$SIGNED_MODEL")"
+TRAINING_DIGEST="$(jq -r '.datasets.training.sha256' "$MODEL_DIR/calibration.json")"
+CALIBRATION_DIGEST="$(jq -r '.datasets.calibration.sha256' "$MODEL_DIR/calibration.json")"
 cat > "$OUT_DIR/manifest.json" <<EOF
 {
   "suite": "learning-detector-performance",
@@ -56,7 +59,9 @@ cat > "$OUT_DIR/manifest.json" <<EOF
   "activity_mode": "serial",
   "scenario": "apt-fileless-c2-local",
   "training_data": "$TRAINING_DATA",
+  "training_digest": "$TRAINING_DIGEST",
   "calibration_data": "$CALIBRATION_DATA",
+  "calibration_digest": "$CALIBRATION_DIGEST",
   "model_ref": "$MODEL_REF",
   "model_version": "$MODEL_VERSION",
   "model_digest": "$MODEL_DIGEST",
