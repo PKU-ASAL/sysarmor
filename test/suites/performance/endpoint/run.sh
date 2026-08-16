@@ -34,6 +34,7 @@ else
   WORKLOAD="${DIAG_SCENARIO:-edr-activity-heavy}"
 fi
 SCENARIO="${SYSARMOR_BENCH_SCENARIO:-}"
+ACTIVITY_MODE="${SYSARMOR_BENCH_ACTIVITY_MODE:-parallel}"
 VARIANT="${SYSARMOR_BENCH_VARIANT:-}"
 LEARNING_MODEL="${SYSARMOR_BENCH_LEARNING_MODEL:-}"
 LEARNING_TRUST_KEYS="${SYSARMOR_BENCH_LEARNING_TRUST_KEYS:-}"
@@ -61,6 +62,13 @@ if [[ "$LEARNING_VARIANT" == "disabled" && -n "$LEARNING_MODEL" ]]; then
   echo "[performance-endpoint][ERROR] disabled Learning variant cannot load a model" >&2
   exit 1
 fi
+case "$ACTIVITY_MODE" in
+  parallel|serial) ;;
+  *)
+    echo "[performance-endpoint][ERROR] unsupported activity mode: $ACTIVITY_MODE" >&2
+    exit 1
+    ;;
+esac
 case "$BENCH_PROFILE" in
   quick|medium|long)
     # Profiles provide defaults only; SYSARMOR_BENCH_* env vars may override them.
@@ -109,6 +117,7 @@ cat >"$OUT_DIR/manifest.json" <<EOF
   "run_id": "$RUN_ID",
   "workload": "$WORKLOAD",
   "scenario": "$SCENARIO",
+  "activity_mode": "$ACTIVITY_MODE",
   "agent_mode": "$AGENT_MODE",
   "learning_variant": "$LEARNING_VARIANT",
   "learning_model": "${LEARNING_MODEL:+configured}",
@@ -504,6 +513,27 @@ run_case_activity() {
   local rec_run_id="${4:-}"
   local workload_pid=""
 
+  if [[ "$ACTIVITY_MODE" == "serial" ]]; then
+    if [[ -z "$workload_name" || -z "$scenario_name" ]]; then
+      echo "[performance-endpoint][ERROR] serial activity requires both workload and scenario" >&2
+      exit 1
+    fi
+    mark "$rec_run_id" normal_activity_start "$workload_name"
+    run_workload "$policy_out" "$workload_name"
+    mark "$rec_run_id" normal_activity_done "$workload_name"
+    start_agent_profile_window "$policy_out" activity "$ACTIVITY_PROFILE_SECONDS"
+    mark "$rec_run_id" scenario_start "$scenario_name"
+    run_scenario "$policy_out" "$scenario_name"
+    mark "$rec_run_id" scenario_done "$scenario_name"
+    finish_agent_profile_window "$policy_out" activity "$rec_run_id"
+    mark "$rec_run_id" scenario_observe_start "$scenario_name"
+    start_agent_profile_window "$policy_out" persistence "$SCENARIO_OBSERVE_SECONDS"
+    sleep "$SCENARIO_OBSERVE_SECONDS"
+    mark "$rec_run_id" scenario_observe_done "$scenario_name"
+    finish_agent_profile_window "$policy_out" persistence "$rec_run_id"
+    return 0
+  fi
+
   if [[ -n "$workload_name" ]]; then
     start_workload_background "$policy_out" "$workload_name"
     workload_pid="$WORKLOAD_PID"
@@ -674,6 +704,7 @@ for policy in $POLICIES_RAW; do
   "baseline_policy_file": "deployments/agent/policy.json",
   "workload": "$case_workload",
   "scenario": "$case_scenario",
+  "activity_mode": "$ACTIVITY_MODE",
   "variant": "$VARIANT",
   "learning_variant": "$LEARNING_VARIANT",
   "learning_model": "${LEARNING_MODEL:+configured}",

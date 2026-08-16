@@ -2,6 +2,7 @@
 import csv
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -48,6 +49,42 @@ def count_diagnostics(summary, key):
     if isinstance(values, list):
         return len(values)
     return 0
+
+
+def marker_time(summary, name):
+    for marker in summary.get("markers", []):
+        if marker.get("phase") == name:
+            value = marker.get("ts", "")
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return None
+
+
+def marker_phase(policy_dir, summary, start_name, done_name):
+    start = marker_time(summary, start_name)
+    done = marker_time(summary, done_name)
+    if start is None or done is None or done <= start:
+        return {}
+    rows = []
+    with (policy_dir / "timeline.csv").open(newline="") as stream:
+        for row in csv.DictReader(stream):
+            timestamp = datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
+            if start <= timestamp < done:
+                rows.append(row)
+    if not rows:
+        return {}
+    events = sum(number(row.get("events_seen_since_cursor")) for row in rows)
+    duration = (done - start).total_seconds()
+    return {
+        "duration_s": duration,
+        "samples": len(rows),
+        "events_delta": int(events),
+        "eps": events / duration if duration else 0.0,
+        "agent_cpu_pct": {"avg": sum(number(row.get("agent_cpu_pct")) for row in rows) / len(rows)},
+        "agent_rss_mb": {"max": max(number(row.get("agent_rss_mb")) for row in rows)},
+        "dropped_events_delta": 0,
+        "parse_errors_delta": 0,
+        "signals_delta": 0,
+    }
 
 
 def apply_report(path):
@@ -115,6 +152,7 @@ def build_row(policy_dir):
         "event_watch_error_lines": count_diagnostics(summary, "event_watch_errors"),
         "signal_watch_error_lines": count_diagnostics(summary, "signal_watch_errors"),
     }
+    row.update(phase_fields("normal_activity", marker_phase(policy_dir, summary, "normal_activity_start", "normal_activity_done")))
     for name in ("startup", "steady", "workload", "activity", "persistence", "overall"):
         row.update(phase_fields(name, phase(summary, name)))
     return row
@@ -149,7 +187,7 @@ def main():
         "event_watch_error_lines",
         "signal_watch_error_lines",
     ]
-    for name in ("startup", "steady", "workload", "activity", "persistence", "overall"):
+    for name in ("normal_activity", "startup", "steady", "workload", "activity", "persistence", "overall"):
         fields.extend(phase_fields(name, {}).keys())
     with matrix_csv.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
