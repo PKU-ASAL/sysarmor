@@ -56,10 +56,10 @@ scenario_attack() {
   esac
 }
 
-scenario_terminal() {
+scenario_stage() {
   case "$1" in
-    reverse-shell) printf '%s\n' true ;;
-    web-runtime-shell|download-by-lolbin|suspicious-exec-connect|payload-lifecycle) printf '%s\n' false ;;
+    reverse-shell) printf '%s\n' SIGNAL_STAGE_CONCLUSION ;;
+    web-runtime-shell|download-by-lolbin|suspicious-exec-connect|payload-lifecycle) printf '%s\n' SIGNAL_STAGE_CANDIDATE ;;
     *) return 1 ;;
   esac
 }

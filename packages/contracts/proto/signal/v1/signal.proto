@@ -10,6 +10,20 @@ enum SignalWhere {
   SIGNAL_WHERE_CLOUD = 2;
 }
 
+enum SignalStage {
+  SIGNAL_STAGE_UNSPECIFIED = 0;
+  SIGNAL_STAGE_CANDIDATE = 1;
+  SIGNAL_STAGE_CONCLUSION = 2;
+}
+
+enum DetectorKind {
+  DETECTOR_KIND_UNSPECIFIED = 0;
+  DETECTOR_KIND_RULE = 1;
+  DETECTOR_KIND_MODEL = 2;
+  DETECTOR_KIND_GRAPH = 3;
+  DETECTOR_KIND_SYSTEM = 4;
+}
+
 message EntityRef {
   string kind = 1;
   string key = 2;
@@ -48,7 +62,8 @@ message Signal {
   repeated EntityRef entities = 8;
   repeated string event_refs = 9;
   repeated string signal_refs = 10;
-  bool terminal = 11;
+  reserved 11;
+  reserved "terminal";
   EvidenceBundle evidence = 12;
   reserved 13;
   reserved "scenario";
@@ -63,4 +78,6 @@ message Signal {
   uint32 confidence = 22;
   string mode = 23;
   map<string, string> labels = 24;
+  SignalStage stage = 25;
+  DetectorKind detector_kind = 26;
 }

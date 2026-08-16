@@ -10,12 +10,17 @@ import (
 
 func TestAnalyzeAttackChainProducesCloudSignalsAndIncident(t *testing.T) {
 	result := NewAnalyzer().Analyze(nil, []domaintelemetry.Signal{
-		endpoint("web_runtime_spawns_shell", "lin-a", false, process("p-web")),
-		endpoint("payload_dropped", "lin-a", false, file("/dev/shm/x.sh")),
-		endpoint("reverse_shell_pattern", "lin-a", true, process("p-bash"), socket("10.66.0.99:443")),
+		endpoint("web_runtime_spawns_shell", "lin-a", domaintelemetry.SignalStageCandidate, process("p-web")),
+		endpoint("payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, file("/dev/shm/x.sh")),
+		endpoint("reverse_shell_pattern", "lin-a", domaintelemetry.SignalStageConclusion, process("p-bash"), socket("10.66.0.99:443")),
 	}, nil)
 	if !hasCloud(result.CloudSignals, "dropped_payload_executed_and_connects") || !hasCloud(result.CloudSignals, "web_shell_chain") {
 		t.Fatalf("cloud signals = %+v", result.CloudSignals)
+	}
+	for _, signal := range result.CloudSignals {
+		if signal.Stage != domaintelemetry.SignalStageConclusion || signal.DetectorKind != domaintelemetry.DetectorKindRule {
+			t.Fatalf("cloud signal metadata = %+v", signal)
+		}
 	}
 	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Method != "rarity+causal-topk" {
 		t.Fatalf("incidents = %+v", result.Incidents)
@@ -24,8 +29,8 @@ func TestAnalyzeAttackChainProducesCloudSignalsAndIncident(t *testing.T) {
 
 func TestAnalyzeHonorsCrossLineagePolicy(t *testing.T) {
 	signals := []domaintelemetry.Signal{
-		endpointWithID("drop-a", "payload_dropped", "lin-a", false, file("/tmp/payload")),
-		endpointWithID("exec-a", "suspicious_exec_connect", "lin-b", false, file("/tmp/payload"), socket("10.66.0.99:443")),
+		endpointWithID("drop-a", "payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, file("/tmp/payload")),
+		endpointWithID("exec-a", "suspicious_exec_connect", "lin-b", domaintelemetry.SignalStageCandidate, file("/tmp/payload"), socket("10.66.0.99:443")),
 	}
 	linked := NewAnalyzer().Analyze(nil, signals, nil)
 	if len(linked.CloudSignals) != 1 || len(linked.CloudSignals[0].SignalRefs) != 2 {
@@ -40,8 +45,8 @@ func TestAnalyzeHonorsCrossLineagePolicy(t *testing.T) {
 func TestAnalyzeUsesAdditiveThreshold(t *testing.T) {
 	policy := &detection.Policy{Converge: &detection.ConvergePolicy{Mode: "additive_threshold", AdditiveRiskThreshold: 100}}
 	result := NewAnalyzer().Analyze(nil, []domaintelemetry.Signal{
-		endpoint("download", "lin-a", false, socket("10.0.0.1:80")),
-		endpoint("download", "lin-a", false, socket("10.0.0.1:80")),
+		endpoint("download", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.0.0.1:80")),
+		endpoint("download", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.0.0.1:80")),
 	}, policy)
 	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Method != "additive_threshold" {
 		t.Fatalf("analysis = %+v", result)
@@ -54,7 +59,7 @@ func TestAnalyzeUsesRarityBaseline(t *testing.T) {
 		"container:checkout": {"reverse_shell_pattern": 3},
 	}})
 	result := analyzer.Analyze(nil, []domaintelemetry.Signal{
-		endpoint("reverse_shell_pattern", "lin-a", true, container("checkout"), process("p-bash")),
+		endpoint("reverse_shell_pattern", "lin-a", domaintelemetry.SignalStageConclusion, container("checkout"), process("p-bash")),
 	}, nil)
 	if result.Incidents[0].Converge.Score != 12.5 {
 		t.Fatalf("score = %f, want 12.5", result.Incidents[0].Converge.Score)
@@ -64,8 +69,8 @@ func TestAnalyzeUsesRarityBaseline(t *testing.T) {
 func TestAnalyzeIDsIgnoreCallHistoryAndInputOrder(t *testing.T) {
 	analyzer := NewAnalyzer()
 	signals := []domaintelemetry.Signal{
-		endpoint("payload_dropped", "lin-a", false, file("/tmp/payload")),
-		endpoint("suspicious_exec_connect", "lin-b", false, file("/tmp/payload"), socket("10.0.0.1:443")),
+		endpoint("payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, file("/tmp/payload")),
+		endpoint("suspicious_exec_connect", "lin-b", domaintelemetry.SignalStageCandidate, file("/tmp/payload"), socket("10.0.0.1:443")),
 	}
 	first := analyzer.Analyze(nil, signals, nil)
 	second := analyzer.Analyze(nil, []domaintelemetry.Signal{signals[1], signals[0]}, nil)
@@ -74,14 +79,15 @@ func TestAnalyzeIDsIgnoreCallHistoryAndInputOrder(t *testing.T) {
 	}
 }
 
-func endpoint(name, lineage string, terminal bool, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
-	return endpointWithID("", name, lineage, terminal, entities...)
+func endpoint(name, lineage string, stage domaintelemetry.SignalStage, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
+	return endpointWithID("", name, lineage, stage, entities...)
 }
 
-func endpointWithID(id, name, lineage string, terminal bool, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
+func endpointWithID(id, name, lineage string, stage domaintelemetry.SignalStage, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
 	return domaintelemetry.Signal{
 		ID: id, Name: name, Where: domaintelemetry.SignalWhereEndpoint, BaseRisk: 50, GlobalRarity: 1,
-		LineageID: lineage, Terminal: terminal, Entities: entities, Labels: map[string]string{"scenario": "scenario-a"},
+		LineageID: lineage, Stage: stage, DetectorKind: domaintelemetry.DetectorKindRule,
+		Entities: entities, Labels: map[string]string{"scenario": "scenario-a"},
 	}
 }
 

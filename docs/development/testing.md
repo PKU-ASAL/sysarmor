@@ -190,7 +190,7 @@ manager.incidents.json
 ```
 
 脚本将三者转换为对应的 `.ndjson` 文件。当前评分器只消费 Event、Signal 以及
-terminal/forbidden Signal；Incident 文件会被采集并记录到报告路径，但不参与评分或
+Conclusion/forbidden Signal；Incident 文件会被采集并记录到报告路径，但不参与评分或
 门禁。因此 Detection 通过不能证明 Incident 数量、内容或 Evidence 子图正确。
 本地 Agent watch 文件只用于诊断，不是默认评分源。恶意场景缺少 required truth，或
 良性场景产生 forbidden detection，均应使门禁失败。完整报告包括：

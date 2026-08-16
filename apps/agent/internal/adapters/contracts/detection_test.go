@@ -12,9 +12,10 @@ func TestSignalMapsDomainDetectionResult(t *testing.T) {
 	value := detection.Signal{
 		ID: "signal-a", Name: "rule-a", RuleID: "rule-a", RuleVersion: 7, RuleSetRef: "ruleset:a",
 		Where: detection.SignalWhereEndpoint, BaseRisk: 80, Severity: "critical", Confidence: 91,
+		Stage: detection.SignalStageConclusion, DetectorKind: detection.DetectorKindRule,
 		Mode: "observe", LocalRarity: 0.5, GlobalRarity: 0.25, LineageID: "lineage-a",
 		Entities:  []detection.Entity{{Kind: "process", Key: "process-a", Role: "subject"}},
-		EventRefs: []string{"event-a"}, SignalRefs: []string{"signal-parent"}, Terminal: true, CrossLineage: true,
+		EventRefs: []string{"event-a"}, SignalRefs: []string{"signal-parent"}, CrossLineage: true,
 		ResponseIntent: &detection.ResponseIntent{Action: "collect_evidence", Confidence: 91, Reason: "test"},
 		Evidence:       &detection.Evidence{ID: "evidence-a", EventRefs: []string{"event-a"}, RawRefs: []string{"raw-a"}, Summary: "summary"},
 		ContextRefs:    []detection.ContentRef{{Ref: "ctx:a", Version: "v1", Digest: "sha256:a"}},
@@ -27,6 +28,9 @@ func TestSignalMapsDomainDetectionResult(t *testing.T) {
 
 	if wire.GetId() != value.ID || wire.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT || wire.GetRuleVersion() != 7 {
 		t.Fatalf("signal = %+v", wire)
+	}
+	if wire.GetStage() != signalv1.SignalStage_SIGNAL_STAGE_CONCLUSION || wire.GetDetectorKind() != signalv1.DetectorKind_DETECTOR_KIND_RULE {
+		t.Fatalf("signal classification = %+v", wire)
 	}
 	if !reflect.DeepEqual(wire.GetEventRefs(), value.EventRefs) || wire.GetEntities()[0].GetKey() != "process-a" {
 		t.Fatalf("signal relations = %+v", wire)

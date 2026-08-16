@@ -56,7 +56,7 @@ Signal 是结构化行为信号，不等同于告警。规则应明确：
 - 输入需要哪些 Event、Signal、实体或内容版本；
 - 输出 Signal 的稳定身份、名称、风险、严重度和置信度；
 - Event、上游 Signal、实体、lineage 和 Evidence 引用如何保留；
-- 规则是否为 terminal、是否允许跨 lineage，以及何时只观察不响应；
+- 输出是 Candidate 还是 Conclusion、检测器类型、是否允许跨 lineage，以及何时只观察不响应；
 - 重放同一输入时是否生成同一语义结果。
 
 规则内容与策略分离：策略引用有版本的 ruleset、context 和 IOC；规则覆盖只表达启停、模式、严重度、作用域、响应意图和参数等有意差异。这样可以审计“使用了什么内容”与“如何应用内容”。

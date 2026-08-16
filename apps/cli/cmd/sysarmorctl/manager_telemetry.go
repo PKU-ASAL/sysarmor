@@ -69,8 +69,11 @@ func queryManagerTelemetryAPI(base string, args []string) ([]byte, error) {
 				if i < len(args) {
 					q.Set("layer", args[i])
 				}
-			case "--terminal":
-				q.Set("terminal", "true")
+			case "--stage":
+				i++
+				if i < len(args) {
+					q.Set("stage", args[i])
+				}
 			case "--limit":
 				i++
 				if i < len(args) {

@@ -242,7 +242,8 @@ func TestRuntimeControlChannelRejectsBadContentUpdateWithoutReplacingDetection(t
 				"rule_id":"bad_runtime_rule",
 				"version":1,
 				"severity":"high",
-				"runtime":{"type":"made_up_runtime"}
+				"runtime":{"type":"made_up_runtime"},
+				"output":{"stage":"candidate"}
 			}]}]}
 		}`,
 		policy: badRuntimeCandidatePolicy("default"),

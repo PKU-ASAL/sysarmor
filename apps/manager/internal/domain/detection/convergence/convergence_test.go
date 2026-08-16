@@ -15,14 +15,21 @@ func TestDecideUsesAdditiveThreshold(t *testing.T) {
 	}
 }
 
-func TestDecideRecognizesTerminalAndCrossLineageSignals(t *testing.T) {
-	terminal := Decide(map[string][]domaintelemetry.Signal{"reverse_shell_pattern": {{Terminal: true}}}, nil, nil)
-	if !terminal.Incident || terminal.Controls[0] != "terminal_reverse_shell" {
-		t.Fatalf("terminal decision = %+v", terminal)
+func TestDecideRecognizesConclusionAndCrossLineageSignals(t *testing.T) {
+	conclusion := Decide(map[string][]domaintelemetry.Signal{"reverse_shell_pattern": {{Stage: domaintelemetry.SignalStageConclusion}}}, nil, nil)
+	if !conclusion.Incident || conclusion.Controls[0] != "conclusion_reverse_shell" {
+		t.Fatalf("conclusion decision = %+v", conclusion)
 	}
 	cross := Decide(nil, []domaintelemetry.Signal{{Name: "dropped_payload_executed_and_connects", CrossLineage: true}}, nil)
 	if !cross.Incident || cross.Controls[0] != "cross_lineage_payload_connect" {
 		t.Fatalf("cross-lineage decision = %+v", cross)
+	}
+}
+
+func TestDecideDoesNotConvergeCandidateSignal(t *testing.T) {
+	decision := Decide(map[string][]domaintelemetry.Signal{"reverse_shell_pattern": {{Stage: domaintelemetry.SignalStageCandidate}}}, nil, nil)
+	if decision.Incident {
+		t.Fatalf("candidate decision = %+v", decision)
 	}
 }
 

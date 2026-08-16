@@ -39,7 +39,8 @@ message Incident {
   uint32 severity = 3;
   repeated string mitre = 4;
   repeated string lineage_ids = 5;
-  repeated string terminals = 6;
+  reserved 6;
+  reserved "terminals";
   EvidenceSubgraph evidence = 7;
   ConvergeTrace converge = 8;
   repeated sysarmor.signal.v1.Signal contributing_signals = 9;
@@ -49,4 +50,5 @@ message Incident {
   string analysis_version = 13;
   string first_observed_at = 14;
   string last_observed_at = 15;
+  repeated string conclusion_entities = 16;
 }

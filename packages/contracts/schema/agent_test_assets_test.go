@@ -14,7 +14,7 @@ func TestOpenSearchExactFieldsUseKeywordMappings(t *testing.T) {
 	for file, fields := range map[string][]string{
 		"events-v1.json":    {"behavior", "tenant_id"},
 		"incidents-v1.json": {"id", "tenant_id"},
-		"signals-v1.json":   {"tenant_id", "where"},
+		"signals-v2.json":   {"tenant_id", "where", "stage", "detectorKind"},
 	} {
 		raw, err := os.ReadFile(filepath.Join(root, "deployments", "opensearch", "mappings", file))
 		if err != nil {
@@ -35,6 +35,25 @@ func TestOpenSearchExactFieldsUseKeywordMappings(t *testing.T) {
 				t.Errorf("%s field %s type = %q, want keyword", file, field, got)
 			}
 		}
+	}
+}
+
+func TestSignalMappingContainsNoTerminalField(t *testing.T) {
+	root := repositoryRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, "deployments", "opensearch", "mappings", "signals-v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Mappings struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"mappings"`
+	}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := document.Mappings.Properties["terminal"]; exists {
+		t.Fatal("signals-v2 mapping still exposes terminal")
 	}
 }
 

@@ -48,15 +48,15 @@ func TestTelemetryReaderClassifiesSearchFailureAsRetryableDependency(t *testing.
 
 func TestTelemetryReaderFiltersSignalsAndIncidents(t *testing.T) {
 	searcher := &telemetryQuerySearcherStub{documents: []json.RawMessage{
-		json.RawMessage(`{"id":"signal-a","tenant_id":"tenant-a","where":"SIGNAL_WHERE_ENDPOINT","terminal":true}`),
-		json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","terminal":true}`),
+		json.RawMessage(`{"id":"signal-a","tenant_id":"tenant-a","where":"SIGNAL_WHERE_ENDPOINT","stage":"SIGNAL_STAGE_CONCLUSION"}`),
+		json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CONCLUSION"}`),
 	}}
 	reader := NewTelemetryReader(searcher)
-	terminal := true
+	stage := domaintelemetry.SignalStageConclusion
 	signals, err := reader.Signals(context.Background(), tenant.ID("tenant-a"), ports.SignalFilter{
-		Layer: "endpoint", Terminal: &terminal,
+		Layer: "endpoint", Stage: &stage,
 	})
-	if err != nil || len(signals) != 1 || searcher.request.Bool["terminal"] != true {
+	if err != nil || len(signals) != 1 || searcher.request.Exact["stage"] != "SIGNAL_STAGE_CONCLUSION" {
 		t.Fatalf("signals=%q request=%+v error=%v", signals, searcher.request, err)
 	}
 	searcher.documents = []json.RawMessage{

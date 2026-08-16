@@ -122,7 +122,8 @@ func TestRuntimeProcessesTamperSignalFromHealth(t *testing.T) {
 	sig := contractadapter.Signal(*domainSignal)
 	batch := appendEndpointSignalsForTest(t, runner, nil, []*signalv1.Signal{sig})
 	sig = batch.GetSignals()[0].GetSignal()
-	if sig.GetName() != domainhealth.SensorTamperSignalName || !sig.GetTerminal() || sig.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT {
+	if sig.GetName() != domainhealth.SensorTamperSignalName || sig.GetStage() != signalv1.SignalStage_SIGNAL_STAGE_CONCLUSION ||
+		sig.GetDetectorKind() != signalv1.DetectorKind_DETECTOR_KIND_SYSTEM || sig.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT {
 		t.Fatalf("tamper signal = %+v", sig)
 	}
 	if sig.GetLabels()["policy_id"] != runner.policyState.activePolicy().PolicyID || sig.GetLabels()["policy_version"] != fmt.Sprint(runner.policyState.activePolicy().Version) {

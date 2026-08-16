@@ -72,11 +72,27 @@ type RuntimeScope struct {
 }
 
 type SignalWhere int32
+type SignalStage int32
+type DetectorKind int32
 
 const (
 	SignalWhereUnspecified SignalWhere = 0
 	SignalWhereEndpoint    SignalWhere = 1
 	SignalWhereCloud       SignalWhere = 2
+)
+
+const (
+	SignalStageUnspecified SignalStage = iota
+	SignalStageCandidate
+	SignalStageConclusion
+)
+
+const (
+	DetectorKindUnspecified DetectorKind = iota
+	DetectorKindRule
+	DetectorKindModel
+	DetectorKindGraph
+	DetectorKindSystem
 )
 
 type Signal struct {
@@ -89,7 +105,8 @@ type Signal struct {
 	Entities     []Entity
 	Labels       map[string]string
 	LineageID    string
-	Terminal     bool
+	Stage        SignalStage
+	DetectorKind DetectorKind
 	CrossLineage bool
 	EventRefs    []string
 	SignalRefs   []string
@@ -159,7 +176,7 @@ type Incident struct {
 	Severity            uint32
 	MITRE               []string
 	LineageIDs          []string
-	Terminals           []string
+	ConclusionEntities  []string
 	Evidence            *EvidenceSubgraph
 	Converge            *ConvergeTrace
 	ContributingSignals []Signal

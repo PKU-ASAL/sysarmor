@@ -58,8 +58,13 @@ func (handler *Handler) Signals(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	query := request.URL.Query()
+	stage, err := parseSignalStage(query.Get("stage"))
+	if err != nil {
+		writeFailure(writer, err)
+		return
+	}
 	values, err := handler.options.Service.Signals(request.Context(), requestContext, telemetryapp.SignalQuery{
-		Labels: parseLabels(query["label"]), Layer: query.Get("layer"), Terminal: parseOptionalBool(query.Get("terminal")),
+		Labels: parseLabels(query["label"]), Layer: query.Get("layer"), Stage: stage,
 		Limit: parseNonNegative(query.Get("limit")), Offset: parseNonNegative(query.Get("offset")),
 	})
 	writeDocuments(writer, values, err)
@@ -165,10 +170,17 @@ func parseNonNegative(raw string) int {
 	return value
 }
 
-func parseOptionalBool(raw string) *bool {
-	if strings.TrimSpace(raw) == "" {
-		return nil
+func parseSignalStage(raw string) (*domaintelemetry.SignalStage, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return nil, nil
+	case "candidate":
+		value := domaintelemetry.SignalStageCandidate
+		return &value, nil
+	case "conclusion":
+		value := domaintelemetry.SignalStageConclusion
+		return &value, nil
+	default:
+		return nil, failure.New(failure.InvalidArgument, "signal stage must be candidate or conclusion")
 	}
-	value := strings.TrimSpace(raw) == "true"
-	return &value
 }

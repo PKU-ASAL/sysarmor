@@ -15,7 +15,7 @@ for scenario in web-runtime-shell download-by-lolbin reverse-shell suspicious-ex
   run_assert detected fake "$scenario" marker-1 "$TMP/$scenario.jsonl"
 done
 
-for case_name in wrong-severity wrong-terminal missing-ref missing-behavior wrong-port; do
+for case_name in wrong-severity wrong-stage missing-ref missing-behavior wrong-port; do
   if FAKE_CASE="$case_name" run_assert detected fake payload-lifecycle marker-1 "$TMP/$case_name.jsonl" >/dev/null 2>&1; then
     echo "assertion accepted invalid case: $case_name" >&2
     exit 1

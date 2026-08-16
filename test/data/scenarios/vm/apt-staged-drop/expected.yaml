@@ -2,9 +2,9 @@
 endpoint_signals:
   must_have_entities: true
   must_contain:
-    - { name: payload_dropped, terminal: false,
+    - { name: payload_dropped, stage: candidate,
         entities_keys: ["file:/var/lib/app/plugins/helper"] }   # lineage A
-    - { name: suspicious_exec_connect, terminal: false,
+    - { name: suspicious_exec_connect, stage: candidate,
         entities_keys: ["file:/var/lib/app/plugins/helper", "socket:10.66.0.99:443"] } # lineage B
 cloud_signals:
   must_contain:
@@ -15,8 +15,8 @@ incident:
   evidence_subgraph_contains_node: "/var/lib/app/plugins/helper"  # 经 file 节点相连
   converge_method: "rarity+causal-topk"
 negative:
-  endpoint_terminal_required: false  # ★ 端侧不应产 terminal
-  endpoint_terminal_count: 0
+  endpoint_conclusion_required: false
+  endpoint_conclusion_count: 0
 control_assertions:
   - disable: cloud.cross_lineage     # ★ 关闭缝合则不成案 → 证明云端图立论
     then_incident_count: 0

@@ -239,5 +239,5 @@ func badRuntimeCandidatePolicy(tenantID string) policymodel.Policy {
 }
 
 func validBadRuntimeRulePackJSON() string {
-	return `{"api_version":"sysarmor.content/v1","kind":"rulepack","metadata":{"id":"rulepack:bad-runtime","version":"v1"},"spec":{"rulesets":[{"id":"ruleset:bad-runtime","version":"v1","rules":[{"rule_id":"valid_runtime_rule","version":1,"severity":"low","runtime":{"type":"sequence","sequence":{"within":"10s","steps":[{"id":"exit","event":"process.exit"}]}}}]}]}}`
+	return `{"api_version":"sysarmor.content/v1","kind":"rulepack","metadata":{"id":"rulepack:bad-runtime","version":"v1"},"spec":{"rulesets":[{"id":"ruleset:bad-runtime","version":"v1","rules":[{"rule_id":"valid_runtime_rule","version":1,"severity":"low","runtime":{"type":"sequence","sequence":{"within":"10s","steps":[{"id":"exit","event":"process.exit"}]}},"output":{"stage":"candidate"}}]}]}}`
 }

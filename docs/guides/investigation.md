@@ -35,7 +35,7 @@ Signal 是中间行为信号，不天然等同于恶意告警。Incident 是可�
 
 ## 第一步：阅读 Incident
 
-从 Incident 获取当前调查入口：摘要、严重度、首次与末次观察时间、lineage、terminal、correlation key、analysis version、贡献 Signal、Evidence 子图，以及收敛方法、分数和控制条件。Schema 还预留了 MITRE、seed 和 path 字段，但当前 Incident Builder 不填充它们，不能将空值解释为“没有对应技术或路径”。
+从 Incident 获取当前调查入口：摘要、严重度、首次与末次观察时间、lineage、结论实体、correlation key、analysis version、贡献 Signal、Evidence 子图，以及收敛方法、分数和控制条件。Schema 还预留了 MITRE、seed 和 path 字段，但当前 Incident Builder 不填充它们，不能将空值解释为“没有对应技术或路径”。
 
 先验证稳定身份，而不是先相信摘要：
 
@@ -60,10 +60,10 @@ Incident 的确定性投影意味着相同语义输入会更新同一报告。�
 | `event_refs`、`signal_refs` | 回到输入事实或上游 Signal |
 | `entities`、`lineage_id` | 理解主体、客体和进程关系 |
 | `context_refs`、`ioc_refs` | 确认所用内容及版本 |
-| `terminal`、`cross_lineage` | 理解收敛条件和跨 lineage 意图 |
+| `stage`、`detector_kind`、`cross_lineage` | 区分候选/结论、检测器来源和跨 lineage 意图 |
 | `response_intent` | 查看建议，不将其误作已执行动作 |
 
-Endpoint Signal 在本地行为流附近生成，适合解释低延迟规则命中。Cloud Signal 来自当前批次和同作用域历史窗口的组合。当前 Cloud Signal 构造器主要填充稳定 ID、名称、位置、风险、稀有度、实体和标签，尚未填充 `rule_id`、`rule_version`、`event_refs`、`signal_refs`、严重度、置信度和模式；调查时必须从 Incident 的贡献 Signal、有效策略和分析作用域补充验证。完整派生引用链是需要补齐的工程约束。
+Endpoint Signal 在本地行为流附近生成，适合解释低延迟规则命中。Cloud Signal 来自当前批次和同作用域历史窗口的组合。当前 Cloud Signal 构造器填充稳定 ID、名称、位置、阶段、检测器类型、风险、稀有度、实体、标签和上游 Signal 引用，尚未填充 `rule_id`、`rule_version`、`event_refs`、严重度、置信度和模式；调查时必须从 Incident 的贡献 Signal、有效策略和分析作用域补充验证。完整派生引用链是需要补齐的工程约束。
 
 一个 Signal 可以表示值得保留的行为或异常，而非确定恶意。只有规则语义、上下文、Evidence 和收敛条件共同支持时，才应升级调查结论。
 

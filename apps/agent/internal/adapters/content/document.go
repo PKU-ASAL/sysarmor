@@ -332,7 +332,7 @@ func parseRulePack(record Record) ([]Rule, error) {
 				} `json:"requires"`
 				Output struct {
 					ResponseIntent ResponseIntent `json:"response_intent"`
-					Terminal       *bool          `json:"terminal,omitempty"`
+					Stage          string         `json:"stage"`
 				} `json:"output"`
 			} `json:"rules"`
 		} `json:"rulesets"`
@@ -343,6 +343,10 @@ func parseRulePack(record Record) ([]Rule, error) {
 	var out []Rule
 	for _, rs := range spec.RuleSets {
 		for _, rule := range rs.Rules {
+			stage := SignalStage(strings.TrimSpace(rule.Output.Stage))
+			if stage != SignalStageCandidate && stage != SignalStageConclusion {
+				return nil, fmt.Errorf("rule %s output stage must be candidate or conclusion", rule.RuleID)
+			}
 			out = append(out, Rule{
 				RuleID:         rule.RuleID,
 				Version:        rule.Version,
@@ -358,7 +362,7 @@ func parseRulePack(record Record) ([]Rule, error) {
 				ContextRefs:    append(append([]string(nil), rule.Requires.Context.Required...), rule.Requires.Context.Optional...),
 				IOCRefs:        append(append([]string(nil), rule.Requires.IOC.Required...), rule.Requires.IOC.Optional...),
 				ResponseIntent: rule.Output.ResponseIntent,
-				Terminal:       rule.Output.Terminal,
+				Stage:          stage,
 			})
 		}
 	}

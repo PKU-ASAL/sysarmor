@@ -1,4 +1,4 @@
-# apt-fileless-c2 契约（成功判据①：响——端侧 terminal + 云端缝合）
+# apt-fileless-c2 契约（成功判据①：端侧结论 + 云端缝合）
 events:
   must_contain:
     - { kind: EXEC, binary: "*/bash", lineage_inherited: true }
@@ -12,7 +12,7 @@ endpoint_signals:
   must_contain:
     - { name: download_by_lolbin, entities_keys: ["socket:10.66.0.99:8080"] }
     - { name: payload_dropped, entities_keys: ["file:/dev/shm/x.sh"] }
-    - { name: reverse_shell_pattern, terminal: true,
+    - { name: reverse_shell_pattern, stage: conclusion,
         entities_keys: ["socket:10.66.0.99:443"], has_evidence_bundle: true }
   may_contain:                    # 真实后渗透产生的额外凭据信号
     - { name: sensitive_cred_read }
@@ -20,9 +20,9 @@ cloud_signals:
   must_contain: [dropped_payload_executed_and_connects]
 incident:
   count: 1
-  terminals_include_binary: ["bash"]
+  conclusion_entities_include_binary: ["bash"]
   evidence_subgraph_path: ["java-web", "bash", "/dev/shm/x.sh", "10.66.0.99:443"]
   converge_method: "rarity+causal-topk"
 negative:
-  endpoint_terminal_required: true   # 本场景端侧【应】有 terminal
+  endpoint_conclusion_required: true
   # 同节点正常运维 shell/curl 不应额外产生 Incident（误报可数）

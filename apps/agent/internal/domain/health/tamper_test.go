@@ -16,7 +16,7 @@ func TestTamperDetectorEmitsDomainSignalForSensorFailure(t *testing.T) {
 	if signal == nil {
 		t.Fatal("Evaluate() = nil")
 	}
-	if signal.Name != SensorTamperSignalName || !signal.Terminal || signal.Where != detection.SignalWhereEndpoint {
+	if signal.Name != SensorTamperSignalName || signal.Stage != detection.SignalStageConclusion || signal.DetectorKind != detection.DetectorKindSystem || signal.Where != detection.SignalWhereEndpoint {
 		t.Fatalf("signal = %+v", signal)
 	}
 	if signal.Evidence == nil || !strings.Contains(signal.Evidence.Summary, "scope=container:abc123") {

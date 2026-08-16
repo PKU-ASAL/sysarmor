@@ -22,7 +22,7 @@ func IncidentToDomain(value *incidentv1.Incident) (domaintelemetry.Incident, err
 	}
 	return domaintelemetry.Incident{
 		ID: value.GetId(), Summary: value.GetSummary(), Severity: value.GetSeverity(), MITRE: append([]string(nil), value.GetMitre()...),
-		LineageIDs: append([]string(nil), value.GetLineageIds()...), Terminals: append([]string(nil), value.GetTerminals()...),
+		LineageIDs: append([]string(nil), value.GetLineageIds()...), ConclusionEntities: append([]string(nil), value.GetConclusionEntities()...),
 		Evidence: evidence, Converge: convergeToDomain(value.Converge),
 		ContributingSignals: signals, Labels: cloneLabels(value.GetLabels()),
 		TenantID: value.GetTenantId(), CorrelationKey: value.GetCorrelationKey(), AnalysisVersion: value.GetAnalysisVersion(),
@@ -33,7 +33,7 @@ func IncidentToDomain(value *incidentv1.Incident) (domaintelemetry.Incident, err
 func IncidentFromDomain(value domaintelemetry.Incident) *incidentv1.Incident {
 	return &incidentv1.Incident{
 		Id: value.ID, Summary: value.Summary, Severity: value.Severity, Mitre: append([]string(nil), value.MITRE...),
-		LineageIds: append([]string(nil), value.LineageIDs...), Terminals: append([]string(nil), value.Terminals...),
+		LineageIds: append([]string(nil), value.LineageIDs...), ConclusionEntities: append([]string(nil), value.ConclusionEntities...),
 		Evidence: subgraphFromDomain(value.Evidence), Converge: convergeFromDomain(value.Converge),
 		ContributingSignals: signalsFromDomain(value.ContributingSignals), Labels: cloneLabels(value.Labels),
 		TenantId: value.TenantID, CorrelationKey: value.CorrelationKey, AnalysisVersion: value.AnalysisVersion,

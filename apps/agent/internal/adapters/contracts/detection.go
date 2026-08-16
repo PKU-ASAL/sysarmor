@@ -10,11 +10,20 @@ func Signal(value detection.Signal) *signalv1.Signal {
 		Id: value.ID, Name: value.Name, Where: signalWhere(value.Where), BaseRisk: value.BaseRisk,
 		LocalRarity: value.LocalRarity, GlobalRarity: value.GlobalRarity, LineageId: value.LineageID,
 		Entities: entities(value.Entities), EventRefs: cloneStrings(value.EventRefs), SignalRefs: cloneStrings(value.SignalRefs),
-		Terminal: value.Terminal, Evidence: evidence(value.Evidence), CrossLineage: value.CrossLineage,
+		Stage: signalStage(value.Stage), DetectorKind: detectorKind(value.DetectorKind),
+		Evidence: evidence(value.Evidence), CrossLineage: value.CrossLineage,
 		ResponseIntent: responseIntent(value.ResponseIntent), RuleId: value.RuleID, RuleVersion: value.RuleVersion,
 		RulesetRef: value.RuleSetRef, ContextRefs: contentRefs(value.ContextRefs), IocRefs: contentRefs(value.IOCRefs),
 		Severity: value.Severity, Confidence: value.Confidence, Mode: value.Mode, Labels: cloneLabels(value.Labels),
 	}
+}
+
+func signalStage(value detection.SignalStage) signalv1.SignalStage {
+	return signalv1.SignalStage(value)
+}
+
+func detectorKind(value detection.DetectorKind) signalv1.DetectorKind {
+	return signalv1.DetectorKind(value)
 }
 
 func signalWhere(value detection.SignalWhere) signalv1.SignalWhere {

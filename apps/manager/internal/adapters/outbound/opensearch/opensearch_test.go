@@ -166,7 +166,7 @@ func TestHTTPIndexerSearchPushesFilters(t *testing.T) {
 		Query:     "credential access",
 		Labels:    map[string]string{"scenario": "apt-staged-drop"},
 		Exact:     map[string]string{"tenant_id": "default", "where": "SIGNAL_WHERE_CLOUD"},
-		Bool:      map[string]bool{"terminal": true},
+		Bool:      map[string]bool{"crossLineage": true},
 		TimeField: "@timestamp",
 		TimeFrom:  "2026-07-08T21:00:00Z",
 		TimeTo:    "2026-07-08T21:10:00Z",
@@ -182,7 +182,7 @@ func TestHTTPIndexerSearchPushesFilters(t *testing.T) {
 		`"labels.scenario.keyword":"apt-staged-drop"`,
 		`"tenant_id":"default"`,
 		`"where":"SIGNAL_WHERE_CLOUD"`,
-		`"terminal":true`,
+		`"crossLineage":true`,
 		`"query":"credential access"`,
 		`"@timestamp":{"gte":"2026-07-08T21:00:00Z","lte":"2026-07-08T21:10:00Z"}`,
 	} {

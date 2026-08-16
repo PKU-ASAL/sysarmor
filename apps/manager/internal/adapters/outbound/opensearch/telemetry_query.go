@@ -35,12 +35,11 @@ func (reader *TelemetryReader) Signals(ctx context.Context, tenantID tenant.ID, 
 	if filter.Layer != "" {
 		exact["where"] = "SIGNAL_WHERE_" + strings.ToUpper(filter.Layer)
 	}
-	bools := map[string]bool{}
-	if filter.Terminal != nil {
-		bools["terminal"] = *filter.Terminal
+	if filter.Stage != nil {
+		exact["stage"] = signalStageName(*filter.Stage)
 	}
 	request := SearchRequest{Index: SignalsReadAlias, Size: telemetryLimit(filter.Limit), Offset: max(filter.Offset, 0),
-		Labels: cloneTelemetryLabels(filter.Labels), Exact: exact, Bool: bools}
+		Labels: cloneTelemetryLabels(filter.Labels), Exact: exact}
 	return reader.search(ctx, tenantID, request, filter.Labels, func(document map[string]any) bool {
 		return signalDocumentMatches(document, filter)
 	})
@@ -131,11 +130,21 @@ func signalDocumentMatches(document map[string]any, filter ports.SignalFilter) b
 			return false
 		}
 	}
-	if filter.Terminal != nil {
-		terminal, ok := document["terminal"].(bool)
-		return ok && terminal == *filter.Terminal
+	if filter.Stage != nil {
+		return stringFieldMatches(document, "stage", signalStageName(*filter.Stage))
 	}
 	return true
+}
+
+func signalStageName(stage domaintelemetry.SignalStage) string {
+	switch stage {
+	case domaintelemetry.SignalStageCandidate:
+		return "SIGNAL_STAGE_CANDIDATE"
+	case domaintelemetry.SignalStageConclusion:
+		return "SIGNAL_STAGE_CONCLUSION"
+	default:
+		return "SIGNAL_STAGE_UNSPECIFIED"
+	}
 }
 
 func stringFieldMatches(document map[string]any, field, want string) bool {

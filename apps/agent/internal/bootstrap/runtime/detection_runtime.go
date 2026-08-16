@@ -65,10 +65,21 @@ func detectionContentSnapshotFromContent(snapshot agentcontent.Snapshot) detecti
 				Confidence: rule.ResponseIntent.Confidence,
 				Reason:     rule.ResponseIntent.Reason,
 			},
-			Terminal: rule.Terminal,
+			Stage: detectionSignalStage(rule.Stage),
 		})
 	}
 	return out
+}
+
+func detectionSignalStage(stage agentcontent.SignalStage) detectionmodel.SignalStage {
+	switch stage {
+	case agentcontent.SignalStageCandidate:
+		return detectionmodel.SignalStageCandidate
+	case agentcontent.SignalStageConclusion:
+		return detectionmodel.SignalStageConclusion
+	default:
+		return detectionmodel.SignalStageUnspecified
+	}
 }
 
 func detectionContentRefs(snapshot agentcontent.Snapshot) []agenthealth.ContentRef {

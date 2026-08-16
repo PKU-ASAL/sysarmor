@@ -42,13 +42,13 @@ func TestSignalRoundTrip(t *testing.T) {
 func TestIncidentRoundTrip(t *testing.T) {
 	wire := &incidentv1.Incident{
 		Id: "inc-a", Summary: "summary", Severity: 80, Mitre: []string{"T1059"}, LineageIds: []string{"lin-a"},
-		Terminals: []string{"process:p-a"}, Labels: map[string]string{"scenario": "one"}, TenantId: "tenant-a",
+		ConclusionEntities: []string{"process:p-a"}, Labels: map[string]string{"scenario": "one"}, TenantId: "tenant-a",
 		CorrelationKey: "corr-a", AnalysisVersion: "v1", FirstObservedAt: "first", LastObservedAt: "last",
 		Evidence: &incidentv1.EvidenceSubgraph{
 			Nodes: []*incidentv1.GraphNode{{Id: "process:p-a", Kind: "process", Label: "p-a", Entities: []*signalv1.EntityRef{{Kind: "process", Key: "process:p-a"}}}},
 			Edges: []*incidentv1.GraphEdge{{Id: "exec:a->b", From: "a", To: "b", Kind: "exec"}},
 		},
-		Converge:            &incidentv1.ConvergeTrace{Method: "rarity", SeedIds: []string{"a"}, PathIds: []string{"b"}, Score: 80, Controls: []string{"terminal"}},
+		Converge:            &incidentv1.ConvergeTrace{Method: "rarity", SeedIds: []string{"a"}, PathIds: []string{"b"}, Score: 80, Controls: []string{"conclusion"}},
 		ContributingSignals: []*signalv1.Signal{fullSignal()},
 	}
 	domain, err := IncidentToDomain(wire)
@@ -61,13 +61,34 @@ func TestIncidentRoundTrip(t *testing.T) {
 }
 
 func TestUnknownSignalWhereRoundTrip(t *testing.T) {
-	wire := &signalv1.Signal{Id: "signal-a", Where: signalv1.SignalWhere(99)}
+	wire := &signalv1.Signal{
+		Id: "signal-a", Where: signalv1.SignalWhere(99),
+		Stage:        signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE,
+		DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_RULE,
+	}
 	domain, err := SignalToDomain(wire)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := SignalFromDomain(domain); !proto.Equal(got, wire) {
 		t.Fatalf("round trip = %v, want %v", got, wire)
+	}
+}
+
+func TestSignalToDomainRejectsUnspecifiedClassification(t *testing.T) {
+	tests := []struct {
+		name   string
+		signal *signalv1.Signal
+	}{
+		{name: "stage", signal: &signalv1.Signal{DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_RULE}},
+		{name: "detector kind", signal: &signalv1.Signal{Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := SignalToDomain(test.signal); err == nil {
+				t.Fatal("unspecified signal classification accepted")
+			}
+		})
 	}
 }
 
@@ -89,9 +110,10 @@ func TestWireToDomainRejectsNilMessages(t *testing.T) {
 func fullSignal() *signalv1.Signal {
 	return &signalv1.Signal{
 		Id: "signal-a", Name: "reverse_shell_pattern", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
+		Stage: signalv1.SignalStage_SIGNAL_STAGE_CONCLUSION, DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_RULE,
 		BaseRisk: 80, LocalRarity: 0.5, GlobalRarity: 0.25, LineageId: "lin-a",
 		Entities:  []*signalv1.EntityRef{{Kind: "process", Key: "process:p-a", Role: "subject"}},
-		EventRefs: []string{"event-a"}, SignalRefs: []string{"signal-parent"}, Terminal: true, CrossLineage: true,
+		EventRefs: []string{"event-a"}, SignalRefs: []string{"signal-parent"}, CrossLineage: true,
 		Evidence:       &signalv1.EvidenceBundle{Id: "ev-a", EventRefs: []string{"event-a"}, RawRefs: []string{"raw-a"}, Entities: []*signalv1.EntityRef{{Kind: "file", Key: "file:/tmp/a"}}, Summary: "evidence"},
 		ResponseIntent: &signalv1.ResponseIntent{ResponseIntent: "contain", RecommendedAction: "kill", Confidence: 90, Reason: "reason"},
 		RuleId:         "rule-a", RuleVersion: 2, RulesetRef: "ruleset:a",

@@ -37,7 +37,11 @@ func TestBatchProcessorRejectsMissingIdentity(t *testing.T) {
 func TestBatchDecoderMapsWireFramesToDomain(t *testing.T) {
 	batch := validWorkerBatch()
 	batch.Events = []*dataplanev1.EventFrame{{ObservedAt: "2026-08-11T01:02:03Z", Event: &eventv1.CanonicalEvent{Id: "event-a", TenantId: "default", Labels: map[string]string{"scenario": "checkout", "policy_id": "policy-old", "policy_version": "3"}}}}
-	batch.Signals = []*dataplanev1.SignalFrame{{Signal: &signalv1.Signal{Id: "signal-a", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT, Labels: map[string]string{"policy_id": "policy-old", "policy_version": "3"}}}}
+	batch.Signals = []*dataplanev1.SignalFrame{{Signal: &signalv1.Signal{
+		Id: "signal-a", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
+		Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_RULE,
+		Labels: map[string]string{"policy_id": "policy-old", "policy_version": "3"},
+	}}}
 	raw, _ := protojson.Marshal(batch)
 
 	decoded, err := NewBatchDecoder().Decode(ports.RawMessage{Topic: "raw", Value: raw})

@@ -11,13 +11,13 @@ import (
 
 func TestBuilderCreatesIncidentWithEvidence(t *testing.T) {
 	builder := NewBuilder()
-	value := builder.Build(candidateSignals("a", "b"), convergence.Decision{
-		Incident: true, Method: "rarity+causal-topk", Controls: []string{"terminal_reverse_shell"},
+	value := builder.Build(contributingSignals("a", "b"), convergence.Decision{
+		Incident: true, Method: "rarity+causal-topk", Controls: []string{"conclusion_reverse_shell"},
 	})
 	if value.Converge.Score != 80 || value.Converge.Method != "rarity+causal-topk" {
 		t.Fatalf("converge = %+v", value.Converge)
 	}
-	if len(value.Evidence.Edges) == 0 || len(value.Terminals) != 1 {
+	if len(value.Evidence.Edges) == 0 || len(value.ConclusionEntities) != 1 {
 		t.Fatalf("incident = %+v", value)
 	}
 }
@@ -35,7 +35,7 @@ func TestStableIncidentIDDistinguishesNonFiniteRarity(t *testing.T) {
 func TestStableIncidentIDIgnoresInputOrder(t *testing.T) {
 	builder := NewBuilder()
 	decision := convergence.Decision{Incident: true, Method: "rarity+causal-topk"}
-	signals := candidateSignals("a", "b")
+	signals := contributingSignals("a", "b")
 	first := builder.Build(signals, decision)
 	second := builder.Build([]domaintelemetry.Signal{signals[1], signals[0]}, decision)
 	if first.ID != second.ID {
@@ -54,9 +54,9 @@ func TestBuilderUsesInjectedRarityScorer(t *testing.T) {
 	}
 }
 
-func candidateSignals(firstID, secondID string) []domaintelemetry.Signal {
+func contributingSignals(firstID, secondID string) []domaintelemetry.Signal {
 	return []domaintelemetry.Signal{
-		{ID: firstID, Name: "reverse_shell_pattern", BaseRisk: 80, GlobalRarity: 1, LineageID: "lin-a", Terminal: true,
+		{ID: firstID, Name: "reverse_shell_pattern", BaseRisk: 80, GlobalRarity: 1, LineageID: "lin-a", Stage: domaintelemetry.SignalStageConclusion,
 			Labels: map[string]string{"scenario": "scenario-a"}, Entities: []domaintelemetry.Entity{
 				{Kind: "process", Key: "p-bash", Role: "subject"}, {Kind: "socket", Key: "10.66.0.99:443", Role: "object"},
 			}},

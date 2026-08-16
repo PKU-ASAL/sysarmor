@@ -69,7 +69,7 @@ labels:
         - reverse_c2
     - id: reverse_shell_pattern
       name: reverse_shell_pattern
-      terminal: true
+      stage: conclusion
       entities:
         - "socket:10.66.0.99:443"
       link_events:

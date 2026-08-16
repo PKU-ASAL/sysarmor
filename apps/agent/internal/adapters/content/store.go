@@ -82,8 +82,15 @@ type Rule struct {
 	ContextRefs    []string
 	IOCRefs        []string
 	ResponseIntent ResponseIntent
-	Terminal       *bool
+	Stage          SignalStage
 }
+
+type SignalStage string
+
+const (
+	SignalStageCandidate  SignalStage = "candidate"
+	SignalStageConclusion SignalStage = "conclusion"
+)
 
 type RuntimeExpr struct {
 	Conditions     []RuntimeCondition    `json:"conditions"`
@@ -294,6 +301,9 @@ func (s *Store) Prepare(raw string, allowUnsigned bool) (Record, Snapshot, error
 		Signed:  strings.TrimSpace(env.Integrity.Signature) != "",
 		Status:  "applied",
 		RawJSON: raw,
+	}
+	if err := validateRecordPayload(record); err != nil {
+		return Record{}, Snapshot{}, err
 	}
 	return record, s.SnapshotWith(record), nil
 }

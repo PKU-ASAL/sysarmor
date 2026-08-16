@@ -15,11 +15,11 @@ type EventFilter struct {
 }
 
 type SignalFilter struct {
-	Labels   map[string]string
-	Layer    string
-	Terminal *bool
-	Limit    int
-	Offset   int
+	Labels map[string]string
+	Layer  string
+	Stage  *domaintelemetry.SignalStage
+	Limit  int
+	Offset int
 }
 
 type IncidentFilter struct {

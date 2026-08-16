@@ -11,6 +11,12 @@ func SignalToDomain(value *signalv1.Signal) (domaintelemetry.Signal, error) {
 	if value == nil {
 		return domaintelemetry.Signal{}, fmt.Errorf("signal is required")
 	}
+	if value.GetStage() == signalv1.SignalStage_SIGNAL_STAGE_UNSPECIFIED {
+		return domaintelemetry.Signal{}, fmt.Errorf("signal stage is required")
+	}
+	if value.GetDetectorKind() == signalv1.DetectorKind_DETECTOR_KIND_UNSPECIFIED {
+		return domaintelemetry.Signal{}, fmt.Errorf("signal detector kind is required")
+	}
 	entities, err := entitiesToDomain(value.GetEntities())
 	if err != nil {
 		return domaintelemetry.Signal{}, err
@@ -31,7 +37,8 @@ func SignalToDomain(value *signalv1.Signal) (domaintelemetry.Signal, error) {
 		ID: value.GetId(), Name: value.GetName(), Where: whereToDomain(value.GetWhere()), BaseRisk: value.GetBaseRisk(),
 		LocalRarity: value.GetLocalRarity(), GlobalRarity: value.GetGlobalRarity(), LineageID: value.GetLineageId(),
 		Entities: entities, EventRefs: append([]string(nil), value.GetEventRefs()...),
-		SignalRefs: append([]string(nil), value.GetSignalRefs()...), Terminal: value.GetTerminal(),
+		SignalRefs: append([]string(nil), value.GetSignalRefs()...),
+		Stage:      domaintelemetry.SignalStage(value.GetStage()), DetectorKind: domaintelemetry.DetectorKind(value.GetDetectorKind()),
 		Evidence: evidence, CrossLineage: value.GetCrossLineage(), Response: responseToDomain(value.ResponseIntent),
 		RuleID: value.GetRuleId(), RuleVersion: value.GetRuleVersion(), RulesetRef: value.GetRulesetRef(),
 		ContextRefs: contextRefs, IOCRefs: iocRefs,
@@ -44,7 +51,8 @@ func SignalFromDomain(value domaintelemetry.Signal) *signalv1.Signal {
 		Id: value.ID, Name: value.Name, Where: whereFromDomain(value.Where), BaseRisk: value.BaseRisk,
 		LocalRarity: value.LocalRarity, GlobalRarity: value.GlobalRarity, LineageId: value.LineageID,
 		Entities: entitiesFromDomain(value.Entities), EventRefs: append([]string(nil), value.EventRefs...),
-		SignalRefs: append([]string(nil), value.SignalRefs...), Terminal: value.Terminal,
+		SignalRefs: append([]string(nil), value.SignalRefs...),
+		Stage:      signalv1.SignalStage(value.Stage), DetectorKind: signalv1.DetectorKind(value.DetectorKind),
 		Evidence: evidenceFromDomain(value.Evidence), CrossLineage: value.CrossLineage, ResponseIntent: responseFromDomain(value.Response),
 		RuleId: value.RuleID, RuleVersion: value.RuleVersion, RulesetRef: value.RulesetRef,
 		ContextRefs: contentsFromDomain(value.ContextRefs), IocRefs: contentsFromDomain(value.IOCRefs),

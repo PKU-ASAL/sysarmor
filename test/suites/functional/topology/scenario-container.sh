@@ -88,7 +88,7 @@ assert_results() {
   if [[ "$CASE" == "benign" ]]; then
     [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID")" == "[]" ]]
     [[ "$(manager_ctl incidents list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID")" == "[]" ]]
-    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --terminal true)" == "[]" ]]
+    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --stage conclusion)" == "[]" ]]
     return
   fi
   wait_manager endpoint-signal payload_dropped "$RESULTS/topology-$CASE.signals.json" manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --layer endpoint
@@ -97,7 +97,7 @@ assert_results() {
   grep -Fq '"method":"rarity+causal-topk"' "$RESULTS/topology-$CASE.incidents.json"
   if [[ "$CASE" == "staged" ]]; then
     grep -Fq '"crossLineage":true' "$RESULTS/topology-$CASE.cloud-signals.json"
-    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --terminal true)" == "[]" ]]
+    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --stage conclusion)" == "[]" ]]
   else
     grep -Fq reverse_shell_pattern "$RESULTS/topology-$CASE.signals.json"
   fi

@@ -190,6 +190,22 @@ func TestQueryRarityBaseline(t *testing.T) {
 	}
 }
 
+func TestQuerySignalsUsesStage(t *testing.T) {
+	var gotPath string
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.String()
+		_, _ = fmt.Fprintln(w, "[]")
+	}))
+	defer server.Close()
+
+	if _, err := query(server.URL, []string{"manager", "signals", "--stage", "candidate"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/api/v1/signals?stage=candidate" {
+		t.Fatalf("path=%q", gotPath)
+	}
+}
+
 func TestEvidencePullbackCommand(t *testing.T) {
 	var gotMethod string
 	var gotPath string

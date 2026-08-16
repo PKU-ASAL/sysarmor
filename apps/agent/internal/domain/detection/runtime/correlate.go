@@ -129,7 +129,7 @@ func (e *Engine) detectCorrelateRule(view eventView, rule compiledCorrelateRule)
 	}
 	refs, entities := e.correlateEvidence(group, rule.facts)
 	delete(state.Groups, groupKey)
-	return e.signal(view.ev, rule.rule, refs, rule.rule.terminal(false), entities...)
+	return e.signal(view.ev, rule.rule, refs, rule.rule.spec.Stage, entities...)
 }
 
 func (e *Engine) matchCorrelateFacts(view eventView, facts []compiledFact) []compiledFact {

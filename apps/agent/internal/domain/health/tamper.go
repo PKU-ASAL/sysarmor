@@ -76,7 +76,7 @@ func tamperSignal(health Snapshot, reason, id string) *detection.Signal {
 	return &detection.Signal{
 		ID: id, Name: SensorTamperSignalName, Where: detection.SignalWhereEndpoint,
 		BaseRisk: 90, LocalRarity: 1, GlobalRarity: 1, LineageID: "agent:" + health.AgentID,
-		Entities: entities, Terminal: true, Labels: map[string]string{"signal_class": "agent-health"},
+		Entities: entities, Stage: detection.SignalStageConclusion, DetectorKind: detection.DetectorKindSystem,
 		Evidence: &detection.Evidence{ID: "evb-" + id, Entities: entities, Summary: tamperSummary(health, reason)},
 	}
 }

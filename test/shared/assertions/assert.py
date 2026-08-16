@@ -98,13 +98,13 @@ def assert_signals(exp, mgr, topology, scenario, r):
 
 def assert_negative(exp, mgr, topology, scenario, r):
     neg = exp.get("negative", {})
-    if "endpoint_terminal_count" in neg:
-        data = _query(mgr, topology, "manager", "signals", "list", "--label", f"scenario={scenario}", "--terminal")
-        r.check(f"negative.endpoint_terminal_count=={neg['endpoint_terminal_count']}",
-                None if data is None else len(data) == neg["endpoint_terminal_count"])
-    if neg.get("endpoint_terminal_required"):
-        data = _query(mgr, topology, "manager", "signals", "list", "--label", f"scenario={scenario}", "--terminal")
-        r.check("negative.endpoint_terminal_required",
+    if "endpoint_conclusion_count" in neg:
+        data = _query(mgr, topology, "manager", "signals", "list", "--label", f"scenario={scenario}", "--stage", "conclusion")
+        r.check(f"negative.endpoint_conclusion_count=={neg['endpoint_conclusion_count']}",
+                None if data is None else len(data) == neg["endpoint_conclusion_count"])
+    if neg.get("endpoint_conclusion_required"):
+        data = _query(mgr, topology, "manager", "signals", "list", "--label", f"scenario={scenario}", "--stage", "conclusion")
+        r.check("negative.endpoint_conclusion_required",
                 None if data is None else len(data) >= 1)
 
 

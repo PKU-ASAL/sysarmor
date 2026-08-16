@@ -18,6 +18,20 @@ class DetectionReportWindowTest(unittest.TestCase):
         filtered = detection_report.filter_frames_by_window(frames, start, end)
         self.assertEqual([frame["id"] for frame in filtered], ["inside"])
 
+    def test_signal_stage_uses_explicit_contract(self):
+        self.assertEqual(
+            detection_report.signal_stage({"stage": "SIGNAL_STAGE_CONCLUSION"}),
+            "conclusion",
+        )
+        self.assertEqual(
+            detection_report.signal_stage({"stage": "SIGNAL_STAGE_CANDIDATE"}),
+            "candidate",
+        )
+        self.assertEqual(
+            detection_report.signal_stage({"responseIntent": {"responseIntent": "isolate"}}),
+            "",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -254,7 +254,7 @@ func TestStoreParsesRulePack(t *testing.T) {
 		"api_version":"sysarmor.content/v1",
 		"kind":"rulepack",
 		"metadata":{"id":"rulepack:test","version":"v1"},
-		"spec":{"rulesets":[{"id":"ruleset:test","version":"v1","rules":[{"rule_id":"reverse_shell_pattern","version":7,"severity":"critical","runtime":{"type":"builtin","entrypoint":"builtin.reverse_shell_pattern"},"requires":{"events":[{"behavior":"network.connect","fields":["socket.port"]}],"ioc":{"optional":["ioc:c2-control-port-feed"]}},"output":{"response_intent":{"action":"collect_evidence","confidence":91}}}]}]}
+		"spec":{"rulesets":[{"id":"ruleset:test","version":"v1","rules":[{"rule_id":"reverse_shell_pattern","version":7,"severity":"critical","runtime":{"type":"builtin","entrypoint":"builtin.reverse_shell_pattern"},"requires":{"events":[{"behavior":"network.connect","fields":["socket.port"]}],"ioc":{"optional":["ioc:c2-control-port-feed"]}},"output":{"stage":"conclusion","response_intent":{"action":"collect_evidence","confidence":91}}}]}]}
 	}`
 	if _, err := store.Apply(raw, true, false); err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestStoreParsesCEPRulePack(t *testing.T) {
 				}
 			},
 			"requires":{"events":[{"behavior":"file.write","fields":["file.path"]},{"behavior":"process.exec","fields":["process.binary"]}]},
-			"output":{"terminal":false},
+			"output":{"stage":"candidate"},
 			"suppress":{"within":"5m","by":["process.stable_id","file.path"]}
 		}]}]}
 	}`
@@ -302,8 +302,8 @@ func TestStoreParsesCEPRulePack(t *testing.T) {
 	if rules[0].Sequence.Steps[1].Conditions[0].Step != "drop" {
 		t.Fatalf("sequence condition = %+v", rules[0].Sequence.Steps[1].Conditions[0])
 	}
-	if rules[0].Terminal == nil || *rules[0].Terminal {
-		t.Fatalf("terminal = %v, want explicit false", rules[0].Terminal)
+	if rules[0].Stage != "candidate" {
+		t.Fatalf("stage = %q, want candidate", rules[0].Stage)
 	}
 	if rules[0].Suppression.Within != "5m" || !slices.Equal(rules[0].Suppression.By, []string{"process.stable_id", "file.path"}) {
 		t.Fatalf("suppression = %+v", rules[0].Suppression)
@@ -325,7 +325,8 @@ func TestStoreParsesConditionTree(t *testing.T) {
 				]},
 				{"not":{"condition":{"field":"socket.port","op":"in","values":["80"]}}}
 			]}}},
-			"requires":{"events":[{"behavior":"network.connect","fields":["process.binary","process.argv","socket.port"]}]}
+			"requires":{"events":[{"behavior":"network.connect","fields":["process.binary","process.argv","socket.port"]}]},
+			"output":{"stage":"candidate"}
 		}]}]}
 	}`
 	if _, err := store.Apply(raw, true, false); err != nil {
@@ -360,7 +361,8 @@ func TestStoreParsesCorrelateRule(t *testing.T) {
 					]}}
 				]
 			}},
-			"requires":{"events":[{"behavior":"file.write","fields":["file.path"]},{"behavior":"process.exec","fields":["process.binary"]}]}
+			"requires":{"events":[{"behavior":"file.write","fields":["file.path"]},{"behavior":"process.exec","fields":["process.binary"]}]},
+			"output":{"stage":"candidate"}
 		}]}]}
 	}`
 	if _, err := store.Apply(raw, true, false); err != nil {
@@ -376,5 +378,13 @@ func TestStoreParsesCorrelateRule(t *testing.T) {
 	}
 	if !slices.Equal(correlate.Facts[0].Events, []string{"file.write", "file.chmod"}) || correlate.Facts[1].Event != "process.exec" || correlate.Facts[1].ConditionGroup == nil {
 		t.Fatalf("facts = %+v", correlate.Facts)
+	}
+}
+
+func TestStoreRejectsRuleWithoutSignalStage(t *testing.T) {
+	store := NewStore()
+	raw := `{"api_version":"sysarmor.content/v1","kind":"rulepack","metadata":{"id":"rulepack:missing-stage","version":"v1"},"spec":{"rulesets":[{"id":"ruleset:test","rules":[{"rule_id":"rule-a","runtime":{"type":"expr"}}]}]}}`
+	if _, err := store.Apply(raw, true, false); err == nil || !strings.Contains(err.Error(), "output stage") {
+		t.Fatalf("Apply() error = %v, want output stage error", err)
 	}
 }
