@@ -184,6 +184,11 @@ message DetectionContentRef {
   string digest = 4;
 }
 
+message LearningRuntimeHealth {
+  string status = 1;
+  string last_error = 2;
+}
+
 message DetectionRuntimeHealth {
   string policy_id = 1;
   uint64 policy_version = 2;
@@ -192,6 +197,7 @@ message DetectionRuntimeHealth {
   string last_apply_error = 5;
   string updated_at = 6;
   string default_manifest_version = 7;
+  LearningRuntimeHealth learning = 8;
 }
 
 message LocalStreamHealth {

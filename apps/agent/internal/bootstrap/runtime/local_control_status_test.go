@@ -109,6 +109,15 @@ func TestHealthResponseIncludesDefaultManifestVersion(t *testing.T) {
 	}
 }
 
+func TestHealthResponseIncludesLearningStatus(t *testing.T) {
+	response := healthResponse(agenthealth.AgentHealth{Detection: agenthealth.DetectionHealth{
+		Learning: agenthealth.LearningHealth{Status: "loaded"},
+	}})
+	if got := response.GetDetection().GetLearning().GetStatus(); got != "loaded" {
+		t.Fatalf("learning status = %q, want loaded", got)
+	}
+}
+
 func TestHealthResponseMapsStorageAndLifecycleFromDomainSnapshot(t *testing.T) {
 	response := healthResponseSnapshot(domainhealth.Snapshot{
 		Status:    domainhealth.StatusDegraded,

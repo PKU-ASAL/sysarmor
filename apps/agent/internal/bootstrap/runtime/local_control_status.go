@@ -133,6 +133,9 @@ func healthResponse(health agenthealth.AgentHealth) *controlplanev1.HealthRespon
 			LastApplyError:         health.Detection.LastApplyError,
 			UpdatedAt:              timestampString(health.Detection.UpdatedAt),
 			DefaultManifestVersion: health.Detection.DefaultManifestVersion,
+			Learning: &controlplanev1.LearningRuntimeHealth{
+				Status: health.Detection.Learning.Status, LastError: health.Detection.Learning.LastError,
+			},
 		},
 		Cep: &controlplanev1.CEPHealth{
 			ActiveGroups:     health.CEP.ActiveGroups,
