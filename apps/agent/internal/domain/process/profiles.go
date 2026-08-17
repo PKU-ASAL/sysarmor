@@ -114,17 +114,17 @@ func (profiles *Profiles) Resolve(observation IdentityObservation) ResolvedIdent
 	return ResolvedIdentity{Process: cloneProcess(process), ParentStableID: parentStableID}
 }
 
-func (profiles *Profiles) Observe(event domainevent.Event) Snapshot {
+func (profiles *Profiles) Observe(event domainevent.Event) {
 	profiles.mu.Lock()
 	defer profiles.mu.Unlock()
 	nowNS := eventTimeNS(event)
 	profiles.sweepIfDue(nowNS)
 	profile := profiles.profiles[event.Subject.StableID]
 	if profile == nil {
-		return Snapshot{}
+		return
 	}
 	if profile.state == StateRetained {
-		return profile.snapshot()
+		return
 	}
 	profile.revision++
 	profile.behaviorCounts[event.Behavior]++
@@ -143,7 +143,6 @@ func (profiles *Profiles) Observe(event domainevent.Event) Snapshot {
 	if event.Behavior == domainevent.BehaviorProcessExit {
 		profile.state, profile.exitedAtNS = StateExited, profile.lastSeenNS
 	}
-	return profile.snapshot()
 }
 
 func (profiles *Profiles) Sweep(nowNS uint64) {

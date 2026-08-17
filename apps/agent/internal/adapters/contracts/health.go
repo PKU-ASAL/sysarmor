@@ -90,7 +90,14 @@ func detectionHealth(value domainhealth.Detection) agenthealth.DetectionHealth {
 		DefaultManifestVersion: value.DefaultManifestVersion,
 		FeatureFlags:           agenthealth.RuntimeFeatureFlags{MatcherStrategy: value.MatcherStrategy},
 		LastApplyStatus:        value.LastApplyStatus, LastApplyError: value.LastApplyError, UpdatedAt: value.UpdatedAt,
-		Learning: agenthealth.LearningHealth{Status: value.Learning.Status, LastError: value.Learning.LastError},
+		Learning: agenthealth.LearningHealth{
+			Status: value.Learning.Status, LastError: value.Learning.LastError,
+			Profiles: agenthealth.ProcessProfileHealth{
+				Active: value.Learning.Profiles.Active, Exited: value.Learning.Profiles.Exited, Retained: value.Learning.Profiles.Retained,
+				Compactions: value.Learning.Profiles.Compactions, Expired: value.Learning.Profiles.Expired, CapacityEvictions: value.Learning.Profiles.CapacityEvictions,
+				FileEvictions: value.Learning.Profiles.FileEvictions, NetworkEvictions: value.Learning.Profiles.NetworkEvictions, EventRefEvictions: value.Learning.Profiles.EventRefEvictions,
+			},
+		},
 	}
 }
 

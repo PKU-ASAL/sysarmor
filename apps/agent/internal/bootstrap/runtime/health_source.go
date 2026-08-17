@@ -9,6 +9,7 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/management"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 )
 
 type runtimeHealthSource struct {
@@ -101,12 +102,23 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 		refs = append(refs, domainhealth.ContentRef{Ref: ref.Ref, Kind: ref.Kind, Version: ref.Version, Digest: ref.Digest})
 	}
 	metrics := s.health.policy.currentDetection().Metrics()
+	profileMetrics := domainprocess.Metrics{}
+	if s.health.profiles != nil {
+		profileMetrics = s.health.profiles.Metrics()
+	}
 	degraded := metrics.EvictedCEPGroups > 0 || metrics.DroppedEventRefs > 0 || metrics.CEPEvalErrors > 0
 	return domainhealth.Detection{
 		PolicyID: status.PolicyID, PolicyVersion: status.PolicyVersion, ContentRefs: refs,
 		DefaultManifestVersion: status.DefaultManifestVersion, MatcherStrategy: status.FeatureFlags.MatcherStrategy,
 		LastApplyStatus: status.LastApplyStatus, LastApplyError: status.LastApplyError, UpdatedAt: status.UpdatedAt,
-		Learning: domainhealth.Learning{Status: status.Learning.Status, LastError: status.Learning.LastError},
+		Learning: domainhealth.Learning{
+			Status: status.Learning.Status, LastError: status.Learning.LastError,
+			Profiles: domainhealth.ProcessProfileHealth{
+				Active: profileMetrics.Active, Exited: profileMetrics.Exited, Retained: profileMetrics.Retained,
+				Compactions: profileMetrics.Compactions, Expired: profileMetrics.Expired, CapacityEvictions: profileMetrics.CapacityEvictions,
+				FileEvictions: profileMetrics.FileEvictions, NetworkEvictions: profileMetrics.NetworkEvictions, EventRefEvictions: profileMetrics.EventRefEvictions,
+			},
+		},
 		CEP: domainhealth.CEP{ActiveGroups: metrics.ActiveCEPGroups, EvictedGroups: metrics.EvictedCEPGroups,
 			ExpiredGroups: metrics.ExpiredCEPGroups, DroppedEventRefs: metrics.DroppedEventRefs,
 			EvalErrors: metrics.CEPEvalErrors, EmittedSignals: metrics.EmittedSignals, Degraded: degraded},

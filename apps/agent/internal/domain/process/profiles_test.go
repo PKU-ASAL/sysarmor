@@ -60,10 +60,11 @@ func TestProfilesExitCompactsThenExpiresProfile(t *testing.T) {
 		ID: "event-1", OccurredAtNS: 10, Behavior: "file.read", SubjectPresent: true, Subject: identity.Process,
 		Object: domainevent.Object{FilePath: "/etc/passwd"},
 	})
-	exited := profiles.Observe(domainevent.Event{
+	profiles.Observe(domainevent.Event{
 		ID: "event-2", OccurredAtNS: 20, Behavior: domainevent.BehaviorProcessExit,
 		SubjectPresent: true, Subject: identity.Process,
 	})
+	exited, _ := profiles.Snapshot(identity.Process.StableID)
 	if exited.State != StateExited || len(exited.Files) != 1 {
 		t.Fatalf("exit snapshot = %+v", exited)
 	}
@@ -193,5 +194,22 @@ func TestProfilesObserveRunsLifecycleSweepAtConfiguredInterval(t *testing.T) {
 	snapshot, ok := profiles.Snapshot(first.Process.StableID)
 	if !ok || snapshot.State != StateRetained {
 		t.Fatalf("automatic sweep snapshot = %+v ok=%v", snapshot, ok)
+	}
+}
+
+func TestProfilesObserveDoesNotAllocateSnapshotOnStableUpdate(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 4, MaxFiles: 2, MaxNetworks: 2, MaxEventRefs: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := profiles.Resolve(IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 1, SensorExecID: "exec-1"}})
+	event := domainevent.Event{
+		ID: "event-a", Behavior: "file.read", SubjectPresent: true, Subject: identity.Process,
+		Object: domainevent.Object{FilePath: "/usr/lib/libc.so"},
+	}
+	profiles.Observe(event)
+	allocations := testing.AllocsPerRun(100, func() { profiles.Observe(event) })
+	if allocations != 0 {
+		t.Fatalf("stable Observe allocations = %.2f, want 0", allocations)
 	}
 }

@@ -124,7 +124,16 @@ type Detection struct {
 	Learning               Learning
 }
 
-type Learning struct{ Status, LastError string }
+type Learning struct {
+	Status, LastError string
+	Profiles          ProcessProfileHealth
+}
+
+type ProcessProfileHealth struct {
+	Active, Exited, Retained                           uint64
+	Compactions, Expired, CapacityEvictions            uint64
+	FileEvictions, NetworkEvictions, EventRefEvictions uint64
+}
 
 type ContentRef struct{ Ref, Kind, Version, Digest string }
 

@@ -71,6 +71,7 @@ type managementRuntime struct {
 	managedControl          *TransportRuntime
 	revokeEnrollment        func(context.Context, sqlite.Enrollment, string) (string, time.Time, error)
 	reportUnenrollment      func(context.Context) (bool, error)
+	processProfiles         *domainprocess.Profiles
 	config                  config.Config
 	policy                  *policyRuntime
 	telemetry               *telemetryRuntime
@@ -178,6 +179,7 @@ func (r *Coordinator) wireComponents() {
 	r.managementState.config = r.Config
 	r.managementState.policy = &r.policyState
 	r.managementState.telemetry = &r.telemetryState
+	r.managementState.processProfiles = r.processProfiles
 	r.telemetryState.config = r.Config
 	r.telemetryState.management = &r.managementState
 	r.telemetryState.policy = &r.policyState

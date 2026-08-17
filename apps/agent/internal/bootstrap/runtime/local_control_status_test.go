@@ -111,10 +111,17 @@ func TestHealthResponseIncludesDefaultManifestVersion(t *testing.T) {
 
 func TestHealthResponseIncludesLearningStatus(t *testing.T) {
 	response := healthResponse(agenthealth.AgentHealth{Detection: agenthealth.DetectionHealth{
-		Learning: agenthealth.LearningHealth{Status: "loaded"},
+		Learning: agenthealth.LearningHealth{Status: "loaded", Profiles: agenthealth.ProcessProfileHealth{
+			Active: 3, Exited: 2, Retained: 1, Compactions: 4, Expired: 5,
+			CapacityEvictions: 6, FileEvictions: 7, NetworkEvictions: 8, EventRefEvictions: 9,
+		}},
 	}})
 	if got := response.GetDetection().GetLearning().GetStatus(); got != "loaded" {
 		t.Fatalf("learning status = %q, want loaded", got)
+	}
+	profiles := response.GetDetection().GetLearning().GetProfiles()
+	if profiles.GetActive() != 3 || profiles.GetRetained() != 1 || profiles.GetEventRefEvictions() != 9 {
+		t.Fatalf("process profile health = %+v", profiles)
 	}
 }
 

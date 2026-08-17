@@ -45,8 +45,15 @@ type DetectionHealth struct {
 }
 
 type LearningHealth struct {
-	Status    string `json:"status,omitempty"`
-	LastError string `json:"last_error,omitempty"`
+	Status    string               `json:"status,omitempty"`
+	LastError string               `json:"last_error,omitempty"`
+	Profiles  ProcessProfileHealth `json:"profiles,omitempty"`
+}
+
+type ProcessProfileHealth struct {
+	Active, Exited, Retained                           uint64
+	Compactions, Expired, CapacityEvictions            uint64
+	FileEvictions, NetworkEvictions, EventRefEvictions uint64
 }
 
 type ContentRef struct {
