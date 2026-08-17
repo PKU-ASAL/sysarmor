@@ -17,13 +17,27 @@ func TestAnalysisSignalsDecodeOnlyAuthenticatedTenant(t *testing.T) {
 		{Source: json.RawMessage(`{"id":"signal-a","tenant_id":"tenant-a","name":"exec","where":"SIGNAL_WHERE_ENDPOINT","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE"}`), Sort: []any{"a"}},
 		{Source: json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-b","name":"other","where":"SIGNAL_WHERE_ENDPOINT","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE"}`), Sort: []any{"b"}},
 	}}}}
-	reader := NewAnalysisSignalReader(searcher)
+	reader := NewAnalysisTelemetryReader(searcher)
 	values, err := reader.Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Layer: "endpoint"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(values) != 1 || values[0].ID != "signal-a" || searcher.requests[0].Exact["tenant_id"] != "tenant-a" {
 		t.Fatalf("signals = %+v, requests = %+v", values, searcher.requests)
+	}
+}
+
+func TestAnalysisEventsDecodeOnlyAuthenticatedTenantAndLabels(t *testing.T) {
+	searcher := &analysisPageSearcherStub{pages: []SearchPage{{Hits: []SearchHit{
+		{Source: json.RawMessage(`{"id":"event-a","tenant_id":"tenant-a","behavior":"file.write","labels":{"scenario":"one"},"subject_proc":{"stable_id":"process-a"}}`), Sort: []any{"a"}},
+		{Source: json.RawMessage(`{"id":"event-b","tenant_id":"tenant-b","behavior":"file.write","labels":{"scenario":"one"},"subject_proc":{"stable_id":"process-b"}}`), Sort: []any{"b"}},
+	}}}}
+	reader := NewAnalysisTelemetryReader(searcher)
+
+	values, err := reader.Events(context.Background(), tenant.ID("tenant-a"), map[string]string{"scenario": "one"})
+
+	if err != nil || len(values) != 1 || values[0].ID != "event-a" || values[0].SubjectProcess.StableID != "process-a" || searcher.requests[0].Index != EventsReadAlias {
+		t.Fatalf("events = %+v, requests = %+v, error = %v", values, searcher.requests, err)
 	}
 }
 
@@ -35,7 +49,7 @@ func TestAnalysisSignalsReadsEveryPage(t *testing.T) {
 	searcher := &analysisPageSearcherStub{pages: []SearchPage{
 		{Hits: first}, {Hits: []SearchHit{{Source: json.RawMessage(`{"id":"critical","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CONCLUSION","detector_kind":"DETECTOR_KIND_RULE"}`), Sort: []any{analysisPageSize}}}},
 	}}
-	values, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
+	values, err := NewAnalysisTelemetryReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
 	if err != nil || len(values) != analysisPageSize+1 || len(searcher.requests) != 2 || len(searcher.requests[1].SearchAfter) == 0 {
 		t.Fatalf("signals = %d, requests = %+v, error = %v", len(values), searcher.requests, err)
 	}
@@ -51,7 +65,7 @@ func TestAnalysisSignalsRejectMalformedDocuments(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			searcher := &analysisPageSearcherStub{pages: []SearchPage{{Hits: []SearchHit{{Source: document, Sort: []any{"a"}}}}}}
-			_, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
+			_, err := NewAnalysisTelemetryReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
 			if err == nil {
 				t.Fatal("malformed signal accepted")
 			}
@@ -64,7 +78,7 @@ func TestAnalysisSignalsFiltersMismatchedLabels(t *testing.T) {
 		{Source: json.RawMessage(`{"id":"wrong","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE","labels":{"scenario":"other"}}`), Sort: []any{"a"}},
 		{Source: json.RawMessage(`{"id":"right","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE","labels":{"scenario":"one"}}`), Sort: []any{"b"}},
 	}}}}
-	values, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Labels: map[string]string{"scenario": "one"}})
+	values, err := NewAnalysisTelemetryReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Labels: map[string]string{"scenario": "one"}})
 	if err != nil || len(values) != 1 || values[0].ID != "right" {
 		t.Fatalf("values = %+v, error = %v", values, err)
 	}
@@ -72,7 +86,7 @@ func TestAnalysisSignalsFiltersMismatchedLabels(t *testing.T) {
 
 func TestAnalysisSignalsClassifiesSearchFailureAsRetryable(t *testing.T) {
 	searcher := &analysisPageSearcherStub{err: errors.New("opensearch unavailable")}
-	_, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
+	_, err := NewAnalysisTelemetryReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
 	if failure.KindOf(err) != failure.RetryableDependency {
 		t.Fatalf("failure kind = %v, error = %v", failure.KindOf(err), err)
 	}
@@ -82,7 +96,7 @@ func TestAnalysisSignalsRejectsMalformedRequestedLabels(t *testing.T) {
 	searcher := &analysisPageSearcherStub{pages: []SearchPage{{Hits: []SearchHit{{
 		Source: json.RawMessage(`{"id":"signal-a","tenant_id":"tenant-a","labels":7}`), Sort: []any{"a"},
 	}}}}}
-	_, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Labels: map[string]string{"scenario": "one"}})
+	_, err := NewAnalysisTelemetryReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Labels: map[string]string{"scenario": "one"}})
 	if err == nil {
 		t.Fatal("malformed labels accepted")
 	}

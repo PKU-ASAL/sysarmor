@@ -33,20 +33,20 @@ type Query struct {
 }
 
 type Service struct {
-	policies PolicyQuery
-	rarity   RarityQuery
-	signals  ports.AnalysisSignalReader
+	policies  PolicyQuery
+	rarity    RarityQuery
+	telemetry ports.AnalysisTelemetryReader
 }
 
-func NewService(policies PolicyQuery, rarityQuery RarityQuery, signals ports.AnalysisSignalReader) *Service {
-	return &Service{policies: policies, rarity: rarityQuery, signals: signals}
+func NewService(policies PolicyQuery, rarityQuery RarityQuery, telemetry ports.AnalysisTelemetryReader) *Service {
+	return &Service{policies: policies, rarity: rarityQuery, telemetry: telemetry}
 }
 
 func (service *Service) Recompute(ctx context.Context, request managerapp.RequestContext, query Query) (domaintelemetry.Analysis, error) {
 	if err := request.Actor.Require(tenant.RoleViewer); err != nil {
 		return domaintelemetry.Analysis{}, err
 	}
-	if service == nil || service.policies == nil || service.rarity == nil || service.signals == nil {
+	if service == nil || service.policies == nil || service.rarity == nil || service.telemetry == nil {
 		return domaintelemetry.Analysis{}, failure.New(failure.Internal, "analysis dependencies are required")
 	}
 	policy, err := service.policies.Effective(ctx, request, query.Target)
@@ -61,13 +61,17 @@ func (service *Service) Recompute(ctx context.Context, request managerapp.Reques
 	if err != nil {
 		return domaintelemetry.Analysis{}, fmt.Errorf("read tenant rarity baseline: %w", err)
 	}
-	signals, err := service.signals.Signals(ctx, request.Actor.TenantID, ports.AnalysisSignalFilter{Labels: cloneLabels(query.Labels), Layer: "endpoint"})
+	events, err := service.telemetry.Events(ctx, request.Actor.TenantID, cloneLabels(query.Labels))
+	if err != nil {
+		return domaintelemetry.Analysis{}, fmt.Errorf("read analysis events: %w", err)
+	}
+	signals, err := service.telemetry.Signals(ctx, request.Actor.TenantID, ports.AnalysisSignalFilter{Labels: cloneLabels(query.Labels), Layer: "endpoint"})
 	if err != nil {
 		return domaintelemetry.Analysis{}, fmt.Errorf("read endpoint signals: %w", err)
 	}
 	analyzer := domainanalysis.NewAnalyzer()
 	analyzer.SetRarityBaseline(rarity.Baseline{WorkloadCounts: baseline.WorkloadCounts})
-	return analyzer.Analyze(nil, signals, &policy), nil
+	return analyzer.Analyze(events, signals, &policy), nil
 }
 
 func configurePolicy(policy detection.Policy, query Query) (detection.Policy, error) {

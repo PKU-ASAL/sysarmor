@@ -22,14 +22,17 @@ func TestRecomputeUsesAuthenticatedTenantAndAnalysisPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fixture.signals.tenantID != fixture.request.Actor.TenantID || fixture.policy.request.Actor.TenantID != fixture.request.Actor.TenantID {
-		t.Fatalf("policy tenant = %q, signal tenant = %q", fixture.policy.request.Actor.TenantID, fixture.signals.tenantID)
+	if fixture.telemetry.signalTenantID != fixture.request.Actor.TenantID || fixture.telemetry.eventTenantID != fixture.request.Actor.TenantID || fixture.policy.request.Actor.TenantID != fixture.request.Actor.TenantID {
+		t.Fatalf("policy tenant = %q, signal tenant = %q, event tenant = %q", fixture.policy.request.Actor.TenantID, fixture.telemetry.signalTenantID, fixture.telemetry.eventTenantID)
 	}
-	if fixture.signals.filter.Labels["scenario"] != "one" || fixture.signals.filter.Layer != "endpoint" {
-		t.Fatalf("signal filter = %+v", fixture.signals.filter)
+	if fixture.telemetry.signalFilter.Labels["scenario"] != "one" || fixture.telemetry.signalFilter.Layer != "endpoint" || fixture.telemetry.eventLabels["scenario"] != "one" {
+		t.Fatalf("signal filter = %+v, event labels = %+v", fixture.telemetry.signalFilter, fixture.telemetry.eventLabels)
 	}
 	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Score != 90 {
 		t.Fatalf("analysis = %+v", result)
+	}
+	if evidence := result.Incidents[0].Evidence; evidence == nil || len(evidence.Edges) != 1 || evidence.Edges[0].EventRefs[0] != "event-write" {
+		t.Fatalf("evidence = %+v", result.Incidents[0].Evidence)
 	}
 }
 
@@ -59,11 +62,11 @@ func TestRecomputeWrapsDependencyErrors(t *testing.T) {
 }
 
 type fixture struct {
-	request managerapp.RequestContext
-	policy  *policyStub
-	rarity  *rarityStub
-	signals *signalStub
-	service *Service
+	request   managerapp.RequestContext
+	policy    *policyStub
+	rarity    *rarityStub
+	telemetry *telemetryStub
+	service   *Service
 }
 
 func newFixture(t *testing.T) fixture {
@@ -74,11 +77,14 @@ func newFixture(t *testing.T) fixture {
 	rarity := &rarityStub{value: domainidentity.RarityBaseline{WorkloadCounts: map[string]map[string]uint64{
 		"global": {"payload_dropped": 1, "suspicious_exec_connect": 1, "dropped_payload_executed_and_connects": 1},
 	}}}
-	signals := &signalStub{values: []domaintelemetry.Signal{
+	telemetry := &telemetryStub{events: []domaintelemetry.Event{{
+		ID: "event-write", Behavior: "file.write", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "process-a"},
+		Object: &domaintelemetry.ObjectRef{Kind: "file", FilePath: "/tmp/a"}, Labels: map[string]string{"scenario": "one"},
+	}}, signals: []domaintelemetry.Signal{
 		{Name: "payload_dropped", BaseRisk: 50, GlobalRarity: 1, Entities: []domaintelemetry.Entity{{Kind: "file", Key: "/tmp/a"}}},
 		{Name: "suspicious_exec_connect", BaseRisk: 50, GlobalRarity: 1, Entities: []domaintelemetry.Entity{{Kind: "file", Key: "/tmp/a"}}},
 	}}
-	return fixture{request: request, policy: policy, rarity: rarity, signals: signals, service: NewService(policy, rarity, signals)}
+	return fixture{request: request, policy: policy, rarity: rarity, telemetry: telemetry, service: NewService(policy, rarity, telemetry)}
 }
 
 type policyStub struct {
@@ -98,13 +104,20 @@ func (stub *rarityStub) Rarity(context.Context, managerapp.RequestContext) (doma
 	return stub.value, nil
 }
 
-type signalStub struct {
-	tenantID tenant.ID
-	filter   ports.AnalysisSignalFilter
-	values   []domaintelemetry.Signal
+type telemetryStub struct {
+	eventTenantID, signalTenantID tenant.ID
+	eventLabels                   map[string]string
+	signalFilter                  ports.AnalysisSignalFilter
+	events                        []domaintelemetry.Event
+	signals                       []domaintelemetry.Signal
 }
 
-func (stub *signalStub) Signals(_ context.Context, tenantID tenant.ID, filter ports.AnalysisSignalFilter) ([]domaintelemetry.Signal, error) {
-	stub.tenantID, stub.filter = tenantID, filter
-	return stub.values, nil
+func (stub *telemetryStub) Events(_ context.Context, tenantID tenant.ID, labels map[string]string) ([]domaintelemetry.Event, error) {
+	stub.eventTenantID, stub.eventLabels = tenantID, labels
+	return stub.events, nil
+}
+
+func (stub *telemetryStub) Signals(_ context.Context, tenantID tenant.ID, filter ports.AnalysisSignalFilter) ([]domaintelemetry.Signal, error) {
+	stub.signalTenantID, stub.signalFilter = tenantID, filter
+	return stub.signals, nil
 }

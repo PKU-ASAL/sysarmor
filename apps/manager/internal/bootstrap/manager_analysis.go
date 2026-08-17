@@ -44,7 +44,7 @@ func NewManagerAnalysisHTTP(db *sql.DB, searcher platformopensearch.PageSearcher
 	}
 	policies := policyapp.NewQueryService(policypostgres.NewUnitOfWork(db))
 	rarity := identityapp.NewQueryService(identitypostgres.NewRepositories(db))
-	signals := platformopensearch.NewAnalysisSignalReader(searcher)
-	service := analysisapp.NewService(managerAnalysisPolicy{queries: policies}, rarity, signals)
+	telemetry := platformopensearch.NewAnalysisTelemetryReader(searcher)
+	service := analysisapp.NewService(managerAnalysisPolicy{queries: policies}, rarity, telemetry)
 	return analysishttp.NewHandler(analysishttp.Options{Service: service, Resolve: resolve}), nil
 }

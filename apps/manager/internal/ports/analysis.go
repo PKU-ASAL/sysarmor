@@ -12,6 +12,7 @@ type AnalysisSignalFilter struct {
 	Layer  string
 }
 
-type AnalysisSignalReader interface {
+type AnalysisTelemetryReader interface {
+	Events(context.Context, tenant.ID, map[string]string) ([]domaintelemetry.Event, error)
 	Signals(context.Context, tenant.ID, AnalysisSignalFilter) ([]domaintelemetry.Signal, error)
 }
