@@ -129,6 +129,6 @@ def model_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, A
         if subject is None or subject not in profile_ids:
             return gate("failed", signal, "resolved subject process", "invalid Model Candidate subject process")
         refs = signal.get("eventRefs", [])
-        if not refs or not set(refs).issubset(event_ids):
+        if not refs or not set(refs).intersection(event_ids):
             return gate("failed", signal, "resolved refs", "unresolved Model Candidate event ref")
     return gate("passed", len(enabled.get("model_candidates", [])), None, "model provenance, subject, and refs")

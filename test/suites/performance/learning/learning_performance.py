@@ -18,6 +18,7 @@ def load_matrix_phase(path: Path, phase: str) -> dict[str, Any]:
             if row.get("policy_dir") == path.name:
                 return {
                     "agent_cpu_avg_pct": numeric(row.get(f"{phase}_agent_cpu_avg_pct")),
+                    "agent_rss_avg_mb": numeric(row.get(f"{phase}_agent_rss_avg_mb")),
                     "agent_rss_max_mb": numeric(row.get(f"{phase}_agent_rss_max_mb")),
                     "eps": numeric(row.get(f"{phase}_eps")),
                 }

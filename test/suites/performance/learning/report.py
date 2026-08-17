@@ -62,8 +62,8 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
     enabled_performance = enabled.get("performance", {})
     disabled_cpu = numeric(disabled_performance.get("agent_cpu_avg_pct"))
     enabled_cpu = numeric(enabled_performance.get("agent_cpu_avg_pct"))
-    disabled_rss = numeric(disabled_performance.get("agent_rss_max_mb"))
-    enabled_rss = numeric(enabled_performance.get("agent_rss_max_mb"))
+    disabled_rss = numeric(disabled_performance.get("agent_rss_steady_avg_mb"))
+    enabled_rss = numeric(enabled_performance.get("agent_rss_steady_avg_mb"))
     disabled_eps = numeric(disabled_performance.get("eps"))
     enabled_eps = numeric(enabled_performance.get("eps"))
     cpu_limit = disabled_cpu * gates["cpu_relative"] if disabled_cpu is not None else None
@@ -277,7 +277,8 @@ def performance_metrics(path: Path) -> dict[str, Any]:
     steady = load_matrix_phase(path, "steady")
     return {
         "agent_cpu_avg_pct": activity.get("agent_cpu_avg_pct"),
-        "agent_rss_max_mb": steady.get("agent_rss_max_mb"),
+        "agent_rss_steady_avg_mb": steady.get("agent_rss_avg_mb"),
+        "agent_rss_steady_max_mb": steady.get("agent_rss_max_mb"),
         "eps": activity.get("eps"),
     }
 

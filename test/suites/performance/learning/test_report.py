@@ -22,11 +22,16 @@ render_report = REPORT.render_report
 signal_sample = REPORT.signal_sample
 
 
-def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
+def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0, rss_peak=None):
     return {
         "health": {"status": "ok", "learning": "loaded"},
         "reliability": {"sensor_drop": 0, "batcher_drop": 0, "parse_errors": 0},
-        "performance": {"agent_cpu_avg_pct": cpu, "agent_rss_max_mb": rss, "eps": eps},
+        "performance": {
+            "agent_cpu_avg_pct": cpu,
+            "agent_rss_steady_avg_mb": rss,
+            "agent_rss_steady_max_mb": rss if rss_peak is None else rss_peak,
+            "eps": eps,
+        },
         "profile_health": {
             "active": 10,
             "exited": 2,
@@ -122,6 +127,16 @@ class LearningReportTest(unittest.TestCase):
         enabled["model_candidates"] = [model_candidate("missing-event")]
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
         self.assertEqual(result["gates"]["model"]["status"], "failed")
+
+    def test_model_candidate_allows_history_before_experiment_cursor(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["model_candidates"] = [model_candidate() | {"eventRefs": ["before-cursor", "e1"]}]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["model"]["status"], "passed")
 
     def test_enabled_without_model_candidate_fails_model_gate(self):
         disabled = metrics()
@@ -259,7 +274,7 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["normal_candidate_rate"]["status"], "failed")
 
-    def test_rss_delta_at_sixteen_mib_passes_and_above_fails(self):
+    def test_steady_average_rss_delta_at_sixteen_mib_passes_and_above_fails(self):
         disabled = metrics(rss=64.0)
         disabled["health"]["learning"] = "disabled"
         for rss, expected in ((80.0, "passed"), (80.01, "failed")):
@@ -268,16 +283,31 @@ class LearningReportTest(unittest.TestCase):
                 result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
                 self.assertEqual(result["gates"]["performance_rss"]["status"], expected)
 
+    def test_steady_rss_peak_is_observed_but_does_not_replace_resident_gate(self):
+        disabled = metrics(rss=64.0, rss_peak=65.0)
+        enabled = metrics(rss=79.0, rss_peak=90.0)
+        disabled["health"]["learning"] = "disabled"
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["performance_rss"]["status"], "passed")
+        self.assertEqual(result["variants"]["enabled"]["performance"]["agent_rss_steady_max_mb"], 90.0)
+
     def test_performance_metrics_use_activity_cpu_eps_and_steady_rss(self):
         phases = {
-            "normal_activity": {"agent_cpu_avg_pct": 2.5, "agent_rss_max_mb": 99.0, "eps": 20.0},
-            "steady": {"agent_cpu_avg_pct": 9.0, "agent_rss_max_mb": 70.0, "eps": 0.0},
+            "normal_activity": {"agent_cpu_avg_pct": 2.5, "agent_rss_avg_mb": 99.0, "agent_rss_max_mb": 100.0, "eps": 20.0},
+            "steady": {"agent_cpu_avg_pct": 9.0, "agent_rss_avg_mb": 69.0, "agent_rss_max_mb": 70.0, "eps": 0.0},
         }
 
         with mock.patch.object(REPORT, "load_matrix_phase", side_effect=lambda _, phase: phases[phase]):
             result = REPORT.performance_metrics(Path("run"))
 
-        self.assertEqual(result, {"agent_cpu_avg_pct": 2.5, "agent_rss_max_mb": 70.0, "eps": 20.0})
+        self.assertEqual(result, {
+            "agent_cpu_avg_pct": 2.5,
+            "agent_rss_steady_avg_mb": 69.0,
+            "agent_rss_steady_max_mb": 70.0,
+            "eps": 20.0,
+        })
 
     def test_model_candidate_requires_subject_process_entity(self):
         disabled = metrics()

@@ -76,7 +76,12 @@ def model_section(model: dict[str, Any]) -> list[str]:
 def performance_section(variants: dict[str, Any]) -> list[str]:
     disabled = variants.get("disabled", {}).get("performance", {})
     enabled = variants.get("enabled", {}).get("performance", {})
-    rows = (("Agent CPU avg", "agent_cpu_avg_pct", "%"), ("Agent RSS max", "agent_rss_max_mb", "MiB"), ("EPS", "eps", "events/s"))
+    rows = (
+        ("Agent CPU avg (normal activity)", "agent_cpu_avg_pct", "%"),
+        ("Agent RSS avg (steady)", "agent_rss_steady_avg_mb", "MiB"),
+        ("Agent RSS max (steady, observation)", "agent_rss_steady_max_mb", "MiB"),
+        ("EPS (normal activity)", "eps", "events/s"),
+    )
     lines = ["## A/B 性能", "", "| 指标 | Disabled | Enabled | Delta | 单位 |", "|---|---:|---:|---:|---|"]
     for label, key, unit in rows:
         first, second = numeric(disabled.get(key)), numeric(enabled.get(key))
