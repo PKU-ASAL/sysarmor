@@ -126,8 +126,11 @@ func filePermissionSelectors(intent contract.CollectionIntent) []filePermissionS
 		}
 		filter := behaviorFilter(intent, behavior)
 		prefixes := filter.FilePrefixes
-		if len(prefixes) == 0 {
+		if len(prefixes) == 0 && !intentHasMandatoryBehavior(intent, behavior) {
 			prefixes = defaultFilePrefixesForBehavior(behavior)
+		}
+		if len(prefixes) == 0 && intentHasMandatoryBehavior(intent, behavior) {
+			prefixes = []string{"/"}
 		}
 		selectors = append(selectors, filePermissionSelector{
 			Behavior:           behavior,
@@ -246,8 +249,21 @@ func intentHasBehavior(intent contract.CollectionIntent, behavior string) bool {
 	return false
 }
 
+func intentHasMandatoryBehavior(intent contract.CollectionIntent, behavior string) bool {
+	behavior = domainevent.NormalizeBehavior(behavior)
+	for _, required := range intent.MandatoryBehaviors {
+		if domainevent.NormalizeBehavior(required) == behavior {
+			return true
+		}
+	}
+	return false
+}
+
 func behaviorFilter(intent contract.CollectionIntent, behavior string) contract.CollectionBehaviorFilter {
 	behavior = domainevent.NormalizeBehavior(behavior)
+	if intentHasMandatoryBehavior(intent, behavior) {
+		return contract.CollectionBehaviorFilter{Behavior: behavior}
+	}
 	for _, filter := range intent.BehaviorFilters {
 		if domainevent.NormalizeBehavior(filter.Behavior) == behavior {
 			return filter

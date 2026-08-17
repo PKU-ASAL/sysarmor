@@ -254,6 +254,23 @@ func TestBuildTracingPolicyUsesCollectionFilters(t *testing.T) {
 	}
 }
 
+func TestBuildTracingPolicyMandatoryBaselineIgnoresNarrowSelectors(t *testing.T) {
+	data := string(buildTracingPolicy(contract.CollectionIntent{
+		Behaviors:          []string{"process.exec", "file.write", "network.connect"},
+		MandatoryBehaviors: []string{"process.exec", "file.write", "network.connect"},
+		BehaviorFilters: []contract.CollectionBehaviorFilter{{
+			Behavior: "network.connect", BinaryPrefixes: []string{"/tmp/"}, SocketPorts: []string{"443"},
+			FilePrefixes: []string{"/dev/shm/"},
+		}},
+	}))
+	if strings.Contains(data, `"/tmp/"`) || strings.Contains(data, `"/dev/shm/"`) {
+		t.Fatalf("mandatory baseline retained user selectors:\n%s", data)
+	}
+	if !strings.Contains(data, `- "/"`) {
+		t.Fatalf("mandatory file baseline did not widen file selector:\n%s", data)
+	}
+}
+
 func TestBuildTracingPolicyPushesNamespaceScope(t *testing.T) {
 	data := string(buildTracingPolicy(contract.CollectionIntent{
 		Behaviors: []string{"process.exec", "network.connect", "file.write"},

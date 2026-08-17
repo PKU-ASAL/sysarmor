@@ -162,7 +162,7 @@ func CompileReport(intent contract.CollectionIntent) contract.CollectionCompileR
 			report.AgentSideSelectors = append(report.AgentSideSelectors, scopeReport)
 		}
 		report.UnsupportedSelectors = append(report.UnsupportedSelectors, unsupportedSelectorsForFilter(filter)...)
-		if !hasPushdownSelectors(intent, behavior, filter) {
+		if !hasPushdownSelectors(intent, behavior, filter) && !intentHasMandatoryBehavior(intent, behavior) {
 			report.Warnings = append(report.Warnings, fmt.Sprintf("behavior %s has no pushdown selectors; kernel BPF filter will pass all events of this type, resulting in high event volume", behavior))
 		}
 	}

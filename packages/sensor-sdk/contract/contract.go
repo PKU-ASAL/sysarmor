@@ -44,6 +44,7 @@ type Capability struct {
 
 type CollectionIntent struct {
 	Behaviors          []string
+	MandatoryBehaviors []string
 	BinaryPrefixes     []string
 	FilePrefixes       []string
 	SocketFamilies     []string

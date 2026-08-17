@@ -61,7 +61,7 @@ func TestBalancedPolicyResolvesContentRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.Behaviors) != 5 {
+	if len(intent.Behaviors) != 6 || len(intent.MandatoryBehaviors) != 4 {
 		t.Fatalf("behaviors = %v", intent.Behaviors)
 	}
 	if len(report.ResolvedRefs) != 8 {
@@ -106,21 +106,21 @@ func TestParseCollectionPolicyJSONBehaviorsAndFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.Behaviors) != 2 {
+	if len(intent.Behaviors) != 4 || len(intent.MandatoryBehaviors) != 4 {
 		t.Fatalf("Behaviors = %v", intent.Behaviors)
 	}
-	if intent.Behaviors[0] != "network.connect" {
+	if intent.Behaviors[0] != "process.exec" {
 		t.Fatalf("first behavior = %v", intent.Behaviors[0])
 	}
-	if len(intent.BehaviorFilters) != 2 {
+	if len(intent.BehaviorFilters) != 4 {
 		t.Fatalf("BehaviorFilters = %+v", intent.BehaviorFilters)
 	}
-	network := intent.BehaviorFilters[0]
-	if network.Behavior != "network.connect" || len(network.SocketFamilies) != 1 || network.SocketFamilies[0] != "AF_INET" {
+	network := intent.BehaviorFilters[3]
+	if network.Behavior != "network.connect" || len(network.SocketFamilies) != 0 {
 		t.Fatalf("network filter = %+v", network)
 	}
-	file := intent.BehaviorFilters[1]
-	if file.Behavior != "file.write" || len(file.FilePrefixes) != 2 || file.FilePrefixes[0] != "/dev/shm" {
+	file := intent.BehaviorFilters[2]
+	if file.Behavior != "file.write" || len(file.FilePrefixes) != 0 {
 		t.Fatalf("file filter = %+v", file)
 	}
 	if intent.ScopeType != "container" || intent.ScopeSelector != "abc123" {
@@ -160,13 +160,13 @@ func TestExpandCollectionPolicyRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if got := intent.BehaviorFilters[0].SocketAddrs; len(got) != 1 || got[0] != "203.0.113.10" {
+	if got := intent.BehaviorFilters[3].SocketAddrs; len(got) != 0 {
 		t.Fatalf("socket addrs = %v", got)
 	}
-	if got := intent.BehaviorFilters[0].SocketPorts; len(got) != 2 || got[0] != "443" || got[1] != "8443" {
+	if got := intent.BehaviorFilters[3].SocketPorts; len(got) != 0 {
 		t.Fatalf("socket ports = %v", got)
 	}
-	if got := intent.BehaviorFilters[1].FilePrefixes; len(got) != 2 || got[0] != "/dev/shm/" || got[1] != "/var/tmp/.sysarmor-attack/" {
+	if got := intent.BehaviorFilters[2].FilePrefixes; len(got) != 0 {
 		t.Fatalf("file prefixes = %v", got)
 	}
 	if len(report.ResolvedRefs) != 3 {
@@ -204,13 +204,13 @@ func TestCollectionPolicyFlatFieldsBecomeBehaviorFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.BehaviorFilters) != 2 {
+	if len(intent.BehaviorFilters) != 4 {
 		t.Fatalf("BehaviorFilters = %+v", intent.BehaviorFilters)
 	}
-	if got := intent.BehaviorFilters[0].SocketFamilies; len(got) != 1 || got[0] != "AF_INET" {
+	if got := intent.BehaviorFilters[3].SocketFamilies; len(got) != 0 {
 		t.Fatalf("network socket families = %v", got)
 	}
-	if got := intent.BehaviorFilters[1].FilePrefixes; len(got) != 1 || got[0] != "/dev/shm" {
+	if got := intent.BehaviorFilters[2].FilePrefixes; len(got) != 0 {
 		t.Fatalf("file prefixes = %v", got)
 	}
 }
