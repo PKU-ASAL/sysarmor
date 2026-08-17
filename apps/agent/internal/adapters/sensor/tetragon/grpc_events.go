@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 
 	tetragonpb "github.com/cilium/tetragon/api/v1/tetragon"
+	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 	"google.golang.org/grpc"
@@ -31,12 +33,10 @@ func (b *Backend) subscribeManagedGRPC(ctx context.Context, stopSensor func()) (
 		return nil, err
 	}
 	client := tetragonpb.NewFineGuidanceSensorsClient(conn)
-	stream, err := client.GetEvents(ctx, &tetragonpb.GetEventsRequest{
-		AllowList: []*tetragonpb.Filter{{
-			PolicyNames: []string{runtimeTracingPolicyName},
-			EventSet:    []tetragonpb.EventType{tetragonpb.EventType_PROCESS_KPROBE},
-		}},
-	})
+	b.mu.Lock()
+	intent := b.intent
+	b.mu.Unlock()
+	stream, err := client.GetEvents(ctx, &tetragonpb.GetEventsRequest{AllowList: managedGRPCAllowList(intent)})
 	if err != nil {
 		_ = conn.Close()
 		stopSensor()
@@ -96,6 +96,39 @@ func (b *Backend) subscribeManagedGRPC(ctx context.Context, stopSensor func()) (
 		}
 	}()
 	return out, nil
+}
+
+func managedGRPCAllowList(intent contract.CollectionIntent) []*tetragonpb.Filter {
+	var filters []*tetragonpb.Filter
+	var lifecycle []tetragonpb.EventType
+	if intentHasAnyBehavior(intent, domainevent.BehaviorProcessExec, domainevent.BehaviorProcessFork) {
+		lifecycle = append(lifecycle, tetragonpb.EventType_PROCESS_EXEC)
+	}
+	if intentHasBehavior(intent, domainevent.BehaviorProcessExit) {
+		lifecycle = append(lifecycle, tetragonpb.EventType_PROCESS_EXIT)
+	}
+	if len(lifecycle) > 0 {
+		prefixes := mergeFilterStrings(
+			behaviorFilter(intent, domainevent.BehaviorProcessExec).BinaryPrefixes,
+			behaviorFilter(intent, domainevent.BehaviorProcessFork).BinaryPrefixes,
+		)
+		filters = append(filters, &tetragonpb.Filter{EventSet: lifecycle, BinaryRegex: prefixRegexes(prefixes)})
+	}
+	if needsTracingPolicy(intent) {
+		filters = append(filters, &tetragonpb.Filter{
+			PolicyNames: []string{runtimeTracingPolicyName},
+			EventSet:    []tetragonpb.EventType{tetragonpb.EventType_PROCESS_KPROBE},
+		})
+	}
+	return filters
+}
+
+func prefixRegexes(prefixes []string) []string {
+	result := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		result = append(result, "^"+regexp.QuoteMeta(prefix))
+	}
+	return result
 }
 
 func dialTetragonGRPC(ctx context.Context, address string) (*grpc.ClientConn, error) {

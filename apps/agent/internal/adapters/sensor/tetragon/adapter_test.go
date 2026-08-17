@@ -46,7 +46,7 @@ func TestParseProcessExecInfersCurlWrite(t *testing.T) {
 }
 
 func TestParseSocketConnect(t *testing.T) {
-	raw := []byte(`{"process_kprobe":{"process":{"pid":101,"uid":0,"binary":"/bin/bash","arguments":"-i","start_time":"2026-06-14T10:00:01Z"},"parent":{"pid":100,"binary":"/bin/bash","start_time":"2026-06-14T10:00:00Z"},"function_name":"security_socket_connect","args":[{"sockaddr_arg":{"family":"AF_INET","addr":"10.66.0.99","port":443}}],"policy_name":"sysarmor-syscall-capture"},"node_name":"node-a","time":"2026-06-14T10:00:01Z"}`)
+	raw := []byte(`{"process_kprobe":{"process":{"pid":101,"uid":0,"binary":"/bin/bash","arguments":"-i","start_time":"2026-06-14T10:00:01Z"},"parent":{"pid":100,"binary":"/bin/bash","start_time":"2026-06-14T10:00:00Z"},"function_name":"security_socket_connect","args":[{"sockaddr_arg":{"family":"AF_INET","addr":"10.66.0.99","port":443}}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:01Z"}`)
 	events, ok := ParseLine(raw)
 	if !ok {
 		t.Fatal("line was not recognized")
@@ -78,28 +78,6 @@ func TestParsePolicyFilePermissionRead(t *testing.T) {
 	}
 	if events[0].GetBehavior() != "file.read" || events[0].GetObject().GetPath() != "/etc/passwd" {
 		t.Fatalf("event = %+v, want file.read /etc/passwd", events[0])
-	}
-}
-
-func TestParsePolicyKprobeExec(t *testing.T) {
-	raw := []byte(`{"process_kprobe":{"process":{"pid":103,"uid":0,"binary":"/bin/busybox","arguments":"id","start_time":"2026-06-14T10:00:02Z"},"parent":{"pid":1,"binary":"/sbin/init","start_time":"2026-06-14T09:00:00Z"},"function_name":"security_bprm_creds_from_file","args":[{"file_arg":{"path":"/bin/busybox"}}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:02Z"}`)
-	events, ok := ParseLine(raw)
-	if !ok || len(events) != 1 {
-		t.Fatalf("events=%d ok=%v, want one process exec", len(events), ok)
-	}
-	if events[0].GetBehavior() != "process.exec" || events[0].GetObject().GetPath() != "/bin/busybox" {
-		t.Fatalf("event = %+v, want process.exec /bin/busybox", events[0])
-	}
-}
-
-func TestParsePolicyKprobeExit(t *testing.T) {
-	raw := []byte(`{"process_kprobe":{"process":{"pid":104,"uid":0,"binary":"/usr/bin/sleep","arguments":"1","start_time":"2026-06-14T10:00:02Z"},"parent":{"pid":1,"binary":"/sbin/init","start_time":"2026-06-14T09:00:00Z"},"function_name":"do_exit","args":[{"int_arg":0}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:03Z"}`)
-	events, ok := ParseLine(raw)
-	if !ok || len(events) != 1 {
-		t.Fatalf("events=%d ok=%v, want one process exit", len(events), ok)
-	}
-	if events[0].GetBehavior() != "process.exit" {
-		t.Fatalf("behavior = %q, want process.exit", events[0].GetBehavior())
 	}
 }
 

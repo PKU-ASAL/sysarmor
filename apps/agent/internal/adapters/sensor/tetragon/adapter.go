@@ -122,18 +122,10 @@ func execEvents(env envelope, pe processEvent, raw string) []*sensorv1.SensorEve
 }
 
 func kprobeEventToSensor(env envelope, kp kprobeEvent, raw string) *sensorv1.SensorEvent {
+	if kp.PolicyName != runtimeTracingPolicyName {
+		return nil
+	}
 	switch kp.Function {
-	case "security_bprm_creds_from_file":
-		obj := &sensorv1.RawObject{}
-		for _, arg := range kp.Args {
-			if arg.File != nil && arg.File.Path != "" {
-				obj.Path = arg.File.Path
-				break
-			}
-		}
-		return sensorEvent(env, kp.Process, kp.Parent, domainevent.BehaviorProcessExec, obj, raw)
-	case "do_exit":
-		return sensorEvent(env, kp.Process, kp.Parent, domainevent.BehaviorProcessExit, nil, raw)
 	case "security_socket_connect":
 		for _, arg := range kp.Args {
 			if arg.Sockaddr != nil && arg.Sockaddr.Addr != "" && arg.Sockaddr.Port != 0 {

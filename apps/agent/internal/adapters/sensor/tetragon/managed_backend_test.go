@@ -148,13 +148,13 @@ func TestBackendDeletesGeneratedTracingPolicyOnStop(t *testing.T) {
 	}
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "collection.yaml")
-	if err := os.WriteFile(policyPath, []byte(`{"behaviors":["process.exec"],"observe_only":true}
+	if err := os.WriteFile(policyPath, []byte(`{"behaviors":["network.connect"],"observe_only":true}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	addedPath := filepath.Join(dir, "added")
 	deletedPath := filepath.Join(dir, "deleted")
-	raw := `{"process_exec":{"process":{"pid":100,"uid":0,"binary":"/bin/bash","arguments":"-c id","start_time":"2026-06-14T10:00:00Z"},"parent":{"pid":99,"binary":"/sbin/init","start_time":"2026-06-14T09:59:59Z"}},"node_name":"node-a","time":"2026-06-14T10:00:00Z"}`
+	raw := `{"process_kprobe":{"process":{"pid":100,"uid":0,"binary":"/usr/bin/curl","start_time":"2026-06-14T10:00:00Z"},"parent":{"pid":99,"binary":"/bin/bash"},"function_name":"security_socket_connect","args":[{"sockaddr_arg":{"addr":"203.0.113.10","port":443}}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:00Z"}`
 	tetraPath := filepath.Join(dir, "tetra")
 	tetraScript := "#!/bin/sh\nif [ \"$1 $2\" = \"tracingpolicy add\" ]; then cp \"$3\" '" + addedPath + "'; exit 0; fi\nif [ \"$1 $2\" = \"tracingpolicy list\" ]; then printf '%s\\n' 'sysarmor-runtime-collection'; exit 0; fi\nif [ \"$1 $2\" = \"tracingpolicy delete\" ]; then printf '%s' \"$3\" > '" + deletedPath + "'; exit 0; fi\nprintf '%s\\n' '" + raw + "'\nsleep 30\n"
 	if err := os.WriteFile(tetraPath, []byte(tetraScript), 0o755); err != nil {
@@ -163,7 +163,7 @@ func TestBackendDeletesGeneratedTracingPolicyOnStop(t *testing.T) {
 	backend := NewBackendWithBundle(policyPath, "", "test", BundleConfig{TetraPath: tetraPath})
 	backend.EventTransport = "tetra"
 	intent := contract.CollectionIntent{
-		Behaviors:   []string{"process.exec"},
+		Behaviors:   []string{"network.connect"},
 		ObserveOnly: true,
 	}
 	if _, err := backend.Apply(context.Background(), intent); err != nil {

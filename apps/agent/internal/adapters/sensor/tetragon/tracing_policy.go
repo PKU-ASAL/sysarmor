@@ -159,7 +159,7 @@ func (b *Backend) cleanupRuntimePolicy() {
 func needsTracingPolicy(intent contract.CollectionIntent) bool {
 	for _, behavior := range intent.Behaviors {
 		switch domainevent.NormalizeBehavior(behavior) {
-		case domainevent.BehaviorProcessExec, domainevent.BehaviorProcessExit, domainevent.BehaviorProcessFork, domainevent.BehaviorNetworkConnect, domainevent.BehaviorFileOpen, domainevent.BehaviorFileRead, domainevent.BehaviorFileWrite, domainevent.BehaviorFileChmod:
+		case domainevent.BehaviorNetworkConnect, domainevent.BehaviorFileOpen, domainevent.BehaviorFileRead, domainevent.BehaviorFileWrite, domainevent.BehaviorFileChmod:
 			return true
 		}
 	}

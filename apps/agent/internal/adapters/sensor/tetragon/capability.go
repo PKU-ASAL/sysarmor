@@ -75,7 +75,7 @@ func CollectionCapabilities() []contract.CollectionBehaviorCapability {
 	return []contract.CollectionBehaviorCapability{
 		{
 			Behavior:           domainevent.BehaviorProcessExec,
-			SensorMapping:      "tetragon:process_exec/security_bprm_creds_from_file",
+			SensorMapping:      "tetragon:process_exec",
 			Fields:             commonProcess,
 			PushdownSelectors:  pushdown("process.binary_prefix"),
 			AgentSideSelectors: agentSideScope,
@@ -89,7 +89,7 @@ func CollectionCapabilities() []contract.CollectionBehaviorCapability {
 		},
 		{
 			Behavior:           domainevent.BehaviorProcessExit,
-			SensorMapping:      "tetragon:process_exit/do_exit",
+			SensorMapping:      "tetragon:process_exit",
 			Fields:             commonProcess,
 			PushdownSelectors:  pushdown(),
 			AgentSideSelectors: agentSideScope,
@@ -179,9 +179,9 @@ func CompileReport(intent contract.CollectionIntent) contract.CollectionCompileR
 func hookForBehavior(behavior string) string {
 	switch behavior {
 	case domainevent.BehaviorProcessExec, domainevent.BehaviorProcessFork:
-		return "security_bprm_creds_from_file"
+		return "process_exec"
 	case domainevent.BehaviorProcessExit:
-		return "do_exit"
+		return "process_exit"
 	case domainevent.BehaviorNetworkConnect:
 		return "security_socket_connect"
 	case domainevent.BehaviorFileOpen, domainevent.BehaviorFileRead, domainevent.BehaviorFileWrite, domainevent.BehaviorFileChmod:
@@ -216,7 +216,7 @@ func pushedDownSelectorsForFilter(filter contract.CollectionBehaviorFilter) []co
 	switch behavior {
 	case domainevent.BehaviorProcessExec, domainevent.BehaviorProcessFork:
 		if len(filter.BinaryPrefixes) > 0 {
-			add("process.binary_prefix", "selectors.matchArgs[index=1,operator=Prefix]")
+			add("process.binary_prefix", "allow_list.binary_regex")
 		}
 	case domainevent.BehaviorNetworkConnect:
 		if len(filter.BinaryPrefixes) > 0 {
@@ -246,7 +246,7 @@ func scopeSelectorReports(intent contract.CollectionIntent, behavior string) []c
 	if intent.ScopeType == "" || intent.ScopeType == "host" {
 		return nil
 	}
-	if hasNamespacePushdown(intent) {
+	if hasNamespacePushdown(intent) && !isNativeLifecycleBehavior(behavior) {
 		return []contract.CollectionSelectorReport{{
 			Behavior: behavior,
 			Selector: "scope.namespace",
@@ -262,6 +262,15 @@ func scopeSelectorReports(intent contract.CollectionIntent, behavior string) []c
 		Location: "agent",
 		Reason:   "runtime scope is enforced after Tetragon emission; selector is correct but may collect extra events until backend pushdown is implemented",
 	}}
+}
+
+func isNativeLifecycleBehavior(behavior string) bool {
+	switch domainevent.NormalizeBehavior(behavior) {
+	case domainevent.BehaviorProcessExec, domainevent.BehaviorProcessExit, domainevent.BehaviorProcessFork:
+		return true
+	default:
+		return false
+	}
 }
 
 func hasNamespacePushdown(intent contract.CollectionIntent) bool {

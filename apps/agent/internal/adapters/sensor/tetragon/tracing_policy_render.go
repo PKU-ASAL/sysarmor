@@ -20,45 +20,6 @@ func buildTracingPolicy(intent contract.CollectionIntent) []byte {
 	out.WriteString("\n")
 	out.WriteString("spec:\n")
 	out.WriteString("  kprobes:\n")
-	if intentHasAnyBehavior(intent, domainevent.BehaviorProcessExec, domainevent.BehaviorProcessFork) {
-		prefixes := mergeFilterStrings(
-			behaviorFilter(intent, domainevent.BehaviorProcessExec).BinaryPrefixes,
-			behaviorFilter(intent, domainevent.BehaviorProcessFork).BinaryPrefixes,
-		)
-		out.WriteString(`  - call: "security_bprm_creds_from_file"
-    syscall: false
-    args:
-    - index: 0
-      type: "nop"
-    - index: 1
-      type: "file"
-`)
-		if len(prefixes) > 0 || len(intent.NamespaceSelectors) > 0 {
-			out.WriteString("    selectors:\n")
-			out.WriteString("    -\n")
-			writeNamespaceSelectors(&out, intent.NamespaceSelectors, "      ")
-		}
-		if len(prefixes) > 0 {
-			out.WriteString(`      matchArgs:
-      - index: 1
-        operator: "Prefix"
-        values:
-`)
-			for _, prefix := range prefixes {
-				out.WriteString("        - ")
-				out.WriteString(fmt.Sprintf("%q", prefix))
-				out.WriteString("\n")
-			}
-		}
-	}
-	if intentHasBehavior(intent, domainevent.BehaviorProcessExit) {
-		out.WriteString(`  - call: "do_exit"
-    syscall: false
-    args:
-    - index: 0
-      type: "int"
-`)
-	}
 	if intentHasBehavior(intent, domainevent.BehaviorNetworkConnect) {
 		filter := behaviorFilter(intent, domainevent.BehaviorNetworkConnect)
 		families := filter.SocketFamilies
