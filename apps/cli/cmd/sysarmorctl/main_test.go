@@ -829,6 +829,17 @@ func TestStreamingWatchWritesFramesBeforeTimeout(t *testing.T) {
 	}
 }
 
+func TestWatchWithLimitStillUsesStreamingOutput(t *testing.T) {
+	for _, args := range [][]string{
+		{"event", "watch", "--limit", "20000"},
+		{"signal", "watch", "--limit", "20000"},
+	} {
+		if !isStreamingWatchCommand(args) {
+			t.Fatalf("watch command should stream: %v", args)
+		}
+	}
+}
+
 func nonEmptyLines(s string) []string {
 	var out []string
 	for _, line := range strings.Split(s, "\n") {
