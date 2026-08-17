@@ -98,9 +98,17 @@ def conclusion_recall(metrics: dict[str, Any]) -> float | None:
     return set_recall(set(metrics.get("incident_campaign_ids") or set()), set(metrics.get("truth_campaign_ids") or set()))
 
 
-def normal_candidate_rate(metrics: dict[str, Any]) -> float | None:
+def normal_profile_ids(metrics: dict[str, Any]) -> set[str]:
     profiles = set(metrics.get("profile_ids") or set())
-    normal = profiles.difference(metrics.get("truth_profile_ids") or set())
+    truth_profiles = set(metrics.get("truth_profile_ids") or set())
+    truth_campaigns = set(metrics.get("truth_campaign_ids") or set())
+    campaign_by_profile = metrics.get("profile_campaign_ids") or {}
+    truth_profiles.update(profile for profile in profiles if campaign_by_profile.get(profile) in truth_campaigns)
+    return profiles.difference(truth_profiles)
+
+
+def normal_candidate_rate(metrics: dict[str, Any]) -> float | None:
+    normal = normal_profile_ids(metrics)
     if not normal:
         return None
     return len(candidate_profile_ids(metrics).intersection(normal)) / len(normal)

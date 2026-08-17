@@ -332,6 +332,26 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["normal_candidate_rate"]["status"], "failed")
 
+    def test_normal_candidate_rate_excludes_every_profile_in_truth_campaigns(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["profile_ids"] = {"p-attack", "p-attack-child", "p-normal"}
+        enabled["truth_profile_ids"] = {"p-attack"}
+        enabled["profile_campaign_ids"] = {
+            "p-attack": "campaign-a", "p-attack-child": "campaign-a", "p-normal": "normal",
+        }
+        enabled["truth_campaign_ids"] = {"campaign-a"}
+        enabled["model_candidates"] = [
+            model_candidate() | {"entities": [{"kind": "process", "role": "subject", "key": "p-attack-child"}]}
+        ]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["normal_candidate_rate"]["value"], 0.0)
+        self.assertEqual(result["gates"]["attack_campaign_seed_recall"]["value"], 1.0)
+        self.assertEqual(result["variants"]["enabled"]["normal_profile_count"], 1)
+
     def test_steady_average_rss_delta_at_sixteen_mib_passes_and_above_fails(self):
         disabled = metrics(rss=64.0)
         disabled["health"]["learning"] = "disabled"

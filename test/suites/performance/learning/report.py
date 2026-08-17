@@ -27,6 +27,7 @@ from learning_effect import (
     effect_gates,
     model_gate,
     normal_candidate_rate,
+    normal_profile_ids,
     profile_health,
 )
 
@@ -116,7 +117,7 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
     profiles = set(metrics.get("profile_ids", []))
     truth = set(metrics.get("truth_profile_ids", []))
     candidates = candidate_profile_ids(metrics)
-    normal = profiles.difference(truth)
+    normal = normal_profile_ids(metrics)
     truth_campaigns = set(metrics.get("truth_campaign_ids") or set())
     campaign_by_profile = metrics.get("profile_campaign_ids") or {}
     candidate_campaigns = {campaign_by_profile[profile] for profile in candidates if campaign_by_profile.get(profile)}
