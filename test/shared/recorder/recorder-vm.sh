@@ -126,17 +126,12 @@ for part in key.split('.'):
 print(cur if isinstance(cur, str) else '')
 PY
 }
-max_sequence() {
+last_sequence() {
   local file=\"\$1\"
-  python3 - \"\$file\" <<'PY' 2>/dev/null || true
+  tail -n 32 \"\$file\" 2>/dev/null | python3 -c '
 import json, sys
-path = sys.argv[1]
 max_seq = 0
-try:
-    lines = open(path, errors='replace').read().splitlines()
-except Exception:
-    lines = []
-for line in lines:
+for line in sys.stdin:
     if not line.strip():
         continue
     try:
@@ -149,7 +144,13 @@ for line in lines:
     except Exception:
         pass
 print(max_seq)
-PY
+' 2>/dev/null || echo 0
+}
+advance_cursors() {
+  next_event_cursor=\"\$(last_sequence \"\$EVENTS_NDJSON\")\"
+  next_signal_cursor=\"\$(last_sequence \"\$SIGNALS_NDJSON\")\"
+  if [ \"\${next_event_cursor:-0}\" -gt \"\$EVENT_CURSOR\" ]; then EVENT_CURSOR=\"\$next_event_cursor\"; fi
+  if [ \"\${next_signal_cursor:-0}\" -gt \"\$SIGNAL_CURSOR\" ]; then SIGNAL_CURSOR=\"\$next_signal_cursor\"; fi
 }
 line_count() {
   local file=\"\$1\"
@@ -166,10 +167,11 @@ sysarmorctl --socket \"\$AGENT_SOCK\" --json agent health --agent-id \"\$AGENT_I
 EVENT_CURSOR=\"\$(num_json streams.eventNewestSequence \"\$HEALTH_JSON\")\"
 SIGNAL_CURSOR=\"\$(num_json streams.signalNewestSequence \"\$HEALTH_JSON\")\"
 start_watchers() {
-  sysarmorctl --socket \"\$AGENT_SOCK\" --json event watch --after-seq \"\$EVENT_CURSOR\" --agent-id \"\$AGENT_ID\" --tenant-id \"\$TENANT_ID\" --timeout \"\$WATCH_TIMEOUT\" >>\"\$EVENTS_NDJSON\" 2>\"\$EVENT_WATCH_ERR\" &
+  : > \"\$WATCH_PIDS\"
+  sysarmorctl --socket \"\$AGENT_SOCK\" --json event watch --after-seq \"\$EVENT_CURSOR\" --limit \"\$WATCH_LIMIT\" --agent-id \"\$AGENT_ID\" --tenant-id \"\$TENANT_ID\" --timeout \"\$WATCH_TIMEOUT\" >>\"\$EVENTS_NDJSON\" 2>\"\$EVENT_WATCH_ERR\" &
   EVENT_WATCH_PID=\"\$!\"
   echo \"\$EVENT_WATCH_PID\" >>\"\$WATCH_PIDS\"
-  sysarmorctl --socket \"\$AGENT_SOCK\" --json signal watch --after-seq \"\$SIGNAL_CURSOR\" --agent-id \"\$AGENT_ID\" --tenant-id \"\$TENANT_ID\" --timeout \"\$WATCH_TIMEOUT\" >>\"\$SIGNALS_NDJSON\" 2>\"\$SIGNAL_WATCH_ERR\" &
+  sysarmorctl --socket \"\$AGENT_SOCK\" --json signal watch --after-seq \"\$SIGNAL_CURSOR\" --limit \"\$WATCH_LIMIT\" --agent-id \"\$AGENT_ID\" --tenant-id \"\$TENANT_ID\" --timeout \"\$WATCH_TIMEOUT\" >>\"\$SIGNALS_NDJSON\" 2>\"\$SIGNAL_WATCH_ERR\" &
   SIGNAL_WATCH_PID=\"\$!\"
   echo \"\$SIGNAL_WATCH_PID\" >>\"\$WATCH_PIDS\"
 }
@@ -180,7 +182,8 @@ ensure_watchers() {
   kill \"\$EVENT_WATCH_PID\" \"\$SIGNAL_WATCH_PID\" 2>/dev/null || true
   wait \"\$EVENT_WATCH_PID\" 2>/dev/null || true
   wait \"\$SIGNAL_WATCH_PID\" 2>/dev/null || true
-  sysarmorctl --socket \"\$AGENT_SOCK\" --json agent health --agent-id \"\$AGENT_ID\" --tenant-id \"\$TENANT_ID\" >\"\$HEALTH_JSON\" 2>/dev/null || return
+  advance_cursors
+  sysarmorctl --socket \"\$AGENT_SOCK\" --json agent health --agent-id \"\$AGENT_ID\" --tenant-id \"\$TENANT_ID\" >\"\$HEALTH_JSON\" 2>/dev/null || return 0
   runtime_event_cursor=\"\$(num_json streams.eventNewestSequence \"\$HEALTH_JSON\")\"
   runtime_signal_cursor=\"\$(num_json streams.signalNewestSequence \"\$HEALTH_JSON\")\"
   if [ \"\$runtime_event_cursor\" -lt \"\$EVENT_CURSOR\" ]; then EVENT_CURSOR=0; fi
@@ -281,13 +284,10 @@ while [ \"\$elapsed\" -le \"\$DUR\" ]; do
     parse_errors=\"\$(num_json sensor.parseErrors \"\$HEALTH_JSON\")\"
     policy_id=\"\$(str_json policyId \"\$HEALTH_JSON\")\"
     policy_version=\"\$(str_json policyVersion \"\$HEALTH_JSON\")\"
+    events_captured=\"\$(line_count \"\$EVENTS_NDJSON\")\"
+    signals_captured=\"\$(line_count \"\$SIGNALS_NDJSON\")\"
   fi
-  events_captured=\"\$(line_count \"\$EVENTS_NDJSON\")\"
-  signals_captured=\"\$(line_count \"\$SIGNALS_NDJSON\")\"
-  next_event_cursor=\"\$(max_sequence \"\$EVENTS_NDJSON\")\"
-  next_signal_cursor=\"\$(max_sequence \"\$SIGNALS_NDJSON\")\"
-  if [ \"\${next_event_cursor:-0}\" -gt \"\$EVENT_CURSOR\" ]; then EVENT_CURSOR=\"\$next_event_cursor\"; fi
-  if [ \"\${next_signal_cursor:-0}\" -gt \"\$SIGNAL_CURSOR\" ]; then SIGNAL_CURSOR=\"\$next_signal_cursor\"; fi
+  advance_cursors
   echo \"\$ts,\$elapsed,\$agent_cpu,\$agent_rss,\$sensor_cpu,\$sensor_rss,\$edr_cpu,\$edr_rss,\$events,\$events_captured,\$events_captured,\$signals_captured,\$signals_captured,\$dropped,\$parse_errors,\$agent_active,\$sensor_running,\$policy_id,\$policy_version,\$EVENT_CURSOR,\$SIGNAL_CURSOR\" >> \"\$OUT\"
   [ \"\$elapsed\" -ge \"\$DUR\" ] && break
   sleep 1
