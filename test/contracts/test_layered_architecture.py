@@ -41,6 +41,7 @@ STANDARD_LIBRARY = {
         "sync",
         "sync/atomic",
         "time",
+        "unicode",
     },
     "application": {
         "context",
