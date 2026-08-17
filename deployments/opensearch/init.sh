@@ -95,7 +95,7 @@ if [[ "${read_on_v2}" != true ]]; then
   fi
 
   if exists "${signals_v1}"; then
-    migration='{"source":{"index":"sysarmor-signals-v1"},"dest":{"index":"sysarmor-signals-v2"},"script":{"lang":"painless","source":"ctx._source.stage = ctx._source.containsKey(\u0027terminal\u0027) && ctx._source.terminal == true ? \u0027SIGNAL_STAGE_CONCLUSION\u0027 : \u0027SIGNAL_STAGE_CANDIDATE\u0027; ctx._source.remove(\u0027terminal\u0027); ctx._source.detectorKind = ctx._source.containsKey(\u0027labels\u0027) && ctx._source.labels instanceof Map && ctx._source.labels.signal_class == \u0027agent-health\u0027 ? \u0027DETECTOR_KIND_SYSTEM\u0027 : \u0027DETECTOR_KIND_RULE\u0027"}}'
+    migration='{"source":{"index":"sysarmor-signals-v1"},"dest":{"index":"sysarmor-signals-v2"},"script":{"lang":"painless","source":"ctx._source.stage = ctx._source.containsKey(\u0027terminal\u0027) && ctx._source.terminal == true ? \u0027SIGNAL_STAGE_CONCLUSION\u0027 : \u0027SIGNAL_STAGE_CANDIDATE\u0027; ctx._source.remove(\u0027terminal\u0027); ctx._source.detectorKind = ctx._source.containsKey(\u0027labels\u0027) && ctx._source.labels instanceof Map && ctx._source.labels.signal_class == \u0027agent-health\u0027 ? \u0027DETECTOR_KIND_SYSTEM\u0027 : \u0027DETECTOR_KIND_RULE\u0027; ctx._source.where = \u0027SIGNAL_WHERE_ENDPOINT\u0027"}}'
     response="$(curl "${curl_args[@]}" -X POST -H 'Content-Type: application/json' \
       --data-binary "${migration}" "${base_url}/_reindex?wait_for_completion=true&refresh=true")"
     if [[ "${response}" != *'"timed_out":false'* || "${response}" != *'"failures":[]'* ]]; then

@@ -30,10 +30,10 @@ func TestAnalysisSignalsDecodeOnlyAuthenticatedTenant(t *testing.T) {
 func TestAnalysisSignalsReadsEveryPage(t *testing.T) {
 	first := make([]SearchHit, analysisPageSize)
 	for index := range first {
-		first[index] = SearchHit{Source: json.RawMessage(fmt.Sprintf(`{"id":"signal-%d","tenant_id":"tenant-a","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE"}`, index)), Sort: []any{index}}
+		first[index] = SearchHit{Source: json.RawMessage(fmt.Sprintf(`{"id":"signal-%d","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE"}`, index)), Sort: []any{index}}
 	}
 	searcher := &analysisPageSearcherStub{pages: []SearchPage{
-		{Hits: first}, {Hits: []SearchHit{{Source: json.RawMessage(`{"id":"critical","tenant_id":"tenant-a","stage":"SIGNAL_STAGE_CONCLUSION","detector_kind":"DETECTOR_KIND_RULE"}`), Sort: []any{analysisPageSize}}}},
+		{Hits: first}, {Hits: []SearchHit{{Source: json.RawMessage(`{"id":"critical","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CONCLUSION","detector_kind":"DETECTOR_KIND_RULE"}`), Sort: []any{analysisPageSize}}}},
 	}}
 	values, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{})
 	if err != nil || len(values) != analysisPageSize+1 || len(searcher.requests) != 2 || len(searcher.requests[1].SearchAfter) == 0 {
@@ -61,8 +61,8 @@ func TestAnalysisSignalsRejectMalformedDocuments(t *testing.T) {
 
 func TestAnalysisSignalsFiltersMismatchedLabels(t *testing.T) {
 	searcher := &analysisPageSearcherStub{pages: []SearchPage{{Hits: []SearchHit{
-		{Source: json.RawMessage(`{"id":"wrong","tenant_id":"tenant-a","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE","labels":{"scenario":"other"}}`), Sort: []any{"a"}},
-		{Source: json.RawMessage(`{"id":"right","tenant_id":"tenant-a","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE","labels":{"scenario":"one"}}`), Sort: []any{"b"}},
+		{Source: json.RawMessage(`{"id":"wrong","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE","labels":{"scenario":"other"}}`), Sort: []any{"a"}},
+		{Source: json.RawMessage(`{"id":"right","tenant_id":"tenant-a","where":"SIGNAL_WHERE_CLOUD","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE","labels":{"scenario":"one"}}`), Sort: []any{"b"}},
 	}}}}
 	values, err := NewAnalysisSignalReader(searcher).Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Labels: map[string]string{"scenario": "one"}})
 	if err != nil || len(values) != 1 || values[0].ID != "right" {

@@ -47,6 +47,11 @@ func SignalToDomain(value *signalv1.Signal) (domaintelemetry.Signal, error) {
 }
 
 func validateSignalSemantics(value *signalv1.Signal) error {
+	switch value.GetWhere() {
+	case signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT, signalv1.SignalWhere_SIGNAL_WHERE_CLOUD:
+	default:
+		return fmt.Errorf("unsupported signal where %q", value.GetWhere())
+	}
 	switch value.GetStage() {
 	case signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, signalv1.SignalStage_SIGNAL_STAGE_CONCLUSION:
 	default:

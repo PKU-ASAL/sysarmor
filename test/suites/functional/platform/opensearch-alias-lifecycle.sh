@@ -49,10 +49,14 @@ curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-rule" | \
   grep -q '"stage":"SIGNAL_STAGE_CANDIDATE"'
 curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-rule" | \
   grep -q '"detectorKind":"DETECTOR_KIND_RULE"'
+curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-rule" | \
+  grep -q '"where":"SIGNAL_WHERE_ENDPOINT"'
 curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-health" | \
   grep -q '"stage":"SIGNAL_STAGE_CONCLUSION"'
 curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-health" | \
   grep -q '"detectorKind":"DETECTOR_KIND_SYSTEM"'
+curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-health" | \
+  grep -q '"where":"SIGNAL_WHERE_ENDPOINT"'
 if curl -fsS "${base}/sysarmor-signals-read/_doc/legacy-rule" | grep -q '"terminal"'; then
   echo "migrated signal still contains terminal" >&2
   exit 1

@@ -228,7 +228,7 @@
               "response_intent": {
                 "action": "collect_evidence",
                 "confidence": 80,
-                "reason": "terminal endpoint reverse shell pattern"
+                "reason": "endpoint reverse shell rule conclusion"
               }
             }
           },

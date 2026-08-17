@@ -20,6 +20,16 @@ func IncidentToDomain(value *incidentv1.Incident) (domaintelemetry.Incident, err
 	if err != nil {
 		return domaintelemetry.Incident{}, err
 	}
+	hasConclusion := false
+	for _, signal := range signals {
+		if signal.Stage == domaintelemetry.SignalStageConclusion {
+			hasConclusion = true
+			break
+		}
+	}
+	if !hasConclusion {
+		return domaintelemetry.Incident{}, fmt.Errorf("incident requires at least one conclusion signal")
+	}
 	return domaintelemetry.Incident{
 		ID: value.GetId(), Summary: value.GetSummary(), Severity: value.GetSeverity(), MITRE: append([]string(nil), value.GetMitre()...),
 		LineageIDs: append([]string(nil), value.GetLineageIds()...), ConclusionEntities: append([]string(nil), value.GetConclusionEntities()...),

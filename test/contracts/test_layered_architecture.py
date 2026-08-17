@@ -440,10 +440,27 @@ class LayeredArchitectureContractTest(unittest.TestCase):
             "signal query": "apps/manager/internal/adapters/outbound/opensearch/telemetry_query.go",
             "telemetry CLI": "apps/cli/cmd/sysarmorctl/manager_telemetry.go",
         }
+        sources.update(
+            {
+                f"agent content {source.name}": str(source.relative_to(self.repo))
+                for source in (self.repo / "deployments/agent/content").rglob("*.json")
+            }
+        )
         for label, relative in sources.items():
             text = (self.repo / relative).read_text()
             with self.subTest(source=label):
-                self.assertNotRegex(text, r"\bTerminal\b|GetTerminal|--terminal|json:\"terminal")
+                self.assertNotRegex(text, r"\b[Tt]erminal\b|GetTerminal|--terminal|json:\"terminal")
+
+    def test_signal_schema_migration_sets_canonical_dimensions(self):
+        migration = (self.repo / "deployments/opensearch/init.sh").read_text()
+        for assignment in (
+            "ctx._source.stage =",
+            "ctx._source.detectorKind =",
+            "ctx._source.where =",
+        ):
+            with self.subTest(assignment=assignment):
+                self.assertIn(assignment, migration)
+        self.assertIn("SIGNAL_WHERE_ENDPOINT", migration)
 
     def test_agent_detection_runtime_uses_domain_events(self):
         root = self.repo / "apps/agent/internal/domain/detection/runtime"
