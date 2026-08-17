@@ -54,19 +54,26 @@ func readHistoryDocuments(ctx context.Context, searcher platformopensearch.PageS
 	result := make([]json.RawMessage, 0, min(limit, historyPageSize))
 	scanned := 0
 	for pageNumber := 0; ; pageNumber++ {
-		request.Size = min(historyPageSize, limit-scanned)
+		probingOverflow := scanned == limit
+		request.Size = 1
+		if !probingOverflow {
+			request.Size = min(historyPageSize, limit-scanned)
+		}
 		page, err := searcher.SearchPage(ctx, request)
 		if err != nil {
 			return nil, fmt.Errorf("search history page %d: %w", pageNumber, err)
 		}
 		hits := page.Hits[:min(len(page.Hits), request.Size)]
+		if probingOverflow && len(hits) > 0 {
+			return nil, fmt.Errorf("history exceeds document limit %d", limit)
+		}
 		scanned += len(hits)
 		for _, hit := range hits {
 			if len(hit.Source) > 0 {
 				result = append(result, hit.Source)
 			}
 		}
-		if scanned >= limit || len(page.Hits) < request.Size {
+		if len(page.Hits) < request.Size {
 			return result, nil
 		}
 		if len(page.Hits[len(page.Hits)-1].Sort) == 0 {
