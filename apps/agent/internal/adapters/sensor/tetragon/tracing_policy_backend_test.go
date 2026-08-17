@@ -2,6 +2,7 @@ package tetragon
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -268,6 +269,23 @@ func TestBuildTracingPolicyMandatoryBaselineIgnoresNarrowSelectors(t *testing.T)
 	}
 	if !strings.Contains(data, `- "/"`) {
 		t.Fatalf("mandatory file baseline did not widen file selector:\n%s", data)
+	}
+}
+
+func TestBuildTracingPolicyExcludesRecursiveFileWriteSinks(t *testing.T) {
+	data := string(buildTracingPolicy(contract.CollectionIntent{
+		Behaviors:          []string{"file.write"},
+		MandatoryBehaviors: []string{"file.write"},
+		FileWriteExcludes:  []string{"/var/log/syslog", "/var/lib/sysarmor", "/run/sysarmor"},
+	}))
+
+	if !strings.Contains(data, `operator: "NotPrefix"`) {
+		t.Fatalf("mandatory file.write exclusion operator missing:\n%s", data)
+	}
+	for _, prefix := range []string{"/var/log/syslog", "/var/lib/sysarmor", "/run/sysarmor"} {
+		if !strings.Contains(data, fmt.Sprintf("%q", prefix)) {
+			t.Fatalf("mandatory file.write exclusion %q missing:\n%s", prefix, data)
+		}
 	}
 }
 

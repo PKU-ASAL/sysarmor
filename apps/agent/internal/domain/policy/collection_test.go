@@ -61,6 +61,11 @@ func TestCompileCollectionIntentAlwaysIncludesMandatoryCausalBaseline(t *testing
 			t.Fatalf("baseline behavior %q missing from %+v", behavior, intent)
 		}
 	}
+	for _, prefix := range []string{"/var/log/syslog", "/var/lib/sysarmor", "/run/sysarmor"} {
+		if !contains(intent.FileWriteExcludes, prefix) {
+			t.Fatalf("mandatory file.write exclusion %q missing from %+v", prefix, intent)
+		}
+	}
 }
 
 func TestCompileCollectionIntentBaselineIgnoresUserSelectors(t *testing.T) {

@@ -20,6 +20,12 @@ var mandatoryCausalityBehaviors = []string{
 	domainevent.BehaviorNetworkConnect,
 }
 
+var mandatoryFileWriteExcludes = []string{
+	"/var/log/syslog",
+	"/var/lib/sysarmor",
+	"/run/sysarmor",
+}
+
 type CollectionPolicy struct {
 	Identity       Identity
 	Behaviors      []string
@@ -83,6 +89,7 @@ type CollectionIntent struct {
 	Behaviors                                                 []string
 	MandatoryBehaviors                                        []string
 	BinaryPrefixes, FilePrefixes, SocketFamilies, SocketAddrs []string
+	FileWriteExcludes                                         []string
 	SocketPorts                                               []string
 	BehaviorFilters                                           []BehaviorFilter
 	ScopeType, ScopeSelector                                  string
@@ -227,7 +234,7 @@ func CompileCollectionIntent(value CollectionPolicy) (CollectionIntent, error) {
 	if len(filters) == 0 {
 		filters = flatBehaviorFilters(behaviors, value)
 	}
-	return CollectionIntent{Behaviors: behaviors, MandatoryBehaviors: clone(mandatoryCausalityBehaviors), BinaryPrefixes: clone(value.BinaryPrefixes), FilePrefixes: clone(value.FilePrefixes), SocketFamilies: clone(value.SocketFamilies), SocketAddrs: clone(value.SocketAddrs), SocketPorts: clone(value.SocketPorts), BehaviorFilters: mandatoryFilters(behaviors, filters), ScopeType: value.ScopeType, ScopeSelector: value.ScopeSelector, ObserveOnly: value.ObserveOnly}, nil
+	return CollectionIntent{Behaviors: behaviors, MandatoryBehaviors: clone(mandatoryCausalityBehaviors), BinaryPrefixes: clone(value.BinaryPrefixes), FilePrefixes: clone(value.FilePrefixes), FileWriteExcludes: clone(mandatoryFileWriteExcludes), SocketFamilies: clone(value.SocketFamilies), SocketAddrs: clone(value.SocketAddrs), SocketPorts: clone(value.SocketPorts), BehaviorFilters: mandatoryFilters(behaviors, filters), ScopeType: value.ScopeType, ScopeSelector: value.ScopeSelector, ObserveOnly: value.ObserveOnly}, nil
 }
 
 func mandatoryFilters(behaviors []string, filters []BehaviorFilter) []BehaviorFilter {

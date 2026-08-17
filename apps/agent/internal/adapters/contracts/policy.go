@@ -11,6 +11,7 @@ func SensorCollectionIntent(value domainpolicy.CollectionIntent) contract.Collec
 		MandatoryBehaviors: append([]string(nil), value.MandatoryBehaviors...),
 		BinaryPrefixes:     append([]string(nil), value.BinaryPrefixes...),
 		FilePrefixes:       append([]string(nil), value.FilePrefixes...),
+		FileWriteExcludes:  append([]string(nil), value.FileWriteExcludes...),
 		SocketFamilies:     append([]string(nil), value.SocketFamilies...),
 		SocketAddrs:        append([]string(nil), value.SocketAddrs...),
 		SocketPorts:        append([]string(nil), value.SocketPorts...),

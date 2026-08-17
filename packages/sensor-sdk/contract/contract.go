@@ -47,6 +47,7 @@ type CollectionIntent struct {
 	MandatoryBehaviors []string
 	BinaryPrefixes     []string
 	FilePrefixes       []string
+	FileWriteExcludes  []string
 	SocketFamilies     []string
 	SocketAddrs        []string
 	SocketPorts        []string

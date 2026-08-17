@@ -115,6 +115,7 @@ type filePermissionSelector struct {
 	Access             int32
 	BinaryPrefixes     []string
 	FilePrefixes       []string
+	FileWriteExcludes  []string
 	NamespaceSelectors []contract.NamespaceSelector
 }
 
@@ -132,11 +133,16 @@ func filePermissionSelectors(intent contract.CollectionIntent) []filePermissionS
 		if len(prefixes) == 0 && intentHasMandatoryBehavior(intent, behavior) {
 			prefixes = []string{"/"}
 		}
+		excludes := []string(nil)
+		if behavior == domainevent.BehaviorFileWrite {
+			excludes = intent.FileWriteExcludes
+		}
 		selectors = append(selectors, filePermissionSelector{
 			Behavior:           behavior,
 			Access:             access,
 			BinaryPrefixes:     filter.BinaryPrefixes,
 			FilePrefixes:       prefixes,
+			FileWriteExcludes:  excludes,
 			NamespaceSelectors: append([]contract.NamespaceSelector(nil), intent.NamespaceSelectors...),
 		})
 	}
@@ -171,6 +177,17 @@ func writeFilePermissionSelector(out *bytes.Buffer, selector filePermissionSelec
 		out.WriteString("        - ")
 		out.WriteString(fmt.Sprintf("%q", prefix))
 		out.WriteString("\n")
+	}
+	if excludes := mergeFilterStrings(selector.FileWriteExcludes); len(excludes) > 0 {
+		out.WriteString(`      - index: 0
+        operator: "NotPrefix"
+        values:
+`)
+		for _, prefix := range excludes {
+			out.WriteString("        - ")
+			out.WriteString(fmt.Sprintf("%q", prefix))
+			out.WriteString("\n")
+		}
 	}
 	if selector.Access != 0 {
 		out.WriteString(`      - index: 1
