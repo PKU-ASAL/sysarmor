@@ -1,6 +1,7 @@
 package process
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -175,6 +176,95 @@ func TestProfilesCapacityPrefersExitedProfile(t *testing.T) {
 	}
 	if metrics := profiles.Metrics(); metrics.Active != 2 || metrics.CapacityEvictions != 1 {
 		t.Fatalf("capacity metrics = %+v", metrics)
+	}
+}
+
+func TestProfilesResolveUsesIdentityAnchorAfterParentCapacityEviction(t *testing.T) {
+	profiles, err := NewProfiles(Limits{
+		MaxProfiles: 1, MaxIdentityAnchors: 2, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1,
+		RetainedTTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", OccurredAtNS: 10,
+		Process: domainevent.Process{PID: 10, SensorExecID: "exec-parent", Binary: "/usr/sbin/sshd"},
+	})
+	profiles.Resolve(IdentityObservation{
+		HostID: "host-a", OccurredAtNS: 20,
+		Process: domainevent.Process{PID: 20, SensorExecID: "exec-unrelated", Binary: "/bin/sleep"},
+	})
+	child := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", OccurredAtNS: 30, ParentSensorExecID: "exec-parent",
+		Process: domainevent.Process{PID: 30, PPID: 10, SensorExecID: "exec-child", Binary: "/bin/bash"},
+	})
+
+	if child.ParentStableID != parent.Process.StableID || child.Process.LineageID != parent.Process.LineageID {
+		t.Fatalf("child=%+v parent=%+v", child, parent)
+	}
+	if child.IdentityStatus != IdentityResolved {
+		t.Fatalf("identity status = %q", child.IdentityStatus)
+	}
+	if metrics := profiles.Metrics(); metrics.IdentityRetained == 0 {
+		t.Fatalf("identity metrics = %+v", metrics)
+	}
+}
+
+func TestProfilesIdentityAnchorsRemainBounded(t *testing.T) {
+	profiles, err := NewProfiles(Limits{
+		MaxProfiles: 1, MaxIdentityAnchors: 2, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1,
+		RetainedTTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := uint32(1); index <= 4; index++ {
+		profiles.Resolve(IdentityObservation{
+			HostID: "host-a", OccurredAtNS: uint64(index),
+			Process: domainevent.Process{PID: index, SensorExecID: fmt.Sprintf("exec-%d", index)},
+		})
+	}
+	metrics := profiles.Metrics()
+	if metrics.IdentityRetained != 2 || metrics.IdentityEvictions != 1 || metrics.ActiveEvictions != 3 {
+		t.Fatalf("identity metrics = %+v", metrics)
+	}
+}
+
+func TestProfilesMarksMissingParentIdentityAsUnavailable(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 1, MaxIdentityAnchors: 1, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", ParentSensorExecID: "missing-parent",
+		Process: domainevent.Process{PID: 20, PPID: 10, SensorExecID: "exec-child"},
+	})
+	if child.IdentityStatus != IdentityUnavailable || child.ParentStableID != "" {
+		t.Fatalf("child identity = %+v", child)
+	}
+	if metrics := profiles.Metrics(); metrics.IdentityGaps != 1 {
+		t.Fatalf("identity metrics = %+v", metrics)
+	}
+}
+
+func TestProfilesRestoresEvictedActiveIdentityFromOwnAnchor(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 1, MaxIdentityAnchors: 2, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := profiles.Resolve(IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 1, SensorExecID: "parent"}})
+	child := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", ParentSensorExecID: "parent",
+		Process: domainevent.Process{PID: 2, PPID: 1, SensorExecID: "child"},
+	})
+	profiles.Resolve(IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 3, SensorExecID: "other"}})
+	restored := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", ParentSensorExecID: "parent",
+		Process: domainevent.Process{PID: 2, PPID: 1, SensorExecID: "child"},
+	})
+	if restored.ParentStableID != parent.Process.StableID || restored.Process.LineageID != child.Process.LineageID || restored.IdentityStatus != IdentityResolved {
+		t.Fatalf("restored=%+v child=%+v parent=%+v", restored, child, parent)
 	}
 }
 

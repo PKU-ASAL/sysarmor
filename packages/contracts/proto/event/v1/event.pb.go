@@ -254,6 +254,7 @@ type CanonicalEvent struct {
 	OccurredAtNs   uint64                 `protobuf:"varint,19,opt,name=occurred_at_ns,json=occurredAtNs,proto3" json:"occurred_at_ns,omitempty"`
 	Behavior       string                 `protobuf:"bytes,20,opt,name=behavior,proto3" json:"behavior,omitempty"`
 	Labels         map[string]string      `protobuf:"bytes,21,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	IdentityStatus string                 `protobuf:"bytes,22,opt,name=identity_status,json=identityStatus,proto3" json:"identity_status,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -421,6 +422,13 @@ func (x *CanonicalEvent) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *CanonicalEvent) GetIdentityStatus() string {
+	if x != nil {
+		return x.IdentityStatus
+	}
+	return ""
+}
+
 var File_packages_contracts_proto_event_v1_event_proto protoreflect.FileDescriptor
 
 const file_packages_contracts_proto_event_v1_event_proto_rawDesc = "" +
@@ -443,7 +451,7 @@ const file_packages_contracts_proto_event_v1_event_proto_rawDesc = "" +
 	"\x15target_proc_stable_id\x18\x04 \x01(\tR\x12targetProcStableId\">\n" +
 	"\fRuntimeScope\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1a\n" +
-	"\bselector\x18\x02 \x01(\tR\bselector\"\xf2\x05\n" +
+	"\bselector\x18\x02 \x01(\tR\bselector\"\x9b\x06\n" +
 	"\x0eCanonicalEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x19\n" +
@@ -465,7 +473,8 @@ const file_packages_contracts_proto_event_v1_event_proto_rawDesc = "" +
 	"\x03pod\x18\x12 \x01(\tR\x03pod\x12$\n" +
 	"\x0eoccurred_at_ns\x18\x13 \x01(\x04R\foccurredAtNs\x12\x1a\n" +
 	"\bbehavior\x18\x14 \x01(\tR\bbehavior\x12E\n" +
-	"\x06labels\x18\x15 \x03(\v2-.sysarmor.event.v1.CanonicalEvent.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x15 \x03(\v2-.sysarmor.event.v1.CanonicalEvent.LabelsEntryR\x06labels\x12'\n" +
+	"\x0fidentity_status\x18\x16 \x01(\tR\x0eidentityStatus\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06J\x04\b\a\x10\bR\bscenarioBUZSgithub.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1;eventv1b\x06proto3"

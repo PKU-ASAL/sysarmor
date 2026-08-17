@@ -96,6 +96,7 @@ func detectionHealth(value domainhealth.Detection) agenthealth.DetectionHealth {
 				Active: value.Learning.Profiles.Active, Exited: value.Learning.Profiles.Exited, Retained: value.Learning.Profiles.Retained,
 				Compactions: value.Learning.Profiles.Compactions, Expired: value.Learning.Profiles.Expired, CapacityEvictions: value.Learning.Profiles.CapacityEvictions,
 				FileEvictions: value.Learning.Profiles.FileEvictions, NetworkEvictions: value.Learning.Profiles.NetworkEvictions, EventRefEvictions: value.Learning.Profiles.EventRefEvictions,
+				IdentityRetained: value.Learning.Profiles.IdentityRetained, IdentityEvictions: value.Learning.Profiles.IdentityEvictions, ActiveEvictions: value.Learning.Profiles.ActiveEvictions, IdentityGaps: value.Learning.Profiles.IdentityGaps,
 			},
 		},
 	}

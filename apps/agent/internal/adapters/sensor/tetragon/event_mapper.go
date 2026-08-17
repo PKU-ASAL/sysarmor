@@ -55,19 +55,19 @@ func (normalizer *EventNormalizer) SetIdentity(agentID, hostID, tenantID string)
 func (normalizer *EventNormalizer) NormalizeDomain(raw *sensorv1.SensorEvent) domainevent.Event {
 	identity := normalizer.identity.Load()
 	sequence := normalizer.sequence.Add(1)
-	process, parentID, lineageID := normalizer.process(raw, identity.HostID)
+	process, parentID, lineageID, identityStatus := normalizer.process(raw, identity.HostID)
 	event := domainevent.Event{
 		ID: domainevent.EventID(identity.AgentID, sequence), Sequence: sequence,
 		AgentID: identity.AgentID, HostID: identity.HostID, TenantID: identity.TenantID,
 		MonoNS: raw.GetMonoNs(), OccurredAtNS: raw.GetMonoNs(), Behavior: domainevent.NormalizeBehavior(raw.GetBehavior()),
-		Subject: process, SubjectPresent: raw.GetProc() != nil, Object: eventObject(raw), ParentStableID: parentID, LineageID: lineageID,
+		Subject: process, SubjectPresent: raw.GetProc() != nil, Object: eventObject(raw), ParentStableID: parentID, LineageID: lineageID, IdentityStatus: identityStatus,
 		RawRef: raw.GetRawRef(), Scope: normalizer.scope, ContainerID: raw.GetContainerId(), Cgroup: raw.GetProc().GetCgroup(),
 		Labels: cloneLabels(normalizer.labels),
 	}
 	return event
 }
 
-func (normalizer *EventNormalizer) process(raw *sensorv1.SensorEvent, hostID string) (domainevent.Process, string, string) {
+func (normalizer *EventNormalizer) process(raw *sensorv1.SensorEvent, hostID string) (domainevent.Process, string, string, string) {
 	value := raw.GetProc()
 	stableID := domainevent.StableProcessID(hostID, value.GetPid(), value.GetStartTimeNs())
 	if value.GetSensorExecId() != "" {
@@ -79,9 +79,9 @@ func (normalizer *EventNormalizer) process(raw *sensorv1.SensorEvent, hostID str
 		StartTimeNS: value.GetStartTimeNs(), ArgvBoundariesTrusted: value.GetArgvBoundariesTrusted(),
 	}
 	resolved := normalizer.profiles.Resolve(domainprocess.IdentityObservation{
-		HostID: hostID, ParentSensorExecID: value.GetSensorParentExecId(), Process: process,
+		HostID: hostID, ParentSensorExecID: value.GetSensorParentExecId(), OccurredAtNS: raw.GetMonoNs(), Process: process,
 	})
-	return resolved.Process, resolved.ParentStableID, resolved.Process.LineageID
+	return resolved.Process, resolved.ParentStableID, resolved.Process.LineageID, string(resolved.IdentityStatus)
 }
 
 func eventObject(raw *sensorv1.SensorEvent) domainevent.Object {

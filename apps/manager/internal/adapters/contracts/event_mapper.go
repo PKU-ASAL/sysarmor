@@ -14,7 +14,7 @@ func EventToDomain(value *eventv1.CanonicalEvent) (domaintelemetry.Event, error)
 	return domaintelemetry.Event{
 		ID: value.GetId(), Sequence: value.GetSeq(), AgentID: value.GetAgentId(), HostID: value.GetHostId(),
 		MonotonicNS: value.GetMonoNs(), SubjectProcess: processToDomain(value.SubjectProc), Object: objectToDomain(value.Object),
-		ParentStableID: value.GetParentStableId(), LineageID: value.GetLineageId(), RawRef: value.GetRawRef(),
+		ParentStableID: value.GetParentStableId(), LineageID: value.GetLineageId(), IdentityStatus: value.GetIdentityStatus(), RawRef: value.GetRawRef(),
 		TenantID: value.GetTenantId(), Scope: scopeToDomain(value.Scope), ContainerID: value.GetContainerId(),
 		Cgroup: value.GetCgroup(), Namespace: value.GetNamespace(), Pod: value.GetPod(), OccurredAtNS: value.GetOccurredAtNs(),
 		Behavior: value.GetBehavior(), Labels: cloneLabels(value.GetLabels()),
@@ -25,7 +25,7 @@ func EventFromDomain(value domaintelemetry.Event) *eventv1.CanonicalEvent {
 	return &eventv1.CanonicalEvent{
 		Id: value.ID, Seq: value.Sequence, AgentId: value.AgentID, HostId: value.HostID,
 		MonoNs: value.MonotonicNS, SubjectProc: processFromDomain(value.SubjectProcess), Object: objectFromDomain(value.Object),
-		ParentStableId: value.ParentStableID, LineageId: value.LineageID, RawRef: value.RawRef,
+		ParentStableId: value.ParentStableID, LineageId: value.LineageID, IdentityStatus: value.IdentityStatus, RawRef: value.RawRef,
 		TenantId: value.TenantID, Scope: scopeFromDomain(value.Scope), ContainerId: value.ContainerID,
 		Cgroup: value.Cgroup, Namespace: value.Namespace, Pod: value.Pod, OccurredAtNs: value.OccurredAtNS,
 		Behavior: value.Behavior, Labels: cloneLabels(value.Labels),

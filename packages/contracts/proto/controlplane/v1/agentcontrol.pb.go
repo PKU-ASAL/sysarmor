@@ -1514,6 +1514,10 @@ type ProcessProfileRuntimeHealth struct {
 	FileEvictions     uint64                 `protobuf:"varint,7,opt,name=file_evictions,json=fileEvictions,proto3" json:"file_evictions,omitempty"`
 	NetworkEvictions  uint64                 `protobuf:"varint,8,opt,name=network_evictions,json=networkEvictions,proto3" json:"network_evictions,omitempty"`
 	EventRefEvictions uint64                 `protobuf:"varint,9,opt,name=event_ref_evictions,json=eventRefEvictions,proto3" json:"event_ref_evictions,omitempty"`
+	IdentityRetained  uint64                 `protobuf:"varint,10,opt,name=identity_retained,json=identityRetained,proto3" json:"identity_retained,omitempty"`
+	IdentityEvictions uint64                 `protobuf:"varint,11,opt,name=identity_evictions,json=identityEvictions,proto3" json:"identity_evictions,omitempty"`
+	ActiveEvictions   uint64                 `protobuf:"varint,12,opt,name=active_evictions,json=activeEvictions,proto3" json:"active_evictions,omitempty"`
+	IdentityGaps      uint64                 `protobuf:"varint,13,opt,name=identity_gaps,json=identityGaps,proto3" json:"identity_gaps,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1607,6 +1611,34 @@ func (x *ProcessProfileRuntimeHealth) GetNetworkEvictions() uint64 {
 func (x *ProcessProfileRuntimeHealth) GetEventRefEvictions() uint64 {
 	if x != nil {
 		return x.EventRefEvictions
+	}
+	return 0
+}
+
+func (x *ProcessProfileRuntimeHealth) GetIdentityRetained() uint64 {
+	if x != nil {
+		return x.IdentityRetained
+	}
+	return 0
+}
+
+func (x *ProcessProfileRuntimeHealth) GetIdentityEvictions() uint64 {
+	if x != nil {
+		return x.IdentityEvictions
+	}
+	return 0
+}
+
+func (x *ProcessProfileRuntimeHealth) GetActiveEvictions() uint64 {
+	if x != nil {
+		return x.ActiveEvictions
+	}
+	return 0
+}
+
+func (x *ProcessProfileRuntimeHealth) GetIdentityGaps() uint64 {
+	if x != nil {
+		return x.IdentityGaps
 	}
 	return 0
 }
@@ -4909,7 +4941,7 @@ const file_packages_contracts_proto_controlplane_v1_agentcontrol_proto_rawDesc =
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1d\n" +
 	"\n" +
 	"last_error\x18\x02 \x01(\tR\tlastError\x12Q\n" +
-	"\bprofiles\x18\x03 \x01(\v25.sysarmor.controlplane.v1.ProcessProfileRuntimeHealthR\bprofiles\"\xd8\x02\n" +
+	"\bprofiles\x18\x03 \x01(\v25.sysarmor.controlplane.v1.ProcessProfileRuntimeHealthR\bprofiles\"\x84\x04\n" +
 	"\x1bProcessProfileRuntimeHealth\x12\x16\n" +
 	"\x06active\x18\x01 \x01(\x04R\x06active\x12\x16\n" +
 	"\x06exited\x18\x02 \x01(\x04R\x06exited\x12\x1a\n" +
@@ -4919,7 +4951,12 @@ const file_packages_contracts_proto_controlplane_v1_agentcontrol_proto_rawDesc =
 	"\x12capacity_evictions\x18\x06 \x01(\x04R\x11capacityEvictions\x12%\n" +
 	"\x0efile_evictions\x18\a \x01(\x04R\rfileEvictions\x12+\n" +
 	"\x11network_evictions\x18\b \x01(\x04R\x10networkEvictions\x12.\n" +
-	"\x13event_ref_evictions\x18\t \x01(\x04R\x11eventRefEvictions\"\xaa\x03\n" +
+	"\x13event_ref_evictions\x18\t \x01(\x04R\x11eventRefEvictions\x12+\n" +
+	"\x11identity_retained\x18\n" +
+	" \x01(\x04R\x10identityRetained\x12-\n" +
+	"\x12identity_evictions\x18\v \x01(\x04R\x11identityEvictions\x12)\n" +
+	"\x10active_evictions\x18\f \x01(\x04R\x0factiveEvictions\x12#\n" +
+	"\ridentity_gaps\x18\r \x01(\x04R\fidentityGaps\"\xaa\x03\n" +
 	"\x16DetectionRuntimeHealth\x12\x1b\n" +
 	"\tpolicy_id\x18\x01 \x01(\tR\bpolicyId\x12%\n" +
 	"\x0epolicy_version\x18\x02 \x01(\x04R\rpolicyVersion\x12P\n" +

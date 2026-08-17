@@ -172,6 +172,7 @@ func processProfileHealthMessage(value agenthealth.ProcessProfileHealth) *contro
 		Active: value.Active, Exited: value.Exited, Retained: value.Retained,
 		Compactions: value.Compactions, Expired: value.Expired, CapacityEvictions: value.CapacityEvictions,
 		FileEvictions: value.FileEvictions, NetworkEvictions: value.NetworkEvictions, EventRefEvictions: value.EventRefEvictions,
+		IdentityRetained: value.IdentityRetained, IdentityEvictions: value.IdentityEvictions, ActiveEvictions: value.ActiveEvictions, IdentityGaps: value.IdentityGaps,
 	}
 }
 

@@ -114,13 +114,14 @@ func TestHealthResponseIncludesLearningStatus(t *testing.T) {
 		Learning: agenthealth.LearningHealth{Status: "loaded", Profiles: agenthealth.ProcessProfileHealth{
 			Active: 3, Exited: 2, Retained: 1, Compactions: 4, Expired: 5,
 			CapacityEvictions: 6, FileEvictions: 7, NetworkEvictions: 8, EventRefEvictions: 9,
+			IdentityRetained: 10, IdentityEvictions: 11, ActiveEvictions: 12, IdentityGaps: 13,
 		}},
 	}})
 	if got := response.GetDetection().GetLearning().GetStatus(); got != "loaded" {
 		t.Fatalf("learning status = %q, want loaded", got)
 	}
 	profiles := response.GetDetection().GetLearning().GetProfiles()
-	if profiles.GetActive() != 3 || profiles.GetRetained() != 1 || profiles.GetEventRefEvictions() != 9 {
+	if profiles.GetActive() != 3 || profiles.GetRetained() != 1 || profiles.GetEventRefEvictions() != 9 || profiles.GetIdentityRetained() != 10 || profiles.GetIdentityGaps() != 13 {
 		t.Fatalf("process profile health = %+v", profiles)
 	}
 }

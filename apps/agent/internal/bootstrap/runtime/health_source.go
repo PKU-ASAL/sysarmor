@@ -117,6 +117,7 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 				Active: profileMetrics.Active, Exited: profileMetrics.Exited, Retained: profileMetrics.Retained,
 				Compactions: profileMetrics.Compactions, Expired: profileMetrics.Expired, CapacityEvictions: profileMetrics.CapacityEvictions,
 				FileEvictions: profileMetrics.FileEvictions, NetworkEvictions: profileMetrics.NetworkEvictions, EventRefEvictions: profileMetrics.EventRefEvictions,
+				IdentityRetained: profileMetrics.IdentityRetained, IdentityEvictions: profileMetrics.IdentityEvictions, ActiveEvictions: profileMetrics.ActiveEvictions, IdentityGaps: profileMetrics.IdentityGaps,
 			},
 		},
 		CEP: domainhealth.CEP{ActiveGroups: metrics.ActiveCEPGroups, EvictedGroups: metrics.EvictedCEPGroups,

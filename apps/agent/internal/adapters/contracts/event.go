@@ -13,7 +13,7 @@ func CanonicalEvent(value domainevent.Event) *eventv1.CanonicalEvent {
 			Kind: value.Object.Kind, FilePath: value.Object.FilePath, SocketAddr: value.Object.SocketAddress,
 			TargetProcStableId: value.Object.TargetProcessStableID,
 		},
-		ParentStableId: value.ParentStableID, LineageId: value.LineageID, RawRef: value.RawRef,
+		ParentStableId: value.ParentStableID, LineageId: value.LineageID, IdentityStatus: value.IdentityStatus, RawRef: value.RawRef,
 		Scope:       &eventv1.RuntimeScope{Type: value.Scope.Type, Selector: value.Scope.Selector},
 		ContainerId: value.ContainerID, Cgroup: value.Cgroup, Namespace: value.Namespace, Pod: value.Pod,
 		Labels: cloneEventLabels(value.Labels),
@@ -35,7 +35,7 @@ func DomainEvent(value *eventv1.CanonicalEvent) domainevent.Event {
 	result := domainevent.Event{
 		ID: value.GetId(), Sequence: value.GetSeq(), AgentID: value.GetAgentId(), HostID: value.GetHostId(), TenantID: value.GetTenantId(),
 		MonoNS: value.GetMonoNs(), OccurredAtNS: value.GetOccurredAtNs(), Behavior: value.GetBehavior(),
-		ParentStableID: value.GetParentStableId(), LineageID: value.GetLineageId(), RawRef: value.GetRawRef(),
+		ParentStableID: value.GetParentStableId(), LineageID: value.GetLineageId(), IdentityStatus: value.GetIdentityStatus(), RawRef: value.GetRawRef(),
 		ContainerID: value.GetContainerId(), Cgroup: value.GetCgroup(), Namespace: value.GetNamespace(), Pod: value.GetPod(),
 		Labels: cloneEventLabels(value.GetLabels()),
 	}

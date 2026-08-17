@@ -39,6 +39,7 @@ type Event struct {
 	Object         Object
 	ParentStableID string
 	LineageID      string
+	IdentityStatus string
 	RawRef         string
 	Scope          RuntimeScope
 	ContainerID    string

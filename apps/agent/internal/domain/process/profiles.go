@@ -9,11 +9,14 @@ import (
 )
 
 type Limits struct {
-	MaxProfiles, MaxFiles, MaxNetworks, MaxEventRefs int
-	ExitGrace, RetainedTTL, SweepInterval            time.Duration
+	MaxProfiles, MaxIdentityAnchors       int
+	MaxFiles, MaxNetworks, MaxEventRefs   int
+	ExitGrace, RetainedTTL, SweepInterval time.Duration
 }
 
 type State string
+
+type IdentityStatus string
 
 const (
 	StateActive   State = "active"
@@ -21,14 +24,22 @@ const (
 	StateRetained State = "retained"
 )
 
+const (
+	IdentityRoot        IdentityStatus = "root"
+	IdentityResolved    IdentityStatus = "resolved"
+	IdentityUnavailable IdentityStatus = "unavailable"
+)
+
 type IdentityObservation struct {
 	HostID, ParentSensorExecID string
+	OccurredAtNS               uint64
 	Process                    domainevent.Process
 }
 
 type ResolvedIdentity struct {
 	Process        domainevent.Process
 	ParentStableID string
+	IdentityStatus IdentityStatus
 }
 
 type Snapshot struct {
@@ -44,6 +55,7 @@ type Snapshot struct {
 type Profile struct {
 	process        domainevent.Process
 	parentStableID string
+	identityStatus IdentityStatus
 	revision       uint64
 	behaviorCounts map[string]uint64
 	files          boundedValues
@@ -54,29 +66,44 @@ type Profile struct {
 	exitedAtNS     uint64
 }
 
+type identityAnchor struct {
+	stableID, sensorExecID, parentStableID, lineageID string
+	identityStatus                                    IdentityStatus
+	pid                                               uint32
+	lastSeenNS                                        uint64
+}
+
 type Metrics struct {
-	Active, Exited, Retained                           uint64
-	Compactions, Expired, CapacityEvictions            uint64
-	FileEvictions, NetworkEvictions, EventRefEvictions uint64
+	Active, Exited, Retained                                           uint64
+	Compactions, Expired, CapacityEvictions                            uint64
+	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
+	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
 }
 
 type Profiles struct {
-	mu          sync.RWMutex
-	limits      Limits
-	profiles    map[string]*Profile
-	byPID       map[uint32]string
-	bySensor    map[string]string
-	metrics     Metrics
-	nextSweepNS uint64
+	mu           sync.RWMutex
+	limits       Limits
+	profiles     map[string]*Profile
+	byPID        map[uint32]string
+	bySensor     map[string]string
+	anchors      map[string]identityAnchor
+	anchorPID    map[uint32]string
+	anchorSensor map[string]string
+	metrics      Metrics
+	nextSweepNS  uint64
 }
 
 func NewProfiles(limits Limits) (*Profiles, error) {
 	if limits.MaxProfiles <= 0 || limits.MaxFiles <= 0 || limits.MaxNetworks <= 0 || limits.MaxEventRefs <= 0 {
 		return nil, fmt.Errorf("process profile limits must be positive")
 	}
+	if limits.MaxIdentityAnchors <= 0 {
+		limits.MaxIdentityAnchors = limits.MaxProfiles * 2
+	}
 	return &Profiles{
 		limits: limits, profiles: make(map[string]*Profile),
 		byPID: make(map[uint32]string), bySensor: make(map[string]string),
+		anchors: make(map[string]identityAnchor), anchorPID: make(map[uint32]string), anchorSensor: make(map[string]string),
 	}, nil
 }
 
@@ -89,17 +116,30 @@ func (profiles *Profiles) Resolve(observation IdentityObservation) ResolvedIdent
 	if process.SensorExecID != "" {
 		process.StableID = domainevent.SensorProcessID(observation.HostID, process.SensorExecID)
 	}
-	parent := profiles.parent(observation.ParentSensorExecID, process.PPID)
+	profiles.expireAnchors(observation.OccurredAtNS)
+	anchor, anchored := profiles.anchors[process.StableID]
+	parent, parentFound := profiles.parentIdentity(observation.ParentSensorExecID, process.PPID)
 	process.LineageID = process.StableID
 	parentStableID := ""
-	if parent != nil {
-		parentStableID = parent.process.StableID
-		if parent.process.LineageID != "" {
-			process.LineageID = parent.process.LineageID
+	status := IdentityRoot
+	if anchored {
+		parentStableID, status = anchor.parentStableID, anchor.identityStatus
+		if anchor.lineageID != "" {
+			process.LineageID = anchor.lineageID
 		}
+	} else if parentFound {
+		parentStableID = parent.stableID
+		status = IdentityResolved
+		if parent.lineageID != "" {
+			process.LineageID = parent.lineageID
+		}
+	} else if observation.ParentSensorExecID != "" || process.PPID != 0 {
+		status = IdentityUnavailable
+		profiles.metrics.IdentityGaps++
 	}
 	profile := profiles.profiles[process.StableID]
 	if profile == nil {
+		profiles.removeAnchor(process.StableID)
 		profiles.evictForCapacity()
 		profile = &Profile{
 			behaviorCounts: make(map[string]uint64),
@@ -108,12 +148,15 @@ func (profiles *Profiles) Resolve(observation IdentityObservation) ResolvedIdent
 		}
 		profiles.profiles[process.StableID] = profile
 	}
-	profile.process, profile.parentStableID = cloneProcess(process), parentStableID
+	profile.process, profile.parentStableID, profile.identityStatus = cloneProcess(process), parentStableID, status
+	if observation.OccurredAtNS > profile.lastSeenNS {
+		profile.lastSeenNS = observation.OccurredAtNS
+	}
 	profiles.byPID[process.PID] = process.StableID
 	if process.SensorExecID != "" {
 		profiles.bySensor[process.SensorExecID] = process.StableID
 	}
-	return ResolvedIdentity{Process: cloneProcess(process), ParentStableID: parentStableID}
+	return ResolvedIdentity{Process: cloneProcess(process), ParentStableID: parentStableID, IdentityStatus: status}
 }
 
 func (profiles *Profiles) Observe(event domainevent.Event) {
@@ -208,6 +251,7 @@ func (profiles *Profiles) Metrics() Metrics {
 	profiles.mu.RLock()
 	defer profiles.mu.RUnlock()
 	metrics := profiles.metrics
+	metrics.IdentityRetained = uint64(len(profiles.anchors))
 	for _, profile := range profiles.profiles {
 		switch profile.state {
 		case StateActive:
@@ -231,12 +275,20 @@ func (profiles *Profiles) Snapshot(stableID string) (Snapshot, bool) {
 	return profile.snapshot(), true
 }
 
-func (profiles *Profiles) parent(sensorID string, pid uint32) *Profile {
+func (profiles *Profiles) parentIdentity(sensorID string, pid uint32) (identityAnchor, bool) {
 	stableID := profiles.bySensor[sensorID]
 	if stableID == "" {
 		stableID = profiles.byPID[pid]
 	}
-	return profiles.profiles[stableID]
+	if profile := profiles.profiles[stableID]; profile != nil {
+		return profile.identity(), true
+	}
+	stableID = profiles.anchorSensor[sensorID]
+	if stableID == "" {
+		stableID = profiles.anchorPID[pid]
+	}
+	anchor, ok := profiles.anchors[stableID]
+	return anchor, ok
 }
 
 func cloneProcess(process domainevent.Process) domainevent.Process {
@@ -251,6 +303,14 @@ func (profile *Profile) snapshot() Snapshot {
 		State:          profile.state,
 		BehaviorCounts: cloneCounts(profile.behaviorCounts), Files: append([]string(nil), profile.files.values...),
 		Networks: append([]string(nil), profile.networks.values...), EventRefs: append([]string(nil), profile.eventRefs...),
+	}
+}
+
+func (profile *Profile) identity() identityAnchor {
+	return identityAnchor{
+		stableID: profile.process.StableID, sensorExecID: profile.process.SensorExecID,
+		pid: profile.process.PID, parentStableID: profile.parentStableID,
+		lineageID: profile.process.LineageID, identityStatus: profile.identityStatus, lastSeenNS: profile.lastSeenNS,
 	}
 }
 
@@ -270,12 +330,68 @@ func (profiles *Profiles) remove(stableID string, profile *Profile) {
 	}
 }
 
+func (profiles *Profiles) retainIdentity(profile *Profile) {
+	if profile == nil || profile.process.StableID == "" {
+		return
+	}
+	profiles.evictIdentityForCapacity()
+	anchor := profile.identity()
+	profiles.anchors[anchor.stableID] = anchor
+	profiles.anchorPID[anchor.pid] = anchor.stableID
+	if anchor.sensorExecID != "" {
+		profiles.anchorSensor[anchor.sensorExecID] = anchor.stableID
+	}
+}
+
+func (profiles *Profiles) evictIdentityForCapacity() {
+	if len(profiles.anchors) < profiles.limits.MaxIdentityAnchors {
+		return
+	}
+	var selected identityAnchor
+	for _, anchor := range profiles.anchors {
+		if selected.stableID == "" || anchor.lastSeenNS < selected.lastSeenNS || anchor.lastSeenNS == selected.lastSeenNS && anchor.stableID < selected.stableID {
+			selected = anchor
+		}
+	}
+	profiles.removeAnchor(selected.stableID)
+	profiles.metrics.IdentityEvictions++
+}
+
+func (profiles *Profiles) expireAnchors(nowNS uint64) {
+	if nowNS == 0 || profiles.limits.RetainedTTL <= 0 {
+		return
+	}
+	for stableID, anchor := range profiles.anchors {
+		if elapsed(nowNS, anchor.lastSeenNS, profiles.limits.RetainedTTL) {
+			profiles.removeAnchor(stableID)
+		}
+	}
+}
+
+func (profiles *Profiles) removeAnchor(stableID string) {
+	anchor, ok := profiles.anchors[stableID]
+	if !ok {
+		return
+	}
+	delete(profiles.anchors, stableID)
+	if profiles.anchorPID[anchor.pid] == stableID {
+		delete(profiles.anchorPID, anchor.pid)
+	}
+	if profiles.anchorSensor[anchor.sensorExecID] == stableID {
+		delete(profiles.anchorSensor, anchor.sensorExecID)
+	}
+}
+
 func (profiles *Profiles) evictForCapacity() {
 	if len(profiles.profiles) < profiles.limits.MaxProfiles {
 		return
 	}
 	stableID, profile := profiles.capacityVictim()
 	if profile != nil {
+		if profile.state == StateActive {
+			profiles.metrics.ActiveEvictions++
+		}
+		profiles.retainIdentity(profile)
 		profiles.remove(stableID, profile)
 		profiles.metrics.CapacityEvictions++
 	}

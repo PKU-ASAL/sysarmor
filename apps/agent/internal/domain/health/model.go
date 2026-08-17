@@ -130,9 +130,10 @@ type Learning struct {
 }
 
 type ProcessProfileHealth struct {
-	Active, Exited, Retained                           uint64
-	Compactions, Expired, CapacityEvictions            uint64
-	FileEvictions, NetworkEvictions, EventRefEvictions uint64
+	Active, Exited, Retained                                           uint64
+	Compactions, Expired, CapacityEvictions                            uint64
+	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
+	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
 }
 
 type ContentRef struct{ Ref, Kind, Version, Digest string }
