@@ -19,9 +19,27 @@ func TestReadHistoryDocumentsReadsEveryPage(t *testing.T) {
 		{Hits: []platformopensearch.SearchHit{{Source: json.RawMessage(`{"id":"last"}`), Sort: []any{historyPageSize}}}},
 	}}
 
-	documents, err := readHistoryDocuments(context.Background(), searcher, platformopensearch.SearchRequest{Index: "events"})
+	documents, err := readHistoryDocuments(context.Background(), searcher, platformopensearch.SearchRequest{Index: "events"}, historyDocumentLimit)
 
 	if err != nil || len(documents) != historyPageSize+1 || len(searcher.requests) != 2 || len(searcher.requests[1].SearchAfter) == 0 {
+		t.Fatalf("documents=%d requests=%+v err=%v", len(documents), searcher.requests, err)
+	}
+}
+
+func TestReadHistoryDocumentsStopsAtLimit(t *testing.T) {
+	first := make([]platformopensearch.SearchHit, historyPageSize)
+	for index := range first {
+		first[index] = platformopensearch.SearchHit{Source: json.RawMessage(`{"id":"event"}`), Sort: []any{index}}
+	}
+	searcher := &historyPageSearcherStub{pages: []platformopensearch.SearchPage{
+		{Hits: first},
+		{Hits: []platformopensearch.SearchHit{{Source: json.RawMessage(`{"id":"last"}`), Sort: []any{historyPageSize}}}},
+		{Hits: []platformopensearch.SearchHit{{Source: json.RawMessage(`{"id":"overflow"}`)}}},
+	}}
+
+	documents, err := readHistoryDocuments(context.Background(), searcher, platformopensearch.SearchRequest{Index: "events"}, historyPageSize+1)
+
+	if err != nil || len(documents) != historyPageSize+1 || len(searcher.requests) != 2 || searcher.requests[1].Size != 1 {
 		t.Fatalf("documents=%d requests=%+v err=%v", len(documents), searcher.requests, err)
 	}
 }
