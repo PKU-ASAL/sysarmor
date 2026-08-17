@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainidentity "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/identity"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
@@ -16,6 +18,8 @@ import (
 
 func TestRecomputeUsesAuthenticatedTenantAndAnalysisPolicy(t *testing.T) {
 	fixture := newFixture(t)
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	fixture.service.now = func() time.Time { return now }
 	result, err := fixture.service.Recompute(context.Background(), fixture.request, Query{
 		Target: domainpolicy.Target{AgentID: "agent-a"}, Labels: map[string]string{"scenario": "one"},
 	})
@@ -25,8 +29,13 @@ func TestRecomputeUsesAuthenticatedTenantAndAnalysisPolicy(t *testing.T) {
 	if fixture.telemetry.signalTenantID != fixture.request.Actor.TenantID || fixture.telemetry.eventTenantID != fixture.request.Actor.TenantID || fixture.policy.request.Actor.TenantID != fixture.request.Actor.TenantID {
 		t.Fatalf("policy tenant = %q, signal tenant = %q, event tenant = %q", fixture.policy.request.Actor.TenantID, fixture.telemetry.signalTenantID, fixture.telemetry.eventTenantID)
 	}
-	if fixture.telemetry.signalFilter.Labels["scenario"] != "one" || fixture.telemetry.signalFilter.Layer != "endpoint" || fixture.telemetry.eventLabels["scenario"] != "one" {
-		t.Fatalf("signal filter = %+v, event labels = %+v", fixture.telemetry.signalFilter, fixture.telemetry.eventLabels)
+	if fixture.telemetry.signalFilter.Labels["scenario"] != "one" || fixture.telemetry.signalFilter.Where != domaintelemetry.SignalWhereEndpoint || fixture.telemetry.eventFilter.Labels["scenario"] != "one" {
+		t.Fatalf("signal filter = %+v, event filter = %+v", fixture.telemetry.signalFilter, fixture.telemetry.eventFilter)
+	}
+	if fixture.telemetry.eventFilter.AgentID != "agent-a" || fixture.telemetry.signalFilter.AgentID != "agent-a" ||
+		!fixture.telemetry.eventFilter.From.Equal(now.Add(-15*time.Minute)) || !fixture.telemetry.eventFilter.To.Equal(now) ||
+		!fixture.telemetry.signalFilter.From.Equal(now.Add(-15*time.Minute)) || !fixture.telemetry.signalFilter.To.Equal(now) {
+		t.Fatalf("event filter = %+v, signal filter = %+v", fixture.telemetry.eventFilter, fixture.telemetry.signalFilter)
 	}
 	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Score != 90 {
 		t.Fatalf("analysis = %+v", result)
@@ -36,9 +45,17 @@ func TestRecomputeUsesAuthenticatedTenantAndAnalysisPolicy(t *testing.T) {
 	}
 }
 
+func TestRecomputeRequiresAgentTarget(t *testing.T) {
+	fixture := newFixture(t)
+	_, err := fixture.service.Recompute(context.Background(), fixture.request, Query{})
+	if failure.KindOf(err) != failure.InvalidArgument {
+		t.Fatalf("failure kind = %v, error = %v", failure.KindOf(err), err)
+	}
+}
+
 func TestRecomputeCanDisableCrossLineage(t *testing.T) {
 	fixture := newFixture(t)
-	result, err := fixture.service.Recompute(context.Background(), fixture.request, Query{Disable: "cloud.cross_lineage"})
+	result, err := fixture.service.Recompute(context.Background(), fixture.request, Query{Target: domainpolicy.Target{AgentID: "agent-a"}, Disable: "cloud.cross_lineage"})
 	if err != nil || len(result.Incidents) != 0 {
 		t.Fatalf("analysis = %+v, error = %v", result, err)
 	}
@@ -46,7 +63,7 @@ func TestRecomputeCanDisableCrossLineage(t *testing.T) {
 
 func TestRecomputeRejectsUnknownControls(t *testing.T) {
 	fixture := newFixture(t)
-	for _, query := range []Query{{Disable: "unknown"}, {Mode: "unknown"}} {
+	for _, query := range []Query{{Target: domainpolicy.Target{AgentID: "agent-a"}, Disable: "unknown"}, {Target: domainpolicy.Target{AgentID: "agent-a"}, Mode: "unknown"}} {
 		if _, err := fixture.service.Recompute(context.Background(), fixture.request, query); err == nil {
 			t.Fatalf("query %+v accepted", query)
 		}
@@ -56,7 +73,7 @@ func TestRecomputeRejectsUnknownControls(t *testing.T) {
 func TestRecomputeWrapsDependencyErrors(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.policy.err = errors.New("database unavailable")
-	if _, err := fixture.service.Recompute(context.Background(), fixture.request, Query{}); err == nil || err.Error() != "read effective policy: database unavailable" {
+	if _, err := fixture.service.Recompute(context.Background(), fixture.request, Query{Target: domainpolicy.Target{AgentID: "agent-a"}}); err == nil || err.Error() != "read effective policy: database unavailable" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -106,14 +123,14 @@ func (stub *rarityStub) Rarity(context.Context, managerapp.RequestContext) (doma
 
 type telemetryStub struct {
 	eventTenantID, signalTenantID tenant.ID
-	eventLabels                   map[string]string
+	eventFilter                   ports.AnalysisEventFilter
 	signalFilter                  ports.AnalysisSignalFilter
 	events                        []domaintelemetry.Event
 	signals                       []domaintelemetry.Signal
 }
 
-func (stub *telemetryStub) Events(_ context.Context, tenantID tenant.ID, labels map[string]string) ([]domaintelemetry.Event, error) {
-	stub.eventTenantID, stub.eventLabels = tenantID, labels
+func (stub *telemetryStub) Events(_ context.Context, tenantID tenant.ID, filter ports.AnalysisEventFilter) ([]domaintelemetry.Event, error) {
+	stub.eventTenantID, stub.eventFilter = tenantID, filter
 	return stub.events, nil
 }
 

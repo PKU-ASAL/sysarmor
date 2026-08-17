@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
 )
@@ -18,7 +20,7 @@ func TestAnalysisSignalsDecodeOnlyAuthenticatedTenant(t *testing.T) {
 		{Source: json.RawMessage(`{"id":"signal-b","tenant_id":"tenant-b","name":"other","where":"SIGNAL_WHERE_ENDPOINT","stage":"SIGNAL_STAGE_CANDIDATE","detector_kind":"DETECTOR_KIND_RULE"}`), Sort: []any{"b"}},
 	}}}}
 	reader := NewAnalysisTelemetryReader(searcher)
-	values, err := reader.Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{Layer: "endpoint"})
+	values, err := reader.Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{AgentID: "agent-a", Where: domaintelemetry.SignalWhereEndpoint})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +36,35 @@ func TestAnalysisEventsDecodeOnlyAuthenticatedTenantAndLabels(t *testing.T) {
 	}}}}
 	reader := NewAnalysisTelemetryReader(searcher)
 
-	values, err := reader.Events(context.Background(), tenant.ID("tenant-a"), map[string]string{"scenario": "one"})
+	values, err := reader.Events(context.Background(), tenant.ID("tenant-a"), ports.AnalysisEventFilter{AgentID: "agent-a", Labels: map[string]string{"scenario": "one"}})
 
 	if err != nil || len(values) != 1 || values[0].ID != "event-a" || values[0].SubjectProcess.StableID != "process-a" || searcher.requests[0].Index != EventsReadAlias {
 		t.Fatalf("events = %+v, requests = %+v, error = %v", values, searcher.requests, err)
+	}
+}
+
+func TestAnalysisTelemetryPushesAgentWindowAndEndpointWhere(t *testing.T) {
+	from := time.Date(2026, 8, 18, 11, 45, 0, 0, time.UTC)
+	to := from.Add(15 * time.Minute)
+	searcher := &analysisPageSearcherStub{pages: []SearchPage{{}, {}}}
+	reader := NewAnalysisTelemetryReader(searcher)
+
+	_, eventErr := reader.Events(context.Background(), tenant.ID("tenant-a"), ports.AnalysisEventFilter{
+		AgentID: "agent-a", From: from, To: to,
+	})
+	_, signalErr := reader.Signals(context.Background(), tenant.ID("tenant-a"), ports.AnalysisSignalFilter{
+		AgentID: "agent-a", From: from, To: to, Where: domaintelemetry.SignalWhereEndpoint,
+	})
+
+	if eventErr != nil || signalErr != nil || len(searcher.requests) != 2 {
+		t.Fatalf("requests = %+v, event error = %v, signal error = %v", searcher.requests, eventErr, signalErr)
+	}
+	events, signals := searcher.requests[0], searcher.requests[1]
+	if events.Exact["agent_id"] != "agent-a" || events.TimeField != "@timestamp" || events.TimeFrom != from.Format(time.RFC3339Nano) || events.TimeTo != to.Format(time.RFC3339Nano) {
+		t.Fatalf("event request = %+v", events)
+	}
+	if signals.Exact["agent_id"] != "agent-a" || signals.Exact["where"] != "SIGNAL_WHERE_ENDPOINT" || signals.TimeField != "@timestamp" || signals.TimeFrom != from.Format(time.RFC3339Nano) || signals.TimeTo != to.Format(time.RFC3339Nano) {
+		t.Fatalf("signal request = %+v", signals)
 	}
 }
 

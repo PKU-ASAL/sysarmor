@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"time"
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
@@ -27,18 +27,30 @@ func NewAnalysisTelemetryReader(searcher PageSearcher) *AnalysisTelemetryReader 
 	return &AnalysisTelemetryReader{searcher: searcher}
 }
 
-func (reader *AnalysisTelemetryReader) Events(ctx context.Context, tenantID tenant.ID, labels map[string]string) ([]domaintelemetry.Event, error) {
-	request := SearchRequest{Index: EventsReadAlias, Labels: cloneTelemetryLabels(labels), Exact: map[string]string{"tenant_id": tenantID.String()}, SortField: "_id"}
+func (reader *AnalysisTelemetryReader) Events(ctx context.Context, tenantID tenant.ID, filter ports.AnalysisEventFilter) ([]domaintelemetry.Event, error) {
+	request := analysisSearchRequest(EventsReadAlias, tenantID, filter.AgentID, filter.Labels, filter.From, filter.To)
 	return readAnalysisValues(ctx, reader, tenantID, request, func(document domaintelemetry.Document) (domaintelemetry.Event, bool, error) {
-		return decodeAnalysisEvent(document, tenantID, labels)
+		return decodeAnalysisEvent(document, tenantID, filter.Labels)
 	})
 }
 
 func (reader *AnalysisTelemetryReader) Signals(ctx context.Context, tenantID tenant.ID, filter ports.AnalysisSignalFilter) ([]domaintelemetry.Signal, error) {
-	request := SearchRequest{Index: SignalsReadAlias, Labels: cloneTelemetryLabels(filter.Labels), Exact: map[string]string{"tenant_id": tenantID.String()}, SortField: "_id"}
+	request := analysisSearchRequest(SignalsReadAlias, tenantID, filter.AgentID, filter.Labels, filter.From, filter.To)
+	if filter.Where != domaintelemetry.SignalWhereUnspecified {
+		request.Exact["where"] = signalv1.SignalWhere(filter.Where).String()
+	}
 	return readAnalysisValues(ctx, reader, tenantID, request, func(document domaintelemetry.Document) (domaintelemetry.Signal, bool, error) {
 		return decodeAnalysisSignal(document, tenantID, filter)
 	})
+}
+
+func analysisSearchRequest(index string, tenantID tenant.ID, agentID string, labels map[string]string, from, to time.Time) SearchRequest {
+	return SearchRequest{
+		Index: index, Labels: cloneTelemetryLabels(labels),
+		Exact:     map[string]string{"tenant_id": tenantID.String(), "agent_id": agentID},
+		TimeField: "@timestamp", TimeFrom: from.UTC().Format(time.RFC3339Nano), TimeTo: to.UTC().Format(time.RFC3339Nano),
+		SortField: "_id",
+	}
 }
 
 func readAnalysisValues[T any](ctx context.Context, reader *AnalysisTelemetryReader, tenantID tenant.ID, request SearchRequest, decode func(domaintelemetry.Document) (T, bool, error)) ([]T, error) {
@@ -99,10 +111,10 @@ func decodeAnalysisSignal(document domaintelemetry.Document, tenantID tenant.ID,
 	if err != nil || !include {
 		return domaintelemetry.Signal{}, include, err
 	}
-	if filter.Layer != "" {
+	if filter.Where != domaintelemetry.SignalWhereUnspecified {
 		var where string
 		_ = json.Unmarshal(fields["where"], &where)
-		if strings.ToLower(strings.TrimPrefix(where, "SIGNAL_WHERE_")) != strings.ToLower(filter.Layer) {
+		if where != signalv1.SignalWhere(filter.Where).String() {
 			return domaintelemetry.Signal{}, false, nil
 		}
 	}
