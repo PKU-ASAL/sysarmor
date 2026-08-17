@@ -276,15 +276,18 @@ func (profiles *Profiles) Snapshot(stableID string) (Snapshot, bool) {
 }
 
 func (profiles *Profiles) parentIdentity(sensorID string, pid uint32) (identityAnchor, bool) {
-	stableID := profiles.bySensor[sensorID]
-	if stableID == "" {
+	var stableID string
+	if sensorID != "" {
+		stableID = profiles.bySensor[sensorID]
+	} else {
 		stableID = profiles.byPID[pid]
 	}
 	if profile := profiles.profiles[stableID]; profile != nil {
 		return profile.identity(), true
 	}
-	stableID = profiles.anchorSensor[sensorID]
-	if stableID == "" {
+	if sensorID != "" {
+		stableID = profiles.anchorSensor[sensorID]
+	} else {
 		stableID = profiles.anchorPID[pid]
 	}
 	anchor, ok := profiles.anchors[stableID]

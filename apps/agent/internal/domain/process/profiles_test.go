@@ -248,6 +248,25 @@ func TestProfilesMarksMissingParentIdentityAsUnavailable(t *testing.T) {
 	}
 }
 
+func TestProfilesDoesNotFallbackToReusedPIDWhenParentSensorIdentityIsMissing(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 4, MaxIdentityAnchors: 4, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated := profiles.Resolve(IdentityObservation{
+		HostID: "host-a",
+		Process: domainevent.Process{PID: 10, SensorExecID: "exec-unrelated"},
+	})
+	child := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", ParentSensorExecID: "exec-missing-parent",
+		Process: domainevent.Process{PID: 20, PPID: 10, SensorExecID: "exec-child"},
+	})
+
+	if child.IdentityStatus != IdentityUnavailable || child.ParentStableID != "" {
+		t.Fatalf("child identity = %+v, unrelated = %+v", child, unrelated)
+	}
+}
+
 func TestProfilesRestoresEvictedActiveIdentityFromOwnAnchor(t *testing.T) {
 	profiles, err := NewProfiles(Limits{MaxProfiles: 1, MaxIdentityAnchors: 2, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1})
 	if err != nil {
