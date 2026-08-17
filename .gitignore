@@ -2,10 +2,6 @@
 .scratchpad/
 .superpowers/
 
-# working documents and planning artifacts
-docs/business/
-docs/superpowers/
-
 # test results (large, regenerated)
 test/.results/
 test/.results/*.jsonl

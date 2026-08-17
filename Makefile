@@ -1,14 +1,12 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api build build-agent-binary build-agent-tools build-binary business-docx install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle test-business-docx up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
 GOBIN_PATH := $(shell go env GOPATH)/bin
 BIN_DIR ?= dist/bin
 RELEASE_DIR ?= dist/release
-BUSINESS_DOCX_SOURCE ?= docs/business/sysarmor-project-proposal.zh-CN.md
-BUSINESS_DOCX_OUTPUT ?= dist/docs/sysarmor-project-proposal.zh-CN.docx
 PACKAGE_BASE_URL ?= http://packages
 RELEASE_VERSION ?= dev
 RELEASE_OS ?= linux
@@ -97,9 +95,6 @@ build-binary: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
-business-docx:
-	bash tools/docs/build-business-docx.sh "$(BUSINESS_DOCX_SOURCE)" "$(BUSINESS_DOCX_OUTPUT)"
-
 test:
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go test ./...
 
@@ -159,9 +154,6 @@ endif
 
 test-opensearch-lifecycle:
 	bash test/suites/functional/platform/opensearch-alias-lifecycle.sh
-
-test-business-docx:
-	bash test/suites/docs/business-docx.sh
 
 pki:
 	@if [ ! -f "$(PKI_RUNTIME_DIR)/gateway.pem" ] || [ ! -f "$(PKI_RUNTIME_DIR)/gateway-key.pem" ] || [ ! -f "$(PKI_RUNTIME_DIR)/ca.pem" ]; then \
@@ -272,7 +264,6 @@ help:
 	@echo "  make api        generate protobuf code"
 	@echo "  make build SERVICE=manager  build a compose service image"
 	@echo "  make build-binary           build agent/gateway/manager/worker/sysarmorctl"
-	@echo "  make business-docx          build formal proposal DOCX under dist/docs/"
 	@echo "  make install-agent          build and install a standalone Agent plus sysarmorctl"
 	@echo "  make uninstall-agent        remove binaries; add PURGE=1 to remove config and local data"
 	@echo "  make test       run Go tests"
@@ -311,4 +302,3 @@ help:
 	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"
 	@echo "  make test-distribution SOURCE=local|published URL=https://..."
 	@echo "  make test-release STAGE=pre-publish|post-publish URL=https://..."
-	@echo "  make test-business-docx validate the formal proposal DOCX build"

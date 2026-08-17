@@ -30,6 +30,8 @@ RETIRED_PATHS = (
     "docs/development/debug.md",
     "docs/business",
     "docs/superpowers",
+    "tools/docs",
+    "test/suites/docs",
 )
 
 CANONICAL_PHRASES = (
@@ -101,6 +103,12 @@ class DocumentationContractTest(unittest.TestCase):
                 if not (source.parent / path).resolve().exists():
                     broken.append(f"{source.relative_to(self.repo)} -> {target}")
         self.assertEqual([], broken, f"broken public document links: {broken}")
+
+    def test_commercial_document_tooling_is_retired(self):
+        makefile = (self.repo / "Makefile").read_text()
+        for token in ("business-docx", "BUSINESS_DOCX_SOURCE", "BUSINESS_DOCX_OUTPUT"):
+            with self.subTest(token=token):
+                self.assertNotIn(token, makefile)
 
     def _detection_language_sources(self):
         sources = list(self._maintained_docs())
