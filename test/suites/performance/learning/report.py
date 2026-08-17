@@ -7,8 +7,11 @@ import json
 import math
 import argparse
 import csv
+import importlib.util
 from pathlib import Path
 from typing import Any
+
+from learning_report_renderer import render_report
 
 
 DEFAULT_GATES = {
@@ -18,6 +21,7 @@ DEFAULT_GATES = {
     "rss_relative": 1.15,
     "eps_relative": 0.90,
 }
+TEST_ROOT = Path(__file__).resolve().parents[3]
 
 
 class ReportError(ValueError):
@@ -25,7 +29,7 @@ class ReportError(ValueError):
 
 
 def numeric(value: Any) -> float | None:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     try:
         result = float(value)
@@ -63,7 +67,7 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
         "performance_eps": gate("unavailable", enabled_eps, None, "missing disabled EPS") if eps_limit is None else gate("passed" if enabled_eps is not None and enabled_eps >= eps_limit else "failed" if enabled_eps is not None else "unavailable", enabled_eps, eps_limit, f"disabled={disabled_eps}"),
         "reliability": reliability_gate(disabled, enabled),
         "model": model_gate(disabled, enabled),
-        "rule_truth": gate("passed" if disabled.get("rule_truth_ok") and enabled.get("rule_truth_ok") else "failed", None, None, "required Rule truth links"),
+        "rule_truth": rule_truth_gate(disabled, enabled),
     }
     statuses = [item["status"] for item in gate_results.values()]
     verdict = "passed" if all(status == "passed" for status in statuses) else "failed"
@@ -75,8 +79,59 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
             "model_recall": model_recall(enabled),
             "disabled_model_candidates": len(disabled.get("model_signals", [])),
             "enabled_model_candidates": len(enabled.get("model_signals", [])),
+            "rule_truth_baseline_status": {
+                "disabled": baseline_status(disabled),
+                "enabled": baseline_status(enabled),
+            },
         },
+        "variants": {"disabled": variant_summary(disabled), "enabled": variant_summary(enabled)},
+        "truth_steps": {"disabled": disabled.get("truth_steps", []), "enabled": enabled.get("truth_steps", [])},
+        "samples": {"disabled": disabled.get("samples", {}), "enabled": enabled.get("samples", {})},
     }
+
+
+def baseline_status(metrics: dict[str, Any]) -> str:
+    return "passed" if metrics.get("truth_baseline_ok") else "failed"
+
+
+def truth_signature(metrics: dict[str, Any]) -> dict[tuple[str, str], tuple[Any, Any]]:
+    return {
+        (step.get("label_type", ""), step.get("label_id", "")): (
+            bool(step.get("matched")), step.get("match_quality", "")
+        )
+        for step in metrics.get("truth_steps", []) if step.get("required")
+    }
+
+
+def rule_truth_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, Any]:
+    first, second = truth_signature(disabled), truth_signature(enabled)
+    if not first or not second:
+        return gate("unavailable", None, None, "missing required Rule truth result")
+    if not disabled.get("rule_refs_ok") or not enabled.get("rule_refs_ok"):
+        return gate("failed", None, "resolved refs", "unresolved Rule Signal event ref")
+    if first != second:
+        return gate("failed", None, "equivalent", "Learning changed required Rule truth outcome")
+    return gate("passed", "equivalent", "equivalent", "required Rule truth outcome and refs")
+
+
+def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "health": metrics.get("health", {}),
+        "reliability": metrics.get("reliability", {}),
+        "performance": metrics.get("performance", {}),
+        "stream_evictions": metrics.get("stream_evictions", 0),
+        "event_count": len(metrics.get("events", [])),
+        "rule_signal_count": metrics.get("rule_signal_count", 0),
+        "model_candidate_count": len(metrics.get("model_signals", [])),
+        "candidate_scores": score_summary(metrics.get("model_signals", [])),
+    }
+
+
+def score_summary(signals: list[dict[str, Any]]) -> dict[str, Any]:
+    scores = sorted(value for signal in signals if (value := numeric(signal.get("localRarity"))) is not None)
+    if not scores:
+        return {"min": None, "p50": None, "max": None}
+    return {"min": scores[0], "p50": scores[len(scores) // 2], "max": scores[-1]}
 
 
 def reliability_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, Any]:
@@ -97,17 +152,27 @@ def model_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, A
         return gate("failed", len(disabled["model_signals"]), 0, "disabled emitted Model Candidate")
     if enabled.get("health", {}).get("learning") != "loaded":
         return gate("failed", enabled.get("health", {}).get("learning"), "loaded", "enabled model is not loaded")
+    if not enabled.get("model_signals"):
+        return gate("failed", 0, ">=1", "enabled emitted no Model Candidate")
     event_ids = enabled.get("events", set())
+    expected = enabled.get("expected_model", {})
+    provenance = ("modelRef", "modelVersion", "modelDigest", "featureSchema")
+    if any(not expected.get(field) for field in provenance):
+        return gate("failed", expected, "experiment model", "missing expected model provenance")
     for signal in enabled.get("model_signals", []):
-        if signal.get("stage") not in (None, "SIGNAL_STAGE_CANDIDATE") or signal.get("detectorKind") not in (None, "DETECTOR_KIND_MODEL"):
+        if signal.get("stage") != "SIGNAL_STAGE_CANDIDATE" or signal.get("detectorKind") != "DETECTOR_KIND_MODEL":
             return gate("failed", signal, "candidate/model", "invalid Model Candidate contract")
-        if not set(signal.get("eventRefs", [])).issubset(event_ids):
+        score = numeric(signal.get("localRarity"))
+        if any(signal.get(field) != expected[field] for field in provenance) or score is None or score < 0:
+            return gate("failed", signal, "complete provenance and score", "invalid Model Candidate provenance")
+        refs = signal.get("eventRefs", [])
+        if not refs or not set(refs).issubset(event_ids):
             return gate("failed", signal, "resolved refs", "unresolved Model Candidate event ref")
     return gate("passed", len(enabled.get("model_signals", [])), None, "model provenance and refs")
 
 
 def model_recall(metrics: dict[str, Any]) -> float | None:
-    truth = set(metrics.get("truth_events") or metrics.get("events") or set())
+    truth = set(metrics.get("truth_events") or set())
     if not truth:
         return None
     refs = {ref for signal in metrics.get("model_signals", []) for ref in signal.get("eventRefs", [])}
@@ -117,11 +182,14 @@ def model_recall(metrics: dict[str, Any]) -> float | None:
 def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, Any]:
     if (path / "collection-balanced").is_dir():
         path = path / "collection-balanced"
-    manifest = load_json(path / "manifest.json")
-    summary = load_json(path / "summary.json")
-    signals = [unwrap(load_json_line(line), "signal") for line in read_lines(path / "signals.scope.ndjson")]
-    events = [unwrap(load_json_line(line), "event") for line in read_lines(path / "events.scope.ndjson")]
+    manifest = require_json(path / "manifest.json")
+    summary = require_json(path / "summary.json")
+    signals = [unwrap(row, "signal") for row in require_records(path / "signals.scope.ndjson", "signal")]
+    events = [unwrap(row, "event") for row in require_records(path / "events.scope.ndjson", "event")]
     model_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_MODEL"]
+    rule_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_RULE"]
+    truth = evaluate_truth(path, events, rule_signals)
+    event_ids = {str(event.get("id")) for event in events if event.get("id")}
     phase_data = load_matrix_phase(path, phase)
     health_document = latest_health(path)
     detection = health_document.get("detection", {})
@@ -135,9 +203,71 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
         "performance": {"agent_cpu_avg_pct": phase_data.get("agent_cpu_avg_pct"), "agent_rss_max_mb": phase_data.get("agent_rss_max_mb"), "eps": phase_data.get("eps")},
         "stream_evictions": latest_stream_evictions(path),
         "model_signals": model_signals,
-        "rule_truth_ok": True,
-        "events": {str(event.get("id")) for event in events if event.get("id")},
+        "truth_baseline_ok": truth["ok"],
+        "rule_refs_ok": all(signal.get("eventRefs") and set(signal["eventRefs"]).issubset(event_ids) for signal in rule_signals),
+        "truth_events": truth["event_ids"],
+        "truth_steps": truth["steps"],
+        "events": event_ids,
+        "rule_signal_count": len(rule_signals),
+        "samples": bounded_samples(events, rule_signals, model_signals),
     }
+
+
+def bounded_samples(
+    events: list[dict[str, Any]], rule_signals: list[dict[str, Any]], model_signals: list[dict[str, Any]], limit: int = 3
+) -> dict[str, Any]:
+    return {
+        "events": [event_sample(event) for event in events[:limit]],
+        "rule_signals": [signal_sample(signal) for signal in rule_signals[:limit]],
+        "model_candidates": [signal_sample(signal) for signal in model_signals[:limit]],
+    }
+
+
+def event_sample(event: dict[str, Any]) -> dict[str, Any]:
+    subject = event.get("subjectProc", {})
+    return {
+        "id": event.get("id"),
+        "behavior": event.get("behavior"),
+        "binary": subject.get("binary"),
+        "argv": subject.get("argv", [])[:8],
+        "object": event.get("object", {}),
+    }
+
+
+def signal_sample(signal: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": signal.get("id"),
+        "name": signal.get("name"),
+        "stage": signal.get("stage"),
+        "detector_kind": signal.get("detectorKind"),
+        "score": signal.get("localRarity"),
+        "event_refs": signal.get("eventRefs", [])[:8],
+        "entities": signal.get("entities", [])[:8],
+    }
+
+
+def detection_report_module():
+    path = TEST_ROOT / "shared/reports/detection_report.py"
+    spec = importlib.util.spec_from_file_location("sysarmor_detection_report", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def evaluate_truth(path: Path, events: list[dict[str, Any]], rule_signals: list[dict[str, Any]]) -> dict[str, Any]:
+    evaluator = detection_report_module()
+    labels = evaluator.load_yaml(TEST_ROOT / "data/scenarios/vm/apt-fileless-c2-local/labels.yaml")
+    result = evaluator.evaluate_case(labels, events, rule_signals, load_json(path / "summary.json"))
+    required = [step for step in result["truth_steps"] if step["required"]]
+    signal_steps = [step for step in required if step["label_type"] == "signal"]
+    ok = all(step["matched"] for step in required) and all(step["match_quality"] in ("", 1.0) for step in signal_steps)
+    required_event_labels = {step["label_id"] for step in required if step["label_type"] == "event"}
+    canonical = [evaluator.canonical_event(event) for event in events]
+    event_ids = {
+        event["id"] for label in labels["labels"]["events"] if label["id"] in required_event_labels
+        for event in canonical if evaluator.event_label_matches(label, event) and event["id"]
+    }
+    return {"ok": ok, "event_ids": event_ids, "steps": required}
 
 
 def load_matrix_phase(path: Path, phase: str) -> dict[str, Any]:
@@ -177,6 +307,45 @@ def load_json(path: Path) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def require_json(path: Path) -> dict[str, Any]:
+    if not path.is_file() or path.stat().st_size == 0:
+        raise ReportError(f"required JSON artifact is missing: {path}")
+    try:
+        value = json.loads(path.read_text())
+    except json.JSONDecodeError as error:
+        raise ReportError(f"invalid JSON artifact: {path}") from error
+    if not isinstance(value, dict) or not value:
+        raise ReportError(f"JSON artifact must be a non-empty object: {path}")
+    return value
+
+
+def require_ndjson(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file() or path.stat().st_size == 0:
+        raise ReportError(f"required NDJSON artifact is missing: {path}")
+    try:
+        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    except json.JSONDecodeError as error:
+        raise ReportError(f"invalid NDJSON artifact: {path}") from error
+    if not rows or any(not isinstance(row, dict) for row in rows):
+        raise ReportError(f"NDJSON artifact must contain objects: {path}")
+    return rows
+
+
+def require_records(path: Path, record_type: str) -> list[dict[str, Any]]:
+    required = {"event": ("id", "behavior"), "signal": ("id", "detectorKind", "stage")}
+    if record_type not in required:
+        raise ReportError(f"unsupported NDJSON record type: {record_type}")
+    rows = require_ndjson(path)
+    for row in rows:
+        value = row.get(record_type, row)
+        fields = [value.get(field) for field in required[record_type]] if isinstance(value, dict) else []
+        if not fields or any(not isinstance(field, str) or not field.strip() for field in fields):
+            raise ReportError(f"invalid {record_type} record in artifact: {path}")
+        if record_type == "signal" and ("UNSPECIFIED" in fields[1] or "UNSPECIFIED" in fields[2]):
+            raise ReportError(f"invalid {record_type} enum in artifact: {path}")
+    return rows
+
+
 def latest_health_status(path: Path) -> str | None:
     return latest_health(path).get("status")
 
@@ -187,13 +356,15 @@ def latest_health(path: Path) -> dict[str, Any]:
 
 
 def health_number(value: dict[str, Any], *names: str) -> int | None:
+    if not value:
+        return None
     for name in names:
         if name in value:
             try:
                 return int(value[name])
             except (TypeError, ValueError):
                 return None
-    return None
+    return 0
 
 
 def latest_stream_evictions(path: Path) -> int:
@@ -213,23 +384,101 @@ def generate_report(run_dir: Path, output: Path | None = None, strict: bool = Tr
     return {"output": str(destination), "verdict": summary.get("verdict")}
 
 
-def render_report(summary: dict[str, Any]) -> str:
-    lines = ["# Learning Detector A/B Report", "", f"- Verdict: `{summary.get('verdict', 'unavailable')}`", ""]
-    for name, result in summary.get("gates", {}).items():
-        lines.append(f"- {name}: `{result.get('status', 'unavailable')}`")
-    lines.extend(["", "## Observations", "", "```json", json.dumps(summary.get("observations", {}), indent=2, sort_keys=True), "```", ""])
-    return "\n".join(lines)
-
-
 def aggregate_runs(run_dir: Path) -> dict[str, Any]:
     disabled_path, enabled_path = run_dir / "disabled", run_dir / "enabled"
     if not disabled_path.exists() or not enabled_path.exists():
         summary = {"verdict": "failed", "status": "partial", "gates": {}, "observations": {}, "missing": [str(path.name) for path in (disabled_path, enabled_path) if not path.exists()]}
     else:
-        summary = evaluate_ab(load_endpoint_run(disabled_path), load_endpoint_run(enabled_path), DEFAULT_GATES)
+        try:
+            experiment = require_json(run_dir / "manifest.json")
+            calibration = require_json(run_dir / "model/calibration.json")
+            validate_experiment_artifacts(experiment, calibration)
+            disabled, enabled = load_endpoint_run(disabled_path), load_endpoint_run(enabled_path)
+            enabled["expected_model"] = model_identity(experiment)
+            summary = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+            summary["experiment"] = experiment_summary(experiment, disabled_path)
+            summary["model"] = model_summary(experiment, calibration)
+        except Exception as error:
+            summary = {"verdict": "failed", "status": "invalid", "gates": {}, "observations": {}, "error": f"{type(error).__name__}: {error}"}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     (run_dir / "report.md").write_text(render_report(summary))
     return summary
+
+
+def validate_experiment_artifacts(manifest: dict[str, Any], calibration: dict[str, Any]) -> None:
+    required = (
+        "suite", "run_id", "benchmark_profile", "policy", "activity_mode", "scenario", "git_commit",
+        "git_provenance_source", "training_data", "training_digest", "calibration_data", "calibration_digest",
+        "model_ref", "model_version", "model_digest", "feature_schema",
+    )
+    if any(not isinstance(manifest.get(key), str) or not manifest[key].strip() for key in required):
+        raise ReportError("experiment manifest has missing or invalid required fields")
+    if manifest.get("git_dirty") is not None and not isinstance(manifest.get("git_dirty"), bool):
+        raise ReportError("experiment manifest git_dirty must be boolean or unavailable")
+    threshold = manifest.get("threshold")
+    if not is_json_number(threshold) or threshold < 0 or not valid_gate_config(manifest.get("gate_config")):
+        raise ReportError("experiment manifest has invalid threshold or gate config")
+    validate_calibration(manifest, calibration)
+
+
+def valid_gate_config(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != set(DEFAULT_GATES):
+        return False
+    return all(is_json_number(value.get(key)) and value[key] == expected for key, expected in DEFAULT_GATES.items())
+
+
+def is_json_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def validate_calibration(manifest: dict[str, Any], calibration: dict[str, Any]) -> None:
+    rate = numeric(calibration.get("calibration_candidate_rate"))
+    candidates, allowed = calibration.get("calibration_candidates"), calibration.get("calibration_allowed")
+    if rate is None or not 0 <= rate <= 0.005 or not valid_count(candidates) or not valid_count(allowed) or candidates > allowed:
+        raise ReportError("calibration summary violates Candidate rate contract")
+    datasets = calibration.get("datasets")
+    if not isinstance(datasets, dict):
+        raise ReportError("calibration summary is missing datasets")
+    for name in ("training", "calibration"):
+        validate_dataset_summary(manifest, datasets.get(name), name)
+    bundle = calibration.get("bundle")
+    if not isinstance(bundle, dict) or any(bundle.get(key) != manifest.get(key) for key in ("model_ref", "model_version", "model_digest", "feature_schema", "threshold")):
+        raise ReportError("calibration Bundle does not match experiment manifest")
+
+
+def validate_dataset_summary(manifest: dict[str, Any], value: Any, name: str) -> None:
+    if not isinstance(value, dict) or not valid_count(value.get("events")) or value["events"] == 0:
+        raise ReportError(f"calibration summary has invalid {name} dataset")
+    if value.get("sha256") != manifest.get(f"{name}_digest") or value.get("path") != manifest.get(f"{name}_data"):
+        raise ReportError(f"calibration summary {name} provenance does not match manifest")
+
+
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def model_identity(manifest: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "modelRef": manifest.get("model_ref"),
+        "modelVersion": manifest.get("model_version"),
+        "modelDigest": manifest.get("model_digest"),
+        "featureSchema": manifest.get("feature_schema"),
+    }
+
+
+def experiment_summary(experiment: dict[str, Any], disabled_path: Path) -> dict[str, Any]:
+    path = disabled_path / "collection-balanced" if (disabled_path / "collection-balanced").is_dir() else disabled_path
+    endpoint = require_json(path / "manifest.json")
+    result = dict(experiment)
+    result["vm_env"] = endpoint.get("vm_env")
+    return result
+
+
+def model_summary(manifest: dict[str, Any], calibration: dict[str, Any]) -> dict[str, Any]:
+    calibration = dict(calibration)
+    for key in ("model_ref", "model_version", "model_digest", "feature_schema", "threshold"):
+        calibration[key] = manifest.get(key, calibration.get("bundle", {}).get(key))
+    return calibration
 
 
 def main() -> int:

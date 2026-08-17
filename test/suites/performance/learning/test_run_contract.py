@@ -34,6 +34,12 @@ class LearningRunContractTest(unittest.TestCase):
         self.assertIn('"training_digest"', self.script)
         self.assertIn('"calibration_digest"', self.script)
 
+    def test_persists_git_revision_and_dirty_state(self):
+        self.assertIn('"git_commit"', self.script)
+        self.assertIn('"git_dirty"', self.script)
+        self.assertIn('"git_provenance_source"', self.script)
+        self.assertIn("status --porcelain", self.script)
+
     def test_exposes_learning_performance_make_target(self):
         self.assertIn("performance-learning", self.makefile)
         self.assertIn("PERFORMANCE_TARGET_learning", Path("Makefile").read_text())

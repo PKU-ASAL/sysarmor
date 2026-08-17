@@ -50,6 +50,11 @@ FEATURE_SCHEMA="$(jq -r '.feature_schema' "$SIGNED_MODEL")"
 THRESHOLD="$(jq -r '.threshold' "$SIGNED_MODEL")"
 TRAINING_DIGEST="$(jq -r '.datasets.training.sha256' "$MODEL_DIR/calibration.json")"
 CALIBRATION_DIGEST="$(jq -r '.datasets.calibration.sha256' "$MODEL_DIR/calibration.json")"
+GIT_COMMIT="$(git -C "$REPO" rev-parse HEAD)"
+GIT_DIRTY=false
+if [[ -n "$(git -C "$REPO" status --porcelain --untracked-files=normal)" ]]; then
+  GIT_DIRTY=true
+fi
 cat > "$OUT_DIR/manifest.json" <<EOF
 {
   "suite": "learning-detector-performance",
@@ -58,6 +63,9 @@ cat > "$OUT_DIR/manifest.json" <<EOF
   "policy": "test/data/policies/collection-balanced.json",
   "activity_mode": "serial",
   "scenario": "apt-fileless-c2-local",
+  "git_commit": "$GIT_COMMIT",
+  "git_dirty": $GIT_DIRTY,
+  "git_provenance_source": "captured-before-variants",
   "training_data": "$TRAINING_DATA",
   "training_digest": "$TRAINING_DIGEST",
   "calibration_data": "$CALIBRATION_DATA",
