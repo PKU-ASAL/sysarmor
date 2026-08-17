@@ -393,21 +393,21 @@ func TestLocalControlApplyCollectionPolicyUpdatesSensorRuntime(t *testing.T) {
 	if got.ScopeType != "container" || got.ScopeSelector != "container-a" {
 		t.Fatalf("intent scope = %q/%q", got.ScopeType, got.ScopeSelector)
 	}
-	if len(got.Behaviors) != 2 || got.Behaviors[0] != "network.connect" {
+	if len(got.Behaviors) != 4 || len(got.MandatoryBehaviors) != 4 {
 		t.Fatalf("intent behaviors = %v", got.Behaviors)
 	}
-	if len(got.BehaviorFilters) != 2 {
+	if len(got.BehaviorFilters) != 4 {
 		t.Fatalf("intent behavior filters = %+v", got.BehaviorFilters)
 	}
-	if got.BehaviorFilters[0].Behavior != "network.connect" || got.BehaviorFilters[0].SocketFamilies[0] != "AF_INET" {
-		t.Fatalf("network filter = %+v", got.BehaviorFilters[0])
+	if got.BehaviorFilters[3].Behavior != "network.connect" || len(got.BehaviorFilters[3].SocketFamilies) != 0 {
+		t.Fatalf("mandatory network filter = %+v", got.BehaviorFilters[3])
 	}
-	if got.BehaviorFilters[1].Behavior != "file.write" || got.BehaviorFilters[1].FilePrefixes[0] != "/dev/shm" {
-		t.Fatalf("file filter = %+v", got.BehaviorFilters[1])
+	if got.BehaviorFilters[2].Behavior != "file.write" || len(got.BehaviorFilters[2].FilePrefixes) != 0 {
+		t.Fatalf("mandatory file filter = %+v", got.BehaviorFilters[2])
 	}
 }
 
-func TestLocalControlPushesNetworkProcessBinarySelector(t *testing.T) {
+func TestLocalControlDoesNotNarrowMandatoryNetworkBaseline(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
 	sensor := &recordingCollectionSensor{healthOnlySensor: healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}}}
@@ -449,10 +449,10 @@ func TestLocalControlPushesNetworkProcessBinarySelector(t *testing.T) {
 	if ack.Status != "degraded" {
 		t.Fatalf("ack status = %q, want degraded from detection dependencies: %+v", ack.Status, ack)
 	}
-	if strings.Contains(ack.ReportJson, `"unsupported_selectors"`) || !strings.Contains(ack.ReportJson, `"process.binary_prefix"`) || !strings.Contains(ack.ReportJson, `"pushed_down"`) {
+	if strings.Contains(ack.ReportJson, `"process.binary_prefix"`) {
 		t.Fatalf("ack report_json = %q", ack.ReportJson)
 	}
-	if len(sensor.lastIntent.Behaviors) != 1 || sensor.lastIntent.BehaviorFilters[0].BinaryPrefixes[0] != "/tmp" {
+	if len(sensor.lastIntent.Behaviors) != 4 || len(sensor.lastIntent.MandatoryBehaviors) != 4 || len(sensor.lastIntent.BehaviorFilters[3].BinaryPrefixes) != 0 {
 		t.Fatalf("sensor intent = %+v", sensor.lastIntent)
 	}
 }
