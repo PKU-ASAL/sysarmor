@@ -4,18 +4,21 @@ package sysarmor.signal.v1;
 
 option go_package = "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1;signalv1";
 
+// SignalWhere identifies the processing location that produced a Signal.
 enum SignalWhere {
   SIGNAL_WHERE_UNSPECIFIED = 0;
   SIGNAL_WHERE_ENDPOINT = 1;
   SIGNAL_WHERE_CLOUD = 2;
 }
 
+// SignalStage identifies the maturity of a detection finding.
 enum SignalStage {
   SIGNAL_STAGE_UNSPECIFIED = 0;
   SIGNAL_STAGE_CANDIDATE = 1;
   SIGNAL_STAGE_CONCLUSION = 2;
 }
 
+// DetectorKind identifies the detection method that produced a Signal.
 enum DetectorKind {
   DETECTOR_KIND_UNSPECIFIED = 0;
   DETECTOR_KIND_RULE = 1;
@@ -54,6 +57,7 @@ message ContentRef {
 message Signal {
   string id = 1;
   string name = 2;
+  // where records the producing location; it does not imply stage or detector kind.
   SignalWhere where = 3;
   uint32 base_risk = 4;
   float local_rarity = 5;
@@ -78,7 +82,9 @@ message Signal {
   uint32 confidence = 22;
   string mode = 23;
   map<string, string> labels = 24;
+  // stage distinguishes a finding that needs correlation from a conclusion.
   SignalStage stage = 25;
+  // detector_kind records the method that produced this finding.
   DetectorKind detector_kind = 26;
   string model_ref = 27;
   string model_version = 28;

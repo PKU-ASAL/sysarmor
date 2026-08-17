@@ -21,6 +21,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SignalWhere identifies the processing location that produced a Signal.
 type SignalWhere int32
 
 const (
@@ -70,6 +71,7 @@ func (SignalWhere) EnumDescriptor() ([]byte, []int) {
 	return file_packages_contracts_proto_signal_v1_signal_proto_rawDescGZIP(), []int{0}
 }
 
+// SignalStage identifies the maturity of a detection finding.
 type SignalStage int32
 
 const (
@@ -119,6 +121,7 @@ func (SignalStage) EnumDescriptor() ([]byte, []int) {
 	return file_packages_contracts_proto_signal_v1_signal_proto_rawDescGZIP(), []int{1}
 }
 
+// DetectorKind identifies the detection method that produced a Signal.
 type DetectorKind int32
 
 const (
@@ -439,37 +442,40 @@ func (x *ContentRef) GetDigest() string {
 }
 
 type Signal struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Where          SignalWhere            `protobuf:"varint,3,opt,name=where,proto3,enum=sysarmor.signal.v1.SignalWhere" json:"where,omitempty"`
-	BaseRisk       uint32                 `protobuf:"varint,4,opt,name=base_risk,json=baseRisk,proto3" json:"base_risk,omitempty"`
-	LocalRarity    float32                `protobuf:"fixed32,5,opt,name=local_rarity,json=localRarity,proto3" json:"local_rarity,omitempty"`
-	GlobalRarity   float32                `protobuf:"fixed32,6,opt,name=global_rarity,json=globalRarity,proto3" json:"global_rarity,omitempty"`
-	LineageId      string                 `protobuf:"bytes,7,opt,name=lineage_id,json=lineageId,proto3" json:"lineage_id,omitempty"`
-	Entities       []*EntityRef           `protobuf:"bytes,8,rep,name=entities,proto3" json:"entities,omitempty"`
-	EventRefs      []string               `protobuf:"bytes,9,rep,name=event_refs,json=eventRefs,proto3" json:"event_refs,omitempty"`
-	SignalRefs     []string               `protobuf:"bytes,10,rep,name=signal_refs,json=signalRefs,proto3" json:"signal_refs,omitempty"`
-	Evidence       *EvidenceBundle        `protobuf:"bytes,12,opt,name=evidence,proto3" json:"evidence,omitempty"`
-	CrossLineage   bool                   `protobuf:"varint,14,opt,name=cross_lineage,json=crossLineage,proto3" json:"cross_lineage,omitempty"`
-	ResponseIntent *ResponseIntent        `protobuf:"bytes,15,opt,name=response_intent,json=responseIntent,proto3" json:"response_intent,omitempty"`
-	RuleId         string                 `protobuf:"bytes,16,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
-	RuleVersion    uint64                 `protobuf:"varint,17,opt,name=rule_version,json=ruleVersion,proto3" json:"rule_version,omitempty"`
-	RulesetRef     string                 `protobuf:"bytes,18,opt,name=ruleset_ref,json=rulesetRef,proto3" json:"ruleset_ref,omitempty"`
-	ContextRefs    []*ContentRef          `protobuf:"bytes,19,rep,name=context_refs,json=contextRefs,proto3" json:"context_refs,omitempty"`
-	IocRefs        []*ContentRef          `protobuf:"bytes,20,rep,name=ioc_refs,json=iocRefs,proto3" json:"ioc_refs,omitempty"`
-	Severity       string                 `protobuf:"bytes,21,opt,name=severity,proto3" json:"severity,omitempty"`
-	Confidence     uint32                 `protobuf:"varint,22,opt,name=confidence,proto3" json:"confidence,omitempty"`
-	Mode           string                 `protobuf:"bytes,23,opt,name=mode,proto3" json:"mode,omitempty"`
-	Labels         map[string]string      `protobuf:"bytes,24,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Stage          SignalStage            `protobuf:"varint,25,opt,name=stage,proto3,enum=sysarmor.signal.v1.SignalStage" json:"stage,omitempty"`
-	DetectorKind   DetectorKind           `protobuf:"varint,26,opt,name=detector_kind,json=detectorKind,proto3,enum=sysarmor.signal.v1.DetectorKind" json:"detector_kind,omitempty"`
-	ModelRef       string                 `protobuf:"bytes,27,opt,name=model_ref,json=modelRef,proto3" json:"model_ref,omitempty"`
-	ModelVersion   string                 `protobuf:"bytes,28,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
-	ModelDigest    string                 `protobuf:"bytes,29,opt,name=model_digest,json=modelDigest,proto3" json:"model_digest,omitempty"`
-	FeatureSchema  string                 `protobuf:"bytes,30,opt,name=feature_schema,json=featureSchema,proto3" json:"feature_schema,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// where records the producing location; it does not imply stage or detector kind.
+	Where          SignalWhere       `protobuf:"varint,3,opt,name=where,proto3,enum=sysarmor.signal.v1.SignalWhere" json:"where,omitempty"`
+	BaseRisk       uint32            `protobuf:"varint,4,opt,name=base_risk,json=baseRisk,proto3" json:"base_risk,omitempty"`
+	LocalRarity    float32           `protobuf:"fixed32,5,opt,name=local_rarity,json=localRarity,proto3" json:"local_rarity,omitempty"`
+	GlobalRarity   float32           `protobuf:"fixed32,6,opt,name=global_rarity,json=globalRarity,proto3" json:"global_rarity,omitempty"`
+	LineageId      string            `protobuf:"bytes,7,opt,name=lineage_id,json=lineageId,proto3" json:"lineage_id,omitempty"`
+	Entities       []*EntityRef      `protobuf:"bytes,8,rep,name=entities,proto3" json:"entities,omitempty"`
+	EventRefs      []string          `protobuf:"bytes,9,rep,name=event_refs,json=eventRefs,proto3" json:"event_refs,omitempty"`
+	SignalRefs     []string          `protobuf:"bytes,10,rep,name=signal_refs,json=signalRefs,proto3" json:"signal_refs,omitempty"`
+	Evidence       *EvidenceBundle   `protobuf:"bytes,12,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	CrossLineage   bool              `protobuf:"varint,14,opt,name=cross_lineage,json=crossLineage,proto3" json:"cross_lineage,omitempty"`
+	ResponseIntent *ResponseIntent   `protobuf:"bytes,15,opt,name=response_intent,json=responseIntent,proto3" json:"response_intent,omitempty"`
+	RuleId         string            `protobuf:"bytes,16,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
+	RuleVersion    uint64            `protobuf:"varint,17,opt,name=rule_version,json=ruleVersion,proto3" json:"rule_version,omitempty"`
+	RulesetRef     string            `protobuf:"bytes,18,opt,name=ruleset_ref,json=rulesetRef,proto3" json:"ruleset_ref,omitempty"`
+	ContextRefs    []*ContentRef     `protobuf:"bytes,19,rep,name=context_refs,json=contextRefs,proto3" json:"context_refs,omitempty"`
+	IocRefs        []*ContentRef     `protobuf:"bytes,20,rep,name=ioc_refs,json=iocRefs,proto3" json:"ioc_refs,omitempty"`
+	Severity       string            `protobuf:"bytes,21,opt,name=severity,proto3" json:"severity,omitempty"`
+	Confidence     uint32            `protobuf:"varint,22,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Mode           string            `protobuf:"bytes,23,opt,name=mode,proto3" json:"mode,omitempty"`
+	Labels         map[string]string `protobuf:"bytes,24,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// stage distinguishes a finding that needs correlation from a conclusion.
+	Stage SignalStage `protobuf:"varint,25,opt,name=stage,proto3,enum=sysarmor.signal.v1.SignalStage" json:"stage,omitempty"`
+	// detector_kind records the method that produced this finding.
+	DetectorKind  DetectorKind `protobuf:"varint,26,opt,name=detector_kind,json=detectorKind,proto3,enum=sysarmor.signal.v1.DetectorKind" json:"detector_kind,omitempty"`
+	ModelRef      string       `protobuf:"bytes,27,opt,name=model_ref,json=modelRef,proto3" json:"model_ref,omitempty"`
+	ModelVersion  string       `protobuf:"bytes,28,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	ModelDigest   string       `protobuf:"bytes,29,opt,name=model_digest,json=modelDigest,proto3" json:"model_digest,omitempty"`
+	FeatureSchema string       `protobuf:"bytes,30,opt,name=feature_schema,json=featureSchema,proto3" json:"feature_schema,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Signal) Reset() {

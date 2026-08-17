@@ -59,7 +59,7 @@ func validateSignalSemantics(value *signalv1.Signal) error {
 		return fmt.Errorf("unsupported signal detector kind %q", value.GetDetectorKind())
 	}
 	if value.GetDetectorKind() == signalv1.DetectorKind_DETECTOR_KIND_MODEL {
-		return validateModelSignal(value)
+		return validateModelCandidate(value)
 	}
 	if hasModelProvenance(value) {
 		return fmt.Errorf("model provenance requires model detector kind")
@@ -67,28 +67,28 @@ func validateSignalSemantics(value *signalv1.Signal) error {
 	return nil
 }
 
-func validateModelSignal(value *signalv1.Signal) error {
+func validateModelCandidate(value *signalv1.Signal) error {
 	if value.GetStage() != signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE {
-		return fmt.Errorf("model signal must be a candidate")
+		return fmt.Errorf("model detector output must be a candidate")
 	}
 	if !hasCompleteModelProvenance(value) {
-		return fmt.Errorf("model signal provenance is required")
+		return fmt.Errorf("model detector provenance is required")
 	}
 	if !validModelDigest(value.GetModelDigest()) || value.GetFeatureSchema() != "FeatureSchemaV1" {
-		return fmt.Errorf("model signal provenance is invalid")
+		return fmt.Errorf("model detector provenance is invalid")
 	}
 	if value.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT || !validModelEventRefs(value.GetEventRefs()) {
-		return fmt.Errorf("model signal requires endpoint event evidence")
+		return fmt.Errorf("model detector output requires endpoint event evidence")
 	}
 	score := value.GetLocalRarity()
 	if score < 0 || math.IsNaN(float64(score)) || math.IsInf(float64(score), 0) {
-		return fmt.Errorf("model signal local rarity must be finite and non-negative")
+		return fmt.Errorf("model detector output local rarity must be finite and non-negative")
 	}
 	if value.GetRuleId() != "" || value.GetRuleVersion() != 0 || value.GetRulesetRef() != "" {
-		return fmt.Errorf("model signal cannot carry rule provenance")
+		return fmt.Errorf("model detector output cannot carry rule provenance")
 	}
 	if value.ResponseIntent != nil || value.GetGlobalRarity() != 0 {
-		return fmt.Errorf("model signal cannot carry response intent or global rarity")
+		return fmt.Errorf("model detector output cannot carry response intent or global rarity")
 	}
 	return nil
 }

@@ -120,9 +120,18 @@ func TestSignalToDomainRejectsInvalidModelSemantics(t *testing.T) {
 			signal := proto.Clone(valid).(*signalv1.Signal)
 			test.mutate(signal)
 			if _, err := SignalToDomain(signal); err == nil {
-				t.Fatal("invalid model signal accepted")
+				t.Fatal("invalid model detector output accepted")
 			}
 		})
+	}
+}
+
+func TestSignalToDomainNamesRejectedModelConclusionPrecisely(t *testing.T) {
+	signal := modelSignal()
+	signal.Stage = signalv1.SignalStage_SIGNAL_STAGE_CONCLUSION
+	_, err := SignalToDomain(signal)
+	if err == nil || err.Error() != "model detector output must be a candidate" {
+		t.Fatalf("error = %v", err)
 	}
 }
 
