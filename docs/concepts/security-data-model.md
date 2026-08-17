@@ -58,7 +58,7 @@ stage = Candidate
 where = Endpoint
 ```
 
-不使用 Learning Signal、Model Signal 或 Terminal Signal 作为替代名称。
+具体发现始终使用上述 DetectorKind 与 Stage 组合命名。
 
 ## Where：产生位置
 
@@ -121,4 +121,3 @@ Detection 产品语义中不存在 Terminal。该单词只允许用于：
 - Incident 至少需要一个合法 Conclusion。
 - Candidate 提升产生新 Signal，不修改旧 Signal。
 - Evidence 必须可以回到其来源，缺失依据不能被静默解释成事实不存在。
-

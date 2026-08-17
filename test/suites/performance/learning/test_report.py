@@ -19,6 +19,7 @@ model_recall = REPORT.model_recall
 aggregate_runs = REPORT.aggregate_runs
 require_records = REPORT.require_records
 render_report = REPORT.render_report
+signal_sample = REPORT.signal_sample
 
 
 def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
@@ -27,7 +28,7 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
         "reliability": {"sensor_drop": 0, "batcher_drop": 0, "parse_errors": 0},
         "performance": {"agent_cpu_avg_pct": cpu, "agent_rss_max_mb": rss, "eps": eps},
         "stream_evictions": evictions,
-        "model_signals": [],
+        "model_candidates": [],
         "expected_model": {
             "modelRef": "model:test",
             "modelVersion": "1",
@@ -49,10 +50,11 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
     }
 
 
-def model_signal(event_ref="e1"):
+def model_candidate(event_ref="e1"):
     return {
         "stage": "SIGNAL_STAGE_CANDIDATE",
         "detectorKind": "DETECTOR_KIND_MODEL",
+        "where": "SIGNAL_WHERE_ENDPOINT",
         "modelRef": "model:test",
         "modelVersion": "1",
         "modelDigest": "sha256:digest",
@@ -63,6 +65,17 @@ def model_signal(event_ref="e1"):
 
 
 class LearningReportTest(unittest.TestCase):
+    def test_model_candidate_sample_keeps_classification_dimensions(self):
+        sample = signal_sample(model_candidate())
+        self.assertEqual(
+            {key: sample.get(key) for key in ("stage", "detectorKind", "where")},
+            {
+                "stage": "SIGNAL_STAGE_CANDIDATE",
+                "detectorKind": "DETECTOR_KIND_MODEL",
+                "where": "SIGNAL_WHERE_ENDPOINT",
+            },
+        )
+
     def test_omitted_zero_health_counter_is_zero_when_section_exists(self):
         self.assertEqual(health_number({"running": True}, "eventsDropped"), 0)
         self.assertIsNone(health_number({}, "eventsDropped"))
@@ -92,7 +105,7 @@ class LearningReportTest(unittest.TestCase):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
-        enabled["model_signals"] = [model_signal("missing-event")]
+        enabled["model_candidates"] = [model_candidate("missing-event")]
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
         self.assertEqual(result["gates"]["model"]["status"], "failed")
 
@@ -109,7 +122,7 @@ class LearningReportTest(unittest.TestCase):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
-        enabled["model_signals"] = [{"stage": "SIGNAL_STAGE_CANDIDATE", "detectorKind": "DETECTOR_KIND_MODEL", "eventRefs": ["e1"]}]
+        enabled["model_candidates"] = [{"stage": "SIGNAL_STAGE_CANDIDATE", "detectorKind": "DETECTOR_KIND_MODEL", "where": "SIGNAL_WHERE_ENDPOINT", "eventRefs": ["e1"]}]
 
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
@@ -119,7 +132,7 @@ class LearningReportTest(unittest.TestCase):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
-        enabled["model_signals"] = [model_signal() | {"modelDigest": "sha256:stale"}]
+        enabled["model_candidates"] = [model_candidate() | {"modelDigest": "sha256:stale"}]
 
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
@@ -131,7 +144,7 @@ class LearningReportTest(unittest.TestCase):
                 disabled = metrics()
                 enabled = metrics()
                 disabled["health"]["learning"] = "disabled"
-                enabled["model_signals"] = [model_signal() | {"localRarity": score}]
+                enabled["model_candidates"] = [model_candidate() | {"localRarity": score}]
 
                 result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
@@ -141,14 +154,14 @@ class LearningReportTest(unittest.TestCase):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
-        enabled["model_signals"] = [model_signal()]
+        enabled["model_candidates"] = [model_candidate()]
         enabled["truth_events"] = {"e1"}
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
         self.assertEqual(result["verdict"], "passed")
         self.assertEqual(result["observations"]["model_recall"], 1.0)
 
     def test_model_recall_is_unavailable_without_truth_events(self):
-        self.assertIsNone(model_recall({"events": {"e1", "e2"}, "model_signals": [model_signal()]}))
+        self.assertIsNone(model_recall({"events": {"e1", "e2"}, "model_candidates": [model_candidate()]}))
 
     def test_missing_endpoint_artifacts_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -190,7 +203,7 @@ class LearningReportTest(unittest.TestCase):
             (run_dir / "disabled/manifest.json").write_text('{"vm_env": "vm-endpoint"}')
             disabled, enabled = metrics(), metrics()
             disabled["health"]["learning"] = "disabled"
-            enabled["model_signals"] = [model_signal()]
+            enabled["model_candidates"] = [model_candidate()]
 
             with mock.patch.object(REPORT, "load_endpoint_run", side_effect=[disabled, enabled]):
                 summary = aggregate_runs(run_dir)

@@ -77,8 +77,8 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
         "observations": {
             "stream_evictions": (disabled.get("stream_evictions") or 0) + (enabled.get("stream_evictions") or 0),
             "model_recall": model_recall(enabled),
-            "disabled_model_candidates": len(disabled.get("model_signals", [])),
-            "enabled_model_candidates": len(enabled.get("model_signals", [])),
+            "disabled_model_candidates": len(disabled.get("model_candidates", [])),
+            "enabled_model_candidates": len(enabled.get("model_candidates", [])),
             "rule_truth_baseline_status": {
                 "disabled": baseline_status(disabled),
                 "enabled": baseline_status(enabled),
@@ -122,8 +122,8 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         "stream_evictions": metrics.get("stream_evictions", 0),
         "event_count": len(metrics.get("events", [])),
         "rule_signal_count": metrics.get("rule_signal_count", 0),
-        "model_candidate_count": len(metrics.get("model_signals", [])),
-        "candidate_scores": score_summary(metrics.get("model_signals", [])),
+        "model_candidate_count": len(metrics.get("model_candidates", [])),
+        "candidate_scores": score_summary(metrics.get("model_candidates", [])),
     }
 
 
@@ -148,19 +148,21 @@ def reliability_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[
 def model_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, Any]:
     if disabled.get("health", {}).get("learning") != "disabled":
         return gate("failed", disabled.get("health", {}).get("learning"), "disabled", "disabled variant loaded a model")
-    if disabled.get("model_signals"):
-        return gate("failed", len(disabled["model_signals"]), 0, "disabled emitted Model Candidate")
+    if disabled.get("model_candidates"):
+        return gate("failed", len(disabled["model_candidates"]), 0, "disabled emitted Model Candidate")
     if enabled.get("health", {}).get("learning") != "loaded":
         return gate("failed", enabled.get("health", {}).get("learning"), "loaded", "enabled model is not loaded")
-    if not enabled.get("model_signals"):
+    if not enabled.get("model_candidates"):
         return gate("failed", 0, ">=1", "enabled emitted no Model Candidate")
     event_ids = enabled.get("events", set())
     expected = enabled.get("expected_model", {})
     provenance = ("modelRef", "modelVersion", "modelDigest", "featureSchema")
     if any(not expected.get(field) for field in provenance):
         return gate("failed", expected, "experiment model", "missing expected model provenance")
-    for signal in enabled.get("model_signals", []):
-        if signal.get("stage") != "SIGNAL_STAGE_CANDIDATE" or signal.get("detectorKind") != "DETECTOR_KIND_MODEL":
+    for signal in enabled.get("model_candidates", []):
+        if (signal.get("stage"), signal.get("detectorKind"), signal.get("where")) != (
+            "SIGNAL_STAGE_CANDIDATE", "DETECTOR_KIND_MODEL", "SIGNAL_WHERE_ENDPOINT"
+        ):
             return gate("failed", signal, "candidate/model", "invalid Model Candidate contract")
         score = numeric(signal.get("localRarity"))
         if any(signal.get(field) != expected[field] for field in provenance) or score is None or score < 0:
@@ -168,14 +170,14 @@ def model_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, A
         refs = signal.get("eventRefs", [])
         if not refs or not set(refs).issubset(event_ids):
             return gate("failed", signal, "resolved refs", "unresolved Model Candidate event ref")
-    return gate("passed", len(enabled.get("model_signals", [])), None, "model provenance and refs")
+    return gate("passed", len(enabled.get("model_candidates", [])), None, "model provenance and refs")
 
 
 def model_recall(metrics: dict[str, Any]) -> float | None:
     truth = set(metrics.get("truth_events") or set())
     if not truth:
         return None
-    refs = {ref for signal in metrics.get("model_signals", []) for ref in signal.get("eventRefs", [])}
+    refs = {ref for signal in metrics.get("model_candidates", []) for ref in signal.get("eventRefs", [])}
     return len(refs.intersection(truth)) / len(truth)
 
 
@@ -186,7 +188,7 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
     summary = require_json(path / "summary.json")
     signals = [unwrap(row, "signal") for row in require_records(path / "signals.scope.ndjson", "signal")]
     events = [unwrap(row, "event") for row in require_records(path / "events.scope.ndjson", "event")]
-    model_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_MODEL"]
+    model_candidates = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_MODEL"]
     rule_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_RULE"]
     truth = evaluate_truth(path, events, rule_signals)
     event_ids = {str(event.get("id")) for event in events if event.get("id")}
@@ -202,24 +204,24 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
         "reliability": {"sensor_drop": health_number(sensor, "eventsDropped", "events_dropped"), "batcher_drop": health_number(batcher, "droppedEvents", "dropped_events"), "parse_errors": health_number(sensor, "parseErrors", "parse_errors")},
         "performance": {"agent_cpu_avg_pct": phase_data.get("agent_cpu_avg_pct"), "agent_rss_max_mb": phase_data.get("agent_rss_max_mb"), "eps": phase_data.get("eps")},
         "stream_evictions": latest_stream_evictions(path),
-        "model_signals": model_signals,
+        "model_candidates": model_candidates,
         "truth_baseline_ok": truth["ok"],
         "rule_refs_ok": all(signal.get("eventRefs") and set(signal["eventRefs"]).issubset(event_ids) for signal in rule_signals),
         "truth_events": truth["event_ids"],
         "truth_steps": truth["steps"],
         "events": event_ids,
         "rule_signal_count": len(rule_signals),
-        "samples": bounded_samples(events, rule_signals, model_signals),
+        "samples": bounded_samples(events, rule_signals, model_candidates),
     }
 
 
 def bounded_samples(
-    events: list[dict[str, Any]], rule_signals: list[dict[str, Any]], model_signals: list[dict[str, Any]], limit: int = 3
+    events: list[dict[str, Any]], rule_signals: list[dict[str, Any]], model_candidates: list[dict[str, Any]], limit: int = 3
 ) -> dict[str, Any]:
     return {
         "events": [event_sample(event) for event in events[:limit]],
         "rule_signals": [signal_sample(signal) for signal in rule_signals[:limit]],
-        "model_candidates": [signal_sample(signal) for signal in model_signals[:limit]],
+        "model_candidates": [signal_sample(signal) for signal in model_candidates[:limit]],
     }
 
 
@@ -239,7 +241,8 @@ def signal_sample(signal: dict[str, Any]) -> dict[str, Any]:
         "id": signal.get("id"),
         "name": signal.get("name"),
         "stage": signal.get("stage"),
-        "detector_kind": signal.get("detectorKind"),
+        "detectorKind": signal.get("detectorKind"),
+        "where": signal.get("where"),
         "score": signal.get("localRarity"),
         "event_refs": signal.get("eventRefs", [])[:8],
         "entities": signal.get("entities", [])[:8],
