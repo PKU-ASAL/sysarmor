@@ -6,43 +6,44 @@ import (
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 )
 
-func TestFromSignalsBuildsSubjectEdges(t *testing.T) {
-	value := FromSignals([]domaintelemetry.Signal{{Name: "reverse_shell_pattern", Entities: []domaintelemetry.Entity{
-		{Kind: "process", Key: "p-bash", Role: "subject"},
-		{Kind: "socket", Key: "10.66.0.99:443", Role: "object"},
-	}}}).EvidenceSubgraph()
-	if !hasNode(value.Nodes, "process:p-bash") || !hasNode(value.Nodes, "socket:10.66.0.99:443") {
-		t.Fatalf("nodes = %+v", value.Nodes)
+func TestFromEventsRecoversCausalPathAndEventRefs(t *testing.T) {
+	events := causalEvents()
+	value := FromEvents(events).ConnectingEvidence([]domaintelemetry.Signal{
+		{Entities: []domaintelemetry.Entity{{Kind: "process", Key: "p-shell", Role: "subject"}}},
+		{Entities: []domaintelemetry.Entity{{Kind: "file", Key: "/dev/shm/x.sh", Role: "object"}}},
+		{Entities: []domaintelemetry.Entity{{Kind: "socket", Key: "10.66.0.99:443", Role: "object"}}},
+	})
+	for _, id := range []string{"process:p-shell", "process:p-curl", "file:/dev/shm/x.sh", "process:p-bash", "socket:10.66.0.99:443"} {
+		if !hasNode(value.Nodes, id) {
+			t.Fatalf("nodes = %+v, missing %q", value.Nodes, id)
+		}
 	}
-	if !hasEdge(value.Edges, "process:p-bash", "socket:10.66.0.99:443", "connect") {
+	if len(value.Edges) != 4 {
 		t.Fatalf("edges = %+v", value.Edges)
 	}
-}
-
-func TestShortestPathReturnsOnlyConnectingPath(t *testing.T) {
-	value := FromSignals([]domaintelemetry.Signal{
-		{Name: "payload_dropped", Entities: entities("p-curl", "file", "/dev/shm/x.sh")},
-		{Name: "reverse_shell_pattern", Entities: entities("p-curl", "socket", "10.66.0.99:443")},
-	}).ShortestPath("file:/dev/shm/x.sh", "socket:10.66.0.99:443")
-	if len(value.Nodes) != 3 || len(value.Edges) != 2 {
-		t.Fatalf("subgraph = %+v", value)
+	for _, eventID := range []string{"exec-curl", "write-payload", "exec-bash", "connect-c2"} {
+		if !hasEventRef(value.Edges, eventID) {
+			t.Fatalf("edges = %+v, missing event ref %q", value.Edges, eventID)
+		}
 	}
 }
 
-func TestKHopReturnsNeighborhood(t *testing.T) {
-	value := FromSignals([]domaintelemetry.Signal{
-		{Name: "payload_dropped", Entities: entities("p-curl", "file", "/dev/shm/x.sh")},
-		{Name: "reverse_shell_pattern", Entities: entities("p-curl", "socket", "10.66.0.99:443")},
-	}).KHop("process:p-curl", 1)
-	if len(value.Nodes) != 3 || len(value.Edges) != 2 {
-		t.Fatalf("subgraph = %+v", value)
+func TestFromEventsMarksUnavailableParentAsGap(t *testing.T) {
+	value := FromEvents([]domaintelemetry.Event{{
+		ID: "exec-bash", Behavior: "process.exec", IdentityStatus: "unavailable",
+		SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"},
+	}}).ConnectingEvidence([]domaintelemetry.Signal{{Entities: []domaintelemetry.Entity{{Kind: "process", Key: "p-bash", Role: "subject"}}}})
+	if !hasNode(value.Nodes, "gap:parent:exec-bash") || !hasIncompleteEdge(value.Edges, "gap:parent:exec-bash", "process:p-bash") {
+		t.Fatalf("gap evidence = %+v", value)
 	}
 }
 
-func entities(processKey, objectKind, objectKey string) []domaintelemetry.Entity {
-	return []domaintelemetry.Entity{
-		{Kind: "process", Key: processKey, Role: "subject"},
-		{Kind: objectKind, Key: objectKey, Role: "object"},
+func causalEvents() []domaintelemetry.Event {
+	return []domaintelemetry.Event{
+		{ID: "exec-curl", Behavior: "process.exec", ParentStableID: "p-shell", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-curl"}},
+		{ID: "write-payload", Behavior: "file.write", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-curl"}, Object: &domaintelemetry.ObjectRef{Kind: "file", FilePath: "/dev/shm/x.sh"}},
+		{ID: "exec-bash", Behavior: "process.exec", ParentStableID: "p-curl", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"}},
+		{ID: "connect-c2", Behavior: "network.connect", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"}, Object: &domaintelemetry.ObjectRef{Kind: "socket", SocketAddress: "10.66.0.99:443"}},
 	}
 }
 
@@ -55,9 +56,20 @@ func hasNode(nodes []domaintelemetry.GraphNode, id string) bool {
 	return false
 }
 
-func hasEdge(edges []domaintelemetry.GraphEdge, from, to, kind string) bool {
+func hasEventRef(edges []domaintelemetry.GraphEdge, eventID string) bool {
 	for _, edge := range edges {
-		if edge.From == from && edge.To == to && edge.Kind == kind {
+		for _, ref := range edge.EventRefs {
+			if ref == eventID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasIncompleteEdge(edges []domaintelemetry.GraphEdge, from, to string) bool {
+	for _, edge := range edges {
+		if edge.From == from && edge.To == to && edge.Incomplete {
 			return true
 		}
 	}

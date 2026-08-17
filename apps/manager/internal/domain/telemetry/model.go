@@ -156,10 +156,12 @@ type GraphNode struct {
 }
 
 type GraphEdge struct {
-	ID   string
-	From string
-	To   string
-	Kind string
+	ID         string
+	From       string
+	To         string
+	Kind       string
+	EventRefs  []string
+	Incomplete bool
 }
 
 type EvidenceSubgraph struct {

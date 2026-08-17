@@ -18,6 +18,8 @@ message GraphEdge {
   string from = 2;
   string to = 3;
   string kind = 4;
+  repeated string event_refs = 5;
+  bool incomplete = 6;
 }
 
 message EvidenceSubgraph {

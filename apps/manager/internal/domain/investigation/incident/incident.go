@@ -16,7 +16,7 @@ func NewBuilder() *Builder {
 	return &Builder{Scorer: rarity.CountScorer{}}
 }
 
-func (builder *Builder) Build(signals []domaintelemetry.Signal, decision convergence.Decision) domaintelemetry.Incident {
+func (builder *Builder) Build(events []domaintelemetry.Event, signals []domaintelemetry.Signal, decision convergence.Decision) domaintelemetry.Incident {
 	scorer := builder.Scorer
 	if scorer == nil {
 		scorer = rarity.CountScorer{}
@@ -29,14 +29,14 @@ func (builder *Builder) Build(signals []domaintelemetry.Signal, decision converg
 		Severity:            80,
 		LineageIDs:          lineageIDs(contributing),
 		ConclusionEntities:  conclusionEntities(contributing),
-		Evidence:            evidenceSubgraph(contributing),
+		Evidence:            evidenceSubgraph(events, contributing),
 		Converge:            &domaintelemetry.ConvergeTrace{Method: decision.Method, Score: scorer.Score(contributing), Controls: append([]string(nil), decision.Controls...)},
 		ContributingSignals: contributing,
 	}
 }
 
-func evidenceSubgraph(signals []domaintelemetry.Signal) *domaintelemetry.EvidenceSubgraph {
-	value := evidence.FromSignals(signals)
+func evidenceSubgraph(events []domaintelemetry.Event, signals []domaintelemetry.Signal) *domaintelemetry.EvidenceSubgraph {
+	value := evidence.FromEvents(events, signals)
 	return &value
 }
 

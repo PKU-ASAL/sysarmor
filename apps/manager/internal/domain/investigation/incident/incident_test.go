@@ -11,7 +11,7 @@ import (
 
 func TestBuilderCreatesIncidentWithEvidence(t *testing.T) {
 	builder := NewBuilder()
-	value := builder.Build(contributingSignals("a", "b"), convergence.Decision{
+	value := builder.Build(incidentEvents(), contributingSignals("a", "b"), convergence.Decision{
 		Incident: true, Method: "rarity+causal-topk", Controls: []string{"conclusion_reverse_shell"},
 	})
 	if value.Converge.Score != 80 || value.Converge.Method != "rarity+causal-topk" {
@@ -25,8 +25,8 @@ func TestBuilderCreatesIncidentWithEvidence(t *testing.T) {
 func TestStableIncidentIDDistinguishesNonFiniteRarity(t *testing.T) {
 	builder := NewBuilder()
 	decision := convergence.Decision{Method: "rarity+causal-topk"}
-	nan := builder.Build([]domaintelemetry.Signal{{ID: "a", LocalRarity: math.Float32frombits(0x7fc00001)}}, decision)
-	infinity := builder.Build([]domaintelemetry.Signal{{ID: "a", LocalRarity: float32(math.Inf(1))}}, decision)
+	nan := builder.Build(nil, []domaintelemetry.Signal{{ID: "a", LocalRarity: math.Float32frombits(0x7fc00001)}}, decision)
+	infinity := builder.Build(nil, []domaintelemetry.Signal{{ID: "a", LocalRarity: float32(math.Inf(1))}}, decision)
 	if nan.ID == "" || infinity.ID == "" || nan.ID == infinity.ID {
 		t.Fatalf("nan ID = %q, infinity ID = %q", nan.ID, infinity.ID)
 	}
@@ -36,8 +36,8 @@ func TestStableIncidentIDIgnoresInputOrder(t *testing.T) {
 	builder := NewBuilder()
 	decision := convergence.Decision{Incident: true, Method: "rarity+causal-topk"}
 	signals := contributingSignals("a", "b")
-	first := builder.Build(signals, decision)
-	second := builder.Build([]domaintelemetry.Signal{signals[1], signals[0]}, decision)
+	first := builder.Build(nil, signals, decision)
+	second := builder.Build(nil, []domaintelemetry.Signal{signals[1], signals[0]}, decision)
 	if first.ID != second.ID {
 		t.Fatalf("IDs differ: %q != %q", first.ID, second.ID)
 	}
@@ -47,11 +47,18 @@ func TestBuilderUsesInjectedRarityScorer(t *testing.T) {
 	builder := &Builder{Scorer: rarity.WorkloadBaselineScorer{Baseline: rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{
 		"container:checkout": {"reverse_shell_pattern": 3},
 	}}}}
-	value := builder.Build([]domaintelemetry.Signal{{Name: "reverse_shell_pattern", BaseRisk: 80, GlobalRarity: 1,
+	value := builder.Build(nil, []domaintelemetry.Signal{{Name: "reverse_shell_pattern", BaseRisk: 80, GlobalRarity: 1,
 		Entities: []domaintelemetry.Entity{{Kind: "container", Key: "checkout"}}}}, convergence.Decision{})
 	if value.Converge.Score != 20 {
 		t.Fatalf("score = %f, want 20", value.Converge.Score)
 	}
+}
+
+func incidentEvents() []domaintelemetry.Event {
+	return []domaintelemetry.Event{{
+		ID: "connect", Behavior: "network.connect", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"},
+		Object: &domaintelemetry.ObjectRef{Kind: "socket", SocketAddress: "10.66.0.99:443"},
+	}}
 }
 
 func contributingSignals(firstID, secondID string) []domaintelemetry.Signal {

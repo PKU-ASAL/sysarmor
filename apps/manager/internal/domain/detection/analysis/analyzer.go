@@ -41,7 +41,7 @@ func (analyzer *Analyzer) Analyze(events []domaintelemetry.Event, signals []doma
 	allSignals := append(append([]domaintelemetry.Signal(nil), signals...), result.CloudSignals...)
 	decision := convergence.Decide(view.ByName, result.CloudSignals, policy)
 	if decision.Incident {
-		result.Incidents = append(result.Incidents, analyzer.incidents.Build(allSignals, decision))
+		result.Incidents = append(result.Incidents, analyzer.incidents.Build(events, allSignals, decision))
 	}
 	return result
 }

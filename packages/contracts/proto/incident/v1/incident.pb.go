@@ -96,6 +96,8 @@ type GraphEdge struct {
 	From          string                 `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
 	To            string                 `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
 	Kind          string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	EventRefs     []string               `protobuf:"bytes,5,rep,name=event_refs,json=eventRefs,proto3" json:"event_refs,omitempty"`
+	Incomplete    bool                   `protobuf:"varint,6,opt,name=incomplete,proto3" json:"incomplete,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -156,6 +158,20 @@ func (x *GraphEdge) GetKind() string {
 		return x.Kind
 	}
 	return ""
+}
+
+func (x *GraphEdge) GetEventRefs() []string {
+	if x != nil {
+		return x.EventRefs
+	}
+	return nil
+}
+
+func (x *GraphEdge) GetIncomplete() bool {
+	if x != nil {
+		return x.Incomplete
+	}
+	return false
 }
 
 type EvidenceSubgraph struct {
@@ -451,12 +467,17 @@ const file_packages_contracts_proto_incident_v1_incident_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05label\x18\x03 \x01(\tR\x05label\x129\n" +
-	"\bentities\x18\x04 \x03(\v2\x1d.sysarmor.signal.v1.EntityRefR\bentities\"S\n" +
+	"\bentities\x18\x04 \x03(\v2\x1d.sysarmor.signal.v1.EntityRefR\bentities\"\x92\x01\n" +
 	"\tGraphEdge\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x03 \x01(\tR\x02to\x12\x12\n" +
-	"\x04kind\x18\x04 \x01(\tR\x04kind\"\x80\x01\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x1d\n" +
+	"\n" +
+	"event_refs\x18\x05 \x03(\tR\teventRefs\x12\x1e\n" +
+	"\n" +
+	"incomplete\x18\x06 \x01(\bR\n" +
+	"incomplete\"\x80\x01\n" +
 	"\x10EvidenceSubgraph\x125\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x1f.sysarmor.incident.v1.GraphNodeR\x05nodes\x125\n" +
 	"\x05edges\x18\x02 \x03(\v2\x1f.sysarmor.incident.v1.GraphEdgeR\x05edges\"\x8f\x01\n" +

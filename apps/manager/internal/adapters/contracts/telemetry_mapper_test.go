@@ -54,7 +54,7 @@ func TestIncidentRoundTrip(t *testing.T) {
 		CorrelationKey: "corr-a", AnalysisVersion: "v1", FirstObservedAt: "first", LastObservedAt: "last",
 		Evidence: &incidentv1.EvidenceSubgraph{
 			Nodes: []*incidentv1.GraphNode{{Id: "process:p-a", Kind: "process", Label: "p-a", Entities: []*signalv1.EntityRef{{Kind: "process", Key: "process:p-a"}}}},
-			Edges: []*incidentv1.GraphEdge{{Id: "exec:a->b", From: "a", To: "b", Kind: "exec"}},
+			Edges: []*incidentv1.GraphEdge{{Id: "exec:a->b", From: "a", To: "b", Kind: "exec", EventRefs: []string{"event-a"}, Incomplete: true}},
 		},
 		Converge:            &incidentv1.ConvergeTrace{Method: "rarity", SeedIds: []string{"a"}, PathIds: []string{"b"}, Score: 80, Controls: []string{"conclusion"}},
 		ContributingSignals: []*signalv1.Signal{modelSignal(), fullSignal()},

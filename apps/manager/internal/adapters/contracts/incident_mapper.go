@@ -70,7 +70,7 @@ func subgraphToDomain(value *incidentv1.EvidenceSubgraph) (*domaintelemetry.Evid
 		if edge == nil {
 			return nil, fmt.Errorf("graph edge %d is required", index)
 		}
-		result.Edges = append(result.Edges, domaintelemetry.GraphEdge{ID: edge.GetId(), From: edge.GetFrom(), To: edge.GetTo(), Kind: edge.GetKind()})
+		result.Edges = append(result.Edges, domaintelemetry.GraphEdge{ID: edge.GetId(), From: edge.GetFrom(), To: edge.GetTo(), Kind: edge.GetKind(), EventRefs: append([]string(nil), edge.GetEventRefs()...), Incomplete: edge.GetIncomplete()})
 	}
 	return result, nil
 }
@@ -84,7 +84,7 @@ func subgraphFromDomain(value *domaintelemetry.EvidenceSubgraph) *incidentv1.Evi
 		result.Nodes = append(result.Nodes, &incidentv1.GraphNode{Id: node.ID, Kind: node.Kind, Label: node.Label, Entities: entitiesFromDomain(node.Entities)})
 	}
 	for _, edge := range value.Edges {
-		result.Edges = append(result.Edges, &incidentv1.GraphEdge{Id: edge.ID, From: edge.From, To: edge.To, Kind: edge.Kind})
+		result.Edges = append(result.Edges, &incidentv1.GraphEdge{Id: edge.ID, From: edge.From, To: edge.To, Kind: edge.Kind, EventRefs: append([]string(nil), edge.EventRefs...), Incomplete: edge.Incomplete})
 	}
 	return result
 }

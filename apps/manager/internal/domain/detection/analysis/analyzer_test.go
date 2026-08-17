@@ -42,6 +42,27 @@ func TestAnalyzeHonorsCrossLineagePolicy(t *testing.T) {
 	}
 }
 
+func TestAnalyzeEvidenceRecoversIntermediateEventNodes(t *testing.T) {
+	events := []domaintelemetry.Event{
+		{ID: "exec-curl", Behavior: "process.exec", ParentStableID: "p-shell", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-curl"}},
+		{ID: "write", Behavior: "file.write", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-curl"}, Object: &domaintelemetry.ObjectRef{Kind: "file", FilePath: "/dev/shm/x.sh"}},
+		{ID: "exec-bash", Behavior: "process.exec", ParentStableID: "p-curl", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"}},
+		{ID: "connect", Behavior: "network.connect", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"}, Object: &domaintelemetry.ObjectRef{Kind: "socket", SocketAddress: "10.66.0.99:443"}},
+	}
+	signals := []domaintelemetry.Signal{
+		endpoint("payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, process("p-shell"), file("/dev/shm/x.sh")),
+		endpoint("suspicious_exec_connect", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.66.0.99:443")),
+	}
+	result := NewAnalyzer().Analyze(events, signals, nil)
+	if len(result.Incidents) != 1 {
+		t.Fatalf("analysis = %+v", result)
+	}
+	evidence := result.Incidents[0].Evidence
+	if evidence == nil || !containsGraphNode(evidence.Nodes, "process:p-bash") || !containsEventRef(evidence.Edges, "exec-bash") {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
 func TestAnalyzeUsesAdditiveThreshold(t *testing.T) {
 	policy := &detection.Policy{Converge: &detection.ConvergePolicy{Mode: "additive_threshold", AdditiveRiskThreshold: 100}}
 	result := NewAnalyzer().Analyze(nil, []domaintelemetry.Signal{
@@ -111,6 +132,26 @@ func hasCloud(signals []domaintelemetry.Signal, name string) bool {
 	for _, signal := range signals {
 		if signal.Name == name {
 			return true
+		}
+	}
+	return false
+}
+
+func containsGraphNode(nodes []domaintelemetry.GraphNode, id string) bool {
+	for _, node := range nodes {
+		if node.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEventRef(edges []domaintelemetry.GraphEdge, ref string) bool {
+	for _, edge := range edges {
+		for _, eventRef := range edge.EventRefs {
+			if eventRef == ref {
+				return true
+			}
 		}
 	}
 	return false
