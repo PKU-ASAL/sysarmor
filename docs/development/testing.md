@@ -34,7 +34,7 @@ make test-doctor
 | 无法读取 Vagrant 插件 | 确认 `VAGRANT_HOME` 可写，取消指向空目录的临时配置 |
 | 缺少 `vagrant-libvirt` | `vagrant plugin install vagrant-libvirt` |
 | 无法连接 libvirt | 启动 libvirt 服务，确认当前用户属于 `libvirt` 组 |
-| 找不到 Tetragon 包 | 设置 `SYSARMOR_TETRAGON_ARCHIVE`，或放到 `.cache/`、`.scratchpad/.cache/` |
+| 找不到 Tetragon 包 | 设置 `SYSARMOR_TETRAGON_ARCHIVE`，或放到仓库 `.cache/` |
 
 默认 libvirt URI 是 `qemu:///system`；需要其他连接时显式设置
 `LIBVIRT_DEFAULT_URI`。不要通过临时清空 `VAGRANT_HOME` 绕过插件或权限问题，这会让

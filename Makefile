@@ -17,7 +17,7 @@ RELEASE_CHANNELS ?= dev-agent linux-systemd-dev linux-container-dev
 RELEASE_AGENT_BIN ?= $(BIN_DIR)/sysarmor-agent
 RELEASE_SIGNING_KEY ?= $(PKI_RUNTIME_DIR)/artifact-signing-key.pem
 RELEASE_PUBLIC_KEY ?= $(PKI_RUNTIME_DIR)/artifact-public.pem
-TETRAGON_ARCHIVE_CANDIDATE := $(firstword $(wildcard .cache/tetragon-v1.7.0-amd64.tar.gz .scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz))
+TETRAGON_ARCHIVE_CANDIDATE := $(wildcard .cache/tetragon-v1.7.0-amd64.tar.gz)
 TETRAGON_ARCHIVE ?= $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(if $(TETRAGON_ARCHIVE_CANDIDATE),$(abspath $(TETRAGON_ARCHIVE_CANDIDATE))))
 # Preserve release inputs as data instead of recursively expanding Make syntax.
 override VERSION := $(value VERSION)

@@ -31,9 +31,8 @@ trap cleanup EXIT
 
 find_tetragon_archive() {
   if [[ -n "$TETRAGON_ARCHIVE" && -f "$TETRAGON_ARCHIVE" ]]; then return; fi
-  for candidate in "$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz" "$REPO/.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz"; do
-    if [[ -f "$candidate" ]]; then TETRAGON_ARCHIVE="$candidate"; return; fi
-  done
+  local candidate="$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz"
+  if [[ -f "$candidate" ]]; then TETRAGON_ARCHIVE="$candidate"; return; fi
   echo "[topology-$CASE][ERROR] SYSARMOR_TETRAGON_ARCHIVE is required" >&2
   exit 1
 }

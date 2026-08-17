@@ -17,7 +17,7 @@ SYSARMOR_BENCH_WORKLOAD ?= business-normal
 SYSARMOR_BENCH_SCENARIO ?=
 SYSARMOR_BENCH_POLICIES ?=
 EVALUATION_SCOPE ?= local
-TETRAGON_ARCHIVE ?= $(abspath $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(firstword $(wildcard ../.cache/tetragon-v1.7.0-amd64.tar.gz ../.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz))))
+TETRAGON_ARCHIVE ?= $(abspath $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(wildcard ../.cache/tetragon-v1.7.0-amd64.tar.gz)))
 export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 
 .DEFAULT_GOAL := help
@@ -72,7 +72,7 @@ doctor:
 	else \
 		echo "[doctor][ERROR] 未找到 Tetragon archive" >&2; \
 		echo "  修复: 设置 SYSARMOR_TETRAGON_ARCHIVE=/path/to/tetragon-v1.7.0-amd64.tar.gz" >&2; \
-		echo "  或放置到 .cache/ 或 .scratchpad/.cache/ 目录" >&2; \
+		echo "  或放置到 .cache/ 目录" >&2; \
 		failed=1; \
 	fi; \
 	if [ "$$failed" -ne 0 ]; then exit 1; fi; \

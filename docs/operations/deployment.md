@@ -16,7 +16,7 @@
 
 - Linux；安装 Agent 还要求 systemd 和 root 权限。
 - Go、Docker Compose、`make`、OpenSSL 和 `curl`。
-- 构建 release 或运行真实测试时，需要与主机架构匹配的 Tetragon 归档；根 Makefile 默认查找 `.cache/` 或 `.scratchpad/.cache/` 下的 `tetragon-v1.7.0-amd64.tar.gz`。
+- 构建 release 或运行真实测试时，需要与主机架构匹配的 Tetragon 归档；可设置 `SYSARMOR_TETRAGON_ARCHIVE`，或将 `tetragon-v1.7.0-amd64.tar.gz` 放入仓库 `.cache/`。
 
 真实测试环境使用独立的完整预检：
 
