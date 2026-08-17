@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 )
 
@@ -27,17 +28,20 @@ type EventNormalizer struct {
 	identity atomic.Pointer[EventIdentity]
 	scope    domainevent.RuntimeScope
 	labels   map[string]string
-	table    *domainevent.ProcessTable
+	profiles *domainprocess.Profiles
 	sequence atomic.Uint64
 }
 
-func NewEventNormalizer(agentID, hostID string, options EventNormalizerOptions) *EventNormalizer {
+func NewEventNormalizer(agentID, hostID string, options EventNormalizerOptions, profiles *domainprocess.Profiles) *EventNormalizer {
+	if profiles == nil {
+		panic("process profiles dependency is required")
+	}
 	if options.ScopeType == "" {
 		options.ScopeType = "host"
 	}
 	normalizer := &EventNormalizer{
 		scope:  domainevent.RuntimeScope{Type: options.ScopeType, Selector: options.ScopeSelector},
-		labels: cleanLabels(options.Labels), table: domainevent.NewProcessTable(),
+		labels: cleanLabels(options.Labels), profiles: profiles,
 	}
 	normalizer.sequence.Store(options.InitialSequence)
 	normalizer.SetIdentity(agentID, hostID, options.TenantID)
@@ -52,7 +56,7 @@ func (normalizer *EventNormalizer) NormalizeDomain(raw *sensorv1.SensorEvent) do
 	identity := normalizer.identity.Load()
 	sequence := normalizer.sequence.Add(1)
 	process, parentID, lineageID := normalizer.process(raw, identity.HostID)
-	return domainevent.Event{
+	event := domainevent.Event{
 		ID: domainevent.EventID(identity.AgentID, sequence), Sequence: sequence,
 		AgentID: identity.AgentID, HostID: identity.HostID, TenantID: identity.TenantID,
 		MonoNS: raw.GetMonoNs(), OccurredAtNS: raw.GetMonoNs(), Behavior: domainevent.NormalizeBehavior(raw.GetBehavior()),
@@ -60,6 +64,8 @@ func (normalizer *EventNormalizer) NormalizeDomain(raw *sensorv1.SensorEvent) do
 		RawRef: raw.GetRawRef(), Scope: normalizer.scope, ContainerID: raw.GetContainerId(), Cgroup: raw.GetProc().GetCgroup(),
 		Labels: cloneLabels(normalizer.labels),
 	}
+	normalizer.profiles.Observe(event)
+	return event
 }
 
 func (normalizer *EventNormalizer) process(raw *sensorv1.SensorEvent, hostID string) (domainevent.Process, string, string) {
@@ -68,30 +74,15 @@ func (normalizer *EventNormalizer) process(raw *sensorv1.SensorEvent, hostID str
 	if value.GetSensorExecId() != "" {
 		stableID = domainevent.SensorProcessID(hostID, value.GetSensorExecId())
 	}
-	parent, found := normalizer.parent(value)
-	lineageID, parentID := stableID, ""
-	if found {
-		parentID = parent.StableID
-		if parent.LineageID != "" {
-			lineageID = parent.LineageID
-		}
-	}
 	process := domainevent.Process{
 		StableID: stableID, SensorExecID: value.GetSensorExecId(), PID: value.GetPid(), PPID: value.GetPpid(),
 		Binary: cleanBinary(value.GetBinary()), Argv: append([]string(nil), value.GetArgv()...), UID: value.GetUid(),
-		StartTimeNS: value.GetStartTimeNs(), ArgvBoundariesTrusted: value.GetArgvBoundariesTrusted(), LineageID: lineageID,
+		StartTimeNS: value.GetStartTimeNs(), ArgvBoundariesTrusted: value.GetArgvBoundariesTrusted(),
 	}
-	normalizer.table.Upsert(process)
-	return process, parentID, lineageID
-}
-
-func (normalizer *EventNormalizer) parent(process *sensorv1.RawProcess) (domainevent.Process, bool) {
-	if process.GetSensorParentExecId() != "" {
-		if parent, ok := normalizer.table.BySensorExecID(process.GetSensorParentExecId()); ok {
-			return parent, true
-		}
-	}
-	return normalizer.table.ByPID(process.GetPpid())
+	resolved := normalizer.profiles.Resolve(domainprocess.IdentityObservation{
+		HostID: hostID, ParentSensorExecID: value.GetSensorParentExecId(), Process: process,
+	})
+	return resolved.Process, resolved.ParentStableID, resolved.Process.LineageID
 }
 
 func eventObject(raw *sensorv1.SensorEvent) domainevent.Object {

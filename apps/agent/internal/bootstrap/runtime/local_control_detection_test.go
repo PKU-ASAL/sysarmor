@@ -67,7 +67,7 @@ func TestLocalControlContentApplyEnablesCEPRulePack(t *testing.T) {
 		t.Fatalf("policy ack = %+v", policyAck)
 	}
 
-	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host"})
+	norm := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host"})
 	for _, ev := range []contract.EventEnvelope{
 		cepSensorEventEnvelope("file.write", "/usr/bin/curl", "/dev/shm/cep-x", ""),
 		cepSensorEventEnvelope("file.chmod", "/usr/bin/chmod", "/dev/shm/cep-x", ""),

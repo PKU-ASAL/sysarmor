@@ -172,3 +172,26 @@ func TestProfilesCapacityPrefersExitedProfile(t *testing.T) {
 		t.Fatalf("capacity metrics = %+v", metrics)
 	}
 }
+
+func TestProfilesObserveRunsLifecycleSweepAtConfiguredInterval(t *testing.T) {
+	profiles, err := NewProfiles(Limits{
+		MaxProfiles: 4, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1,
+		ExitGrace: 5 * time.Nanosecond, RetainedTTL: time.Minute, SweepInterval: 10 * time.Nanosecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := profiles.Resolve(IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 1, SensorExecID: "exec-1"}})
+	second := profiles.Resolve(IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 2, SensorExecID: "exec-2"}})
+	profiles.Observe(domainevent.Event{
+		ID: "exit", OccurredAtNS: 10, Behavior: domainevent.BehaviorProcessExit, SubjectPresent: true, Subject: first.Process,
+	})
+	profiles.Observe(domainevent.Event{
+		ID: "tick", OccurredAtNS: 20, Behavior: domainevent.BehaviorProcessExec, SubjectPresent: true, Subject: second.Process,
+	})
+
+	snapshot, ok := profiles.Snapshot(first.Process.StableID)
+	if !ok || snapshot.State != StateRetained {
+		t.Fatalf("automatic sweep snapshot = %+v ok=%v", snapshot, ok)
+	}
+}

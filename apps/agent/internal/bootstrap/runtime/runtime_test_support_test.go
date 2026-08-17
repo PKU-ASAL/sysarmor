@@ -9,11 +9,25 @@ import (
 	"testing"
 	"time"
 
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
+
+func newTestEventNormalizer(t testing.TB, runner *Coordinator, agentID, hostID string, options eventadapter.EventNormalizerOptions) *eventadapter.EventNormalizer {
+	t.Helper()
+	if runner.processProfiles == nil {
+		profiles, err := domainprocess.NewProfiles(processProfileLimits(runner.Config))
+		if err != nil {
+			t.Fatal(err)
+		}
+		runner.processProfiles = profiles
+	}
+	return eventadapter.NewEventNormalizer(agentID, hostID, options, runner.processProfiles)
+}
 
 type safeBuffer struct {
 	mu  sync.Mutex

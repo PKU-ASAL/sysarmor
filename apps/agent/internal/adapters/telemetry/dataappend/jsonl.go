@@ -29,7 +29,11 @@ func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, polic
 	}
 	labels = replayLabels(labels, policyID, policyVersion)
 	batch := newBatch(StreamOptions{AgentID: agentID, HostID: hostID, TenantID: "default", PolicyID: policyID, PolicyVersion: policyVersion, Labels: labels})
-	norm := eventadapter.NewEventNormalizer(agentID, hostID, eventadapter.EventNormalizerOptions{})
+	profiles, err := newReplayProfiles()
+	if err != nil {
+		return nil, err
+	}
+	norm := eventadapter.NewEventNormalizer(agentID, hostID, eventadapter.EventNormalizerOptions{}, profiles)
 	detector, _ := detection.New(policymodel.DefaultDetectionPolicy())
 	scanner := bufio.NewScanner(r)
 	line := 0

@@ -20,7 +20,7 @@ import (
 func TestEndpointRuntimeIncludesLearningCandidateInDataBatch(t *testing.T) {
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}}}
 	runner.wireComponents()
-	normalizer := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "tenant-a", ScopeType: "host"})
+	normalizer := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "tenant-a", ScopeType: "host"})
 	learning := &learningDetectorStub{signal: &domaindetection.Signal{
 		ID: "model-signal-a", Name: "model_anomaly", Where: domaindetection.SignalWhereEndpoint,
 		Stage: domaindetection.SignalStageCandidate, DetectorKind: domaindetection.DetectorKindModel,
@@ -76,7 +76,7 @@ func TestEndpointRuntimeReplaysCollectedModelBundle(t *testing.T) {
 	}
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}}}
 	runner.wireComponents()
-	normalizer := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "tenant-a", ScopeType: "host"})
+	normalizer := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "tenant-a", ScopeType: "host"})
 	runtime := NewEndpointRuntime(&runner.policyState, normalizer, telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0), learning)
 
 	batch, err := runtime.ProcessEvent(contract.EventEnvelope{SensorEvent: &sensorv1.SensorEvent{

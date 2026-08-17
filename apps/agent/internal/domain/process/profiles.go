@@ -10,7 +10,7 @@ import (
 
 type Limits struct {
 	MaxProfiles, MaxFiles, MaxNetworks, MaxEventRefs int
-	ExitGrace, RetainedTTL                           time.Duration
+	ExitGrace, RetainedTTL, SweepInterval            time.Duration
 }
 
 type State string
@@ -59,12 +59,13 @@ type Metrics struct {
 }
 
 type Profiles struct {
-	mu       sync.RWMutex
-	limits   Limits
-	profiles map[string]*Profile
-	byPID    map[uint32]string
-	bySensor map[string]string
-	metrics  Metrics
+	mu          sync.RWMutex
+	limits      Limits
+	profiles    map[string]*Profile
+	byPID       map[uint32]string
+	bySensor    map[string]string
+	metrics     Metrics
+	nextSweepNS uint64
 }
 
 func NewProfiles(limits Limits) (*Profiles, error) {
@@ -116,6 +117,8 @@ func (profiles *Profiles) Resolve(observation IdentityObservation) ResolvedIdent
 func (profiles *Profiles) Observe(event domainevent.Event) Snapshot {
 	profiles.mu.Lock()
 	defer profiles.mu.Unlock()
+	nowNS := eventTimeNS(event)
+	profiles.sweepIfDue(nowNS)
 	profile := profiles.profiles[event.Subject.StableID]
 	if profile == nil {
 		return Snapshot{}
@@ -136,7 +139,7 @@ func (profiles *Profiles) Observe(event domainevent.Event) Snapshot {
 	if evicted {
 		profiles.metrics.EventRefEvictions++
 	}
-	profile.lastSeenNS = eventTimeNS(event)
+	profile.lastSeenNS = nowNS
 	if event.Behavior == domainevent.BehaviorProcessExit {
 		profile.state, profile.exitedAtNS = StateExited, profile.lastSeenNS
 	}
@@ -146,6 +149,10 @@ func (profiles *Profiles) Observe(event domainevent.Event) Snapshot {
 func (profiles *Profiles) Sweep(nowNS uint64) {
 	profiles.mu.Lock()
 	defer profiles.mu.Unlock()
+	profiles.sweep(nowNS)
+}
+
+func (profiles *Profiles) sweep(nowNS uint64) {
 	for stableID, profile := range profiles.profiles {
 		switch profile.state {
 		case StateExited:
@@ -161,6 +168,22 @@ func (profiles *Profiles) Sweep(nowNS uint64) {
 			}
 		}
 	}
+}
+
+func (profiles *Profiles) sweepIfDue(nowNS uint64) {
+	interval := profiles.limits.SweepInterval
+	if nowNS == 0 || interval <= 0 {
+		return
+	}
+	if profiles.nextSweepNS == 0 {
+		profiles.nextSweepNS = nowNS + uint64(interval)
+		return
+	}
+	if nowNS < profiles.nextSweepNS {
+		return
+	}
+	profiles.sweep(nowNS)
+	profiles.nextSweepNS = nowNS + uint64(interval)
 }
 
 func (profiles *Profiles) Metrics() Metrics {

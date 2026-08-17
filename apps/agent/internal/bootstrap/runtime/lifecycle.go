@@ -177,7 +177,7 @@ func (r *Coordinator) startEventNormalizer(startup runtimeStartup) *eventadapter
 	norm := eventadapter.NewEventNormalizer(identity.AgentID, identity.HostID, eventadapter.EventNormalizerOptions{
 		TenantID: identity.TenantID, ScopeType: startup.scopeType, ScopeSelector: startup.scopeSelector,
 		Labels: r.telemetryState.runtimeLabels(startup.scopeType, startup.scopeSelector, startup.capability.Backend), InitialSequence: r.telemetryState.eventSeq,
-	})
+	}, r.processProfiles)
 	r.managementState.setNormalizer(norm)
 	return norm
 }

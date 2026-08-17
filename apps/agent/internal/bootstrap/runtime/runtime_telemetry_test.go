@@ -277,7 +277,7 @@ func TestRuntimeRefreshesEndpointPolicy(t *testing.T) {
 	runner.wireComponents()
 	installTestDetection(t, runner)
 	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
-	norm := eventadapter.NewEventNormalizer(cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})
+	norm := newTestEventNormalizer(t, runner, cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})
 	first := appendEndpointEventForTest(t, runner, nil, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 	updated := runner.policyState.activePolicy()
 	updated.PolicyID = "no-payload-after-refresh"

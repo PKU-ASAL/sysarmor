@@ -16,6 +16,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/ringbuffer"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
@@ -68,7 +69,11 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 	}
 	opts.Labels = replayLabels(opts.Labels, opts.PolicyID, opts.PolicyVersion)
 
-	norm := eventadapter.NewEventNormalizer(opts.AgentID, opts.HostID, eventadapter.EventNormalizerOptions{})
+	profiles, err := newReplayProfiles()
+	if err != nil {
+		return StreamStats{}, err
+	}
+	norm := eventadapter.NewEventNormalizer(opts.AgentID, opts.HostID, eventadapter.EventNormalizerOptions{}, profiles)
 	detector, _ := detectionadapter.New(policymodel.DefaultDetectionPolicy())
 	lines := scanLines(r)
 	ticker := time.NewTicker(opts.FlushInterval)
@@ -129,6 +134,13 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 			}
 		}
 	}
+}
+
+func newReplayProfiles() (*domainprocess.Profiles, error) {
+	return domainprocess.NewProfiles(domainprocess.Limits{
+		MaxProfiles: 4096, MaxFiles: 32, MaxNetworks: 16, MaxEventRefs: 16,
+		ExitGrace: 30 * time.Second, RetainedTTL: 5 * time.Minute, SweepInterval: 30 * time.Second,
+	})
 }
 
 type scannedLine struct {

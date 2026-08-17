@@ -156,7 +156,7 @@ func TestLocalControlContentApplyRebuildsDetection(t *testing.T) {
 		t.Fatalf("content record = %+v ok=%t", record, ok)
 	}
 
-	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{})
+	norm := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{})
 	batch := appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("network.connect", 100, "/bin/bash", "", "10.66.0.99:9443"))
 	if len(batch.GetSignals()) == 0 {
 		t.Fatal("signals after content update = none")
@@ -236,7 +236,7 @@ func TestLocalControlContentRebuildFailureKeepsPreviousDetection(t *testing.T) {
 		t.Fatalf("rejected content was committed")
 	}
 
-	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{})
+	norm := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{})
 	batch := appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/kept.sh", ""))
 	if len(batch.GetSignals()) != 1 || batch.GetSignals()[0].GetSignal().GetName() != "payload_dropped" {
 		t.Fatalf("signals after rejected rebuild = %+v, want previous detection engine still active", batch.GetSignals())
@@ -305,7 +305,7 @@ func TestLocalControlDetectionPolicyRebuildFailureKeepsPreviousPolicy(t *testing
 	if runner.policyState.activePolicy().Detection.PolicyID == "bad-runtime-policy" {
 		t.Fatalf("bad detection policy replaced active policy")
 	}
-	batch := appendEndpointEventForTest(t, runner, bus, eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/kept-policy.sh", ""))
+	batch := appendEndpointEventForTest(t, runner, bus, newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/kept-policy.sh", ""))
 	if len(batch.GetSignals()) != 1 || batch.GetSignals()[0].GetSignal().GetName() != "payload_dropped" {
 		t.Fatalf("signals after rejected policy = %+v, want previous detection policy still active", batch.GetSignals())
 	}

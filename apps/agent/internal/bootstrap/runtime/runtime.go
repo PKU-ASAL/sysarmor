@@ -16,6 +16,7 @@ import (
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -33,6 +34,7 @@ type Coordinator struct {
 	managementState  managementRuntime
 	telemetryState   telemetryRuntime
 	sensorState      sensorRuntime
+	processProfiles  *domainprocess.Profiles
 	learningDetector ports.EventDetector
 }
 
@@ -124,7 +126,11 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	if dependencies.Policy == nil {
 		return nil, fmt.Errorf("runtime policy controller factory is required")
 	}
-	runtime := &Coordinator{Config: dependencies.Config, Sensor: dependencies.Sensor}
+	profiles, err := domainprocess.NewProfiles(processProfileLimits(dependencies.Config))
+	if err != nil {
+		return nil, fmt.Errorf("initialize process profiles: %w", err)
+	}
+	runtime := &Coordinator{Config: dependencies.Config, Sensor: dependencies.Sensor, processProfiles: profiles}
 	runtime.policyState.content = dependencies.Content
 	runtime.policyState.featureFlags = dependencies.FeatureFlags
 	runtime.policyState.controller = dependencies.Policy
@@ -140,6 +146,17 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 		TenantID: dependencies.Config.Agent.TenantID,
 	})
 	return runtime, nil
+}
+
+func processProfileLimits(cfg config.Config) domainprocess.Limits {
+	maxProfiles := cfg.Sensor.ProcessCacheSize
+	if maxProfiles <= 0 {
+		maxProfiles = 4096
+	}
+	return domainprocess.Limits{
+		MaxProfiles: maxProfiles, MaxFiles: 32, MaxNetworks: 16, MaxEventRefs: 16,
+		ExitGrace: 30 * time.Second, RetainedTTL: 5 * time.Minute, SweepInterval: 30 * time.Second,
+	}
 }
 
 func learningHealth(detector ports.EventDetector, loadErr error) agenthealth.LearningHealth {
