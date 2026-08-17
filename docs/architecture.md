@@ -55,8 +55,9 @@ Agent 产生 Event 和 Endpoint Signal；Worker 在 tenant、分析作用域和�
 
 Agent 负责：
 
-- 管理 sensor 生命周期，将 collection intent 编译为 sensor 能力；
+- 管理 sensor 生命周期，将 collection intent 编译为 sensor 能力，并常开最小因果基线；
 - 规范化 Event，执行低延迟检测并生成 Endpoint Signal；
+- 以唯一的 `ProcessProfile` 聚合进程行为，并在 Profile 淘汰后保留有界身份锚点；
 - 原子应用统一端点策略，并持久化有效版本；
 - 在网络中断时继续工作，恢复后从确认的 checkpoint 续传；
 - 通过本地 Unix socket 提供健康、策略、查询、内容和注册操作；
@@ -109,7 +110,7 @@ Gateway 会将该身份与每个上报的 tenant ID 和 Agent ID 交叉校验。
 
 ## 数据平面与可靠性
 
-完成注册的 Agent 只上传策略允许的 Event 和 Signal。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
+完成注册的 Agent 只上传有效策略产生的 Event 和 Signal。有效 collection intent 始终包含 `process.exec`、`process.exit`、`file.write` 和 `network.connect` 最小因果基线，普通 selector 可以增加采集但不能关闭或缩窄基线。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
 
 Agent 以批次发送数据，Gateway 返回 accepted、duplicate、retryable 或 terminally invalid。只有 accepted 或 duplicate 确认可以推进本地 checkpoint。Gateway 完成身份和批次校验后，将数据交给 Kafka；Worker 在完成必需投影后才提交 Kafka offset。
 
@@ -127,15 +128,20 @@ flowchart LR
   Merge --> Correlate["实体与行为关联"]
   Correlate --> CloudRules["Cloud Rule"]
   CloudRules --> CloudSignal["Cloud Signal"]
+  Merge --> EventGraph["Event 因果图"]
+  CloudSignal --> Seeds["Signal 选择种子"]
+  EventGraph --> Evidence["种子间最短路径并集"]
+  Seeds --> Evidence
   Correlate --> Converge["收敛判断"]
   CloudSignal --> Converge
-  Converge --> Incident["Incident + 初始 Evidence 子图"]
+  Evidence --> Incident["Incident + Evidence 子图"]
+  Converge --> Incident
   Current -->|"Event + Endpoint Signal"| Projection["确定性 OpenSearch 投影"]
   CloudSignal --> Projection
   Incident --> Projection
 ```
 
-实体图由 Signal 中的实体及关系构建。代码库当前具备 Evidence 子图、K-hop 邻域和最短路径算法基础；Incident 当前保存贡献 Signal、实体关系、收敛轨迹和稳定分析标识。完整因果路径恢复、候选攻击路径排序、攻击阶段推理和自然语言根因解释不能由这些基础能力直接推导为已实现产品能力。
+Worker 用 Event 构建进程、文件和 socket provenance 图，每条边保留 `event_refs`；Signal 只提供 Evidence 种子，不产生或补造因果边。`identity_status=unavailable` 时图中保留明确的父身份 gap，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
 
 ## 平台组件与存储职责
 
@@ -214,7 +220,7 @@ Manager 与 Worker 的生产持久化仅支持 PostgreSQL。缺失 DSN、迁移�
 
 | 状态 | 能力 |
 |---|---|
-| 当前已具备 | standalone/managed 切换、本地检测与有界存储、统一端点策略、注册与 mTLS、可靠批次上传、15 分钟历史关联、Endpoint/Cloud Signal、稳定 Incident 与 Evidence 投影、基础实体图算法 |
+| 当前已具备 | standalone/managed 切换、强制最小因果采集、ProcessProfile 有界身份连续性、本地检测与有界存储、统一端点策略、注册与 mTLS、可靠批次上传、15 分钟历史关联、Endpoint/Cloud Signal、Event provenance Evidence、稳定 Incident 投影 |
 | 工程基础已具备但仍需产品化 | 完整 Incident 调查体验、Evidence 到原始材料的连续回溯、策略和资源预算的统一可视化 |
 | 目标能力 | 风险触发的临时加深采集与自动恢复、候选路径排序、攻击阶段推理、自然语言根因解释、受约束的 Agentic 策略调优 |
 

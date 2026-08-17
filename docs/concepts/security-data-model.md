@@ -10,6 +10,8 @@ Event 是 Agent 或 sensor 实际观察到的一次规范化行为事实，例�
 
 Event 不表达恶意判断。采集策略、sensor 能力、资源预算和数据丢失都可能使事实不完整；缺少 Event 不能直接证明行为没有发生。后续检测和分析只能引用 Event，不能修改它来迎合结论。
 
+进程 Event 的 `identity_status` 明确描述身份连续性：`root` 表示没有父身份的根，`resolved` 表示父进程和 lineage 已解析，`unavailable` 表示有界 `ProcessProfile` 及身份锚点无法再恢复父身份。`unavailable` 是可观测的数据缺口，不能被解释成根进程，也不能通过猜测补齐。
+
 ## Signal：发现
 
 Signal 是系统从 Event、既有 Signal、运行状态或实体关系中提炼出的检测发现。Signal 不等同于传统告警，也不天然表示恶意。
@@ -73,7 +75,7 @@ Evidence 是支持 Signal 或 Incident 的可复核依据，不是独立检测�
 | 形态 | 内容 |
 |---|---|
 | Signal Evidence Bundle | Event、上游 Signal、实体、raw reference 和摘要 |
-| Incident Evidence Subgraph | 贡献 Signal 形成的实体与关系子图 |
+| Incident Evidence Subgraph | 由 Event 事实形成边、由贡献 Signal 选择种子的 provenance 子图 |
 | Evidence Pullback Result | 通过受控流程获取的补充材料 |
 
 当前 Evidence Pullback 已具备请求、下发和回传控制通道，但端侧结果仍是实体占位子图，不能表述为已经回拉真实 Event、raw reference 或原始文件。
@@ -94,15 +96,15 @@ Event
   -> Incident
 ```
 
-Signal 使用 `event_refs` 引用事实，使用 `signal_refs` 引用上游发现，并保留实体、lineage、规则或模型 provenance。Incident 保留贡献 Conclusion、Evidence 子图和稳定分析身份。
+Signal 使用 `event_refs` 引用事实，使用 `signal_refs` 引用上游发现，并保留实体、lineage、规则或模型 provenance。Incident 保留贡献 Conclusion、Evidence 子图和稳定分析身份。Evidence 的每条生产图边必须由一个或多个 Event 引用支撑；Signal 只选择图种子。身份无法恢复时允许使用显式 gap 节点和 incomplete 边，禁止制造不存在的进程关系。
 
 Event 与 Signal 不会因为重试而改变语义身份。新的输入可以使同一分析窗口重新计算 Incident，但不能把 Candidate 原地改成 Conclusion。
 
 ## 当前能力与目标能力
 
-当前已具备 Rule Candidate、Rule Conclusion、Model Candidate、System Conclusion、Incident 收敛和初始 Evidence 子图。
+当前已具备 Rule Candidate、Rule Conclusion、Model Candidate、System Conclusion、Incident 收敛，以及从当前和历史 Event 恢复的有界 provenance Evidence 子图。
 
-Graph Conclusion、NodLink Hopset、Steiner Tree、完整因果路径恢复和真实原始材料回拉属于目标能力。Proto 中存在 Graph 枚举不表示这些生产能力已经实现。
+Graph Conclusion、NodLink Hopset、Steiner Tree、跨保留缺口的完整因果路径恢复和真实原始材料回拉属于目标能力。当前最短路径并集只恢复已观测 Event 支撑的连接；Proto 中存在 Graph 枚举不表示完整图检测已经实现。
 
 Detection 产品语义中不存在 Terminal。该单词只允许用于：
 
@@ -121,3 +123,4 @@ Detection 产品语义中不存在 Terminal。该单词只允许用于：
 - Incident 至少需要一个合法 Conclusion。
 - Candidate 提升产生新 Signal，不修改旧 Signal。
 - Evidence 必须可以回到其来源，缺失依据不能被静默解释成事实不存在。
+- Evidence 图边必须有 Event 引用；身份缺口必须显式表示为 gap/incomplete。

@@ -304,6 +304,26 @@ make test-performance DOMAIN=modules BENCHTIME=200ms COUNT=1
 
 Module benchmark 适合定位算法回归，不包含 sensor、VM、网络或平台成本。
 
+### Learning Detector A/B
+
+Learning 实验在相同 Endpoint Medium 条件下运行 disabled/enabled 两个 variant，并生成一份运行级 `report.md`。执行时必须提供训练集和独立校准集：
+
+```bash
+make test-performance DOMAIN=learning PROFILE=medium \
+  TRAINING_DATA=/path/to/training.ndjson \
+  CALIBRATION_DATA=/path/to/calibration.ndjson
+```
+
+检测效果分三层验收，不能用上游结果替代下游结果：
+
+| 层级 | 指标 | 数据来源 | 门禁语义 |
+|---|---|---|---|
+| Agent 发现 | `attack_campaign_seed_recall` | Endpoint Event、ProcessProfile、Model Candidate | 始终 blocking，默认至少 0.90 |
+| Worker 构图 | `worker_graph_recall` | truth graph Event 与 Evidence `event_refs` | managed 数据存在时 blocking，缺失时 observation/unavailable |
+| 最终结论 | `conclusion_recall` | truth campaign 与 Incident campaign | managed 数据存在时 blocking，缺失时 observation/unavailable |
+
+“缺失字段”和“空结果”含义不同：没有运行 managed 阶段时报告 unavailable；已经运行且输出空集合时 recall 为 0 并失败。报告同时保留 CPU、稳定期 RSS、EPS、drop/parse error、Rule A/B 等价性、ProcessProfile 淘汰和身份缺口。只有 blocking 门禁全部通过，运行结论才是 passed；observation 不影响端侧 A/B 结论，但不能被表述为 Worker 或端到端检测已经通过。
+
 ## Distribution 测试
 
 Distribution 验证发行包和安装兼容性，不承担发布决策：
