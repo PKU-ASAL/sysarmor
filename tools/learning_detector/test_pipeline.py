@@ -1,97 +1,77 @@
-import hashlib
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline import collect, digest_material, feature_vector, replay, train
+from inference import natural_tokens, profile_vector, score_profile
+from model_bundle import validate_bundle
+from profile_dataset import read_profiles
+from training import TrainingConfig, idf_weights, stability_scores, train_bundle
 
 
 class LearningPipelineTest(unittest.TestCase):
-    def test_feature_schema_is_deterministic(self):
-        event = {"id": "e1", "behavior": "process.exec", "subjectProc": {"argv": ["sh"]}}
-        self.assertEqual(feature_vector(event), feature_vector(event))
-        self.assertEqual(len(feature_vector(event)), 6)
-
-    def test_feature_schema_treats_empty_subject_as_present(self):
-        event = {"id": "e1", "behavior": "process.exec", "subjectProc": {}}
-        self.assertEqual(feature_vector(event)[2], 1.0)
-
-    def test_feature_schema_encodes_missing_behavior_explicitly(self):
-        self.assertEqual(feature_vector({})[0], -1.0)
-        self.assertEqual(feature_vector({"behavior": "  "})[0], -1.0)
-
-    def test_digest_material_binds_float32_parameter_bits(self):
-        bundle = {
-            "model_ref": "model:normal-v1",
-            "model_version": "1",
-            "model_digest": "sha256:" + "a" * 64,
-            "feature_schema": "FeatureSchemaV1",
-            "mean": [0.0] * 6,
-            "scale": [1.0] * 6,
-            "threshold": 1.0,
-        }
-        original = digest_material(bundle, True)
-        bundle["mean"][0] = 0.0000004
-        self.assertNotEqual(digest_material(bundle, True), original)
-
-    def test_digest_material_has_unambiguous_string_boundaries(self):
-        bundle = {
-            "model_ref": "model:a\n1",
-            "model_version": "2",
-            "model_digest": "sha256:" + "a" * 64,
-            "feature_schema": "FeatureSchemaV1",
-            "mean": [0.0] * 6,
-            "scale": [1.0] * 6,
-            "threshold": 1.0,
-        }
-        original = digest_material(bundle, True)
-        bundle["model_ref"], bundle["model_version"] = "model:a", "1\n2"
-        self.assertNotEqual(digest_material(bundle, True), original)
-
-    def test_collect_train_replay_round_trip(self):
+    def test_reconstructs_process_profile_lifecycle(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "events.ndjson"
+            source = Path(directory) / "events.ndjson"
             source.write_text("\n".join([
-                json.dumps({"id": "normal-1", "behavior": "process.exec", "labels": {"class": "normal"}}),
-                json.dumps({"id": "normal-2", "behavior": "process.exec", "labels": {"class": "normal"}}),
-                json.dumps({"id": "odd", "behavior": "network.connect", "object": {"socketAddr": "10.0.0.1:443"}}),
+                json.dumps({"id": "e1", "behavior": "process.exec", "subjectProc": {
+                    "stableId": "p1", "binary": "/bin/bash", "argv": ["bash", "-c", "cat /etc/hosts"]}}),
+                json.dumps({"id": "e2", "behavior": "file.read", "subjectProc": {"stableId": "p1"},
+                            "object": {"filePath": "/etc/hosts"}}),
+                json.dumps({"id": "e3", "behavior": "process.exit", "subjectProc": {"stableId": "p1"}}),
             ]) + "\n")
-            normal = root / "normal.ndjson"
-            bundle = root / "bundle.json"
-            signals = root / "signals.ndjson"
-            self.assertEqual(collect(source, normal, "class=normal"), 2)
-            trained = train(normal, bundle, 1.0)
-            self.assertTrue(trained["model_digest"].startswith("sha256:"))
-            self.assertEqual(replay(source, bundle, signals), 1)
-            self.assertIn("SIGNAL_STAGE_CANDIDATE", signals.read_text())
+            profiles = read_profiles(source)
+        self.assertEqual(len(profiles), 1)
+        self.assertEqual(profiles[0]["stable_id"], "p1")
+        self.assertEqual(profiles[0]["files"], ["/etc/hosts"])
+        self.assertEqual(profiles[0]["event_refs"], ["e1", "e2", "e3"])
+        self.assertEqual(profiles[0]["state"], "exited")
 
-    def test_train_quantizes_threshold_for_cross_language_digest(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            events = root / "events.ndjson"
-            bundle = root / "bundle.json"
-            events.write_text(json.dumps({"id": "normal", "behavior": "process.exec"}) + "\n")
+    def test_preprocessing_matches_nodlink_sentence_rules(self):
+        self.assertEqual(natural_tokens("/etc/tmp/log.txt"), ["etc", "tmp", "log", "txt"])
+        self.assertEqual(natural_tokens("10.0.0.1:443"), ["10", "0", "0", "1", "443"])
 
-            trained = train(events, bundle, 134.36424497803696)
+    def test_idf_degrades_resources_shared_by_all_processes(self):
+        profiles = [
+            {"files": ["/lib/libc.so", "/tmp/a"], "networks": []},
+            {"files": ["/lib/libc.so"], "networks": ["10.0.0.1"]},
+        ]
+        rarity = idf_weights(profiles)
+        self.assertEqual(rarity["files"]["/lib/libc.so"], 0.0)
+        self.assertGreater(rarity["files"]["/tmp/a"], rarity["files"]["/lib/libc.so"])
 
-            self.assertEqual(trained["threshold"], 134.364245)
+    def test_dbscan_stability_is_cluster_count(self):
+        names = ["browser", "browser", "browser", "browser", "bash"]
+        vectors = [[0, 0], [0.01, 0], [10, 10], [10.01, 10], [1, 1]]
+        scores = stability_scores(names, vectors, eps=0.1, min_samples=2)
+        self.assertEqual(scores["browser"], 2.0)
+        self.assertEqual(scores["bash"], 1.0)
 
-    def test_replay_rejects_forged_model_digest(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            events = root / "events.ndjson"
-            bundle_path = root / "bundle.json"
-            output = root / "signals.ndjson"
-            events.write_text(json.dumps({"id": "normal", "behavior": "process.exec"}) + "\n")
-            bundle = train(events, bundle_path, 1.0)
-            bundle["model_digest"] = "sha256:forged"
-            bundle["payload_digest"] = "sha256:" + hashlib.sha256(digest_material(bundle, True)).hexdigest()
-            bundle_path.write_text(json.dumps(bundle))
+    def test_training_is_reproducible_and_bundle_is_scoreable(self):
+        profiles = normal_profiles()
+        config = TrainingConfig(dimension=4, hidden_dimension=3, latent_dimension=2,
+                                bucket_count=16, epochs=20, seed=7, target_rate=0.25)
+        first = train_bundle(profiles, profiles, config)
+        second = train_bundle(profiles, profiles, config)
+        self.assertEqual(first, second)
+        validate_bundle(first)
+        vector = profile_vector(profiles[0], first)
+        self.assertEqual(len(vector), 4)
+        self.assertTrue(math.isfinite(score_profile(profiles[0], first)))
 
-            with self.assertRaisesRegex(ValueError, "model digest mismatch"):
-                replay(events, bundle_path, output)
+
+def normal_profiles():
+    return [
+        {"stable_id": "p1", "binary": "/bin/bash", "argv": ["bash", "-c", "cat /etc/hosts"],
+         "files": ["/etc/hosts"], "networks": [], "event_refs": ["e1"], "revision": 1, "state": "exited"},
+        {"stable_id": "p2", "binary": "/usr/bin/curl", "argv": ["curl", "example.test"],
+         "files": [], "networks": ["10.0.0.1:443"], "event_refs": ["e2"], "revision": 1, "state": "exited"},
+        {"stable_id": "p3", "binary": "/bin/cat", "argv": ["cat", "/etc/passwd"],
+         "files": ["/etc/passwd"], "networks": [], "event_refs": ["e3"], "revision": 1, "state": "exited"},
+        {"stable_id": "p4", "binary": "/bin/echo", "argv": ["echo", "ok"],
+         "files": [], "networks": [], "event_refs": ["e4"], "revision": 1, "state": "exited"},
+    ]
 
 
 if __name__ == "__main__":

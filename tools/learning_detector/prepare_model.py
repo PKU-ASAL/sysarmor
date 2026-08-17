@@ -1,96 +1,102 @@
 #!/usr/bin/env python3
-"""Prepare and calibrate a deterministic Learning Detector bundle."""
+"""Train and calibrate a deterministic FeatureSchemaV2 model bundle."""
 
 from __future__ import annotations
 
-import hashlib
 import argparse
+import hashlib
 import json
 import math
-import tempfile
 from pathlib import Path
 from typing import Any
 
-from pipeline import canonical, calibrate_threshold, digest_material, float32, read_events, score, train, validate_bundle
+from inference import score_profile
+from model_bundle import canonical, validate_bundle
+from profile_dataset import read_events, read_profiles
+from training import TrainingConfig, train_bundle
 
 
 def file_digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def event_ids(path: Path) -> set[str]:
-    events = read_events(path)
-    ids: set[str] = set()
-    for event in events:
-        event_id = str(event.get("id") or "").strip()
-        if not event_id or event_id in ids:
-            raise ValueError(f"event id must be non-empty and unique: {event_id!r}")
-        ids.add(event_id)
-    return ids
-
-
 def validate_dataset(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise ValueError(f"dataset not found: {path}")
-    ids = event_ids(path)
-    return {"path": str(path), "events": len(ids), "sha256": file_digest(path), "ids": ids}
+    events = read_events(path)
+    event_ids = unique_values(events, lambda event: str(event.get("id") or "").strip(), "event ID")
+    profiles = read_profiles(path)
+    profile_ids = unique_values(profiles, lambda profile: profile["stable_id"], "profile stable ID")
+    return {
+        "path": str(path), "events": len(event_ids), "profiles": len(profile_ids),
+        "sha256": file_digest(path), "event_ids": event_ids, "profile_ids": profile_ids,
+    }
+
+
+def unique_values(values: list[dict[str, Any]], getter: Any, name: str) -> set[str]:
+    result = set()
+    for value in values:
+        current = getter(value)
+        if not current or current in result:
+            raise ValueError(f"{name} must be non-empty and unique: {current!r}")
+        result.add(current)
+    return result
 
 
 def validate_pair(training: Path, calibration: Path) -> dict[str, Any]:
-    first = validate_dataset(training)
-    second = validate_dataset(calibration)
-    overlap = first["ids"].intersection(second["ids"])
-    if overlap:
-        raise ValueError(f"training/calibration event id overlap: {sorted(overlap)[:3]}")
+    first, second = validate_dataset(training), validate_dataset(calibration)
+    for field, label in (("event_ids", "event ID"), ("profile_ids", "profile stable ID")):
+        overlap = first[field].intersection(second[field])
+        if overlap:
+            raise ValueError(f"training/calibration {label} overlap: {sorted(overlap)[:3]}")
     return {"training": first, "calibration": second}
 
 
-def quantiles(scores: list[float]) -> dict[str, float]:
-    values = sorted(float(score) for score in scores)
-    return {name: values[index] for name, index in (
-        ("min", 0), ("p50", len(values) // 2), ("p95", min(len(values) - 1, math.ceil(len(values) * 0.95) - 1)), ("max", -1)
-    )}
-
-
-def finalize_bundle(bundle: dict[str, Any], threshold: float) -> dict[str, Any]:
-    bundle["threshold"] = float32(threshold)
-    bundle["model_digest"] = "sha256:" + hashlib.sha256(digest_material(bundle, False)).hexdigest()
-    bundle["payload_digest"] = "sha256:" + hashlib.sha256(digest_material(bundle, True)).hexdigest()
-    validate_bundle(bundle)
-    return bundle
-
-
-def prepare(training: Path, calibration: Path, output: Path, target_rate: float = 0.005) -> dict[str, Any]:
+def prepare(training: Path, calibration: Path, output: Path, target_rate: float = 0.005,
+            config: TrainingConfig | None = None) -> dict[str, Any]:
     metadata = validate_pair(training, calibration)
-    with tempfile.TemporaryDirectory() as directory:
-        provisional_path = Path(directory) / "provisional.json"
-        train(training, provisional_path, 1.0)
-        bundle = json.loads(provisional_path.read_text())
-    scores = [score(event, bundle) for event in read_events(calibration)]
-    threshold, allowed = calibrate_threshold(scores, target_rate)
-    finalized = finalize_bundle(bundle, threshold)
-    candidates = sum(value >= finalized["threshold"] for value in scores)
-    rate = candidates / len(scores)
-    if candidates > allowed or rate > target_rate:
+    config = config or TrainingConfig(target_rate=target_rate)
+    if config.target_rate != target_rate:
+        config = TrainingConfig(**{**config.__dict__, "target_rate": target_rate})
+    training_profiles, calibration_profiles = read_profiles(training), read_profiles(calibration)
+    bundle = train_bundle(training_profiles, calibration_profiles, config)
+    validate_bundle(bundle)
+    scores = [score_profile(profile, bundle) for profile in calibration_profiles]
+    allowed = math.floor(len(scores) * target_rate)
+    candidates = sum(score >= bundle["threshold"] for score in scores)
+    if candidates > allowed:
         raise ValueError("calibration candidate rate exceeds target")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(canonical(finalized) + b"\n")
+    output.write_bytes(canonical(bundle) + b"\n")
     return {
-        "bundle": finalized,
-        "datasets": {key: {name: value for name, value in data.items() if name != "ids"} for key, data in metadata.items()},
-        "calibration_allowed": allowed,
-        "calibration_candidates": candidates,
-        "calibration_candidate_rate": rate,
+        "bundle": bundle,
+        "datasets": {key: public_metadata(value) for key, value in metadata.items()},
+        "calibration_allowed": allowed, "calibration_candidates": candidates,
+        "calibration_candidate_rate": candidates / len(scores),
         "calibration_score_quantiles": quantiles(scores),
     }
 
 
-if __name__ == "__main__":
+def public_metadata(value: dict[str, Any]) -> dict[str, Any]:
+    return {key: item for key, item in value.items() if key not in {"event_ids", "profile_ids"}}
+
+
+def quantiles(scores: list[float]) -> dict[str, float]:
+    values = sorted(float(score) for score in scores)
+    indexes = (("min", 0), ("p50", len(values) // 2),
+               ("p95", min(len(values) - 1, math.ceil(len(values) * 0.95) - 1)), ("max", -1))
+    return {name: values[index] for name, index in indexes}
+
+
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--training", type=Path, required=True)
     parser.add_argument("--calibration", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target-rate", type=float, default=0.005)
     args = parser.parse_args()
-    result = prepare(args.training, args.calibration, args.output, args.target_rate)
-    print(json.dumps(result, sort_keys=True))
+    print(json.dumps(prepare(args.training, args.calibration, args.output, args.target_rate), sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
