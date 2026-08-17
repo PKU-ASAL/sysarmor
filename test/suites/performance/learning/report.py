@@ -4,16 +4,25 @@
 from __future__ import annotations
 
 import json
-import math
 import argparse
 import importlib.util
 from pathlib import Path
 from typing import Any
 
+from learning_artifacts import (
+    DEFAULT_GATES,
+    ReportError,
+    is_json_number,
+    model_identity,
+    model_summary,
+    numeric,
+    valid_gate_config,
+    validate_calibration,
+)
 from learning_report_renderer import render_report
 from learning_performance import load_matrix_phase
 from learning_effect import (
-    attack_profile_recall,
+    attack_campaign_seed_recall,
     candidate_profile_ids,
     effect_gates,
     model_gate,
@@ -22,28 +31,7 @@ from learning_effect import (
 )
 
 
-DEFAULT_GATES = {
-    "cpu_relative": 1.15,
-    "rss_delta_mb": 16.0,
-    "eps_relative": 0.90,
-    "normal_candidate_rate": 0.01,
-    "attack_profile_recall": 0.90,
-}
 TEST_ROOT = Path(__file__).resolve().parents[3]
-
-
-class ReportError(ValueError):
-    """Raised when a strict report cannot be constructed."""
-
-
-def numeric(value: Any) -> float | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return None
-    return result if math.isfinite(result) else None
 
 
 def gate(status: str, value: Any = None, limit: Any = None, detail: str = "") -> dict[str, Any]:
@@ -78,14 +66,14 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
         "rule_truth": rule_truth_gate(disabled, enabled),
         **effect_gates(enabled, gates),
     }
-    statuses = [item["status"] for item in gate_results.values()]
+    statuses = [item["status"] for item in gate_results.values() if item.get("blocking", True)]
     verdict = "passed" if all(status == "passed" for status in statuses) else "failed"
     return {
         "verdict": verdict,
         "gates": gate_results,
         "observations": {
             "stream_evictions": (disabled.get("stream_evictions") or 0) + (enabled.get("stream_evictions") or 0),
-            "attack_profile_recall": attack_profile_recall(enabled),
+            "attack_campaign_seed_recall": attack_campaign_seed_recall(enabled),
             "normal_candidate_rate": normal_candidate_rate(enabled),
             "disabled_model_candidates": len(disabled.get("model_candidates", [])),
             "enabled_model_candidates": len(enabled.get("model_candidates", [])),
@@ -129,6 +117,9 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
     truth = set(metrics.get("truth_profile_ids", []))
     candidates = candidate_profile_ids(metrics)
     normal = profiles.difference(truth)
+    truth_campaigns = set(metrics.get("truth_campaign_ids") or set())
+    campaign_by_profile = metrics.get("profile_campaign_ids") or {}
+    candidate_campaigns = {campaign_by_profile[profile] for profile in candidates if campaign_by_profile.get(profile)}
     return {
         "health": metrics.get("health", {}),
         "reliability": metrics.get("reliability", {}),
@@ -143,8 +134,10 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         "normal_candidate_count": len(candidates.intersection(normal)),
         "truth_profile_count": len(truth),
         "detected_truth_profile_count": len(candidates.intersection(truth)),
+        "truth_campaign_count": len(truth_campaigns),
+        "seeded_campaign_count": len(candidate_campaigns.intersection(truth_campaigns)),
         "normal_candidate_rate": normal_candidate_rate(metrics),
-        "attack_profile_recall": attack_profile_recall(metrics),
+        "attack_campaign_seed_recall": attack_campaign_seed_recall(metrics),
         "profile_health": metrics.get("profile_health", {}),
         "candidate_scores": score_summary(metrics.get("model_candidates", [])),
     }
@@ -184,6 +177,12 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
         for event in events
         if event.get("id") and (stable_id := event_profile_id(event)) is not None
     }
+    profile_campaigns = {
+        stable_id: str(event.get("lineageId") or stable_id)
+        for event in events
+        if (stable_id := event_profile_id(event)) is not None
+    }
+    truth_profile_ids = {event_profiles[event_id] for event_id in truth["event_ids"] if event_id in event_profiles}
     health_document = latest_health(path)
     detection = health_document.get("detection", {})
     batcher = health_document.get("telemetryBatcher", health_document.get("telemetry_batcher", {}))
@@ -201,7 +200,9 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
         "rule_refs_ok": all(signal.get("eventRefs") and set(signal["eventRefs"]).issubset(event_ids) for signal in rule_signals),
         "truth_events": truth["event_ids"],
         "profile_ids": set(event_profiles.values()),
-        "truth_profile_ids": {event_profiles[event_id] for event_id in truth["event_ids"] if event_id in event_profiles},
+        "truth_profile_ids": truth_profile_ids,
+        "profile_campaign_ids": profile_campaigns,
+        "truth_campaign_ids": {profile_campaigns[profile] for profile in truth_profile_ids if profile in profile_campaigns},
         "truth_steps": truth["steps"],
         "events": event_ids,
         "rule_signal_count": len(rule_signals),
@@ -418,66 +419,12 @@ def validate_experiment_artifacts(manifest: dict[str, Any], calibration: dict[st
     validate_calibration(manifest, calibration)
 
 
-def valid_gate_config(value: Any) -> bool:
-    if not isinstance(value, dict) or set(value) != set(DEFAULT_GATES):
-        return False
-    return all(is_json_number(value.get(key)) and value[key] == expected for key, expected in DEFAULT_GATES.items())
-
-
-def is_json_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-
-
-def validate_calibration(manifest: dict[str, Any], calibration: dict[str, Any]) -> None:
-    rate = numeric(calibration.get("calibration_candidate_rate"))
-    candidates, allowed = calibration.get("calibration_candidates"), calibration.get("calibration_allowed")
-    if rate is None or not 0 <= rate <= 0.005 or not valid_count(candidates) or not valid_count(allowed) or candidates > allowed:
-        raise ReportError("calibration summary violates Candidate rate contract")
-    datasets = calibration.get("datasets")
-    if not isinstance(datasets, dict):
-        raise ReportError("calibration summary is missing datasets")
-    for name in ("training", "calibration"):
-        validate_dataset_summary(manifest, datasets.get(name), name)
-    bundle = calibration.get("bundle")
-    if not isinstance(bundle, dict) or any(bundle.get(key) != manifest.get(key) for key in ("model_ref", "model_version", "model_digest", "feature_schema", "threshold")):
-        raise ReportError("calibration Bundle does not match experiment manifest")
-
-
-def validate_dataset_summary(manifest: dict[str, Any], value: Any, name: str) -> None:
-    if not isinstance(value, dict) or not valid_count(value.get("events")) or value["events"] == 0:
-        raise ReportError(f"calibration summary has invalid {name} dataset")
-    if value.get("sha256") != manifest.get(f"{name}_digest") or value.get("path") != manifest.get(f"{name}_data"):
-        raise ReportError(f"calibration summary {name} provenance does not match manifest")
-
-
-def valid_count(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
-def model_identity(manifest: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "modelRef": manifest.get("model_ref"),
-        "modelVersion": manifest.get("model_version"),
-        "modelDigest": manifest.get("model_digest"),
-        "featureSchema": manifest.get("feature_schema"),
-    }
-
-
 def experiment_summary(experiment: dict[str, Any], disabled_path: Path) -> dict[str, Any]:
     path = disabled_path / "collection-balanced" if (disabled_path / "collection-balanced").is_dir() else disabled_path
     endpoint = require_json(path / "manifest.json")
     result = dict(experiment)
     result["vm_env"] = endpoint.get("vm_env")
     return result
-
-
-def model_summary(manifest: dict[str, Any], calibration: dict[str, Any]) -> dict[str, Any]:
-    calibration = dict(calibration)
-    for key in ("model_ref", "model_version", "model_digest", "feature_schema", "threshold"):
-        calibration[key] = manifest.get(key, calibration.get("bundle", {}).get(key))
-    return calibration
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dir", type=Path)

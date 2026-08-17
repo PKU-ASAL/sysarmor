@@ -80,7 +80,9 @@ cat > "$OUT_DIR/manifest.json" <<EOF
     "rss_delta_mb": 16.0,
     "eps_relative": 0.90,
     "normal_candidate_rate": 0.01,
-    "attack_profile_recall": 0.90
+    "attack_campaign_seed_recall": 0.90,
+    "worker_graph_recall": 0.90,
+    "conclusion_recall": 0.90
   }
 }
 EOF

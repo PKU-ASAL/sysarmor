@@ -7,8 +7,8 @@ import math
 from typing import Any
 
 
-def gate(status: str, value: Any = None, limit: Any = None, detail: str = "") -> dict[str, Any]:
-    return {"status": status, "value": value, "limit": limit, "detail": detail}
+def gate(status: str, value: Any = None, limit: Any = None, detail: str = "", blocking: bool = True) -> dict[str, Any]:
+    return {"status": status, "value": value, "limit": limit, "detail": detail, "blocking": blocking}
 
 
 def numeric(value: Any) -> float | None:
@@ -51,6 +51,10 @@ def profile_health(value: dict[str, Any]) -> dict[str, int | None]:
         "file_evictions": ("FileEvictions", "fileEvictions", "file_evictions"),
         "network_evictions": ("NetworkEvictions", "networkEvictions", "network_evictions"),
         "event_ref_evictions": ("EventRefEvictions", "eventRefEvictions", "event_ref_evictions"),
+        "identity_retained": ("IdentityRetained", "identityRetained", "identity_retained"),
+        "identity_evictions": ("IdentityEvictions", "identityEvictions", "identity_evictions"),
+        "active_evictions": ("ActiveEvictions", "activeEvictions", "active_evictions"),
+        "identity_gaps": ("IdentityGaps", "identityGaps", "identity_gaps"),
     }
     return {name: health_count(value, aliases) for name, aliases in fields.items()}
 
@@ -67,11 +71,31 @@ def health_count(value: dict[str, Any], aliases: tuple[str, ...]) -> int | None:
     return 0
 
 
-def attack_profile_recall(metrics: dict[str, Any]) -> float | None:
-    truth = set(metrics.get("truth_profile_ids") or set())
+def set_recall(found: set[str], truth: set[str]) -> float | None:
     if not truth:
         return None
-    return len(candidate_profile_ids(metrics).intersection(truth)) / len(truth)
+    return len(found.intersection(truth)) / len(truth)
+
+
+def candidate_campaign_ids(metrics: dict[str, Any]) -> set[str]:
+    campaigns = metrics.get("profile_campaign_ids") or {}
+    return {campaigns[profile] for profile in candidate_profile_ids(metrics) if campaigns.get(profile)}
+
+
+def attack_campaign_seed_recall(metrics: dict[str, Any]) -> float | None:
+    return set_recall(candidate_campaign_ids(metrics), set(metrics.get("truth_campaign_ids") or set()))
+
+
+def worker_graph_recall(metrics: dict[str, Any]) -> float | None:
+    if "truth_graph_event_ids" not in metrics or "evidence_event_ids" not in metrics:
+        return None
+    return set_recall(set(metrics.get("evidence_event_ids") or set()), set(metrics.get("truth_graph_event_ids") or set()))
+
+
+def conclusion_recall(metrics: dict[str, Any]) -> float | None:
+    if "incident_campaign_ids" not in metrics:
+        return None
+    return set_recall(set(metrics.get("incident_campaign_ids") or set()), set(metrics.get("truth_campaign_ids") or set()))
 
 
 def normal_candidate_rate(metrics: dict[str, Any]) -> float | None:
@@ -84,7 +108,9 @@ def normal_candidate_rate(metrics: dict[str, Any]) -> float | None:
 
 def effect_gates(metrics: dict[str, Any], limits: dict[str, float]) -> dict[str, dict[str, Any]]:
     rate = normal_candidate_rate(metrics)
-    recall = attack_profile_recall(metrics)
+    seed_recall = attack_campaign_seed_recall(metrics)
+    graph_recall = worker_graph_recall(metrics)
+    incident_recall = conclusion_recall(metrics)
     return {
         "normal_candidate_rate": gate(
             "unavailable" if rate is None else "passed" if rate <= limits["normal_candidate_rate"] else "failed",
@@ -92,11 +118,25 @@ def effect_gates(metrics: dict[str, Any], limits: dict[str, float]) -> dict[str,
             limits["normal_candidate_rate"],
             "normal ProcessProfile Candidate rate",
         ),
-        "attack_profile_recall": gate(
-            "unavailable" if recall is None else "passed" if recall >= limits["attack_profile_recall"] else "failed",
-            recall,
-            limits["attack_profile_recall"],
-            "labeled attack ProcessProfile recall",
+        "attack_campaign_seed_recall": gate(
+            "unavailable" if seed_recall is None else "passed" if seed_recall >= limits["attack_campaign_seed_recall"] else "failed",
+            seed_recall,
+            limits["attack_campaign_seed_recall"],
+            "Agent attack campaign seed recall",
+        ),
+        "worker_graph_recall": gate(
+            "unavailable" if graph_recall is None else "passed" if graph_recall >= limits["worker_graph_recall"] else "failed",
+            graph_recall,
+            limits["worker_graph_recall"],
+            "managed Worker Evidence Event recall",
+            blocking=graph_recall is not None,
+        ),
+        "conclusion_recall": gate(
+            "unavailable" if incident_recall is None else "passed" if incident_recall >= limits["conclusion_recall"] else "failed",
+            incident_recall,
+            limits["conclusion_recall"],
+            "managed end-to-end Incident campaign recall",
+            blocking=incident_recall is not None,
         ),
     }
 

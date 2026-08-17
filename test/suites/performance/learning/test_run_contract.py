@@ -46,7 +46,9 @@ class LearningRunContractTest(unittest.TestCase):
             '"rss_delta_mb": 16.0',
             '"eps_relative": 0.90',
             '"normal_candidate_rate": 0.01',
-            '"attack_profile_recall": 0.90',
+            '"attack_campaign_seed_recall": 0.90',
+            '"worker_graph_recall": 0.90',
+            '"conclusion_recall": 0.90',
         ):
             self.assertIn(contract, self.script)
         for legacy in ("cpu_absolute_pp", "rss_absolute_mb", "rss_relative"):

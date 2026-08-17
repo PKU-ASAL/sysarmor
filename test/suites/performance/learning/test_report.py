@@ -15,7 +15,7 @@ DEFAULT_GATES = REPORT.DEFAULT_GATES
 evaluate_ab = REPORT.evaluate_ab
 health_number = REPORT.health_number
 load_endpoint_run = REPORT.load_endpoint_run
-attack_profile_recall = REPORT.attack_profile_recall
+attack_campaign_seed_recall = REPORT.attack_campaign_seed_recall
 aggregate_runs = REPORT.aggregate_runs
 require_records = REPORT.require_records
 render_report = REPORT.render_report
@@ -65,6 +65,8 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0, rss_peak=None):
         "events": {"e1"},
         "profile_ids": {"p-normal", "p-attack"},
         "truth_profile_ids": {"p-attack"},
+        "profile_campaign_ids": {"p-normal": "normal", "p-attack": "campaign-a"},
+        "truth_campaign_ids": {"campaign-a"},
     }
 
 
@@ -189,12 +191,14 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["model"]["status"], "passed")
 
-    def test_attack_profile_recall_at_ninety_percent_passes(self):
+    def test_attack_campaign_seed_recall_at_ninety_percent_passes(self):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
         enabled["profile_ids"] = {"p-normal"} | {f"p-attack-{index}" for index in range(10)}
         enabled["truth_profile_ids"] = {f"p-attack-{index}" for index in range(10)}
+        enabled["profile_campaign_ids"] = {f"p-attack-{index}": f"campaign-{index}" for index in range(10)}
+        enabled["truth_campaign_ids"] = {f"campaign-{index}" for index in range(10)}
         enabled["model_candidates"] = [
             model_candidate() | {
                 "entities": [{"kind": "process", "role": "subject", "key": f"p-attack-{index}"}]
@@ -205,14 +209,16 @@ class LearningReportTest(unittest.TestCase):
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
         self.assertEqual(result["verdict"], "passed")
-        self.assertEqual(result["gates"]["attack_profile_recall"]["value"], 0.9)
+        self.assertEqual(result["gates"]["attack_campaign_seed_recall"]["value"], 0.9)
 
-    def test_attack_profile_recall_below_ninety_percent_fails(self):
+    def test_attack_campaign_seed_recall_below_ninety_percent_fails(self):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
         enabled["profile_ids"] = {"p-normal"} | {f"p-attack-{index}" for index in range(10)}
         enabled["truth_profile_ids"] = {f"p-attack-{index}" for index in range(10)}
+        enabled["profile_campaign_ids"] = {f"p-attack-{index}": f"campaign-{index}" for index in range(10)}
+        enabled["truth_campaign_ids"] = {f"campaign-{index}" for index in range(10)}
         enabled["model_candidates"] = [
             model_candidate() | {
                 "entities": [{"kind": "process", "role": "subject", "key": f"p-attack-{index}"}]
@@ -222,18 +228,70 @@ class LearningReportTest(unittest.TestCase):
 
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
-        self.assertEqual(result["gates"]["attack_profile_recall"]["status"], "failed")
+        self.assertEqual(result["gates"]["attack_campaign_seed_recall"]["status"], "failed")
 
-    def test_missing_attack_truth_profiles_makes_effect_gate_unavailable(self):
+    def test_worker_graph_recall_at_ninety_percent_is_blocking_and_passes(self):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
-        enabled["truth_profile_ids"] = set()
+        enabled["model_candidates"] = [model_candidate()]
+        enabled["truth_graph_event_ids"] = {f"event-{index}" for index in range(10)}
+        enabled["evidence_event_ids"] = {f"event-{index}" for index in range(9)}
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["worker_graph_recall"]["status"], "passed")
+        self.assertTrue(result["gates"]["worker_graph_recall"]["blocking"])
+
+    def test_worker_graph_recall_below_ninety_percent_fails(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["model_candidates"] = [model_candidate()]
+        enabled["truth_graph_event_ids"] = {f"event-{index}" for index in range(10)}
+        enabled["evidence_event_ids"] = {f"event-{index}" for index in range(8)}
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["worker_graph_recall"]["status"], "failed")
+        self.assertEqual(result["verdict"], "failed")
+
+    def test_missing_managed_conclusion_is_an_unavailable_observation(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
         enabled["model_candidates"] = [model_candidate()]
 
         result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
-        self.assertEqual(result["gates"]["attack_profile_recall"]["status"], "unavailable")
+        self.assertEqual(result["gates"]["conclusion_recall"]["status"], "unavailable")
+        self.assertFalse(result["gates"]["conclusion_recall"]["blocking"])
+        self.assertEqual(result["verdict"], "passed")
+
+    def test_available_managed_conclusion_is_a_blocking_gate(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["model_candidates"] = [model_candidate()]
+        enabled["incident_campaign_ids"] = set()
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["conclusion_recall"]["status"], "failed")
+        self.assertTrue(result["gates"]["conclusion_recall"]["blocking"])
+        self.assertEqual(result["verdict"], "failed")
+
+    def test_missing_attack_campaigns_makes_seed_gate_unavailable(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["truth_profile_ids"] = set()
+        enabled["truth_campaign_ids"] = set()
+        enabled["model_candidates"] = [model_candidate()]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["attack_campaign_seed_recall"]["status"], "unavailable")
         self.assertEqual(result["verdict"], "failed")
 
     def test_normal_profile_candidate_rate_at_one_percent_passes(self):
@@ -319,8 +377,8 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["model"]["status"], "failed")
 
-    def test_attack_profile_recall_is_unavailable_without_truth_profiles(self):
-        self.assertIsNone(attack_profile_recall({"profile_ids": {"p1"}, "model_candidates": [model_candidate()]}))
+    def test_attack_campaign_seed_recall_is_unavailable_without_truth_campaigns(self):
+        self.assertIsNone(attack_campaign_seed_recall({"profile_ids": {"p1"}, "model_candidates": [model_candidate()]}))
 
     def test_missing_endpoint_artifacts_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -493,7 +551,7 @@ class LearningReportTest(unittest.TestCase):
         report = render_report(evaluate_ab(disabled, enabled, DEFAULT_GATES))
 
         self.assertIn("Normal profiles", report)
-        self.assertIn("Attack truth profiles", report)
+        self.assertIn("Attack campaigns seeded by Agent", report)
         self.assertIn("Capacity evictions", report)
         self.assertIn("EventRef evictions", report)
 

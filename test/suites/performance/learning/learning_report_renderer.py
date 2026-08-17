@@ -35,10 +35,10 @@ def failure_section(summary: dict[str, Any]) -> list[str]:
 
 
 def gate_section(gates: dict[str, Any]) -> list[str]:
-    lines = ["## 硬门禁", "", "| 门禁 | 状态 | 实测值 | 限制 | 说明 |", "|---|---:|---:|---:|---|"]
+    lines = ["## 质量门禁", "", "| 门禁 | 类型 | 状态 | 实测值 | 限制 | 说明 |", "|---|---|---:|---:|---:|---|"]
     for name, result in gates.items():
         lines.append(
-            f"| {name} | `{result.get('status', 'unavailable')}` | {display(result.get('value'))} | "
+            f"| {name} | {'blocking' if result.get('blocking', True) else 'observation'} | `{result.get('status', 'unavailable')}` | {display(result.get('value'))} | "
             f"{display(result.get('limit'))} | {result.get('detail', '')} |"
         )
     return lines + [""]
@@ -106,6 +106,8 @@ def profile_lifecycle_section(variants: dict[str, Any]) -> list[str]:
         ("Compactions", "compactions"), ("Expired", "expired"),
         ("Capacity evictions", "capacity_evictions"), ("File evictions", "file_evictions"),
         ("Network evictions", "network_evictions"), ("EventRef evictions", "event_ref_evictions"),
+        ("Identity retained", "identity_retained"), ("Identity evictions", "identity_evictions"),
+        ("Active evictions", "active_evictions"), ("Identity gaps", "identity_gaps"),
     )
     lines = ["## ProcessProfile 生命周期", "", "| 指标 | Disabled | Enabled |", "|---|---:|---:|"]
     for label, key in fields:
@@ -133,7 +135,7 @@ def candidate_section(variants: dict[str, Any]) -> list[str]:
     lines.extend([
         "", "| 效果指标 | 总数 | 命中 | 比率 |", "|---|---:|---:|---:|",
         f"| Normal profiles | {display(enabled.get('normal_profile_count'))} | {display(enabled.get('normal_candidate_count'))} | {percent(enabled.get('normal_candidate_rate'))} |",
-        f"| Attack truth profiles | {display(enabled.get('truth_profile_count'))} | {display(enabled.get('detected_truth_profile_count'))} | {percent(enabled.get('attack_profile_recall'))} |",
+        f"| Attack campaigns seeded by Agent | {display(enabled.get('truth_campaign_count'))} | {display(enabled.get('seeded_campaign_count'))} | {percent(enabled.get('attack_campaign_seed_recall'))} |",
         "",
     ])
     return lines
