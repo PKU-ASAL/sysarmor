@@ -23,7 +23,7 @@ export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 .DEFAULT_GOAL := help
 
 .PHONY: doctor up down up-container up-vm-endpoint up-vm-topology up-all down-container down-vm-endpoint down-vm-topology down-all provision status clean help
-.PHONY: test-unit test-layered-architecture test-postgres-integration functional-core
+.PHONY: test-unit test-layered-architecture test-documentation-contract test-postgres-integration functional-core
 .PHONY: functional-endpoint functional-endpoint-local functional-endpoint-container functional-platform functional-platform-full functional-topology
 .PHONY: detection-topology detection-report distribution-package distribution-published release-candidate release-published
 .PHONY: performance-endpoint performance-learning performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
@@ -124,11 +124,14 @@ clean:
 
 # Unit and functional suites --------------------------------------------------
 
-test-unit: test-layered-architecture
+test-unit: test-layered-architecture test-documentation-contract
 	cd .. && go test ./...
 
 test-layered-architecture:
 	cd .. && python3 -m unittest test.contracts.test_layered_architecture -v
+
+test-documentation-contract:
+	cd .. && python3 -m unittest test.contracts.test_documentation -v
 
 test-postgres-integration:
 	bash suites/functional/platform/postgres-worker-concurrency.sh
