@@ -6,12 +6,12 @@ from __future__ import annotations
 import json
 import math
 import argparse
-import csv
 import importlib.util
 from pathlib import Path
 from typing import Any
 
 from learning_report_renderer import render_report
+from learning_performance import load_matrix_phase
 from learning_effect import (
     attack_profile_recall,
     candidate_profile_ids,
@@ -168,7 +168,7 @@ def reliability_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[
     return gate("passed", 0, 0, "health/drop/parse error")
 
 
-def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, Any]:
+def load_endpoint_run(path: Path) -> dict[str, Any]:
     if (path / "collection-balanced").is_dir():
         path = path / "collection-balanced"
     manifest = require_json(path / "manifest.json")
@@ -184,7 +184,6 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
         for event in events
         if event.get("id") and (stable_id := event_profile_id(event)) is not None
     }
-    phase_data = load_matrix_phase(path, phase)
     health_document = latest_health(path)
     detection = health_document.get("detection", {})
     batcher = health_document.get("telemetryBatcher", health_document.get("telemetry_batcher", {}))
@@ -195,7 +194,7 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
         "health": {"status": health_document.get("status"), "learning": learning.get("status")},
         "profile_health": profile_health(learning.get("profiles", {})),
         "reliability": {"sensor_drop": health_number(sensor, "eventsDropped", "events_dropped"), "batcher_drop": health_number(batcher, "droppedEvents", "dropped_events"), "parse_errors": health_number(sensor, "parseErrors", "parse_errors")},
-        "performance": {"agent_cpu_avg_pct": phase_data.get("agent_cpu_avg_pct"), "agent_rss_max_mb": phase_data.get("agent_rss_max_mb"), "eps": phase_data.get("eps")},
+        "performance": performance_metrics(path),
         "stream_evictions": latest_stream_evictions(path),
         "model_candidates": model_candidates,
         "truth_baseline_ok": truth["ok"],
@@ -273,20 +272,14 @@ def evaluate_truth(path: Path, events: list[dict[str, Any]], rule_signals: list[
     return {"ok": ok, "event_ids": event_ids, "steps": required}
 
 
-def load_matrix_phase(path: Path, phase: str) -> dict[str, Any]:
-    matrix = path.parent / "matrix.csv"
-    if matrix.exists():
-        with matrix.open(newline="") as stream:
-            for row in csv.DictReader(stream):
-                if row.get("policy_dir") == path.name:
-                    return {
-                        "agent_cpu_avg_pct": numeric(row.get(f"{phase}_agent_cpu_avg_pct")),
-                        "agent_rss_max_mb": numeric(row.get(f"{phase}_agent_rss_max_mb")),
-                        "eps": numeric(row.get(f"{phase}_eps")),
-                        "dropped_events_delta": int(float(row.get(f"{phase}_dropped_events_delta") or 0)),
-                        "parse_errors_delta": int(float(row.get(f"{phase}_parse_errors_delta") or 0)),
-                    }
-    return {}
+def performance_metrics(path: Path) -> dict[str, Any]:
+    activity = load_matrix_phase(path, "normal_activity")
+    steady = load_matrix_phase(path, "steady")
+    return {
+        "agent_cpu_avg_pct": activity.get("agent_cpu_avg_pct"),
+        "agent_rss_max_mb": steady.get("agent_rss_max_mb"),
+        "eps": activity.get("eps"),
+    }
 
 
 def read_lines(path: Path) -> list[str]:

@@ -268,6 +268,17 @@ class LearningReportTest(unittest.TestCase):
                 result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
                 self.assertEqual(result["gates"]["performance_rss"]["status"], expected)
 
+    def test_performance_metrics_use_activity_cpu_eps_and_steady_rss(self):
+        phases = {
+            "normal_activity": {"agent_cpu_avg_pct": 2.5, "agent_rss_max_mb": 99.0, "eps": 20.0},
+            "steady": {"agent_cpu_avg_pct": 9.0, "agent_rss_max_mb": 70.0, "eps": 0.0},
+        }
+
+        with mock.patch.object(REPORT, "load_matrix_phase", side_effect=lambda _, phase: phases[phase]):
+            result = REPORT.performance_metrics(Path("run"))
+
+        self.assertEqual(result, {"agent_cpu_avg_pct": 2.5, "agent_rss_max_mb": 70.0, "eps": 20.0})
+
     def test_model_candidate_requires_subject_process_entity(self):
         disabled = metrics()
         enabled = metrics()
