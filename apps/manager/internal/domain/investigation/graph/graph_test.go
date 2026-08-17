@@ -1,6 +1,9 @@
 package graph
 
 import (
+	"fmt"
+	"reflect"
+	"slices"
 	"testing"
 
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
@@ -35,6 +38,28 @@ func TestFromEventsMarksUnavailableParentAsGap(t *testing.T) {
 	}}).ConnectingEvidence([]domaintelemetry.Signal{{Entities: []domaintelemetry.Entity{{Kind: "process", Key: "p-bash", Role: "subject"}}}})
 	if !hasNode(value.Nodes, "gap:parent:exec-bash") || !hasIncompleteEdge(value.Edges, "gap:parent:exec-bash", "process:p-bash") {
 		t.Fatalf("gap evidence = %+v", value)
+	}
+}
+
+func TestConnectingEvidenceSelectsSeedsDeterministically(t *testing.T) {
+	events := make([]domaintelemetry.Event, maxEvidenceSeeds+2)
+	signals := make([]domaintelemetry.Signal, len(events))
+	for index := range events {
+		processID := fmt.Sprintf("process-%02d", index)
+		events[index] = domaintelemetry.Event{
+			ID: fmt.Sprintf("event-%02d", index), OccurredAtNS: uint64(index), Behavior: "process.exec",
+			SubjectProcess: &domaintelemetry.ProcessRef{StableID: processID},
+		}
+		signals[index] = domaintelemetry.Signal{Entities: []domaintelemetry.Entity{{Kind: "process", Key: processID, Role: "subject"}}}
+	}
+	reversed := append([]domaintelemetry.Signal(nil), signals...)
+	slices.Reverse(reversed)
+
+	first := FromEvents(events).ConnectingEvidence(signals)
+	second := FromEvents(events).ConnectingEvidence(reversed)
+
+	if !reflect.DeepEqual(first, second) || len(first.Nodes) != maxEvidenceSeeds {
+		t.Fatalf("first = %+v, second = %+v", first, second)
 	}
 }
 

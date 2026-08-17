@@ -110,16 +110,29 @@ func (value *Graph) addObjectEvent(event domaintelemetry.Event, subject, key, ki
 }
 
 func (value *Graph) addSignalSeeds(signals []domaintelemetry.Signal) []string {
-	seen := make(map[string]bool)
-	var seeds []string
+	entities := make(map[string]domaintelemetry.Entity)
 	for _, signal := range signals {
 		for _, current := range entity.Unique(signal.Entities) {
-			value.addNode(current)
-			if !seen[current.Key] && len(seeds) < maxEvidenceSeeds {
-				seen[current.Key] = true
-				seeds = append(seeds, current.Key)
-			}
+			entities[current.Key] = current
 		}
+	}
+	keys := make([]string, 0, len(entities))
+	for key := range entities {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if len(keys) > maxEvidenceSeeds {
+		keys = keys[:maxEvidenceSeeds]
+	}
+	seeds := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if value.hasNode(key) {
+			seeds = append(seeds, key)
+			continue
+		}
+		gap := "gap:seed:" + key
+		value.addRawNode(gap, "gap")
+		seeds = append(seeds, gap)
 	}
 	return seeds
 }

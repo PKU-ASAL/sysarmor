@@ -9,6 +9,7 @@ type Graph struct {
 	nodeOrder []string
 	edges     map[string]domaintelemetry.GraphEdge
 	edgeOrder []string
+	adjacency map[string][]string
 }
 
 type pathParent struct {
@@ -18,8 +19,9 @@ type pathParent struct {
 
 func New() *Graph {
 	return &Graph{
-		nodes: make(map[string]domaintelemetry.GraphNode),
-		edges: make(map[string]domaintelemetry.GraphEdge),
+		nodes:     make(map[string]domaintelemetry.GraphNode),
+		edges:     make(map[string]domaintelemetry.GraphEdge),
+		adjacency: make(map[string][]string),
 	}
 }
 
@@ -75,7 +77,7 @@ func (value *Graph) ShortestPath(from, to string) domaintelemetry.EvidenceSubgra
 func (value *Graph) expand(frontier []string, nodes, edges map[string]bool) []string {
 	var next []string
 	for _, node := range frontier {
-		for _, edgeID := range value.edgeOrder {
+		for _, edgeID := range value.adjacency[node] {
 			edge := value.edges[edgeID]
 			other, connected := adjacent(edge, node)
 			if !connected {
@@ -93,7 +95,7 @@ func (value *Graph) expand(frontier []string, nodes, edges map[string]bool) []st
 
 func (value *Graph) discover(node, target string, seen map[string]bool, parents map[string]pathParent) (bool, []string) {
 	var next []string
-	for _, edgeID := range value.edgeOrder {
+	for _, edgeID := range value.adjacency[node] {
 		other, connected := adjacent(value.edges[edgeID], node)
 		if !connected || seen[other] {
 			continue
@@ -131,6 +133,8 @@ func (value *Graph) addEdge(from, to, kind string) {
 	}
 	value.edges[id] = domaintelemetry.GraphEdge{ID: id, From: from, To: to, Kind: kind}
 	value.edgeOrder = append(value.edgeOrder, id)
+	value.adjacency[from] = append(value.adjacency[from], id)
+	value.adjacency[to] = append(value.adjacency[to], id)
 }
 
 func (value *Graph) pathSubgraph(from, to string, parents map[string]pathParent) domaintelemetry.EvidenceSubgraph {
