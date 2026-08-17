@@ -12,7 +12,7 @@ SysArmor 是面向 Linux 的端点安全与关联分析系统。Agent 默认独�
 - **效能平衡：** Event、Signal、Evidence、Incident 分层保留安全信息，在行为粒度与 CPU、内存、磁盘、网络成本之间建立可测量边界。
 - **端云协同：** 端侧完成低延迟过滤和检测，云侧在 tenant、作用域和时间窗口约束下进行历史与实体图关联。
 
-完整定义、当前基础和目标能力边界见[设计原则](docs/design-principles.zh-CN.md)。
+完整设计取舍见[设计原则](docs/design-principles.md)，Event、Signal、Evidence 和 Incident 的定义见[安全数据模型](docs/concepts/security-data-model.md)。
 
 ## 系统结构
 
@@ -70,8 +70,9 @@ Functional、Detection 和 Performance 测试回答不同问题，不应互相�
 
 ## 文档
 
-- [文档首页](docs/index.md)
-- [设计原则](docs/design-principles.zh-CN.md)
+- [文档首页](docs/README.md)
+- [安全数据模型](docs/concepts/security-data-model.md)
+- [设计原则](docs/design-principles.md)
 - [系统架构](docs/architecture.md)
 - [策略指南](docs/guides/policy.md)
 - [Agent 管理](docs/guides/agent-management.md)
@@ -80,10 +81,8 @@ Functional、Detection 和 Performance 测试回答不同问题，不应互相�
 - [配置参考](docs/reference/configuration.md)
 - [API 参考](docs/reference/api.md)
 - [CLI 参考](docs/reference/cli.md)
-- [开发指南](docs/development/development.md)
+- [贡献指南](CONTRIBUTING.md)
 - [测试指南](docs/development/testing.md)
-
-完整文档职责和维护规则见 [CATALOG](CATALOG.md)。
 
 ## 许可证
 

@@ -1,6 +1,6 @@
 # SysArmor 系统架构
 
-本文解释 SysArmor 的 Agent、控制平面、数据平面和云侧分析如何协作。设计动机见[设计原则](design-principles.zh-CN.md)，具体配置字段和接口分别以 [Configuration Reference](reference/configuration.md) 与 [API Reference](reference/api.md) 为准。
+本文解释 SysArmor 的 Agent、控制平面、数据平面和云侧分析如何协作。核心对象见[安全数据模型](concepts/security-data-model.md)，设计动机见[设计原则](design-principles.md)，具体字段和接口分别以[配置参考](reference/configuration.md)与 [API 参考](reference/api.md)为准。
 
 ## 架构目标
 
@@ -39,16 +39,9 @@ flowchart LR
 
 ## 安全数据模型
 
-| 概念 | 定义 | 典型来源 |
-|---|---|---|
-| Event | 对进程、文件、网络、身份或系统状态的一次规范化事实记录 | Agent 和 sensor |
-| Signal | 从 Event、既有 Signal、运行状态或关系中提炼的结构化行为信号 | 端点检测或云侧分析 |
-| Evidence | 支持 Signal 或 Incident 的可复核依据，包括引用、实体、关系和必要的原始材料 | Agent 引用、Evidence 子图或受控回拉 |
-| Incident | 由相关 Signal 与 Evidence 在明确作用域内收敛出的可重复安全分析报告 | 云侧分析 |
+SysArmor 的生产数据对象及 Signal 的 Stage、DetectorKind、Where 三个正交维度统一定义在[安全数据模型](concepts/security-data-model.md)。本页只说明这些对象如何经过系统组件。
 
-Signal 不是传统告警的同义词。它位于高吞吐原始事实与高置信安全结论之间，可以表示值得保留的行为、局部异常、规则命中或健康状态。Signal 是否恶意、是否应形成 Incident，由规则、上下文、关联结果和有效策略共同决定。
-
-Incident 是可重复计算的分析报告，不是可变的工单。人工处置、负责人、评论和关闭状态属于案件管理，目前不在 Incident 模型内。调查方法见[调查指南](guides/investigation.md)。
+Agent 产生 Event 和 Endpoint Signal；Worker 在 tenant、分析作用域和时间窗口内读取当前与历史数据，产生 Cloud Signal、Evidence 子图和 Incident。Incident 是可重复计算的安全分析报告，不是人工工单。调查方法见[调查指南](guides/investigation.md)。
 
 ## Agent 端点自治
 
@@ -229,7 +222,8 @@ Manager 与 Worker 的生产持久化仅支持 PostgreSQL。缺失 DSN、迁移�
 
 ## 继续阅读
 
-- [设计原则](design-principles.zh-CN.md)：为什么采用动态博弈、效能平衡和端云协同。
+- [安全数据模型](concepts/security-data-model.md)：Event、Signal、Evidence 和 Incident 的精确定义。
+- [设计原则](design-principles.md)：为什么采用动态博弈、效能平衡和端云协同。
 - [策略指南](guides/policy.md)：如何理解和调整四层统一策略。
 - [调查指南](guides/investigation.md)：如何解释 Event、Signal、Evidence 和 Incident。
 - [部署指南](operations/deployment.md)：如何部署 Agent 和平台。

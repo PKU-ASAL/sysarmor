@@ -1,6 +1,6 @@
 # 调查指南
 
-本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。数据结构的整体定义见[系统架构](../architecture.md)，接口字段和查询参数以 [API Reference](../reference/api.md) 为准。
+本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。概念定义见[安全数据模型](../concepts/security-data-model.md)，生产流见[系统架构](../architecture.md)，接口字段和查询参数以 [API 参考](../reference/api.md)为准。
 
 ## 调查目标
 
@@ -19,7 +19,7 @@ Event -> Endpoint Signal -> Cloud Signal -> Incident
     +----------+---- Evidence --+------------+
 ```
 
-Signal 是中间行为信号，不天然等同于恶意告警。Incident 是可重复的分析报告，不是人工案件或工单。
+Signal 是检测发现，可以处于 Candidate 或 Conclusion 阶段，不天然等同于恶意告警。Incident 是可重复的安全分析报告，不是人工案件或工单。
 
 ## 调查前先固定边界
 

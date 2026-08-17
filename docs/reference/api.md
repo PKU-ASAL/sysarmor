@@ -91,13 +91,15 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 | 包 | 主要契约 |
 |---|---|
 | `sysarmor.event.v1` | 规范化 `CanonicalEvent` |
-| `sysarmor.signal.v1` | `Signal`、Entity、Evidence、Response intent |
+| `sysarmor.signal.v1` | `Signal`、Stage、DetectorKind、Where、Entity、Evidence、Response intent |
 | `sysarmor.incident.v1` | Incident、Evidence 子图和 converge trace |
 | `sysarmor.dataplane.v1` | `DataBatch`、序列、drop/parse delta 和 ack |
 | `sysarmor.controlplane.v1` | Agent 本地及远程控制帧 |
 | `sysarmor.policy.v1` | Policy wire model |
 
 当前数据面 `schema_version` 为 `sysarmor.dataplane/v1`；新 producer 必须在每个 `DataBatch` 中设置。
+
+Signal 的概念语义由[安全数据模型](../concepts/security-data-model.md)定义。生产输入必须明确设置 Stage、DetectorKind 和 Where；`UNSPECIFIED` 由可信边界拒绝。Graph Conclusion 当前只有合同，尚无生产生成器。
 
 ## 版本演进
 

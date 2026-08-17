@@ -1,6 +1,6 @@
 # 统一策略指南
 
-本文解释如何使用统一策略协调 collection、detection、telemetry 和 response。它关注决策方法与变更流程；字段、默认值和 Schema 以 [Configuration Reference](../reference/configuration.md) 为准。
+本文解释如何使用统一策略协调 collection、detection、telemetry 和 response。核心对象与 Signal 分类见[安全数据模型](../concepts/security-data-model.md)；字段、默认值和 Schema 以[配置参考](../reference/configuration.md)为准。
 
 ## 为什么必须统一
 

@@ -13,7 +13,7 @@
 | 3. 端云调查闭环 | 端侧局部判断与云侧全局关联缺少连续证据链 | 稳定关联、连续下钻、缺口显式 | 后续 |
 | 4. 受控响应与动态博弈 | 固定策略与纯人工响应难以适应持续对抗 | 有界自动化、临时加深、自动恢复 | 后续 |
 
-路线图落实三项[设计原则](design-principles.zh-CN.md)：动态博弈决定系统如何调整，效能平衡决定观察和传输多少，端云协同决定计算、数据和决策放在哪里。
+路线图落实三项[设计原则](design-principles.md)：动态博弈决定系统如何调整，效能平衡决定观察和传输多少，端云协同决定计算、数据和决策放在哪里。核心对象与当前能力边界以[安全数据模型](concepts/security-data-model.md)为准。
 
 ## 阶段 1：端点可信运行与自保护
 
@@ -46,7 +46,7 @@ Agent 和 Sensor 是所有安全能力的执行基础。系统不能只依靠 Ag
 ### 当前证据
 
 - [systemd Agent unit](../deployments/agent/systemd/sysarmor-agent.service)
-- [Sensor 篡改与失明检测](../apps/agent/internal/tamper/tamper.go)
+- [Sensor 篡改与失明检测](../apps/agent/internal/domain/health/tamper.go)
 - [真实 Tetragon Agent 生命周期测试](../test/suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh)
 
 ### 边界

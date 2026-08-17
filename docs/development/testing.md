@@ -378,6 +378,12 @@ fixture 格式时更新 `test/data/README.md`。Suite 子目录不再新建 READ
 
 ## 故障排查
 
+### Tetragon 文件事件可能缺少进程身份
+
+真实测试曾观察到少量 `file.read` Event 的 Tetragon `Process` 对象缺少 binary、argv 和父进程身份，涉及 sensor 启动前已存在的进程、CRON fork 子进程和长生命周期 sshd。当前证据只确认缺失值来自上游对象，不能直接归因于进程退出过快或缓存淘汰。
+
+身份缺失时必须保留原始 Event 和相关 Signal，不将空 binary 视为可信，也不猜测程序路径。定位时分别复现 sensor 启动前进程、fork 后 exec 前读取和长生命周期进程读取，并保存原始 gRPC Process 对象、Tetragon 版本和进程缓存指标。
+
 先运行：
 
 ```bash
