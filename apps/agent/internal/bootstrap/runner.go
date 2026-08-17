@@ -91,7 +91,7 @@ func NewRunner(ctx context.Context, cfg config.Config) (*Runner, error) {
 	return &Runner{runtime: runtime, store: store, resources: resources}, nil
 }
 
-func learningDetectorFromConfig(cfg config.Config) (ports.EventDetector, error) {
+func learningDetectorFromConfig(cfg config.Config) (ports.ProfileDetector, error) {
 	return detectionadapter.LoadModelBundle(cfg.Learning.ModelPath, parseTrustKeys(cfg.Learning.TrustKeys))
 }
 

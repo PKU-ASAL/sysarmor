@@ -64,7 +64,6 @@ func (normalizer *EventNormalizer) NormalizeDomain(raw *sensorv1.SensorEvent) do
 		RawRef: raw.GetRawRef(), Scope: normalizer.scope, ContainerID: raw.GetContainerId(), Cgroup: raw.GetProc().GetCgroup(),
 		Labels: cloneLabels(normalizer.labels),
 	}
-	normalizer.profiles.Observe(event)
 	return event
 }
 

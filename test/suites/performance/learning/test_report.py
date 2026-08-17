@@ -33,7 +33,7 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
             "modelRef": "model:test",
             "modelVersion": "1",
             "modelDigest": "sha256:digest",
-            "featureSchema": "FeatureSchemaV1",
+            "featureSchema": "FeatureSchemaV2",
         },
         "rule_refs_ok": True,
         "truth_steps": [
@@ -58,7 +58,7 @@ def model_candidate(event_ref="e1"):
         "modelRef": "model:test",
         "modelVersion": "1",
         "modelDigest": "sha256:digest",
-        "featureSchema": "FeatureSchemaV1",
+        "featureSchema": "FeatureSchemaV2",
         "localRarity": 12.5,
         "eventRefs": [event_ref],
     }
@@ -138,8 +138,8 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["model"]["status"], "failed")
 
-    def test_model_candidate_rejects_boolean_and_negative_scores(self):
-        for score in (True, -1):
+    def test_model_candidate_rejects_boolean_and_non_finite_scores(self):
+        for score in (True, float("inf")):
             with self.subTest(score=score):
                 disabled = metrics()
                 enabled = metrics()
@@ -149,6 +149,16 @@ class LearningReportTest(unittest.TestCase):
                 result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
 
                 self.assertEqual(result["gates"]["model"]["status"], "failed")
+
+    def test_model_candidate_accepts_finite_negative_anomaly_score(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["model_candidates"] = [model_candidate() | {"localRarity": -1}]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["model"]["status"], "passed")
 
     def test_attack_recall_is_observation_only(self):
         disabled = metrics()
@@ -197,7 +207,7 @@ class LearningReportTest(unittest.TestCase):
             (run_dir / "model").mkdir()
             (run_dir / "manifest.json").write_text(REPORT.json.dumps({
                 "model_ref": "model:test", "model_version": "1",
-                "model_digest": "sha256:digest", "feature_schema": "FeatureSchemaV1",
+                "model_digest": "sha256:digest", "feature_schema": "FeatureSchemaV2",
             }))
             (run_dir / "model/calibration.json").write_text('{"garbage": true}')
             (run_dir / "disabled/manifest.json").write_text('{"vm_env": "vm-endpoint"}')

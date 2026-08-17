@@ -8,6 +8,7 @@ import (
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	applicationpipeline "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/pipeline"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
@@ -21,9 +22,9 @@ type EndpointRuntime struct {
 	batches    *telemetryadapter.BatchBuilder
 }
 
-func NewEndpointRuntime(policy *policyRuntime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder, learning ports.EventDetector) *EndpointRuntime {
-	detectors := applicationpipeline.NewDetectorSet(&runtimeDetector{policy: policy}, learning)
-	return &EndpointRuntime{policy: policy, normalizer: normalizer, pipeline: applicationpipeline.New(detectors), batches: batches}
+func NewEndpointRuntime(policy *policyRuntime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder, learning ports.ProfileDetector, profiles *domainprocess.Profiles) *EndpointRuntime {
+	rules := applicationpipeline.NewDetectorSet(&runtimeDetector{policy: policy})
+	return &EndpointRuntime{policy: policy, normalizer: normalizer, pipeline: applicationpipeline.New(rules, learning, profiles), batches: batches}
 }
 
 func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.DataBatch, error) {

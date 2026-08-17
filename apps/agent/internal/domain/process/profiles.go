@@ -33,9 +33,11 @@ type ResolvedIdentity struct {
 
 type Snapshot struct {
 	StableID, ParentStableID, LineageID, Binary string
+	Argv                                        []string
 	Revision                                    uint64
 	State                                       State
 	BehaviorCounts                              map[string]uint64
+	Labels                                      map[string]string
 	Files, Networks, EventRefs                  []string
 }
 
@@ -117,14 +119,30 @@ func (profiles *Profiles) Resolve(observation IdentityObservation) ResolvedIdent
 func (profiles *Profiles) Observe(event domainevent.Event) {
 	profiles.mu.Lock()
 	defer profiles.mu.Unlock()
+	profiles.observe(event)
+}
+
+func (profiles *Profiles) ObserveSnapshot(event domainevent.Event) (Snapshot, bool) {
+	profiles.mu.Lock()
+	defer profiles.mu.Unlock()
+	profile := profiles.observe(event)
+	if profile == nil {
+		return Snapshot{}, false
+	}
+	snapshot := profile.snapshot()
+	snapshot.Labels = cloneLabels(event.Labels)
+	return snapshot, true
+}
+
+func (profiles *Profiles) observe(event domainevent.Event) *Profile {
 	nowNS := eventTimeNS(event)
 	profiles.sweepIfDue(nowNS)
 	profile := profiles.profiles[event.Subject.StableID]
 	if profile == nil {
-		return
+		return nil
 	}
 	if profile.state == StateRetained {
-		return
+		return profile
 	}
 	profile.revision++
 	profile.behaviorCounts[event.Behavior]++
@@ -143,6 +161,7 @@ func (profiles *Profiles) Observe(event domainevent.Event) {
 	if event.Behavior == domainevent.BehaviorProcessExit {
 		profile.state, profile.exitedAtNS = StateExited, profile.lastSeenNS
 	}
+	return profile
 }
 
 func (profiles *Profiles) Sweep(nowNS uint64) {
@@ -228,7 +247,7 @@ func cloneProcess(process domainevent.Process) domainevent.Process {
 func (profile *Profile) snapshot() Snapshot {
 	return Snapshot{
 		StableID: profile.process.StableID, ParentStableID: profile.parentStableID,
-		LineageID: profile.process.LineageID, Binary: profile.process.Binary, Revision: profile.revision,
+		LineageID: profile.process.LineageID, Binary: profile.process.Binary, Argv: append([]string(nil), profile.process.Argv...), Revision: profile.revision,
 		State:          profile.state,
 		BehaviorCounts: cloneCounts(profile.behaviorCounts), Files: append([]string(nil), profile.files.values...),
 		Networks: append([]string(nil), profile.networks.values...), EventRefs: append([]string(nil), profile.eventRefs...),
@@ -341,6 +360,17 @@ func contains(values []string, value string) bool {
 
 func cloneCounts(values map[string]uint64) map[string]uint64 {
 	result := make(map[string]uint64, len(values))
+	for key, value := range values {
+		result[key] = value
+	}
+	return result
+}
+
+func cloneLabels(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(values))
 	for key, value := range values {
 		result[key] = value
 	}

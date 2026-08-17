@@ -6,6 +6,7 @@ import (
 
 	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 )
 
@@ -14,18 +15,29 @@ type Result struct {
 	Signals []*domaindetection.Signal
 }
 
-type Service struct{ detector ports.EventDetector }
+type Service struct {
+	rules    ports.EventDetector
+	learning ports.ProfileDetector
+	profiles *domainprocess.Profiles
+}
 
-func New(detector ports.EventDetector) *Service {
-	return &Service{detector: detector}
+func New(rules ports.EventDetector, learning ports.ProfileDetector, profiles *domainprocess.Profiles) *Service {
+	return &Service{rules: rules, learning: learning, profiles: profiles}
 }
 
 func (service *Service) Process(event domainevent.Event, labels map[string]string) (Result, error) {
-	if service == nil || service.detector == nil {
+	if service == nil || service.rules == nil || service.profiles == nil {
 		return Result{}, fmt.Errorf("event pipeline is not initialized")
 	}
 	event.Labels = mergeLabels(event.Labels, labels)
-	signals := service.detector.Process(event)
+	signals := service.rules.Process(event)
+	if service.learning == nil {
+		service.profiles.Observe(event)
+	} else if snapshot, ok := service.profiles.ObserveSnapshot(event); !ok {
+		return Result{}, fmt.Errorf("process profile %q is not initialized", event.Subject.StableID)
+	} else {
+		signals = append(signals, service.learning.Process(snapshot)...)
+	}
 	return Result{Event: event, Signals: append([]*domaindetection.Signal(nil), signals...)}, nil
 }
 

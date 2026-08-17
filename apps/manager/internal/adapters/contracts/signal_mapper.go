@@ -79,15 +79,15 @@ func validateModelCandidate(value *signalv1.Signal) error {
 	if !hasCompleteModelProvenance(value) {
 		return fmt.Errorf("model detector provenance is required")
 	}
-	if !validModelDigest(value.GetModelDigest()) || value.GetFeatureSchema() != "FeatureSchemaV1" {
+	if !validModelDigest(value.GetModelDigest()) || value.GetFeatureSchema() != "FeatureSchemaV2" {
 		return fmt.Errorf("model detector provenance is invalid")
 	}
 	if value.GetWhere() != signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT || !validModelEventRefs(value.GetEventRefs()) {
 		return fmt.Errorf("model detector output requires endpoint event evidence")
 	}
 	score := value.GetLocalRarity()
-	if score < 0 || math.IsNaN(float64(score)) || math.IsInf(float64(score), 0) {
-		return fmt.Errorf("model detector output local rarity must be finite and non-negative")
+	if math.IsNaN(float64(score)) || math.IsInf(float64(score), 0) {
+		return fmt.Errorf("model detector output local rarity must be finite")
 	}
 	if value.GetRuleId() != "" || value.GetRuleVersion() != 0 || value.GetRulesetRef() != "" {
 		return fmt.Errorf("model detector output cannot carry rule provenance")

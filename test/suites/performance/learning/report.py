@@ -165,7 +165,7 @@ def model_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, A
         ):
             return gate("failed", signal, "candidate/model", "invalid Model Candidate contract")
         score = numeric(signal.get("localRarity"))
-        if any(signal.get(field) != expected[field] for field in provenance) or score is None or score < 0:
+        if any(signal.get(field) != expected[field] for field in provenance) or score is None or not math.isfinite(score):
             return gate("failed", signal, "complete provenance and score", "invalid Model Candidate provenance")
         refs = signal.get("eventRefs", [])
         if not refs or not set(refs).issubset(event_ids):

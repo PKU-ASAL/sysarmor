@@ -44,7 +44,7 @@ func ReadProtoJSONLWithRing(r io.Reader, agentID, hostID, policyID string, polic
 			continue
 		}
 		rawData := append([]byte(nil), data...)
-		events, signals, err := decodeLine(rawData, norm, detector, labels, rawRing, parser)
+		events, signals, err := decodeLine(rawData, norm, profiles, detector, labels, rawRing, parser)
 		if err != nil {
 			return nil, fmt.Errorf("line %d is neither Signal, CanonicalEvent, SensorEvent nor Tetragon event", line)
 		}

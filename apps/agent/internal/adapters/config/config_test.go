@@ -51,7 +51,7 @@ runtime:
     matcher_strategy: optimized
 
 learning:
-  model_path: /var/lib/sysarmor/agent/models/normal-v1.json
+  model_path: /var/lib/sysarmor/agent/models/process-profile-v2.json
   trust_keys: release=base64-public-key
 `)
 	cfg, err := LoadFile(path)
@@ -98,7 +98,7 @@ learning:
 	if cfg.Runtime.FeatureFlags.MatcherStrategy != "optimized" {
 		t.Fatalf("runtime feature flags = %+v", cfg.Runtime.FeatureFlags)
 	}
-	if cfg.Learning.ModelPath != "/var/lib/sysarmor/agent/models/normal-v1.json" {
+	if cfg.Learning.ModelPath != "/var/lib/sysarmor/agent/models/process-profile-v2.json" {
 		t.Fatalf("learning config = %+v", cfg.Learning)
 	}
 	if cfg.Learning.TrustKeys != "release=base64-public-key" {

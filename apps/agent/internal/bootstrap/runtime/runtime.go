@@ -35,7 +35,7 @@ type Coordinator struct {
 	telemetryState   telemetryRuntime
 	sensorState      sensorRuntime
 	processProfiles  *domainprocess.Profiles
-	learningDetector ports.EventDetector
+	learningDetector ports.ProfileDetector
 }
 
 type policyRuntime struct {
@@ -103,7 +103,7 @@ type Dependencies struct {
 	EventSeq         uint64
 	SignalSeq        uint64
 	Policy           PolicyControllerFactory
-	LearningDetector ports.EventDetector
+	LearningDetector ports.ProfileDetector
 	LearningError    error
 }
 
@@ -160,7 +160,7 @@ func processProfileLimits(cfg config.Config) domainprocess.Limits {
 	}
 }
 
-func learningHealth(detector ports.EventDetector, loadErr error) agenthealth.LearningHealth {
+func learningHealth(detector ports.ProfileDetector, loadErr error) agenthealth.LearningHealth {
 	if loadErr != nil {
 		return agenthealth.LearningHealth{Status: "degraded", LastError: loadErr.Error()}
 	}

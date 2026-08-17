@@ -100,8 +100,7 @@ func TestSignalToDomainRejectsInvalidModelSemantics(t *testing.T) {
 		}},
 		{name: "global rarity", mutate: func(signal *signalv1.Signal) { signal.GlobalRarity = 2 }},
 		{name: "malformed digest", mutate: func(signal *signalv1.Signal) { signal.ModelDigest = "sha256:not-a-digest" }},
-		{name: "unsupported schema", mutate: func(signal *signalv1.Signal) { signal.FeatureSchema = "FeatureSchemaV2" }},
-		{name: "negative score", mutate: func(signal *signalv1.Signal) { signal.LocalRarity = -1 }},
+		{name: "unsupported schema", mutate: func(signal *signalv1.Signal) { signal.FeatureSchema = "unsupported-schema" }},
 		{name: "non-finite score", mutate: func(signal *signalv1.Signal) { signal.LocalRarity = float32(math.Inf(1)) }},
 		{name: "non-endpoint", mutate: func(signal *signalv1.Signal) { signal.Where = signalv1.SignalWhere_SIGNAL_WHERE_CLOUD }},
 		{name: "missing event ref", mutate: func(signal *signalv1.Signal) { signal.EventRefs = nil }},
@@ -115,6 +114,14 @@ func TestSignalToDomainRejectsInvalidModelSemantics(t *testing.T) {
 				t.Fatal("invalid model detector output accepted")
 			}
 		})
+	}
+}
+
+func TestSignalToDomainAcceptsFiniteNegativeModelAnomalyScore(t *testing.T) {
+	signal := modelSignal()
+	signal.LocalRarity = -1
+	if _, err := SignalToDomain(signal); err != nil {
+		t.Fatalf("finite negative AS rejected: %v", err)
 	}
 }
 
@@ -194,7 +201,7 @@ func modelSignal() *signalv1.Signal {
 	return &signalv1.Signal{
 		Id: "model-a", Name: "model_anomaly", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
 		Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_MODEL,
-		ModelRef: "model:normal-v1", ModelVersion: "1", ModelDigest: "sha256:" + strings.Repeat("a", 64), FeatureSchema: "FeatureSchemaV1",
+		ModelRef: "model:profile-v2", ModelVersion: "2", ModelDigest: "sha256:" + strings.Repeat("a", 64), FeatureSchema: "FeatureSchemaV2",
 		LocalRarity: 4, EventRefs: []string{"event-a"}, Mode: "shadow",
 	}
 }

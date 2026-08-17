@@ -27,20 +27,23 @@ func TestEventNormalizerInheritsSensorParentLineage(t *testing.T) {
 	}
 }
 
-func TestEventNormalizerUpdatesInjectedProcessProfile(t *testing.T) {
+func TestEventNormalizerLeavesBehaviorAggregationToApplication(t *testing.T) {
 	profiles := newTestProfiles(t)
 	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{}, profiles)
 	file := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
 		MonoNs: 10, Behavior: "file.write", Proc: &sensorv1.RawProcess{Pid: 100, SensorExecId: "exec-a", Binary: "/bin/bash"},
 		Object: &sensorv1.RawObject{Path: "/tmp/payload"},
 	})
-	normalizer.NormalizeDomain(&sensorv1.SensorEvent{
+	exit := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
 		MonoNs: 20, Behavior: "process.exit", Proc: &sensorv1.RawProcess{Pid: 100, SensorExecId: "exec-a", Binary: "/bin/bash"},
 	})
 
 	snapshot, ok := profiles.Snapshot(file.Subject.StableID)
-	if !ok || snapshot.State != domainprocess.StateExited || len(snapshot.Files) != 1 || snapshot.Files[0] != "/tmp/payload" {
+	if !ok || snapshot.State != domainprocess.StateActive || snapshot.Revision != 0 || len(snapshot.Files) != 0 {
 		t.Fatalf("profile snapshot = %+v ok=%v", snapshot, ok)
+	}
+	if exit.Subject.StableID != file.Subject.StableID {
+		t.Fatalf("identity changed across normalization: file=%q exit=%q", file.Subject.StableID, exit.Subject.StableID)
 	}
 }
 

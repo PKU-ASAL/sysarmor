@@ -3,141 +3,112 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"math"
 	"strconv"
-	"strings"
+	"sync"
 
 	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
-	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 )
 
-const FeatureSchemaV1 = "FeatureSchemaV1"
+const (
+	materialScoreIncrease = 0.25
+	maxEmissionStates     = 4096
+)
 
-type Bundle struct {
-	ModelRef      string
-	ModelVersion  string
-	ModelDigest   string
-	FeatureSchema string
-	Mean          []float32
-	Scale         []float32
-	Threshold     float32
+type emissionState struct {
+	revision uint64
+	score    float32
 }
 
-type Detector struct{ bundle Bundle }
+type Detector struct {
+	bundle    Bundle
+	embedding compiledEmbedding
+	mu        sync.Mutex
+	emitted   map[string]emissionState
+}
 
 func NewDetector(bundle Bundle) (*Detector, error) {
-	if err := validate(bundle); err != nil {
+	if err := validateBundle(bundle); err != nil {
 		return nil, err
 	}
-	return &Detector{bundle: cloneBundle(bundle)}, nil
+	cloned := cloneBundle(bundle)
+	return &Detector{bundle: cloned, embedding: compileEmbedding(cloned.Embedding), emitted: make(map[string]emissionState)}, nil
 }
 
-func (detector *Detector) Process(event domainevent.Event) []*domaindetection.Signal {
+func (detector *Detector) Score(profile domainprocess.Snapshot) float32 {
 	if detector == nil {
+		return 0
+	}
+	vector := processVector(profileFeatures(profile, detector.bundle.Rarity), detector.embedding)
+	reconstruction := reconstruct(vector, detector.bundle.VAE)
+	errorValue := reconstructionError(vector, reconstruction)
+	stability := lookupWeight(processName(profile.Binary), detector.bundle.Stability.Processes, detector.bundle.Stability.Default)
+	return float32(math.Log(math.Max(float64(errorValue/stability), 1e-12)))
+}
+
+func (detector *Detector) Process(profile domainprocess.Snapshot) []*domaindetection.Signal {
+	if detector == nil || profile.StableID == "" {
 		return nil
 	}
-	score := detector.score(event)
+	score := detector.Score(profile)
 	if score < detector.bundle.Threshold {
+		detector.forget(profile.StableID)
 		return nil
 	}
-	return []*domaindetection.Signal{detector.signal(event, score)}
-}
-
-func (detector *Detector) score(event domainevent.Event) float32 {
-	features := Features(event)
-	var distance float32
-	for index, feature := range features {
-		z := (feature - detector.bundle.Mean[index]) / detector.bundle.Scale[index]
-		distance += z * z
+	if !detector.shouldEmit(profile, score) {
+		return nil
 	}
-	return float32(math.Sqrt(float64(distance)))
+	return []*domaindetection.Signal{detector.candidate(profile, score)}
 }
 
-func (detector *Detector) signal(event domainevent.Event, score float32) *domaindetection.Signal {
-	baseRisk := uint32(math.Min(100, math.Max(1, float64(score*20))))
-	hash := sha256.Sum256([]byte(event.ID + "|" + detector.bundle.ModelDigest + "|" + strconv.FormatFloat(float64(score), 'f', 6, 32)))
-	signal := &domaindetection.Signal{
+func (detector *Detector) shouldEmit(profile domainprocess.Snapshot, score float32) bool {
+	detector.mu.Lock()
+	defer detector.mu.Unlock()
+	previous, exists := detector.emitted[profile.StableID]
+	emit := !exists || profile.State == domainprocess.StateExited ||
+		(profile.Revision != previous.revision && score-previous.score >= materialScoreIncrease)
+	if profile.State == domainprocess.StateExited {
+		delete(detector.emitted, profile.StableID)
+	} else if emit {
+		detector.emitted[profile.StableID] = emissionState{revision: profile.Revision, score: score}
+		detector.evictEmissionState(profile.StableID)
+	}
+	return emit
+}
+
+func (detector *Detector) evictEmissionState(current string) {
+	if len(detector.emitted) <= maxEmissionStates {
+		return
+	}
+	victim := ""
+	for stableID := range detector.emitted {
+		if stableID != current && (victim == "" || stableID < victim) {
+			victim = stableID
+		}
+	}
+	delete(detector.emitted, victim)
+}
+
+func (detector *Detector) forget(stableID string) {
+	detector.mu.Lock()
+	delete(detector.emitted, stableID)
+	detector.mu.Unlock()
+}
+
+func (detector *Detector) candidate(profile domainprocess.Snapshot, score float32) *domaindetection.Signal {
+	material := profile.StableID + "|" + strconv.FormatUint(profile.Revision, 10) + "|" +
+		detector.bundle.ModelDigest + "|" + strconv.FormatFloat(float64(score), 'f', 6, 32)
+	hash := sha256.Sum256([]byte(material))
+	return &domaindetection.Signal{
 		ID: "sig-model-" + hex.EncodeToString(hash[:8]), Name: "model_anomaly",
 		Where: domaindetection.SignalWhereEndpoint, Stage: domaindetection.SignalStageCandidate,
-		DetectorKind: domaindetection.DetectorKindModel, BaseRisk: baseRisk, LocalRarity: score,
-		LineageID: event.LineageID, EventRefs: []string{event.ID},
+		DetectorKind: domaindetection.DetectorKindModel, BaseRisk: risk(score), LocalRarity: score,
+		LineageID: profile.LineageID, EventRefs: append([]string(nil), profile.EventRefs...),
 		ModelRef: detector.bundle.ModelRef, ModelVersion: detector.bundle.ModelVersion,
 		ModelDigest: detector.bundle.ModelDigest, FeatureSchema: detector.bundle.FeatureSchema,
-		Confidence: 80, Mode: "shadow", Entities: entities(event), Labels: cloneLabels(event.Labels),
+		Confidence: 80, Mode: "shadow", Entities: profileEntities(profile), Labels: cloneLabels(profile.Labels),
 	}
-	return signal
-}
-
-func Features(event domainevent.Event) []float32 {
-	return []float32{
-		behaviorCode(event.Behavior), float32(len(event.Subject.Argv)) / 8,
-		boolFeature(event.SubjectPresent), boolFeature(event.ParentStableID != ""),
-		boolFeature(event.Object.FilePath != ""), boolFeature(event.Object.SocketAddress != ""),
-	}
-}
-
-func behaviorCode(value string) float32 {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return -1
-	}
-	hash := uint32(2166136261)
-	for _, value := range []byte(value) {
-		hash = (hash ^ uint32(value)) * 16777619
-	}
-	return float32(hash%16) / 15
-}
-
-func boolFeature(value bool) float32 {
-	if value {
-		return 1
-	}
-	return 0
-}
-
-func entities(event domainevent.Event) []domaindetection.Entity {
-	var result []domaindetection.Entity
-	if event.Subject.StableID != "" {
-		result = append(result, domaindetection.Entity{Kind: "process", Key: event.Subject.StableID, Role: "subject"})
-	}
-	if event.Object.FilePath != "" {
-		result = append(result, domaindetection.Entity{Kind: "file", Key: event.Object.FilePath, Role: "object"})
-	}
-	if event.Object.SocketAddress != "" {
-		result = append(result, domaindetection.Entity{Kind: "socket", Key: event.Object.SocketAddress, Role: "object"})
-	}
-	return result
-}
-
-func validate(bundle Bundle) error {
-	if strings.TrimSpace(bundle.ModelRef) == "" || strings.TrimSpace(bundle.ModelVersion) == "" || strings.TrimSpace(bundle.ModelDigest) == "" {
-		return fmt.Errorf("model provenance is required")
-	}
-	if bundle.FeatureSchema != FeatureSchemaV1 || len(bundle.Mean) != 6 || len(bundle.Scale) != 6 || bundle.Threshold <= 0 || !finite(bundle.Threshold) {
-		return fmt.Errorf("unsupported model bundle schema")
-	}
-	for _, mean := range bundle.Mean {
-		if !finite(mean) {
-			return fmt.Errorf("model mean must be finite")
-		}
-	}
-	for _, scale := range bundle.Scale {
-		if scale <= 0 || !finite(scale) {
-			return fmt.Errorf("model scale must be finite and positive")
-		}
-	}
-	return nil
-}
-
-func finite(value float32) bool {
-	return !math.IsNaN(float64(value)) && !math.IsInf(float64(value), 0)
-}
-
-func cloneBundle(bundle Bundle) Bundle {
-	bundle.Mean = append([]float32(nil), bundle.Mean...)
-	bundle.Scale = append([]float32(nil), bundle.Scale...)
-	return bundle
 }
 
 func cloneLabels(values map[string]string) map[string]string {
@@ -147,6 +118,24 @@ func cloneLabels(values map[string]string) map[string]string {
 	result := make(map[string]string, len(values))
 	for key, value := range values {
 		result[key] = value
+	}
+	return result
+}
+
+func risk(score float32) uint32 {
+	return uint32(math.Min(100, math.Max(1, float64(score*20))))
+}
+
+func profileEntities(profile domainprocess.Snapshot) []domaindetection.Entity {
+	result := []domaindetection.Entity{{Kind: "process", Key: profile.StableID, Role: "subject"}}
+	if profile.ParentStableID != "" {
+		result = append(result, domaindetection.Entity{Kind: "process", Key: profile.ParentStableID, Role: "parent"})
+	}
+	for _, path := range profile.Files {
+		result = append(result, domaindetection.Entity{Kind: "file", Key: path, Role: "object"})
+	}
+	for _, address := range profile.Networks {
+		result = append(result, domaindetection.Entity{Kind: "socket", Key: address, Role: "object"})
 	}
 	return result
 }

@@ -54,7 +54,7 @@ func TestProfilesExitCompactsThenExpiresProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := profiles.Resolve(IdentityObservation{
-		HostID: "host-a", Process: domainevent.Process{PID: 100, SensorExecID: "exec-a", Binary: "/bin/bash"},
+		HostID: "host-a", Process: domainevent.Process{PID: 100, SensorExecID: "exec-a", Binary: "/bin/bash", Argv: []string{"bash", "-c", "curl example.test"}},
 	})
 	profiles.Observe(domainevent.Event{
 		ID: "event-1", OccurredAtNS: 10, Behavior: "file.read", SubjectPresent: true, Subject: identity.Process,
@@ -95,7 +95,7 @@ func TestProfilesObserveBuildsBoundedImmutableBehaviorSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := profiles.Resolve(IdentityObservation{
-		HostID: "host-a", Process: domainevent.Process{PID: 100, SensorExecID: "exec-a", Binary: "/bin/bash"},
+		HostID: "host-a", Process: domainevent.Process{PID: 100, SensorExecID: "exec-a", Binary: "/bin/bash", Argv: []string{"bash", "-c", "curl example.test"}},
 	})
 	for _, input := range []struct{ id, behavior, file, network string }{
 		{"event-1", "file.read", "/usr/lib/libc.so", ""},
@@ -126,11 +126,15 @@ func TestProfilesObserveBuildsBoundedImmutableBehaviorSnapshot(t *testing.T) {
 	if snapshot.BehaviorCounts["file.read"] != 2 || snapshot.Revision != 5 {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
+	if !slices.Equal(snapshot.Argv, []string{"bash", "-c", "curl example.test"}) {
+		t.Fatalf("argv = %v", snapshot.Argv)
+	}
 
 	snapshot.Files[0] = "mutated"
+	snapshot.Argv[0] = "mutated"
 	snapshot.BehaviorCounts["file.read"] = 100
 	again, _ := profiles.Snapshot(identity.Process.StableID)
-	if again.Files[0] == "mutated" || again.BehaviorCounts["file.read"] != 2 {
+	if again.Files[0] == "mutated" || again.Argv[0] == "mutated" || again.BehaviorCounts["file.read"] != 2 {
 		t.Fatalf("snapshot mutated canonical profile: %+v", again)
 	}
 	metrics := profiles.Metrics()

