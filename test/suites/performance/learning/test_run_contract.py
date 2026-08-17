@@ -40,6 +40,18 @@ class LearningRunContractTest(unittest.TestCase):
         self.assertIn('"git_provenance_source"', self.script)
         self.assertIn("status --porcelain", self.script)
 
+    def test_persists_exact_l3_hard_gate_contract(self):
+        for contract in (
+            '"cpu_relative": 1.15',
+            '"rss_delta_mb": 16.0',
+            '"eps_relative": 0.90',
+            '"normal_candidate_rate": 0.01',
+            '"attack_profile_recall": 0.90',
+        ):
+            self.assertIn(contract, self.script)
+        for legacy in ("cpu_absolute_pp", "rss_absolute_mb", "rss_relative"):
+            self.assertNotIn(legacy, self.script)
+
     def test_exposes_learning_performance_make_target(self):
         self.assertIn("performance-learning", self.makefile)
         self.assertIn("PERFORMANCE_TARGET_learning", Path("Makefile").read_text())

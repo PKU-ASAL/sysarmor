@@ -17,7 +17,8 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(model_section(summary.get("model", {})))
     lines.extend(performance_section(summary.get("variants", {})))
     lines.extend(reliability_section(summary.get("variants", {}), summary.get("observations", {})))
-    lines.extend(candidate_section(summary.get("variants", {}), summary.get("observations", {})))
+    lines.extend(profile_lifecycle_section(summary.get("variants", {})))
+    lines.extend(candidate_section(summary.get("variants", {})))
     lines.extend(truth_section(summary.get("truth_steps", {}), summary.get("observations", {})))
     lines.extend(sample_section(summary.get("samples", {})))
     lines.extend(reproduction_section(summary.get("experiment", {})))
@@ -94,13 +95,42 @@ def reliability_section(variants: dict[str, Any], observations: dict[str, Any]) 
     return lines
 
 
-def candidate_section(variants: dict[str, Any], observations: dict[str, Any]) -> list[str]:
-    lines = ["## Candidate 效果", "", "| Variant | Events | Rule Signals | Model Candidates | Score min / p50 / max |", "|---|---:|---:|---:|---|"]
+def profile_lifecycle_section(variants: dict[str, Any]) -> list[str]:
+    fields = (
+        ("Active", "active"), ("Exited", "exited"), ("Retained", "retained"),
+        ("Compactions", "compactions"), ("Expired", "expired"),
+        ("Capacity evictions", "capacity_evictions"), ("File evictions", "file_evictions"),
+        ("Network evictions", "network_evictions"), ("EventRef evictions", "event_ref_evictions"),
+    )
+    lines = ["## ProcessProfile 生命周期", "", "| 指标 | Disabled | Enabled |", "|---|---:|---:|"]
+    for label, key in fields:
+        lines.append(
+            f"| {label} | {display(variants.get('disabled', {}).get('profile_health', {}).get(key))} | "
+            f"{display(variants.get('enabled', {}).get('profile_health', {}).get(key))} |"
+        )
+    return lines + [""]
+
+
+def candidate_section(variants: dict[str, Any]) -> list[str]:
+    lines = [
+        "## Profile 检测效果", "",
+        "| Variant | Events | Profiles | Model Candidates | Candidate profiles | Score min / p50 / max |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
     for name in ("disabled", "enabled"):
         item, scores = variants.get(name, {}), variants.get(name, {}).get("candidate_scores", {})
         score_text = " / ".join(display(scores.get(key)) for key in ("min", "p50", "max"))
-        lines.append(f"| {name} | {display(item.get('event_count'))} | {display(item.get('rule_signal_count'))} | {display(item.get('model_candidate_count'))} | {score_text} |")
-    lines.extend(["", f"- Truth Event recall：{percent(observations.get('model_recall'))}（baseline，不阻断）", ""])
+        lines.append(
+            f"| {name} | {display(item.get('event_count'))} | {display(item.get('profile_count'))} | "
+            f"{display(item.get('model_candidate_count'))} | {display(item.get('candidate_profile_count'))} | {score_text} |"
+        )
+    enabled = variants.get("enabled", {})
+    lines.extend([
+        "", "| 效果指标 | 总数 | 命中 | 比率 |", "|---|---:|---:|---:|",
+        f"| Normal profiles | {display(enabled.get('normal_profile_count'))} | {display(enabled.get('normal_candidate_count'))} | {percent(enabled.get('normal_candidate_rate'))} |",
+        f"| Attack truth profiles | {display(enabled.get('truth_profile_count'))} | {display(enabled.get('detected_truth_profile_count'))} | {percent(enabled.get('attack_profile_recall'))} |",
+        "",
+    ])
     return lines
 
 

@@ -15,7 +15,7 @@ DEFAULT_GATES = REPORT.DEFAULT_GATES
 evaluate_ab = REPORT.evaluate_ab
 health_number = REPORT.health_number
 load_endpoint_run = REPORT.load_endpoint_run
-model_recall = REPORT.model_recall
+attack_profile_recall = REPORT.attack_profile_recall
 aggregate_runs = REPORT.aggregate_runs
 require_records = REPORT.require_records
 render_report = REPORT.render_report
@@ -27,6 +27,17 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
         "health": {"status": "ok", "learning": "loaded"},
         "reliability": {"sensor_drop": 0, "batcher_drop": 0, "parse_errors": 0},
         "performance": {"agent_cpu_avg_pct": cpu, "agent_rss_max_mb": rss, "eps": eps},
+        "profile_health": {
+            "active": 10,
+            "exited": 2,
+            "retained": 1,
+            "compactions": 3,
+            "expired": 4,
+            "capacity_evictions": 5,
+            "file_evictions": 6,
+            "network_evictions": 7,
+            "event_ref_evictions": 8,
+        },
         "stream_evictions": evictions,
         "model_candidates": [],
         "expected_model": {
@@ -47,6 +58,8 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0):
         ],
         "truth_baseline_ok": False,
         "events": {"e1"},
+        "profile_ids": {"p-normal", "p-attack"},
+        "truth_profile_ids": {"p-attack"},
     }
 
 
@@ -61,6 +74,7 @@ def model_candidate(event_ref="e1"):
         "featureSchema": "FeatureSchemaV2",
         "localRarity": 12.5,
         "eventRefs": [event_ref],
+        "entities": [{"kind": "process", "role": "subject", "key": "p-attack"}],
     }
 
 
@@ -160,18 +174,112 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["model"]["status"], "passed")
 
-    def test_attack_recall_is_observation_only(self):
+    def test_attack_profile_recall_at_ninety_percent_passes(self):
         disabled = metrics()
         enabled = metrics()
         disabled["health"]["learning"] = "disabled"
-        enabled["model_candidates"] = [model_candidate()]
-        enabled["truth_events"] = {"e1"}
-        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
-        self.assertEqual(result["verdict"], "passed")
-        self.assertEqual(result["observations"]["model_recall"], 1.0)
+        enabled["profile_ids"] = {"p-normal"} | {f"p-attack-{index}" for index in range(10)}
+        enabled["truth_profile_ids"] = {f"p-attack-{index}" for index in range(10)}
+        enabled["model_candidates"] = [
+            model_candidate() | {
+                "entities": [{"kind": "process", "role": "subject", "key": f"p-attack-{index}"}]
+            }
+            for index in range(9)
+        ]
 
-    def test_model_recall_is_unavailable_without_truth_events(self):
-        self.assertIsNone(model_recall({"events": {"e1", "e2"}, "model_candidates": [model_candidate()]}))
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["verdict"], "passed")
+        self.assertEqual(result["gates"]["attack_profile_recall"]["value"], 0.9)
+
+    def test_attack_profile_recall_below_ninety_percent_fails(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["profile_ids"] = {"p-normal"} | {f"p-attack-{index}" for index in range(10)}
+        enabled["truth_profile_ids"] = {f"p-attack-{index}" for index in range(10)}
+        enabled["model_candidates"] = [
+            model_candidate() | {
+                "entities": [{"kind": "process", "role": "subject", "key": f"p-attack-{index}"}]
+            }
+            for index in range(8)
+        ]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["attack_profile_recall"]["status"], "failed")
+
+    def test_missing_attack_truth_profiles_makes_effect_gate_unavailable(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["truth_profile_ids"] = set()
+        enabled["model_candidates"] = [model_candidate()]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["attack_profile_recall"]["status"], "unavailable")
+        self.assertEqual(result["verdict"], "failed")
+
+    def test_normal_profile_candidate_rate_at_one_percent_passes(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["profile_ids"] = {f"p-normal-{index}" for index in range(100)} | {"p-attack"}
+        enabled["truth_profile_ids"] = {"p-attack"}
+        enabled["model_candidates"] = [
+            model_candidate(),
+            model_candidate() | {
+                "entities": [{"kind": "process", "role": "subject", "key": "p-normal-0"}]
+            },
+        ]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["normal_candidate_rate"]["status"], "passed")
+        self.assertEqual(result["gates"]["normal_candidate_rate"]["value"], 0.01)
+
+    def test_normal_profile_candidate_rate_above_one_percent_fails(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["profile_ids"] = {f"p-normal-{index}" for index in range(100)} | {"p-attack"}
+        enabled["truth_profile_ids"] = {"p-attack"}
+        enabled["model_candidates"] = [
+            model_candidate(),
+            *[
+                model_candidate() | {
+                    "entities": [{"kind": "process", "role": "subject", "key": f"p-normal-{index}"}]
+                }
+                for index in range(2)
+            ],
+        ]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["normal_candidate_rate"]["status"], "failed")
+
+    def test_rss_delta_at_sixteen_mib_passes_and_above_fails(self):
+        disabled = metrics(rss=64.0)
+        disabled["health"]["learning"] = "disabled"
+        for rss, expected in ((80.0, "passed"), (80.01, "failed")):
+            with self.subTest(rss=rss):
+                enabled = metrics(rss=rss)
+                result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+                self.assertEqual(result["gates"]["performance_rss"]["status"], expected)
+
+    def test_model_candidate_requires_subject_process_entity(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["model_candidates"] = [model_candidate() | {"entities": []}]
+
+        result = evaluate_ab(disabled, enabled, DEFAULT_GATES)
+
+        self.assertEqual(result["gates"]["model"]["status"], "failed")
+
+    def test_attack_profile_recall_is_unavailable_without_truth_profiles(self):
+        self.assertIsNone(attack_profile_recall({"profile_ids": {"p1"}, "model_candidates": [model_candidate()]}))
 
     def test_missing_endpoint_artifacts_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -223,7 +331,25 @@ class LearningReportTest(unittest.TestCase):
 
     def test_manifest_threshold_and_gates_require_native_json_numbers(self):
         self.assertFalse(REPORT.is_json_number("1.0"))
-        self.assertFalse(REPORT.valid_gate_config(DEFAULT_GATES | {"cpu_absolute_pp": "1.0"}))
+        self.assertFalse(REPORT.valid_gate_config(DEFAULT_GATES | {"cpu_relative": "1.0"}))
+
+    def test_manifest_accepts_finite_negative_v2_threshold(self):
+        manifest = {
+            key: "value"
+            for key in (
+                "suite", "run_id", "benchmark_profile", "policy", "activity_mode", "scenario",
+                "git_commit", "git_provenance_source", "training_data", "training_digest",
+                "calibration_data", "calibration_digest", "model_ref", "model_version", "model_digest",
+            )
+        }
+        manifest |= {
+            "feature_schema": "FeatureSchemaV2",
+            "threshold": -1.25,
+            "gate_config": DEFAULT_GATES,
+        }
+
+        with mock.patch.object(REPORT, "validate_calibration"):
+            REPORT.validate_experiment_artifacts(manifest, {})
 
     def test_missing_top_level_artifacts_produce_invalid_report(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -305,6 +431,8 @@ class LearningReportTest(unittest.TestCase):
             "## 模型与校准",
             "## A/B 性能",
             "## 可靠性",
+            "## ProcessProfile 生命周期",
+            "## Profile 检测效果",
             "## Attack Truth 与 Rule 回归",
             "## 有界样本",
             "## 复现信息",
@@ -314,6 +442,19 @@ class LearningReportTest(unittest.TestCase):
         self.assertIn("captured-before-variants", report)
         self.assertIn("sha256:train", report)
         self.assertIn("TRAINING_DATA=/results/training.ndjson", report)
+
+    def test_human_report_renders_profile_level_effect_and_lifecycle(self):
+        disabled = metrics()
+        enabled = metrics()
+        disabled["health"]["learning"] = "disabled"
+        enabled["model_candidates"] = [model_candidate()]
+
+        report = render_report(evaluate_ab(disabled, enabled, DEFAULT_GATES))
+
+        self.assertIn("Normal profiles", report)
+        self.assertIn("Attack truth profiles", report)
+        self.assertIn("Capacity evictions", report)
+        self.assertIn("EventRef evictions", report)
 
     def test_missing_git_revision_is_rendered_as_unavailable(self):
         report = render_report({"experiment": {"git_commit": None, "git_dirty": None}})

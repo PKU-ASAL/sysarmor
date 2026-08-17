@@ -12,14 +12,22 @@ from pathlib import Path
 from typing import Any
 
 from learning_report_renderer import render_report
+from learning_effect import (
+    attack_profile_recall,
+    candidate_profile_ids,
+    effect_gates,
+    model_gate,
+    normal_candidate_rate,
+    profile_health,
+)
 
 
 DEFAULT_GATES = {
-    "cpu_absolute_pp": 1.0,
     "cpu_relative": 1.15,
-    "rss_absolute_mb": 32.0,
-    "rss_relative": 1.15,
+    "rss_delta_mb": 16.0,
     "eps_relative": 0.90,
+    "normal_candidate_rate": 0.01,
+    "attack_profile_recall": 0.90,
 }
 TEST_ROOT = Path(__file__).resolve().parents[3]
 
@@ -58,8 +66,8 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
     enabled_rss = numeric(enabled_performance.get("agent_rss_max_mb"))
     disabled_eps = numeric(disabled_performance.get("eps"))
     enabled_eps = numeric(enabled_performance.get("eps"))
-    cpu_limit = max((disabled_cpu or 0) + gates["cpu_absolute_pp"], (disabled_cpu or 0) * gates["cpu_relative"]) if disabled_cpu is not None else None
-    rss_limit = max((disabled_rss or 0) + gates["rss_absolute_mb"], (disabled_rss or 0) * gates["rss_relative"]) if disabled_rss is not None else None
+    cpu_limit = disabled_cpu * gates["cpu_relative"] if disabled_cpu is not None else None
+    rss_limit = disabled_rss + gates["rss_delta_mb"] if disabled_rss is not None else None
     eps_limit = disabled_eps * gates["eps_relative"] if disabled_eps is not None else None
     gate_results = {
         "performance_cpu": compare_upper(disabled_cpu, enabled_cpu, cpu_limit) if cpu_limit is not None else gate("unavailable", enabled_cpu, None, "missing disabled CPU"),
@@ -68,6 +76,7 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
         "reliability": reliability_gate(disabled, enabled),
         "model": model_gate(disabled, enabled),
         "rule_truth": rule_truth_gate(disabled, enabled),
+        **effect_gates(enabled, gates),
     }
     statuses = [item["status"] for item in gate_results.values()]
     verdict = "passed" if all(status == "passed" for status in statuses) else "failed"
@@ -76,7 +85,8 @@ def evaluate_ab(disabled: dict[str, Any], enabled: dict[str, Any], gates: dict[s
         "gates": gate_results,
         "observations": {
             "stream_evictions": (disabled.get("stream_evictions") or 0) + (enabled.get("stream_evictions") or 0),
-            "model_recall": model_recall(enabled),
+            "attack_profile_recall": attack_profile_recall(enabled),
+            "normal_candidate_rate": normal_candidate_rate(enabled),
             "disabled_model_candidates": len(disabled.get("model_candidates", [])),
             "enabled_model_candidates": len(enabled.get("model_candidates", [])),
             "rule_truth_baseline_status": {
@@ -115,6 +125,10 @@ def rule_truth_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[s
 
 
 def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+    profiles = set(metrics.get("profile_ids", []))
+    truth = set(metrics.get("truth_profile_ids", []))
+    candidates = candidate_profile_ids(metrics)
+    normal = profiles.difference(truth)
     return {
         "health": metrics.get("health", {}),
         "reliability": metrics.get("reliability", {}),
@@ -123,6 +137,15 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         "event_count": len(metrics.get("events", [])),
         "rule_signal_count": metrics.get("rule_signal_count", 0),
         "model_candidate_count": len(metrics.get("model_candidates", [])),
+        "profile_count": len(metrics.get("profile_ids", [])),
+        "candidate_profile_count": len(candidate_profile_ids(metrics)),
+        "normal_profile_count": len(normal),
+        "normal_candidate_count": len(candidates.intersection(normal)),
+        "truth_profile_count": len(truth),
+        "detected_truth_profile_count": len(candidates.intersection(truth)),
+        "normal_candidate_rate": normal_candidate_rate(metrics),
+        "attack_profile_recall": attack_profile_recall(metrics),
+        "profile_health": metrics.get("profile_health", {}),
         "candidate_scores": score_summary(metrics.get("model_candidates", [])),
     }
 
@@ -145,42 +168,6 @@ def reliability_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[
     return gate("passed", 0, 0, "health/drop/parse error")
 
 
-def model_gate(disabled: dict[str, Any], enabled: dict[str, Any]) -> dict[str, Any]:
-    if disabled.get("health", {}).get("learning") != "disabled":
-        return gate("failed", disabled.get("health", {}).get("learning"), "disabled", "disabled variant loaded a model")
-    if disabled.get("model_candidates"):
-        return gate("failed", len(disabled["model_candidates"]), 0, "disabled emitted Model Candidate")
-    if enabled.get("health", {}).get("learning") != "loaded":
-        return gate("failed", enabled.get("health", {}).get("learning"), "loaded", "enabled model is not loaded")
-    if not enabled.get("model_candidates"):
-        return gate("failed", 0, ">=1", "enabled emitted no Model Candidate")
-    event_ids = enabled.get("events", set())
-    expected = enabled.get("expected_model", {})
-    provenance = ("modelRef", "modelVersion", "modelDigest", "featureSchema")
-    if any(not expected.get(field) for field in provenance):
-        return gate("failed", expected, "experiment model", "missing expected model provenance")
-    for signal in enabled.get("model_candidates", []):
-        if (signal.get("stage"), signal.get("detectorKind"), signal.get("where")) != (
-            "SIGNAL_STAGE_CANDIDATE", "DETECTOR_KIND_MODEL", "SIGNAL_WHERE_ENDPOINT"
-        ):
-            return gate("failed", signal, "candidate/model", "invalid Model Candidate contract")
-        score = numeric(signal.get("localRarity"))
-        if any(signal.get(field) != expected[field] for field in provenance) or score is None or not math.isfinite(score):
-            return gate("failed", signal, "complete provenance and score", "invalid Model Candidate provenance")
-        refs = signal.get("eventRefs", [])
-        if not refs or not set(refs).issubset(event_ids):
-            return gate("failed", signal, "resolved refs", "unresolved Model Candidate event ref")
-    return gate("passed", len(enabled.get("model_candidates", [])), None, "model provenance and refs")
-
-
-def model_recall(metrics: dict[str, Any]) -> float | None:
-    truth = set(metrics.get("truth_events") or set())
-    if not truth:
-        return None
-    refs = {ref for signal in metrics.get("model_candidates", []) for ref in signal.get("eventRefs", [])}
-    return len(refs.intersection(truth)) / len(truth)
-
-
 def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, Any]:
     if (path / "collection-balanced").is_dir():
         path = path / "collection-balanced"
@@ -192,6 +179,11 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
     rule_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_RULE"]
     truth = evaluate_truth(path, events, rule_signals)
     event_ids = {str(event.get("id")) for event in events if event.get("id")}
+    event_profiles = {
+        str(event.get("id")): stable_id
+        for event in events
+        if event.get("id") and (stable_id := event_profile_id(event)) is not None
+    }
     phase_data = load_matrix_phase(path, phase)
     health_document = latest_health(path)
     detection = health_document.get("detection", {})
@@ -201,6 +193,7 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
     return {
         "manifest": manifest,
         "health": {"status": health_document.get("status"), "learning": learning.get("status")},
+        "profile_health": profile_health(learning.get("profiles", {})),
         "reliability": {"sensor_drop": health_number(sensor, "eventsDropped", "events_dropped"), "batcher_drop": health_number(batcher, "droppedEvents", "dropped_events"), "parse_errors": health_number(sensor, "parseErrors", "parse_errors")},
         "performance": {"agent_cpu_avg_pct": phase_data.get("agent_cpu_avg_pct"), "agent_rss_max_mb": phase_data.get("agent_rss_max_mb"), "eps": phase_data.get("eps")},
         "stream_evictions": latest_stream_evictions(path),
@@ -208,6 +201,8 @@ def load_endpoint_run(path: Path, phase: str = "normal_activity") -> dict[str, A
         "truth_baseline_ok": truth["ok"],
         "rule_refs_ok": all(signal.get("eventRefs") and set(signal["eventRefs"]).issubset(event_ids) for signal in rule_signals),
         "truth_events": truth["event_ids"],
+        "profile_ids": set(event_profiles.values()),
+        "truth_profile_ids": {event_profiles[event_id] for event_id in truth["event_ids"] if event_id in event_profiles},
         "truth_steps": truth["steps"],
         "events": event_ids,
         "rule_signal_count": len(rule_signals),
@@ -234,6 +229,11 @@ def event_sample(event: dict[str, Any]) -> dict[str, Any]:
         "argv": subject.get("argv", [])[:8],
         "object": event.get("object", {}),
     }
+
+
+def event_profile_id(event: dict[str, Any]) -> str | None:
+    stable_id = event.get("subjectProc", {}).get("stableId")
+    return stable_id if isinstance(stable_id, str) and stable_id else None
 
 
 def signal_sample(signal: dict[str, Any]) -> dict[str, Any]:
@@ -419,7 +419,7 @@ def validate_experiment_artifacts(manifest: dict[str, Any], calibration: dict[st
     if manifest.get("git_dirty") is not None and not isinstance(manifest.get("git_dirty"), bool):
         raise ReportError("experiment manifest git_dirty must be boolean or unavailable")
     threshold = manifest.get("threshold")
-    if not is_json_number(threshold) or threshold < 0 or not valid_gate_config(manifest.get("gate_config")):
+    if not is_json_number(threshold) or not valid_gate_config(manifest.get("gate_config")):
         raise ReportError("experiment manifest has invalid threshold or gate config")
     validate_calibration(manifest, calibration)
 
