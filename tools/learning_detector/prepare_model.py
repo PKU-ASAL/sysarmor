@@ -26,11 +26,15 @@ def validate_dataset(path: Path) -> dict[str, Any]:
     events = read_events(path)
     event_ids = unique_values(events, lambda event: str(event.get("id") or "").strip(), "event ID")
     profiles = read_profiles(path)
-    profile_ids = unique_values(profiles, lambda profile: profile["stable_id"], "profile stable ID")
+    profile_ids = unique_values(profiles, profile_identity, "profile identity")
     return {
         "path": str(path), "events": len(event_ids), "profiles": len(profile_ids),
         "sha256": file_digest(path), "event_ids": event_ids, "profile_ids": profile_ids,
     }
+
+
+def profile_identity(profile: dict[str, Any]) -> str:
+    return f'{profile.get("agent_id", "")}:{profile["stable_id"]}'
 
 
 def unique_values(values: list[dict[str, Any]], getter: Any, name: str) -> set[str]:

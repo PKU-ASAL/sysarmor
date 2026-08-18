@@ -17,6 +17,18 @@ def write_profiles(path: Path, prefix: str) -> Path:
     return path
 
 
+def write_agent_profile(path: Path, agent_id: str) -> Path:
+
+    event = {
+        "agentId": agent_id,
+        "id": f"{agent_id}-event",
+        "behavior": "process.exec",
+        "subjectProc": {"stableId": "shared-pid1", "binary": "/sbin/init", "argv": ["init"]},
+    }
+    path.write_text(json.dumps(event) + "\n")
+    return path
+
+
 class PrepareModelTest(unittest.TestCase):
     def test_rejects_duplicate_and_empty_event_ids(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -36,6 +48,17 @@ class PrepareModelTest(unittest.TestCase):
             calibration.write_text("".join(json.dumps(value) + "\n" for value in values))
             with self.assertRaisesRegex(ValueError, "profile stable ID overlap"):
                 validate_pair(training, calibration)
+
+    def test_allows_same_host_local_stable_id_from_different_agents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            training = write_agent_profile(root / "training.ndjson", "agent-a")
+            calibration = write_agent_profile(root / "calibration.ndjson", "agent-b")
+
+            metadata = validate_pair(training, calibration)
+
+            self.assertEqual(metadata["training"]["profiles"], 1)
+            self.assertEqual(metadata["calibration"]["profiles"], 1)
 
     def test_threshold_excludes_ties_and_respects_rate(self):
         threshold = calibrated_threshold([5.0, 5.0, 4.0, 2.0], 0.5)

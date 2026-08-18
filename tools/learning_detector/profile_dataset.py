@@ -30,21 +30,23 @@ def read_events(path: Path) -> list[dict[str, Any]]:
 
 
 def read_profiles(path: Path) -> list[dict[str, Any]]:
-    profiles: dict[str, dict[str, Any]] = {}
+    profiles: dict[tuple[str, str], dict[str, Any]] = {}
     for event in read_events(path):
         subject = field(event, "subjectProc", "subject_proc") or {}
         stable_id = str(field(subject, "stableId", "stable_id") or "").strip()
         if not stable_id:
             raise ValueError("event subject process stable ID is required")
-        profile = profiles.setdefault(stable_id, new_profile(stable_id))
+        agent_id = str(field(event, "agentId", "agent_id") or "").strip()
+        profile_key = (agent_id, stable_id)
+        profile = profiles.setdefault(profile_key, new_profile(stable_id, agent_id))
         update_identity(profile, subject, event)
         update_behavior(profile, event)
     return list(profiles.values())
 
 
-def new_profile(stable_id: str) -> dict[str, Any]:
+def new_profile(stable_id: str, agent_id: str = "") -> dict[str, Any]:
     return {
-        "stable_id": stable_id, "parent_stable_id": "", "lineage_id": stable_id,
+        "agent_id": agent_id, "stable_id": stable_id, "parent_stable_id": "", "lineage_id": stable_id,
         "binary": "", "argv": [], "revision": 0, "state": "active",
         "behavior_counts": {}, "files": [], "networks": [], "event_refs": [], "labels": {},
     }
