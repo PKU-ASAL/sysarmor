@@ -143,3 +143,20 @@ func TestEventNormalizerSwitchesIdentityWithoutResettingSequence(t *testing.T) {
 		t.Fatalf("sequence reset across identity switch: first=%d second=%d", first.Sequence, second.Sequence)
 	}
 }
+
+func TestEventNormalizerAcceptsEventsWithoutProcessPayload(t *testing.T) {
+	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{}, newTestProfiles(t))
+	event := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
+		Behavior: "network.connect",
+		Object:   &sensorv1.RawObject{Dst: "10.0.0.1:443"},
+	})
+	if event.SubjectPresent {
+		t.Fatal("event without process payload was marked as having a subject")
+	}
+	if event.Object.SocketAddress != "10.0.0.1:443" {
+		t.Fatalf("event object = %+v", event.Object)
+	}
+	if metrics := normalizer.profiles.Metrics(); metrics.Active != 0 {
+		t.Fatalf("process-less event allocated a profile: %+v", metrics)
+	}
+}

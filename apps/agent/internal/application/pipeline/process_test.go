@@ -53,6 +53,24 @@ func TestProcessAllowsUnconfiguredLearningDetector(t *testing.T) {
 	}
 }
 
+func TestProcessSkipsLearningForProcesslessEvent(t *testing.T) {
+	detector := &detectorFake{signals: []*domaindetection.Signal{{ID: "rule-a"}}}
+	learning := &profileDetectorFake{signals: []*domaindetection.Signal{{ID: "model-a"}}}
+	result, err := New(detector, learning, testProfiles(t)).Process(domainevent.Event{
+		ID: "event-a", Behavior: domainevent.BehaviorNetworkConnect,
+		Object: domainevent.Object{Kind: "socket", SocketAddress: "10.0.0.1:443"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Signals) != 1 || result.Signals[0].ID != "rule-a" {
+		t.Fatalf("signals = %+v", result.Signals)
+	}
+	if learning.snapshot.StableID != "" {
+		t.Fatalf("learning detector received processless snapshot = %+v", learning.snapshot)
+	}
+}
+
 type detectorFake struct {
 	event   domainevent.Event
 	signals []*domaindetection.Signal

@@ -69,6 +69,9 @@ func (normalizer *EventNormalizer) NormalizeDomain(raw *sensorv1.SensorEvent) do
 
 func (normalizer *EventNormalizer) process(raw *sensorv1.SensorEvent, hostID string) (domainevent.Process, string, string, string) {
 	value := raw.GetProc()
+	if value == nil {
+		return domainevent.Process{}, "", "", ""
+	}
 	stableID := domainevent.StableProcessID(hostID, value.GetPid(), value.GetStartTimeNs())
 	if value.GetSensorExecId() != "" {
 		stableID = domainevent.SensorProcessID(hostID, value.GetSensorExecId())

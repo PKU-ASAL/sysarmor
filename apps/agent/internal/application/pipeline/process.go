@@ -31,12 +31,14 @@ func (service *Service) Process(event domainevent.Event, labels map[string]strin
 	}
 	event.Labels = mergeLabels(event.Labels, labels)
 	signals := service.rules.Process(event)
-	if service.learning == nil {
-		service.profiles.Observe(event)
-	} else if snapshot, ok := service.profiles.ObserveSnapshot(event); !ok {
-		return Result{}, fmt.Errorf("process profile %q is not initialized", event.Subject.StableID)
-	} else {
-		signals = append(signals, service.learning.Process(snapshot)...)
+	if event.Subject.StableID != "" {
+		if service.learning == nil {
+			service.profiles.Observe(event)
+		} else if snapshot, ok := service.profiles.ObserveSnapshot(event); !ok {
+			return Result{}, fmt.Errorf("process profile %q is not initialized", event.Subject.StableID)
+		} else {
+			signals = append(signals, service.learning.Process(snapshot)...)
+		}
 	}
 	return Result{Event: event, Signals: append([]*domaindetection.Signal(nil), signals...)}, nil
 }
