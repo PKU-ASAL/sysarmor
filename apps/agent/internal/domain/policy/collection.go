@@ -16,6 +16,7 @@ const (
 var mandatoryCausalityBehaviors = []string{
 	domainevent.BehaviorProcessExec,
 	domainevent.BehaviorProcessExit,
+	domainevent.BehaviorProcessFork,
 	domainevent.BehaviorFileWrite,
 	domainevent.BehaviorNetworkConnect,
 }

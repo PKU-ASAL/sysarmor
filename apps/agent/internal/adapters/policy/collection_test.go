@@ -61,7 +61,7 @@ func TestBalancedPolicyResolvesContentRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.Behaviors) != 6 || len(intent.MandatoryBehaviors) != 4 {
+	if len(intent.Behaviors) != 7 || len(intent.MandatoryBehaviors) != 5 {
 		t.Fatalf("behaviors = %v", intent.Behaviors)
 	}
 	if len(report.ResolvedRefs) != 8 {
@@ -106,20 +106,20 @@ func TestParseCollectionPolicyJSONBehaviorsAndFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.Behaviors) != 4 || len(intent.MandatoryBehaviors) != 4 {
+	if len(intent.Behaviors) != 5 || len(intent.MandatoryBehaviors) != 5 {
 		t.Fatalf("Behaviors = %v", intent.Behaviors)
 	}
 	if intent.Behaviors[0] != "process.exec" {
 		t.Fatalf("first behavior = %v", intent.Behaviors[0])
 	}
-	if len(intent.BehaviorFilters) != 4 {
+	if len(intent.BehaviorFilters) != 5 {
 		t.Fatalf("BehaviorFilters = %+v", intent.BehaviorFilters)
 	}
-	network := intent.BehaviorFilters[3]
+	network := intent.BehaviorFilters[4]
 	if network.Behavior != "network.connect" || len(network.SocketFamilies) != 0 {
 		t.Fatalf("network filter = %+v", network)
 	}
-	file := intent.BehaviorFilters[2]
+	file := intent.BehaviorFilters[3]
 	if file.Behavior != "file.write" || len(file.FilePrefixes) != 0 {
 		t.Fatalf("file filter = %+v", file)
 	}
@@ -204,13 +204,13 @@ func TestCollectionPolicyFlatFieldsBecomeBehaviorFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.BehaviorFilters) != 4 {
+	if len(intent.BehaviorFilters) != 5 {
 		t.Fatalf("BehaviorFilters = %+v", intent.BehaviorFilters)
 	}
-	if got := intent.BehaviorFilters[3].SocketFamilies; len(got) != 0 {
+	if got := intent.BehaviorFilters[4].SocketFamilies; len(got) != 0 {
 		t.Fatalf("network socket families = %v", got)
 	}
-	if got := intent.BehaviorFilters[2].FilePrefixes; len(got) != 0 {
+	if got := intent.BehaviorFilters[3].FilePrefixes; len(got) != 0 {
 		t.Fatalf("file prefixes = %v", got)
 	}
 }

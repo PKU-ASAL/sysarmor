@@ -56,7 +56,7 @@ func TestCompileCollectionIntentAlwaysIncludesMandatoryCausalBaseline(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, behavior := range []string{"process.exec", "process.exit", "file.write", "network.connect"} {
+	for _, behavior := range []string{"process.exec", "process.exit", "process.fork", "file.write", "network.connect"} {
 		if !contains(intent.Behaviors, behavior) || !contains(intent.MandatoryBehaviors, behavior) {
 			t.Fatalf("baseline behavior %q missing from %+v", behavior, intent)
 		}

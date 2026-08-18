@@ -393,16 +393,16 @@ func TestLocalControlApplyCollectionPolicyUpdatesSensorRuntime(t *testing.T) {
 	if got.ScopeType != "container" || got.ScopeSelector != "container-a" {
 		t.Fatalf("intent scope = %q/%q", got.ScopeType, got.ScopeSelector)
 	}
-	if len(got.Behaviors) != 4 || len(got.MandatoryBehaviors) != 4 {
+	if len(got.Behaviors) != 5 || len(got.MandatoryBehaviors) != 5 {
 		t.Fatalf("intent behaviors = %v", got.Behaviors)
 	}
-	if len(got.BehaviorFilters) != 4 {
+	if len(got.BehaviorFilters) != 5 {
 		t.Fatalf("intent behavior filters = %+v", got.BehaviorFilters)
 	}
-	if got.BehaviorFilters[3].Behavior != "network.connect" || len(got.BehaviorFilters[3].SocketFamilies) != 0 {
+	if got.BehaviorFilters[4].Behavior != "network.connect" || len(got.BehaviorFilters[4].SocketFamilies) != 0 {
 		t.Fatalf("mandatory network filter = %+v", got.BehaviorFilters[3])
 	}
-	if got.BehaviorFilters[2].Behavior != "file.write" || len(got.BehaviorFilters[2].FilePrefixes) != 0 {
+	if got.BehaviorFilters[3].Behavior != "file.write" || len(got.BehaviorFilters[3].FilePrefixes) != 0 {
 		t.Fatalf("mandatory file filter = %+v", got.BehaviorFilters[2])
 	}
 }
@@ -452,7 +452,7 @@ func TestLocalControlDoesNotNarrowMandatoryNetworkBaseline(t *testing.T) {
 	if strings.Contains(ack.ReportJson, `"process.binary_prefix"`) {
 		t.Fatalf("ack report_json = %q", ack.ReportJson)
 	}
-	if len(sensor.lastIntent.Behaviors) != 4 || len(sensor.lastIntent.MandatoryBehaviors) != 4 || len(sensor.lastIntent.BehaviorFilters[3].BinaryPrefixes) != 0 {
+	if len(sensor.lastIntent.Behaviors) != 5 || len(sensor.lastIntent.MandatoryBehaviors) != 5 || len(sensor.lastIntent.BehaviorFilters[4].BinaryPrefixes) != 0 {
 		t.Fatalf("sensor intent = %+v", sensor.lastIntent)
 	}
 }

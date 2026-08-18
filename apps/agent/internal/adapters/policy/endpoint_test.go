@@ -86,7 +86,7 @@ func TestEffectiveEndpointPolicyPreservesStructuredCollectionBehaviors(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(intent.Behaviors) != 4 || len(intent.MandatoryBehaviors) != 4 || len(intent.BehaviorFilters[0].BinaryPrefixes) != 0 {
+	if len(intent.Behaviors) != 5 || len(intent.MandatoryBehaviors) != 5 || len(intent.BehaviorFilters[0].BinaryPrefixes) != 0 {
 		t.Fatalf("restored collection intent = %+v", intent)
 	}
 }
