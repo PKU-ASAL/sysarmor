@@ -10,7 +10,7 @@ import (
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 )
 
-const defaultMaxCEPGroups = 4096
+const defaultMaxCEPGroups = 16384
 const defaultMaxCEPRefs = 128
 const maxSuppressionKeys = 8192
 

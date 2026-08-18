@@ -38,7 +38,7 @@ Compose 文件定义安装与平台配置。未知 Agent section 或 key 会直�
 | `content.trust_keys` | 空 | 逗号分隔的 `key_id=base64_ed25519_public_key` |
 | `learning.model_path` | 空 | 已签名模型 Bundle；空值禁用 Learning Detector |
 | `learning.trust_keys` | 空 | 模型专用的 `key_id=base64_ed25519_public_key`，不与 Content 共用权限域 |
-| `resource.max_active_cep_groups` | `4096` | 非负；CEP 活跃组上限 |
+| `resource.max_active_cep_groups` | `16384` | 非负；CEP 活跃组上限 |
 | `resource.max_event_refs_per_signal` | `128` | 非负；Signal 事件引用上限 |
 
 ### 平台连接
