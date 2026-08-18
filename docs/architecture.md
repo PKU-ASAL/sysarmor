@@ -110,7 +110,7 @@ Gateway 会将该身份与每个上报的 tenant ID 和 Agent ID 交叉校验。
 
 ## 数据平面与可靠性
 
-完成注册的 Agent 只上传有效策略产生的 Event 和 Signal。有效 collection intent 始终包含 `process.exec`、`process.exit`、`file.write` 和 `network.connect` 最小因果基线，普通 selector 可以增加采集但不能关闭或缩窄基线。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
+完成注册的 Agent 只上传有效策略产生的 Event 和 Signal。有效 collection intent 始终包含 `process.exec`、`process.exit`、`process.fork`、`file.write` 和 `network.connect` 最小因果基线，普通 selector 可以增加采集但不能关闭或缩窄基线。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
 
 Agent 以批次发送数据，Gateway 返回 accepted、duplicate、retryable 或 terminally invalid。只有 accepted 或 duplicate 确认可以推进本地 checkpoint。Gateway 完成身份和批次校验后，将数据交给 Kafka；Worker 在完成必需投影后才提交 Kafka offset。
 
