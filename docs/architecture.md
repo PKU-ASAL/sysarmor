@@ -65,6 +65,22 @@ Agent 负责：
 
 `sysarmorctl` 只通过 `/run/sysarmor/agent/control.sock` 操作 Agent，不直接读取 SQLite 或事件段文件。运行路径的完整契约见 [Configuration Reference](reference/configuration.md)。
 
+### ProcessProfile 与端侧 Learning
+
+Agent 只维护一份运行时 `ProcessProfile` 集合。进程身份优先使用 sensor exec ID，缺失时使用 host、PID 和启动时间生成稳定 ID；父身份和 lineage 随 Profile 保留，PID 复用不会覆盖旧进程身份。Profile 按 Active、Exited、Retained 三态流转：退出后保留完整特征供最终推理，经过 grace period 后压缩为只保留身份的 Retained Profile，再在 retained TTL 后过期；因容量被淘汰的 Profile 另行保留有界身份锚点。回收由 sensor 的 boot monotonic 事件时间惰性触发；即使端点长期静默，Profile 总数和身份锚点仍由硬容量限制保证内存有界。
+
+默认每个运行时最多保留 `sensor.process_cache_size` 个 Profile、两倍数量的身份锚点；单个 Profile 最多保留 32 个文件、16 个网络地址和 16 个 Event 引用。容量压力优先淘汰 Retained、再淘汰 Exited、最后淘汰最旧 Active，并通过 Learning health 暴露压缩、过期、容量淘汰、特征淘汰和身份缺口指标。
+
+Learning Model 在离线训练、端侧推理的边界内运行：
+
+1. 从 ProcessProfile 的命令、文件和网络地址提取 Unicode 字母数字 token；
+2. 用 FastText token 与子词向量形成句向量，并用训练集 IDF 对资源特征加权；
+3. 以 VAE 编码器的 mean 分支做确定性重建，计算重建均方误差；
+4. 用离线 DBSCAN 得到的进程稳定性值（SV）修正误差，计算 `score = log(MSE / SV)`；
+5. 当 `score >= threshold` 时产生 Endpoint Model Candidate，并附带模型 provenance、实体和 Event 引用。
+
+训练工具使用端点自采 Event 重建同一 ProcessProfile，并要求训练集与独立校准集不存在 Event 或 Profile 身份重叠。Python 训练侧和 Go Agent 侧对分词、子词、`float32` 累加、VAE mean 推理、SV 修正和阈值比较使用同一合同。Agent 不在本地构建完整攻击图；Worker 以 Event 因果边连接 Endpoint Candidate，并负责后续 Evidence 与 Conclusion 分析。
+
 ### 有界持久化
 
 SQLite 保存设备身份、注册状态、有效策略、Signal、事件段元数据和上传 checkpoint；高吞吐 Event 写入有界追加段。容量限制和最小剩余空间防止本地状态无限增长。
