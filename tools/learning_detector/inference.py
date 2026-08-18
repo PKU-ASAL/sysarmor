@@ -11,7 +11,7 @@ from model_bundle import float32
 
 
 def natural_tokens(value: str) -> list[str]:
-    return [token for token in re.split(r"[^\w]+", value.lower(), flags=re.UNICODE) if token]
+    return [token for token in re.split(r"[\W_]+", value.lower(), flags=re.UNICODE) if token]
 
 
 def profile_vector(profile: dict[str, Any], bundle: dict[str, Any]) -> list[float]:
@@ -21,9 +21,9 @@ def profile_vector(profile: dict[str, Any], bundle: dict[str, Any]) -> list[floa
         resources.append((natural_tokens(path), lookup_weight(path, rarity["files"], rarity["default_file"])))
     for address in profile.get("networks", []):
         resources.append((natural_tokens(address), lookup_weight(address, rarity["networks"], rarity["default_network"])))
-    command_weight = (rarity["default_file"] + rarity["default_network"]) / 2
+    command_weight = float32(float32(rarity["default_file"] + rarity["default_network"]) / 2)
     if resources:
-        command_weight = sum(weight for _, weight in resources) / len(resources)
+        command_weight = float32(float32_sum(weight for _, weight in resources) / len(resources))
     command = " ".join([profile.get("binary", ""), *profile.get("argv", [])])
     features = [(natural_tokens(command), command_weight), *resources]
     result = [0.0] * bundle["embedding"]["dimension"]
@@ -38,7 +38,8 @@ def sentence_vector(tokens: list[str], embedding: dict[str, Any]) -> list[float]
     vectors = [vector for vector in vectors if vector is not None]
     if not vectors:
         return [0.0] * embedding["dimension"]
-    return [float32(sum(vector[index] for vector in vectors) / len(vectors)) for index in range(embedding["dimension"])]
+    return [float32(float32_sum(vector[index] for vector in vectors) / len(vectors))
+            for index in range(embedding["dimension"])]
 
 
 def token_vector(token: str, embedding: dict[str, Any]) -> list[float] | None:
@@ -55,16 +56,18 @@ def token_vector(token: str, embedding: dict[str, Any]) -> list[float] | None:
                 vectors.append(subwords[bucket])
     if not vectors:
         return None
-    return [float32(sum(vector[index] for vector in vectors) / len(vectors)) for index in range(embedding["dimension"])]
+    return [float32(float32_sum(vector[index] for vector in vectors) / len(vectors))
+            for index in range(embedding["dimension"])]
 
 
 def score_profile(profile: dict[str, Any], bundle: dict[str, Any]) -> float:
     vector = profile_vector(profile, bundle)
     reconstructed = reconstruct(vector, bundle["vae"])
-    error = float32(sum(float32((value - output) ** 2) for value, output in zip(vector, reconstructed)) / len(vector))
+    squares = (float32(float32(value - output) ** 2) for value, output in zip(vector, reconstructed))
+    error = float32(float32_sum(squares) / len(vector))
     name = Path(profile.get("binary", "")).name.lower()
     stability = lookup_weight(name, bundle["stability"]["processes"], bundle["stability"]["default"])
-    return float32(math.log(max(error / stability, 1e-12)))
+    return float32(math.log(max(float32(error / stability), 1e-12)))
 
 
 def reconstruct(vector: list[float], vae: dict[str, Any]) -> list[float]:
@@ -86,6 +89,13 @@ def dense(values: list[float], weights: list[float], bias: list[float], outputs:
 
 def lookup_weight(value: str, values: list[dict[str, Any]], fallback: float) -> float:
     return next((item["weight"] for item in values if item["value"] == value), fallback)
+
+
+def float32_sum(values: Any) -> float:
+    result = 0.0
+    for value in values:
+        result = float32(result + value)
+    return result
 
 
 def fnv1a(value: str) -> int:

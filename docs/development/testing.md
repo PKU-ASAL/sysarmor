@@ -324,6 +324,8 @@ make test-performance DOMAIN=learning PROFILE=medium \
 
 “缺失字段”和“空结果”含义不同：没有运行 managed 阶段时报告 unavailable；已经运行且输出空集合时 recall 为 0 并失败。报告同时保留 CPU、稳定期 RSS、EPS、drop/parse error、Rule A/B 等价性、ProcessProfile 淘汰和身份缺口。只有 blocking 门禁全部通过，运行结论才是 passed；observation 不影响端侧 A/B 结论，但不能被表述为 Worker 或端到端检测已经通过。
 
+训练侧 Python 与 Agent 侧 Go 必须通过同一真实 Bundle 和 ProcessProfile 的推理合同：特征向量固定，score 按 `float32` 语义一致，且 `score >= threshold` 的 Candidate 结论一致。两端各自单测通过不能替代这项跨语言合同。
+
 ## Distribution 测试
 
 Distribution 验证发行包和安装兼容性，不承担发布决策：

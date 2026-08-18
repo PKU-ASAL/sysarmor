@@ -28,6 +28,17 @@ func TestProfileFeaturesUseNaturalLanguageSentencesAndIDFWeights(t *testing.T) {
 	}
 }
 
+func TestTokenVectorUsesUnicodeCodePointSubwords(t *testing.T) {
+	embedding := compileEmbedding(Embedding{
+		Dimension: 1, MinN: 3, MaxN: 3, BucketCount: 1024,
+		Subwords: []SubwordVector{{Bucket: 537, Vector: []float32{1}}, {Bucket: 611, Vector: []float32{3}}},
+	})
+	vector, ok := tokenVector("测试", embedding)
+	if !ok || len(vector) != 1 || vector[0] != 2 {
+		t.Fatalf("unicode token vector = %v ok=%v, want [2] true", vector, ok)
+	}
+}
+
 func TestScoreUsesDeterministicVAEAndStabilityCorrection(t *testing.T) {
 	bundle := scoringTestBundle()
 	detector, err := NewDetector(bundle)

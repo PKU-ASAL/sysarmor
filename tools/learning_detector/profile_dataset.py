@@ -85,7 +85,7 @@ def append_bounded_unique(values: list[str], value: str, limit: int) -> None:
     if not value:
         return
     if value in values:
-        values.remove(value)
+        return
     append_bounded(values, value, limit)
 
 

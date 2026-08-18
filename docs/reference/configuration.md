@@ -92,7 +92,7 @@ sysarmor-model-sign \
   --output model-bundle.signed.json
 ```
 
-Agent 对 Bundle 使用 1 MiB 上限和严格 JSON 解码，并依次校验模型摘要、payload 摘要与可信签名。缺少模型路径表示显式禁用；配置了但无法读取、校验或验证签名时，Learning health 为 `degraded`，规则检测与事件采集继续运行，不加载默认模型。
+Agent 对 Bundle 使用 8 MiB 上限和严格 JSON 解码，并依次校验模型摘要、payload 摘要与可信签名。缺少模型路径表示显式禁用；配置了但无法读取、校验或验证签名时，Learning health 为 `degraded`，规则检测与事件采集继续运行，不加载默认模型。
 
 ## Endpoint Policy
 

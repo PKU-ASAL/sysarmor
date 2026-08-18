@@ -59,10 +59,10 @@ func tokenVector(token string, embedding compiledEmbedding) ([]float32, bool) {
 		addVector(result, vector)
 		count++
 	}
-	wrapped := "<" + token + ">"
+	wrapped := []rune("<" + token + ">")
 	for size := embedding.minN; size <= embedding.maxN; size++ {
 		for start := 0; start+size <= len(wrapped); start++ {
-			bucket := fnv1a(wrapped[start:start+size]) % uint32(embedding.bucketCount)
+			bucket := fnv1a(string(wrapped[start:start+size])) % uint32(embedding.bucketCount)
 			if vector, ok := embedding.subwords[bucket]; ok {
 				addVector(result, vector)
 				count++

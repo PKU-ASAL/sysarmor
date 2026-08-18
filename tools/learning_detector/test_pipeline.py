@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from inference import natural_tokens, profile_vector, score_profile
+from inference import natural_tokens, profile_vector, score_profile, sentence_vector
 from model_bundle import validate_bundle
-from profile_dataset import read_profiles
+from profile_dataset import append_bounded_unique, read_profiles
 from training import TrainingConfig, idf_weights, stability_scores, train_bundle
 
 
@@ -28,9 +28,40 @@ class LearningPipelineTest(unittest.TestCase):
         self.assertEqual(profiles[0]["event_refs"], ["e1", "e2", "e3"])
         self.assertEqual(profiles[0]["state"], "exited")
 
+    def test_bounded_profile_values_match_agent_first_seen_order(self):
+        values = []
+        for value in ("/tmp/a", "/tmp/b", "/tmp/a", "/tmp/c"):
+            append_bounded_unique(values, value, 2)
+        self.assertEqual(values, ["/tmp/b", "/tmp/c"])
+
     def test_preprocessing_matches_nodlink_sentence_rules(self):
         self.assertEqual(natural_tokens("/etc/tmp/log.txt"), ["etc", "tmp", "log", "txt"])
         self.assertEqual(natural_tokens("10.0.0.1:443"), ["10", "0", "0", "1", "443"])
+        self.assertEqual(natural_tokens("payload_runner-v2"), ["payload", "runner", "v2"])
+
+    def test_vector_aggregation_matches_agent_float32_accumulation(self):
+        embedding = {
+            "dimension": 1, "min_n": 3, "max_n": 3, "bucket_count": 1,
+            "tokens": [
+                {"token": "a", "vector": [1e8]},
+                {"token": "b", "vector": [1.0]},
+                {"token": "c", "vector": [-1e8]},
+            ],
+            "subwords": [],
+        }
+        self.assertEqual(sentence_vector(["a", "b", "c"], embedding), [0.0])
+
+    def test_real_bundle_matches_cross_language_inference_fixture(self):
+        root = Path(__file__).resolve().parents[2]
+        bundle = json.loads((root / "test/data/learning/model-bundle.json").read_text())
+        fixture_path = root / "test/data/learning/inference-parity.json"
+        self.assertTrue(fixture_path.is_file(), "cross-language inference fixture is required")
+        fixture = json.loads(fixture_path.read_text())
+        profile = fixture["profile"]
+
+        self.assertEqual(profile_vector(profile, bundle), fixture["feature_vector"])
+        self.assertEqual(score_profile(profile, bundle), fixture["score"])
+        self.assertEqual(fixture["score"] >= bundle["threshold"], fixture["candidate"])
 
     def test_idf_degrades_resources_shared_by_all_processes(self):
         profiles = [
