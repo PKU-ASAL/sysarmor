@@ -17,6 +17,7 @@ SYSARMOR_BENCH_WORKLOAD ?= business-normal
 SYSARMOR_BENCH_SCENARIO ?=
 SYSARMOR_BENCH_POLICIES ?=
 EVALUATION_SCOPE ?= local
+PERFORMANCE_TARGET_learning := performance-learning
 TETRAGON_ARCHIVE ?= $(abspath $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(wildcard ../.cache/tetragon-v1.7.0-amd64.tar.gz)))
 export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 
