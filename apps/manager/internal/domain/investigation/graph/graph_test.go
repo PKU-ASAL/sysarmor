@@ -41,6 +41,26 @@ func TestFromEventsMarksUnavailableParentAsGap(t *testing.T) {
 	}
 }
 
+func TestFromEventsPreservesForkOperation(t *testing.T) {
+	value := FromEvents([]domaintelemetry.Event{
+		{
+			ID: "fork-child", Behavior: "process.fork", ParentStableID: "p-parent",
+			SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-child"},
+		},
+		{
+			ID: "fork-orphan", Behavior: "process.fork", IdentityStatus: "unavailable",
+			SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-orphan"},
+		},
+	}).EvidenceSubgraph()
+
+	if !hasEdge(value.Edges, "process:p-parent", "process:p-child", "fork", "fork-child", false) {
+		t.Fatalf("fork edge = %+v", value.Edges)
+	}
+	if !hasEdge(value.Edges, "gap:parent:fork-orphan", "process:p-orphan", "fork", "fork-orphan", true) {
+		t.Fatalf("fork gap edge = %+v", value.Edges)
+	}
+}
+
 func TestConnectingEvidenceSelectsSeedsDeterministically(t *testing.T) {
 	events := make([]domaintelemetry.Event, maxEvidenceSeeds+2)
 	signals := make([]domaintelemetry.Signal, len(events))
@@ -95,6 +115,15 @@ func hasEventRef(edges []domaintelemetry.GraphEdge, eventID string) bool {
 func hasIncompleteEdge(edges []domaintelemetry.GraphEdge, from, to string) bool {
 	for _, edge := range edges {
 		if edge.From == from && edge.To == to && edge.Incomplete {
+			return true
+		}
+	}
+	return false
+}
+
+func hasEdge(edges []domaintelemetry.GraphEdge, from, to, kind, eventID string, incomplete bool) bool {
+	for _, edge := range edges {
+		if edge.From == from && edge.To == to && edge.Kind == kind && edge.Incomplete == incomplete && slices.Contains(edge.EventRefs, eventID) {
 			return true
 		}
 	}

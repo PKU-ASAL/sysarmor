@@ -41,9 +41,10 @@ func (value *Graph) AddEvent(event domaintelemetry.Event) {
 	}
 	subject := entityID("process", event.SubjectProcess.StableID)
 	value.addNode(domaintelemetry.Entity{Kind: "process", Key: subject, Role: "subject"})
-	switch strings.ToLower(strings.TrimSpace(event.Behavior)) {
+	behavior := strings.ToLower(strings.TrimSpace(event.Behavior))
+	switch behavior {
 	case "process.exec", "process.fork":
-		value.addProcessEvent(event, subject)
+		value.addProcessEvent(event, subject, strings.TrimPrefix(behavior, "process."))
 	case "file.open", "file.read", "file.write", "file.chmod":
 		if event.Object != nil {
 			value.addObjectEvent(event, subject, event.Object.FilePath, "file", strings.TrimPrefix(event.Behavior, "file."))
@@ -86,17 +87,17 @@ func (value *Graph) includeAdjacentGaps(nodes, edges map[string]bool) {
 	}
 }
 
-func (value *Graph) addProcessEvent(event domaintelemetry.Event, subject string) {
+func (value *Graph) addProcessEvent(event domaintelemetry.Event, subject, relation string) {
 	if event.ParentStableID != "" {
 		parent := entityID("process", event.ParentStableID)
 		value.addNode(domaintelemetry.Entity{Kind: "process", Key: parent, Role: "parent"})
-		value.addEventEdge(parent, subject, "exec", event.ID, false)
+		value.addEventEdge(parent, subject, relation, event.ID, false)
 		return
 	}
 	if event.IdentityStatus == "unavailable" {
 		gap := "gap:parent:" + event.ID
 		value.addRawNode(gap, "gap")
-		value.addEventEdge(gap, subject, "exec", event.ID, true)
+		value.addEventEdge(gap, subject, relation, event.ID, true)
 	}
 }
 

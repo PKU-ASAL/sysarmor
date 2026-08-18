@@ -141,7 +141,7 @@ flowchart LR
   Incident --> Projection
 ```
 
-Worker 用 Event 构建进程、文件和 socket provenance 图，每条边保留 `event_refs`；Signal 只提供 Evidence 种子，不产生或补造因果边。`identity_status=unavailable` 时图中保留明确的父身份 gap，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
+Worker 用 Event 构建进程、文件和 socket provenance 图，分别保留 `fork`、`exec`、文件操作和网络连接语义，每条边保留 `event_refs`；Signal 只提供 Evidence 种子，不产生或补造因果边。`identity_status=unavailable` 时图中保留明确的父身份 gap，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
 
 ## 平台组件与存储职责
 
