@@ -70,3 +70,10 @@ message DetectionFailure {
   string message = 3;
   bool retryable = 4;
 }
+
+message ProjectionFailure {
+  AnalysisArtifact artifact = 1;
+  string reason_code = 2;
+  string message = 3;
+  bool retryable = 4;
+}

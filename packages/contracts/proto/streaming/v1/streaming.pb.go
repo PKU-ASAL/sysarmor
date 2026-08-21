@@ -633,6 +633,74 @@ func (x *DetectionFailure) GetRetryable() bool {
 	return false
 }
 
+type ProjectionFailure struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Artifact      *AnalysisArtifact      `protobuf:"bytes,1,opt,name=artifact,proto3" json:"artifact,omitempty"`
+	ReasonCode    string                 `protobuf:"bytes,2,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	Retryable     bool                   `protobuf:"varint,4,opt,name=retryable,proto3" json:"retryable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProjectionFailure) Reset() {
+	*x = ProjectionFailure{}
+	mi := &file_packages_contracts_proto_streaming_v1_streaming_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProjectionFailure) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProjectionFailure) ProtoMessage() {}
+
+func (x *ProjectionFailure) ProtoReflect() protoreflect.Message {
+	mi := &file_packages_contracts_proto_streaming_v1_streaming_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProjectionFailure.ProtoReflect.Descriptor instead.
+func (*ProjectionFailure) Descriptor() ([]byte, []int) {
+	return file_packages_contracts_proto_streaming_v1_streaming_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ProjectionFailure) GetArtifact() *AnalysisArtifact {
+	if x != nil {
+		return x.Artifact
+	}
+	return nil
+}
+
+func (x *ProjectionFailure) GetReasonCode() string {
+	if x != nil {
+		return x.ReasonCode
+	}
+	return ""
+}
+
+func (x *ProjectionFailure) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ProjectionFailure) GetRetryable() bool {
+	if x != nil {
+		return x.Retryable
+	}
+	return false
+}
+
 var File_packages_contracts_proto_streaming_v1_streaming_proto protoreflect.FileDescriptor
 
 const file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc = "" +
@@ -690,6 +758,12 @@ const file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc = "" +
 	"\vreason_code\x18\x02 \x01(\tR\n" +
 	"reasonCode\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12\x1c\n" +
+	"\tretryable\x18\x04 \x01(\bR\tretryable\"\xb1\x01\n" +
+	"\x11ProjectionFailure\x12C\n" +
+	"\bartifact\x18\x01 \x01(\v2'.sysarmor.streaming.v1.AnalysisArtifactR\bartifact\x12\x1f\n" +
+	"\vreason_code\x18\x02 \x01(\tR\n" +
+	"reasonCode\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12\x1c\n" +
 	"\tretryable\x18\x04 \x01(\bR\tretryableB]Z[github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/streaming/v1;streamingv1b\x06proto3"
 
 var (
@@ -704,7 +778,7 @@ func file_packages_contracts_proto_streaming_v1_streaming_proto_rawDescGZIP() []
 	return file_packages_contracts_proto_streaming_v1_streaming_proto_rawDescData
 }
 
-var file_packages_contracts_proto_streaming_v1_streaming_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_packages_contracts_proto_streaming_v1_streaming_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_packages_contracts_proto_streaming_v1_streaming_proto_goTypes = []any{
 	(*RecordContext)(nil),           // 0: sysarmor.streaming.v1.RecordContext
 	(*NormalizedTelemetry)(nil),     // 1: sysarmor.streaming.v1.NormalizedTelemetry
@@ -713,27 +787,29 @@ var file_packages_contracts_proto_streaming_v1_streaming_proto_goTypes = []any{
 	(*RejectedTelemetry)(nil),       // 4: sysarmor.streaming.v1.RejectedTelemetry
 	(*LateTelemetry)(nil),           // 5: sysarmor.streaming.v1.LateTelemetry
 	(*DetectionFailure)(nil),        // 6: sysarmor.streaming.v1.DetectionFailure
-	nil,                             // 7: sysarmor.streaming.v1.RecordContext.LabelsEntry
-	(*v1.CanonicalEvent)(nil),       // 8: sysarmor.event.v1.CanonicalEvent
-	(*v11.Signal)(nil),              // 9: sysarmor.signal.v1.Signal
-	(*v12.DetectionPolicy)(nil),     // 10: sysarmor.policy.v1.DetectionPolicy
-	(*v13.Incident)(nil),            // 11: sysarmor.incident.v1.Incident
+	(*ProjectionFailure)(nil),       // 7: sysarmor.streaming.v1.ProjectionFailure
+	nil,                             // 8: sysarmor.streaming.v1.RecordContext.LabelsEntry
+	(*v1.CanonicalEvent)(nil),       // 9: sysarmor.event.v1.CanonicalEvent
+	(*v11.Signal)(nil),              // 10: sysarmor.signal.v1.Signal
+	(*v12.DetectionPolicy)(nil),     // 11: sysarmor.policy.v1.DetectionPolicy
+	(*v13.Incident)(nil),            // 12: sysarmor.incident.v1.Incident
 }
 var file_packages_contracts_proto_streaming_v1_streaming_proto_depIdxs = []int32{
-	7,  // 0: sysarmor.streaming.v1.RecordContext.labels:type_name -> sysarmor.streaming.v1.RecordContext.LabelsEntry
+	8,  // 0: sysarmor.streaming.v1.RecordContext.labels:type_name -> sysarmor.streaming.v1.RecordContext.LabelsEntry
 	0,  // 1: sysarmor.streaming.v1.NormalizedTelemetry.context:type_name -> sysarmor.streaming.v1.RecordContext
-	8,  // 2: sysarmor.streaming.v1.NormalizedTelemetry.event:type_name -> sysarmor.event.v1.CanonicalEvent
-	9,  // 3: sysarmor.streaming.v1.NormalizedTelemetry.signal:type_name -> sysarmor.signal.v1.Signal
-	10, // 4: sysarmor.streaming.v1.DetectionPolicySnapshot.detection:type_name -> sysarmor.policy.v1.DetectionPolicy
-	9,  // 5: sysarmor.streaming.v1.AnalysisArtifact.signal:type_name -> sysarmor.signal.v1.Signal
-	11, // 6: sysarmor.streaming.v1.AnalysisArtifact.incident:type_name -> sysarmor.incident.v1.Incident
+	9,  // 2: sysarmor.streaming.v1.NormalizedTelemetry.event:type_name -> sysarmor.event.v1.CanonicalEvent
+	10, // 3: sysarmor.streaming.v1.NormalizedTelemetry.signal:type_name -> sysarmor.signal.v1.Signal
+	11, // 4: sysarmor.streaming.v1.DetectionPolicySnapshot.detection:type_name -> sysarmor.policy.v1.DetectionPolicy
+	10, // 5: sysarmor.streaming.v1.AnalysisArtifact.signal:type_name -> sysarmor.signal.v1.Signal
+	12, // 6: sysarmor.streaming.v1.AnalysisArtifact.incident:type_name -> sysarmor.incident.v1.Incident
 	1,  // 7: sysarmor.streaming.v1.LateTelemetry.telemetry:type_name -> sysarmor.streaming.v1.NormalizedTelemetry
 	1,  // 8: sysarmor.streaming.v1.DetectionFailure.telemetry:type_name -> sysarmor.streaming.v1.NormalizedTelemetry
-	9,  // [9:9] is the sub-list for method output_type
-	9,  // [9:9] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	3,  // 9: sysarmor.streaming.v1.ProjectionFailure.artifact:type_name -> sysarmor.streaming.v1.AnalysisArtifact
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_packages_contracts_proto_streaming_v1_streaming_proto_init() }
@@ -755,7 +831,7 @@ func file_packages_contracts_proto_streaming_v1_streaming_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc), len(file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

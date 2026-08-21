@@ -4,7 +4,7 @@ import os
 
 from sysarmor_streaming.jobs.detection import build_graph
 from sysarmor_streaming.jobs.normalize import BYTE_ARRAY, NormalizeFunction, REJECTION_TAG
-from sysarmor_streaming.jobs.projection import ProjectionFunction
+from sysarmor_streaming.jobs.projection import FAILURE_TAG, ProjectionFunction
 from sysarmor_streaming.runtime.config import StreamingConfig
 from sysarmor_streaming.runtime.kafka import configure_environment, sink, source
 
@@ -48,6 +48,12 @@ def run_projection():
         ProjectionFunction(), output_type=BYTE_ARRAY
     ).uid("projection").name("projection")
     sink(projected, config.projected_topic, config, "sysarmor-projection-v1")
+    sink(
+        projected.get_side_output(FAILURE_TAG),
+        config.failure_topic,
+        config,
+        "sysarmor-projection-failure-v1",
+    )
     env.execute("sysarmor-projection-v1")
 
 
