@@ -55,7 +55,7 @@ Agent 产生 Event 和 Endpoint Signal；Worker 在 tenant、分析作用域和�
 
 Agent 负责：
 
-- 管理 sensor 生命周期，将 collection intent 编译为 sensor 能力，并常开最小因果基线；
+- 管理 sensor 生命周期，将有效策略中的 collection intent 编译为 sensor 能力；
 - 规范化 Event，执行低延迟检测并生成 Endpoint Signal；
 - 以唯一的 `ProcessProfile` 聚合进程行为，并在 Profile 淘汰后保留有界身份锚点；
 - 原子应用统一端点策略，并持久化有效版本；
@@ -79,7 +79,7 @@ Learning Model 在离线训练、端侧推理的边界内运行：
 4. 用离线 DBSCAN 得到的进程稳定性值（SV）修正误差，计算 `score = log(MSE / SV)`；
 5. 当 `score >= threshold` 时产生 Endpoint Model Candidate，并附带模型 provenance、实体和 Event 引用。
 
-训练工具使用端点自采 Event 重建同一 ProcessProfile，并要求训练集与独立校准集不存在 Event 或 Profile 身份重叠。Python 训练侧和 Go Agent 侧对分词、子词、`float32` 累加、VAE mean 推理、SV 修正和阈值比较使用同一合同。Agent 不在本地构建完整攻击图；Worker 以 Event 因果边连接 Endpoint Candidate，并负责后续 Evidence 与 Conclusion 分析。
+训练工具使用端点自采 Event 重建同一 ProcessProfile，并要求训练集与独立校准集不存在 Event 或 Profile 身份重叠。Python 训练侧和 Go Agent 侧对分词、子词、`float32` 累加、VAE mean 推理、SV 修正和阈值比较使用同一合同。Agent 不在本地构建完整攻击图；Worker 将 Event 规范化为 `ProvenanceEdge`，再连接 Endpoint Candidate，并负责后续 Evidence 与 Conclusion 分析。
 
 ### 有界持久化
 
@@ -91,11 +91,13 @@ SQLite 保存设备身份、注册状态、有效策略、Signal、事件段元�
 
 ## 统一控制平面
 
-端点策略由同一版本中的四个部分构成：
+端点策略由同一版本中的四个部分构成。`EndpointProtectionMode` 是 Manager 的策略管理维度，不是第五层策略：
 
 ```mermaid
 flowchart TB
-  Author["策略作者"] --> Policy["同一策略版本"]
+	Author["策略作者"] --> Mode["EndpointProtectionMode"]
+	Mode --> Resolver["Policy Resolver"]
+	Resolver --> Policy["Versioned Policy Bundle"]
   Policy --> Collection["Collection<br/>观察什么"]
   Policy --> Detection["Detection<br/>提炼什么 Signal"]
   Policy --> Telemetry["Telemetry<br/>如何形成与上传批次"]
@@ -114,6 +116,8 @@ flowchart TB
   Ack --> Observed["Manager<br/>确认、健康、审计"]
 ```
 
+Manager 保存的 Bundle 必须明确选择 `rule-only`、`learning-only` 或 `hybrid`，并完整包含四层。Resolver 校验检测能力与 Mode 一致，为 Learning 补齐因果采集需求，再生成下发文档。Mode 只用于来源、审计和解析，不会下发给 Agent。Agent 只解析四层 Endpoint Policy，并依据 Detection 中的版本化模型引用启用 Learning。
+
 策略更新必须先解析、校验和编译，成功后才能替换有效版本；有效策略会持久化，重启不会静默退回安装包默认值。Manager 负责策略分配和下发，Agent 报告能力、健康状态与实际有效版本。具体操作与安全约束见[策略指南](guides/policy.md)。
 
 本地 Unix API 还支持内容查询与应用、Event 查询、debug profile 和策略操作。远程 `Connect` 控制通道负责策略与内容下发、response、Evidence pullback，以及 health/capability 状态交互；当前不提供远程 Event 查询或 debug profile。端点私钥在本机生成，注册时提交 CSR；签发证书使用以下 URI 身份：
@@ -126,11 +130,15 @@ Gateway 会将该身份与每个上报的 tenant ID 和 Agent ID 交叉校验。
 
 ## 数据平面与可靠性
 
-完成注册的 Agent 只上传有效策略产生的 Event 和 Signal。有效 collection intent 始终包含 `process.exec`、`process.exit`、`process.fork`、`file.write` 和 `network.connect` 最小因果基线，普通 selector 可以增加采集但不能关闭或缩窄基线。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
+完成注册的 Agent 只上传有效策略产生的 Event 和 Signal。`rule-only` 只采集规则所需事实；`learning-only` 和 `hybrid` 的已解析 Bundle 包含 `process.exec`、`process.exit`、`process.fork`、`file.write` 和 `network.connect` 因果骨架。Agent 不再为所有策略偷偷扩大采集面。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
 
 Agent 以批次发送数据，Gateway 返回 accepted、duplicate、retryable 或 terminally invalid。只有 accepted 或 duplicate 确认可以推进本地 checkpoint。Gateway 完成身份和批次校验后，将数据交给 Kafka；Worker 在完成必需投影后才提交 Kafka offset。
 
+Endpoint Model Candidate 与当前触发 Event 是 DataBatch 内的强引用：Candidate 必须有唯一 subject Process，至少一个 EventRef 必须在当前批次中解析，并且 Event 与 Candidate 的 subject StableID 一致。Agent、Gateway 和 Worker 共用该合同；历史上下文仍按弱引用处理，缺失时进入 gap/incomplete，而不是拒绝所有不完整历史。
+
 永久非法输入只有在 dead-letter 记录可靠写入后才能提交。临时错误不提交并等待重试。派生文档使用确定性 ID，因此重复批次、Worker 重试和局部 Bulk 成功会重放到同一逻辑结果，而不是放大 Signal 或 Incident。
+
+Learning health 公开 Candidate 的 `created`、`spooled`、`gateway_accepted_unique`、`gateway_duplicate_ack`、`contract_rejected` 和 `gateway_rejected` 计数。Worker 在 PostgreSQL `worker_signal_processing` 中按同一 `Signal.id` 记录 `correlated`、`projected` 或 `reference_rejected`，OpenSearch 保存最终投影。验收要求各阶段 Signal cohort 严格守恒；duplicate ACK 只表示幂等重试，不参与守恒。这些生产指标与本地 storage drop、观察 Ring Buffer eviction 分开，允许定位缺口发生在观察、端侧持久化、Gateway、Worker 关联还是投影。
 
 ## 云侧分析
 
@@ -157,7 +165,7 @@ flowchart LR
   Incident --> Projection
 ```
 
-Worker 用 Event 构建进程、文件和 socket provenance 图，分别保留 `fork`、`exec`、文件操作和网络连接语义，每条边保留 `event_refs`；Signal 只提供 Evidence 种子，不产生或补造因果边。`identity_status=unavailable` 时图中保留明确的父身份 gap，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
+Worker 先把 Event 规范化为有方向的 `ProvenanceEdge`，再构建进程、文件和 socket provenance 图：进程创建从父进程指向子进程，读操作从对象指向进程，写和发送操作从进程指向对象，每条边聚合对应的 `event_refs`；`process.exit` 只结束生命周期，不生成图边。合法 root process 即使没有父边也必须保留为图节点。Signal 只提供 Evidence 种子，不产生或补造 ProvenanceEdge。父身份缺失时图中保留明确的 gap 节点，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；Model Candidate 不会单独晋升为 Incident，因此真实 managed 图与结论 recall 由 `hybrid` 路径验收。候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
 
 ## 平台组件与存储职责
 
@@ -236,7 +244,7 @@ Manager 与 Worker 的生产持久化仅支持 PostgreSQL。缺失 DSN、迁移�
 
 | 状态 | 能力 |
 |---|---|
-| 当前已具备 | standalone/managed 切换、强制最小因果采集、ProcessProfile 有界身份连续性、本地检测与有界存储、统一端点策略、注册与 mTLS、可靠批次上传、15 分钟历史关联、Endpoint/Cloud Signal、Event provenance Evidence、稳定 Incident 投影 |
+| 当前已具备 | standalone/managed 切换、按保护模式解析采集需求、ProcessProfile 有界身份连续性、本地检测与有界存储、统一端点策略、注册与 mTLS、可靠批次上传、15 分钟历史关联、Endpoint/Cloud Signal、Event provenance Evidence、稳定 Incident 投影 |
 | 工程基础已具备但仍需产品化 | 完整 Incident 调查体验、Evidence 到原始材料的连续回溯、策略和资源预算的统一可视化 |
 | 目标能力 | 风险触发的临时加深采集与自动恢复、候选路径排序、攻击阶段推理、自然语言根因解释、受约束的 Agentic 策略调优 |
 

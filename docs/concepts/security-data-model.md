@@ -98,7 +98,11 @@ Event
 
 Signal 使用 `event_refs` 引用事实，使用 `signal_refs` 引用上游发现，并保留实体、lineage、规则或模型 provenance。Incident 保留贡献 Conclusion、Evidence 子图和稳定分析身份。Evidence 的每条生产图边必须由一个或多个 Event 引用支撑；Signal 只选择图种子。身份无法恢复时允许使用显式 gap 节点和 incomplete 边，禁止制造不存在的进程关系。
 
+Endpoint Model Candidate 具有最小强引用合同：必须且只能包含一个 `subject` Process，至少一个 `event_ref` 必须指向同一 DataBatch 中 subject StableID 相同的触发 Event。Agent 构批、Gateway 接收和 Worker 解码使用同一合同；违反合同的批次会以稳定 reason code 明确拒绝。其他历史 Event、父进程和对象引用属于弱引用，可以由 Worker 从历史窗口补全；无法补全时必须标记 gap/incomplete，不能伪造关系或要求端侧无限保留。
+
 Event 与 Signal 不会因为重试而改变语义身份。新的输入可以使同一分析窗口重新计算 Incident，但不能把 Candidate 原地改成 Conclusion。
+
+Candidate 本身仍是不可变 Signal。`created`、`spooled`、`gateway_accepted_unique`、`gateway_duplicate_ack`、`worker_correlated` 和 `worker_projected` 是交付阶段指标，不是 Candidate 内部状态；`observation_gap`、`endpoint_storage_drop`、`gateway_reject`、`agent_delivery_backlog`、`worker_pending_backlog` 和 `worker_reference_rejected` 分别表示测试观察覆盖、端侧容量丢弃、Gateway 拒绝、尚未交付、Worker 尚未处理和引用合同拒绝，禁止合并为一个含义模糊的 degraded 原因。生命周期验收使用同一组 `Signal.id`，严格满足 `created = spooled + contract_rejected`、`spooled = gateway_accepted_unique + gateway_rejected`、`gateway_accepted_unique = worker_correlated + worker_reference_rejected` 和 `worker_correlated = worker_projected = projection_artifacts`；`gateway_duplicate_ack` 只表示幂等重试，不参与守恒计算。
 
 ## 当前能力与目标能力
 

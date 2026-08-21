@@ -17,6 +17,20 @@
 
 单独调整其中一层容易产生不可解释状态。例如扩大 detection 规则却不采集所需行为不会增加可见性；提高 collection 粒度却不调整 telemetry 预算可能只会增加本地丢弃；生成 response intent 并不代表端点被授权执行动作。
 
+## 保护模式与策略解析
+
+Manager 使用 `EndpointProtectionMode` 管理一组完整策略，默认值是 `rule-only`。它位于四层 Policy 之上，只决定如何解析 Bundle，不进入 Agent 运行时：
+
+| Mode | Detection | Collection | 状态 |
+|---|---|---|---|
+| `rule-only` | 至少一个启用的 Ruleset，不允许模型引用 | Bundle 明确声明的规则采集面 | 默认、生产 |
+| `learning-only` | 只允许版本化 `learning_model` | 自动并入完整因果骨架 | 实验、observe-only |
+| `hybrid` | Ruleset 与 `learning_model` 同时存在 | 规则采集面与因果骨架并集 | 生产 |
+
+正式链路是 `EndpointProtectionMode -> Policy Resolver -> Versioned Policy Bundle -> 四层 EndpointPolicy`。Manager 保存的新 Bundle 必须显式包含 `protection_mode`、`collection`、`detection`、`telemetry` 和 `response_policy`；缺字段、能力与 Mode 不一致或模型身份不完整都会拒绝保存。系统不推断旧格式，也不使用 `minimal/balanced/deep` 等名称映射保护模式。
+
+Resolver 生成的下发文档只包含 `policy_id`、`version` 和四层 Endpoint Policy。Agent 不知道 Mode；Detection 未携带 `learning_model` 时，即使本机预装了模型也不会评分。携带模型引用时，ref、version 和 digest 必须与已验证 Bundle 完全一致，否则应用失败并保留上一有效策略。
+
 ## 策略生命周期
 
 ```text
@@ -30,7 +44,7 @@
   -> 根据效果与资源指标继续调整
 ```
 
-端点策略要求非空 `policy_id`、正整数 `version`，并同时包含四个部分。顶层字段采用严格解析；Collection 子结构当前仍可能忽略未知字段，因此发布前必须使用 explain/dry-run 验证，不能把“未报错”当成字段已经生效。更新只有在完整策略可解析、可校验并可编译时才能替换有效策略；失败时保留上一有效版本。
+端点策略要求非空 `policy_id`、正整数 `version`，并同时包含四个部分。Manager Bundle 及 Detection 顶层采用严格解析；Collection 子结构当前仍可能忽略未知字段，因此发布前必须使用 explain/dry-run 验证，不能把“未报错”当成字段已经生效。更新只有在完整策略可解析、可校验并可编译时才能替换有效策略；失败时保留上一有效版本。
 
 发布新策略时应由调用方递增版本，并记录明确、可审计的变更原因；Manager 和 Agent 当前不会强制拒绝降级版本。修改 collection 或 response 时尤其应先在有限作用域验证，不能依赖覆盖发布来掩盖失败。
 

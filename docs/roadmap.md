@@ -59,7 +59,7 @@ Agent 和 Sensor 是所有安全能力的执行基础。系统不能只依靠 Ag
 
 ### 当前基础
 
-Agent 已具备有界 Event/Signal 保存、端侧检测、批量上传和资源健康指标；云侧已具备 Signal、Incident 和初始 Evidence 子图；medium 性能测试覆盖真实 Agent/Tetragon 工作负载。
+Agent 已具备有界 Event/Signal 保存、端侧规则与 ProcessProfile 模型检测、批量上传和资源健康指标；Manager 通过 `rule-only`、`learning-only`、`hybrid` 三种保护模式解析完整四层策略，Agent 只消费解析后的 Endpoint Policy。云侧已具备 Signal、Incident 和初始 Evidence 子图；medium 性能矩阵可在相同采集与场景条件下横向比较三种模式。
 
 ### 关键交付
 
