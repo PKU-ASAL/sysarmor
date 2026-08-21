@@ -18,10 +18,11 @@ type SendResult struct {
 }
 
 type Batch struct {
-	ID       string
-	TenantID string
-	AgentID  string
-	Payload  []byte
+	ID              string
+	TenantID        string
+	AgentID         string
+	Payload         []byte
+	ModelCandidates uint64
 }
 
 type Position struct {

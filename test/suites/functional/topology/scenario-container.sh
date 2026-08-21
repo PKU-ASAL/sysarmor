@@ -31,9 +31,8 @@ trap cleanup EXIT
 
 find_tetragon_archive() {
   if [[ -n "$TETRAGON_ARCHIVE" && -f "$TETRAGON_ARCHIVE" ]]; then return; fi
-  for candidate in "$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz" "$REPO/.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz"; do
-    if [[ -f "$candidate" ]]; then TETRAGON_ARCHIVE="$candidate"; return; fi
-  done
+  local candidate="$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz"
+  if [[ -f "$candidate" ]]; then TETRAGON_ARCHIVE="$candidate"; return; fi
   echo "[topology-$CASE][ERROR] SYSARMOR_TETRAGON_ARCHIVE is required" >&2
   exit 1
 }
@@ -88,7 +87,7 @@ assert_results() {
   if [[ "$CASE" == "benign" ]]; then
     [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID")" == "[]" ]]
     [[ "$(manager_ctl incidents list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID")" == "[]" ]]
-    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --terminal true)" == "[]" ]]
+    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --stage conclusion)" == "[]" ]]
     return
   fi
   wait_manager endpoint-signal payload_dropped "$RESULTS/topology-$CASE.signals.json" manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --layer endpoint
@@ -97,7 +96,7 @@ assert_results() {
   grep -Fq '"method":"rarity+causal-topk"' "$RESULTS/topology-$CASE.incidents.json"
   if [[ "$CASE" == "staged" ]]; then
     grep -Fq '"crossLineage":true' "$RESULTS/topology-$CASE.cloud-signals.json"
-    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --terminal true)" == "[]" ]]
+    [[ "$(manager_ctl signals list --label scenario="$SCENARIO" --label policy_id="$POLICY_ID" --stage conclusion)" == "[]" ]]
   else
     grep -Fq reverse_shell_pattern "$RESULTS/topology-$CASE.signals.json"
   fi

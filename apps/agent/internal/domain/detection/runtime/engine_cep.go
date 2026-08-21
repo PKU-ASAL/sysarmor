@@ -23,7 +23,7 @@ func (e *Engine) detectCEPRules(view eventView) []*domaindetection.Signal {
 				if e.suppressCompiledRule(view, rule) {
 					continue
 				}
-				out = append(out, e.signal(view.ev, rule.rule, []string{view.eventID}, rule.rule.terminal(false), eventEntities(view.ev)...))
+				out = append(out, e.signal(view.ev, rule.rule, []string{view.eventID}, rule.rule.spec.Stage, eventEntities(view.ev)...))
 			}
 		}
 	}
@@ -82,13 +82,6 @@ func (r effectiveRule) runtimeType() string {
 	}
 }
 
-func (r effectiveRule) terminal(defaultValue bool) bool {
-	if r.spec.Terminal == nil {
-		return defaultValue
-	}
-	return *r.spec.Terminal
-}
-
 func (e *Engine) detectSequenceRule(view eventView, rule compiledRule) *domaindetection.Signal {
 	return e.detectSequenceCandidate(view, compiledSequenceCandidate{rule: rule, firstStep: true})
 }
@@ -110,7 +103,7 @@ func (e *Engine) detectSequenceCandidate(view eventView, candidate compiledSeque
 	refs := appendRefs(nil, st.Refs...)
 	e.deactivateSequenceWait(rule.rule.spec.RuleID, st.WaitingBehavior)
 	delete(ruleState.Groups, groupKey)
-	return e.signal(view.ev, rule.rule, refs, rule.rule.terminal(true), st.Entities...)
+	return e.signal(view.ev, rule.rule, refs, rule.rule.spec.Stage, st.Entities...)
 }
 
 func (e *Engine) sequenceCandidateState(view eventView, candidate compiledSequenceCandidate) (*cepGroupState, *cepRuleState, string, bool) {

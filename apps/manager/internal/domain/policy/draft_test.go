@@ -18,7 +18,7 @@ func TestManagerDefaultContainsCompleteEndpointPolicy(t *testing.T) {
 	}
 	for _, want := range []string{
 		`"collection"`, `"detection"`, `"telemetry"`, `"response_policy"`,
-		`"cloud_rules"`, `"mode":"observe"`, `"converge"`,
+		`"cloud_rules"`, `"converge"`,
 	} {
 		if !strings.Contains(string(value.Document), want) {
 			t.Fatalf("ManagerDefault() document %s missing %s", value.Document, want)

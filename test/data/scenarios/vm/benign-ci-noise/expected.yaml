@@ -4,4 +4,4 @@ endpoint_signals:
 incident:
   count: 0                            # ★ 核心负向断言：不得误报
 negative:
-  endpoint_terminal_count: 0
+  endpoint_conclusion_count: 0

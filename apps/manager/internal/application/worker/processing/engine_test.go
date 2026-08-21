@@ -28,7 +28,7 @@ func TestEngineSetRarityBaselineAffectsIncidentScore(t *testing.T) {
 		"container:checkout": {"reverse_shell_pattern": 3},
 	}})
 	result := engine.Analyze(nil, []domaintelemetry.Signal{
-		endpointSignal("reverse_shell_pattern", true, domaintelemetry.Entity{Kind: "container", Key: "checkout", Role: "scope"}),
+		endpointSignal("reverse_shell_pattern", domaintelemetry.SignalStageConclusion, domaintelemetry.Entity{Kind: "container", Key: "checkout", Role: "scope"}),
 	})
 	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Score != 12.5 {
 		t.Fatalf("analysis = %+v", result)
@@ -45,18 +45,18 @@ func TestNilEngineReturnsEmptyAnalysis(t *testing.T) {
 
 func attackChainSignals() []domaintelemetry.Signal {
 	return []domaintelemetry.Signal{
-		endpointSignal("web_runtime_spawns_shell", false, domaintelemetry.Entity{Kind: "process", Key: "web", Role: "subject"}),
-		endpointSignal("payload_dropped", false, domaintelemetry.Entity{Kind: "file", Key: "/tmp/payload", Role: "object"}),
-		endpointSignal("reverse_shell_pattern", true,
+		endpointSignal("web_runtime_spawns_shell", domaintelemetry.SignalStageCandidate, domaintelemetry.Entity{Kind: "process", Key: "web", Role: "subject"}),
+		endpointSignal("payload_dropped", domaintelemetry.SignalStageCandidate, domaintelemetry.Entity{Kind: "file", Key: "/tmp/payload", Role: "object"}),
+		endpointSignal("reverse_shell_pattern", domaintelemetry.SignalStageConclusion,
 			domaintelemetry.Entity{Kind: "process", Key: "bash", Role: "subject"},
 			domaintelemetry.Entity{Kind: "socket", Key: "10.0.0.1:443", Role: "object"}),
 	}
 }
 
-func endpointSignal(name string, terminal bool, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
+func endpointSignal(name string, stage domaintelemetry.SignalStage, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
 	return domaintelemetry.Signal{
 		Name: name, Where: domaintelemetry.SignalWhereEndpoint, BaseRisk: 50,
-		GlobalRarity: 1, LineageID: "lineage-a", Terminal: terminal,
+		GlobalRarity: 1, LineageID: "lineage-a", Stage: stage, DetectorKind: domaintelemetry.DetectorKindRule,
 		Entities: entities, Labels: map[string]string{"scenario": "scenario-a"},
 	}
 }

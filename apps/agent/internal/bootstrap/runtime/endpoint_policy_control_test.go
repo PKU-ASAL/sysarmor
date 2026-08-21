@@ -263,7 +263,7 @@ func TestRestorePendingManagerPolicyAfterRestart(t *testing.T) {
 	application := newEndpointPolicyApplication(&runner.policyState, nil, nil)
 	candidate, ok, err := application.PendingManaged(t.Context())
 	prepared, prepareErr := endpointPrepared(candidate)
-	if err != nil || prepareErr != nil || !ok || prepared.endpoint.PolicyID != "managed" || len(prepared.intent.Behaviors) != 1 {
+	if err != nil || prepareErr != nil || !ok || prepared.endpoint.PolicyID != "managed" || len(prepared.intent.Behaviors) != 1 || len(prepared.intent.MandatoryBehaviors) != 0 {
 		t.Fatalf("prepared=%+v ok=%t errors=%v/%v", prepared, ok, err, prepareErr)
 	}
 }

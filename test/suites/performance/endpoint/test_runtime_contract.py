@@ -107,10 +107,91 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn("manager policies assign", managed)
         self.assertIn('remote_policy\\"\' EXIT', managed)
 
+    def test_managed_benchmark_captures_worker_incidents_per_policy(self):
+        script = ENDPOINT_RUNNER.read_text()
+
+        self.assertIn('source "$ROOT/shared/detection/runtime.sh"', script)
+        self.assertIn('"agent_mode": "$AGENT_MODE"', script)
+        self.assertIn('capture_managed_incidents "$policy_out" "$name"', script)
+        self.assertIn('"managed_incidents": "managed-incidents.json"', script)
+        self.assertIn('"managed-incidents.json"', script)
+
+    def test_managed_benchmark_captures_worker_candidate_lifecycle_artifacts(self):
+        script = ENDPOINT_RUNNER.read_text()
+
+        self.assertIn('capture_managed_worker_artifacts "$policy_out" "$name"', script)
+        self.assertIn('"managed_signals": "managed-signals.json"', script)
+        self.assertIn('"manager_metrics": "manager-metrics.json"', script)
+        self.assertIn('"worker_signal_processing": "worker-signal-processing.json"', script)
+
+    def test_managed_benchmark_waits_for_worker_candidate_terminal_state(self):
+        script = ENDPOINT_RUNNER.read_text()
+
+        self.assertIn("capture_final_candidate_lifecycle", script)
+        self.assertIn("wait_for_candidate_terminal_state", script)
+        self.assertIn('worker_signal_processing', script)
+        self.assertIn('eventSequenceCutoff', script)
+        self.assertIn('agent_id', script)
+        self.assertIn('event_sequence IS NOT NULL', script)
+        self.assertIn('worker Candidate lifecycle did not settle', script)
+
+    def test_managed_benchmark_freezes_agent_candidate_cohort_with_one_health_read(self):
+        script = ENDPOINT_RUNNER.read_text()
+        function = script.split("capture_final_candidate_lifecycle() {", 1)[1].split("\n}", 1)[0]
+
+        self.assertIn('created="$(jq -er', script)
+        self.assertIn('experimentCreated', script)
+        self.assertIn('eventSequenceCutoff', script)
+        self.assertIn('latestEventSequence', script)
+        self.assertEqual(function.count("agent health"), 1)
+        self.assertNotIn("while ((", function)
+
+    def test_rule_only_freezes_an_explicit_empty_candidate_cohort(self):
+        script = ENDPOINT_RUNNER.read_text()
+        function = script.split("capture_final_candidate_lifecycle() {", 1)[1].split("\n}", 1)[0]
+
+        self.assertIn('[[ "$PROTECTION_MODE" == "rule-only" ]]', function)
+        self.assertIn("gatewayAccepted = 0", function)
+        self.assertIn("experimentCreated = 0", function)
+
+    def test_managed_learning_quiesces_candidate_production_before_freeze(self):
+        script = ENDPOINT_RUNNER.read_text()
+
+        self.assertIn("quiesce_managed_candidate_production", script)
+        self.assertIn("candidate-drain", script)
+        self.assertIn("SYSARMOR_BENCH_PROTECTION_MODE=rule-only", script)
+        self.assertLess(
+            script.index('quiesce_managed_candidate_production "$policy_out" "$policy"'),
+            script.index('capture_managed_worker_artifacts "$policy_out" "$name"'),
+        )
+
     def test_managed_sync_installs_signed_benchmark_content(self):
         script = SYNC_AGENT.read_text()
         self.assertIn("SYSARMOR_VM_INCLUDE_BENCH_CONTENT", script)
         self.assertIn("/tmp/sysarmor-bench-content.upload", script)
+
+    def test_learning_sync_requires_a_complete_enabled_configuration(self):
+        script = SYNC_AGENT.read_text()
+        self.assertIn("SYSARMOR_LEARNING_MODEL", script)
+        self.assertIn("SYSARMOR_LEARNING_TRUST_KEYS", script)
+        self.assertIn("learning:", script)
+        self.assertIn("model_path:", script)
+
+    def test_endpoint_runner_records_learning_provenance(self):
+        script = ENDPOINT_RUNNER.read_text()
+        self.assertIn("SYSARMOR_BENCH_LEARNING_MODEL", script)
+        self.assertIn("SYSARMOR_BENCH_LEARNING_TRUST_KEYS", script)
+        self.assertIn("learning_model", script)
+
+    def test_endpoint_runner_captures_effective_policy_after_application(self):
+        script = ENDPOINT_RUNNER.read_text()
+        self.assertIn("capture_effective_policy", script)
+        self.assertIn('> "$policy_out/current-policy.json"', script)
+        self.assertIn("effective-policy.json", script)
+        self.assertGreater(
+            script.index('capture_effective_policy "$policy_out"'),
+            script.index('apply_detection "$policy_out" "$name"'),
+        )
 
     def test_managed_policy_uses_manager_without_local_policy_apply(self):
         calls = self.temp / "vagrant.calls"

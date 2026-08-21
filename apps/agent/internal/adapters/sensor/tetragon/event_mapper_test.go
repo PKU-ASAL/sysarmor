@@ -5,11 +5,13 @@ import (
 	"sync"
 	"testing"
 
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 )
 
 func TestEventNormalizerInheritsSensorParentLineage(t *testing.T) {
-	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{TenantID: "tenant-a"})
+	profiles := newTestProfiles(t)
+	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{TenantID: "tenant-a"}, profiles)
 	parent := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
 		Behavior: " PROCESS.EXEC ", Proc: &sensorv1.RawProcess{Pid: 100, SensorExecId: "exec-parent", Binary: "/usr/bin/java"},
 	})
@@ -25,8 +27,37 @@ func TestEventNormalizerInheritsSensorParentLineage(t *testing.T) {
 	}
 }
 
+func TestEventNormalizerLeavesBehaviorAggregationToApplication(t *testing.T) {
+	profiles := newTestProfiles(t)
+	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{}, profiles)
+	file := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
+		MonoNs: 10, Behavior: "file.write", Proc: &sensorv1.RawProcess{Pid: 100, SensorExecId: "exec-a", Binary: "/bin/bash"},
+		Object: &sensorv1.RawObject{Path: "/tmp/payload"},
+	})
+	exit := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
+		MonoNs: 20, Behavior: "process.exit", Proc: &sensorv1.RawProcess{Pid: 100, SensorExecId: "exec-a", Binary: "/bin/bash"},
+	})
+
+	snapshot, ok := profiles.Snapshot(file.Subject.StableID)
+	if !ok || snapshot.State != domainprocess.StateActive || snapshot.Revision != 0 || len(snapshot.Files) != 0 {
+		t.Fatalf("profile snapshot = %+v ok=%v", snapshot, ok)
+	}
+	if exit.Subject.StableID != file.Subject.StableID {
+		t.Fatalf("identity changed across normalization: file=%q exit=%q", file.Subject.StableID, exit.Subject.StableID)
+	}
+}
+
+func newTestProfiles(t testing.TB) *domainprocess.Profiles {
+	t.Helper()
+	profiles, err := domainprocess.NewProfiles(domainprocess.Limits{MaxProfiles: 64, MaxFiles: 8, MaxNetworks: 8, MaxEventRefs: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return profiles
+}
+
 func TestEventNormalizerUsesSensorExecIdentityForParentage(t *testing.T) {
-	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{})
+	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{}, newTestProfiles(t))
 	root := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
 		Behavior: "process.exec",
 		Proc:     &sensorv1.RawProcess{Pid: 200, SensorExecId: "exec-root", Binary: "/bin/bash"},
@@ -52,7 +83,7 @@ func TestEventNormalizerUsesSensorExecIdentityForParentage(t *testing.T) {
 }
 
 func TestEventNormalizerKeepsConcurrentIDAndSequenceConsistent(t *testing.T) {
-	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{})
+	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{}, newTestProfiles(t))
 	const count = 1000
 	events := make(chan struct {
 		id       string
@@ -83,7 +114,7 @@ func TestEventNormalizerKeepsConcurrentIDAndSequenceConsistent(t *testing.T) {
 func TestEventNormalizerPreservesIdentityScopeAndObject(t *testing.T) {
 	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{
 		TenantID: "tenant-a", ScopeType: "container", ScopeSelector: "container-a", Labels: map[string]string{"env": "test"}, InitialSequence: 41,
-	})
+	}, newTestProfiles(t))
 	event := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
 		MonoNs: 100, Behavior: "network.connect", ContainerId: "container-a", RawRef: "raw-a",
 		Proc:   &sensorv1.RawProcess{Pid: 10, Binary: "/bin/sh", Cgroup: "cg-a", ArgvBoundariesTrusted: true},
@@ -99,7 +130,7 @@ func TestEventNormalizerPreservesIdentityScopeAndObject(t *testing.T) {
 }
 
 func TestEventNormalizerSwitchesIdentityWithoutResettingSequence(t *testing.T) {
-	normalizer := NewEventNormalizer("device-a", "host-a", EventNormalizerOptions{TenantID: "local"})
+	normalizer := NewEventNormalizer("device-a", "host-a", EventNormalizerOptions{TenantID: "local"}, newTestProfiles(t))
 	first := normalizer.NormalizeDomain(&sensorv1.SensorEvent{Proc: &sensorv1.RawProcess{Pid: 1}})
 
 	normalizer.SetIdentity("agent-a", "host-a", "tenant-a")
@@ -110,5 +141,22 @@ func TestEventNormalizerSwitchesIdentityWithoutResettingSequence(t *testing.T) {
 	}
 	if second.Sequence != first.Sequence+1 {
 		t.Fatalf("sequence reset across identity switch: first=%d second=%d", first.Sequence, second.Sequence)
+	}
+}
+
+func TestEventNormalizerAcceptsEventsWithoutProcessPayload(t *testing.T) {
+	normalizer := NewEventNormalizer("agent-a", "host-a", EventNormalizerOptions{}, newTestProfiles(t))
+	event := normalizer.NormalizeDomain(&sensorv1.SensorEvent{
+		Behavior: "network.connect",
+		Object:   &sensorv1.RawObject{Dst: "10.0.0.1:443"},
+	})
+	if event.SubjectPresent {
+		t.Fatal("event without process payload was marked as having a subject")
+	}
+	if event.Object.SocketAddress != "10.0.0.1:443" {
+		t.Fatalf("event object = %+v", event.Object)
+	}
+	if metrics := normalizer.profiles.Metrics(); metrics.Active != 0 {
+		t.Fatalf("process-less event allocated a profile: %+v", metrics)
 	}
 }

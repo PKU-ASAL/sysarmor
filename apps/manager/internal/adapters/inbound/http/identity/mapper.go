@@ -76,7 +76,7 @@ func sessionDTOs(values []domainidentity.Session) []sessionDTO {
 }
 
 func mapMetrics(value domainidentity.Metrics) metricsDTO {
-	return metricsDTO{DataBatchesAppended: value.DataBatchesAppended, EventsIngested: value.EventsIngested, EndpointSignalsIngested: value.EndpointSignalsIngested, CloudSignalsEmitted: value.CloudSignalsEmitted, SignalsEmitted: value.SignalsEmitted, IncidentsCreated: value.IncidentsCreated, DroppedEvents: value.DroppedEvents, DuplicateEvents: value.DuplicateEvents, LastConvergenceLatencyMs: value.LastConvergenceLatencyMs, MaxConvergenceLatencyMs: value.MaxConvergenceLatencyMs, TotalConvergenceLatencyMs: value.TotalConvergenceLatencyMs, AverageConvergenceLatency: value.AverageConvergenceLatency}
+	return metricsDTO{DataBatchesAppended: value.DataBatchesAppended, EventsIngested: value.EventsIngested, EndpointSignalsIngested: value.EndpointSignalsIngested, CloudSignalsEmitted: value.CloudSignalsEmitted, SignalsEmitted: value.SignalsEmitted, IncidentsCreated: value.IncidentsCreated, ModelCandidatesCorrelated: value.ModelCandidatesCorrelated, ModelCandidatesProjected: value.ModelCandidatesProjected, ModelCandidatesReferenceRejected: value.ModelCandidatesReferenceRejected, DroppedEvents: value.DroppedEvents, DuplicateEvents: value.DuplicateEvents, LastConvergenceLatencyMs: value.LastConvergenceLatencyMs, MaxConvergenceLatencyMs: value.MaxConvergenceLatencyMs, TotalConvergenceLatencyMs: value.TotalConvergenceLatencyMs, AverageConvergenceLatency: value.AverageConvergenceLatency}
 }
 
 func rarityDocument(value domainidentity.RarityBaseline) any {

@@ -75,8 +75,8 @@ type Telemetry struct {
 }
 
 type Bus struct {
-	EventCapacity, EventBuffered, EventDropped, EventSubscribers     uint64
-	SignalCapacity, SignalBuffered, SignalDropped, SignalSubscribers uint64
+	EventCapacity, EventBuffered, EventSubscribers    uint64
+	SignalCapacity, SignalBuffered, SignalSubscribers uint64
 }
 
 type Batcher struct {
@@ -121,6 +121,27 @@ type Detection struct {
 	DroppedEventRefs       uint64
 	EvalErrors             uint64
 	LastError              string
+	Learning               Learning
+}
+
+type Learning struct {
+	Status, LastError string
+	Profiles          ProcessProfileHealth
+	Candidates        CandidateLifecycleHealth
+}
+
+type CandidateLifecycleHealth struct {
+	Created, Spooled, GatewayAccepted, GatewayDuplicateAck uint64
+	ContractRejected, GatewayRejected                      uint64
+}
+
+type ProcessProfileHealth struct {
+	Active, Exited, Retained                                           uint64
+	Compactions, Expired, CapacityEvictions                            uint64
+	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
+	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
+	ProfileObservations, FeatureUpdates, LearningScoreCalls            uint64
+	LifecycleOnlyObservations, SuppressedCheckpoints                   uint64
 }
 
 type ContentRef struct{ Ref, Kind, Version, Digest string }
@@ -166,7 +187,7 @@ type Snapshot struct {
 
 func Evaluate(snapshot Snapshot) Status {
 	if snapshot.Runtime.LastError != "" || !snapshot.Sensor.Running || snapshot.Sensor.LastError != "" || snapshot.Telemetry.LastError != "" ||
-		snapshot.Detection.LastError != "" || snapshot.Detection.LastApplyError != "" || snapshot.Detection.LastApplyStatus == "rejected" ||
+		snapshot.Detection.LastError != "" || snapshot.Detection.Learning.LastError != "" || snapshot.Detection.LastApplyError != "" || snapshot.Detection.LastApplyStatus == "rejected" ||
 		snapshot.Storage.LastError != "" || snapshot.Lifecycle.LastError != "" {
 		return StatusDegraded
 	}

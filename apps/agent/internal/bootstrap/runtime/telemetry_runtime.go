@@ -8,7 +8,9 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
+	dataplanecontract "github.com/sysarmor/sysarmor-next-project/packages/contracts/dataplane"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 )
 
@@ -19,8 +21,9 @@ func (r *telemetryRuntime) newBatchBuilder() *telemetryadapter.BatchBuilder {
 type localBatchSender struct{}
 
 type localStoreBatchSender struct {
-	store    *sqlite.Store
-	onCommit func(*dataplanev1.DataBatch)
+	store     *sqlite.Store
+	lifecycle *domaintelemetry.CandidateLifecycle
+	onCommit  func(*dataplanev1.DataBatch)
 }
 
 var newLocalBatchSender = func() dataappend.BatchSender {
@@ -46,6 +49,7 @@ func (s *localStoreBatchSender) SendBatch(batch *dataplanev1.DataBatch) (*datapl
 	if _, err := s.store.AppendBatch(context.Background(), batch); err != nil {
 		return nil, err
 	}
+	s.lifecycle.RecordSpooled(dataplanecontract.CountModelCandidates(batch))
 	if err := s.store.AppendSignals(context.Background(), batch.GetSignals()); err != nil {
 		return nil, err
 	}

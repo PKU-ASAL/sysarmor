@@ -36,7 +36,7 @@ func TestLocalControlWatchRecentEventsAndSignals(t *testing.T) {
 	}
 	defer stop()
 
-	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host", Labels: map[string]string{"benchmark_run": "run-a"}})
+	norm := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host", Labels: map[string]string{"benchmark_run": "run-a"}})
 	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
 	appendEndpointEventForTest(t, runner, bus, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 

@@ -1,5 +1,18 @@
 package event
 
+type Process struct {
+	StableID              string
+	SensorExecID          string
+	PID                   uint32
+	PPID                  uint32
+	Binary                string
+	Argv                  []string
+	UID                   uint32
+	StartTimeNS           uint64
+	ArgvBoundariesTrusted bool
+	LineageID             string
+}
+
 type Object struct {
 	Kind                  string
 	FilePath              string
@@ -26,6 +39,7 @@ type Event struct {
 	Object         Object
 	ParentStableID string
 	LineageID      string
+	IdentityStatus string
 	RawRef         string
 	Scope          RuntimeScope
 	ContainerID    string

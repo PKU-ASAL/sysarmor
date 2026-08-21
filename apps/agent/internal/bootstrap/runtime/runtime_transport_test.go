@@ -196,7 +196,7 @@ func TestRuntimeControlChannelAppliesContentUpdate(t *testing.T) {
 		t.Fatalf("content record = %+v ok=%t", record, ok)
 	}
 
-	batch := appendEndpointEventForTest(t, runner, nil, eventadapter.NewEventNormalizer("agent-content-update", "host-content-update", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("network.connect", 100, "/bin/bash", "", "10.66.0.99:9443"))
+	batch := appendEndpointEventForTest(t, runner, nil, newTestEventNormalizer(t, runner, "agent-content-update", "host-content-update", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("network.connect", 100, "/bin/bash", "", "10.66.0.99:9443"))
 	if len(batch.GetSignals()) == 0 {
 		t.Fatalf("signals after content update = none, want detection runtime to use updated content")
 	}
@@ -242,7 +242,8 @@ func TestRuntimeControlChannelRejectsBadContentUpdateWithoutReplacingDetection(t
 				"rule_id":"bad_runtime_rule",
 				"version":1,
 				"severity":"high",
-				"runtime":{"type":"made_up_runtime"}
+				"runtime":{"type":"made_up_runtime"},
+				"output":{"stage":"candidate"}
 			}]}]}
 		}`,
 		policy: badRuntimeCandidatePolicy("default"),
@@ -261,7 +262,7 @@ func TestRuntimeControlChannelRejectsBadContentUpdateWithoutReplacingDetection(t
 	if record, ok := runner.policyState.contentStore().Get("rulepack:bad-runtime"); !ok || record.Version != "v1" {
 		t.Fatalf("content after rejected update = %+v ok=%t, want previous v1", record, ok)
 	}
-	batch := appendEndpointEventForTest(t, runner, nil, eventadapter.NewEventNormalizer("agent-bad-content-update", "host-bad-content-update", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("file.write", 101, "/usr/bin/curl", "/dev/shm/kept-control.sh", ""))
+	batch := appendEndpointEventForTest(t, runner, nil, newTestEventNormalizer(t, runner, "agent-bad-content-update", "host-bad-content-update", eventadapter.EventNormalizerOptions{}), sensorEventEnvelope("file.write", 101, "/usr/bin/curl", "/dev/shm/kept-control.sh", ""))
 	if len(batch.GetSignals()) != 1 || batch.GetSignals()[0].GetSignal().GetName() != "payload_dropped" {
 		t.Fatalf("signals after rejected content update = %+v, want previous detection engine active", batch.GetSignals())
 	}

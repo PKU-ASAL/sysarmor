@@ -20,45 +20,6 @@ func buildTracingPolicy(intent contract.CollectionIntent) []byte {
 	out.WriteString("\n")
 	out.WriteString("spec:\n")
 	out.WriteString("  kprobes:\n")
-	if intentHasAnyBehavior(intent, domainevent.BehaviorProcessExec, domainevent.BehaviorProcessFork) {
-		prefixes := mergeFilterStrings(
-			behaviorFilter(intent, domainevent.BehaviorProcessExec).BinaryPrefixes,
-			behaviorFilter(intent, domainevent.BehaviorProcessFork).BinaryPrefixes,
-		)
-		out.WriteString(`  - call: "security_bprm_creds_from_file"
-    syscall: false
-    args:
-    - index: 0
-      type: "nop"
-    - index: 1
-      type: "file"
-`)
-		if len(prefixes) > 0 || len(intent.NamespaceSelectors) > 0 {
-			out.WriteString("    selectors:\n")
-			out.WriteString("    -\n")
-			writeNamespaceSelectors(&out, intent.NamespaceSelectors, "      ")
-		}
-		if len(prefixes) > 0 {
-			out.WriteString(`      matchArgs:
-      - index: 1
-        operator: "Prefix"
-        values:
-`)
-			for _, prefix := range prefixes {
-				out.WriteString("        - ")
-				out.WriteString(fmt.Sprintf("%q", prefix))
-				out.WriteString("\n")
-			}
-		}
-	}
-	if intentHasBehavior(intent, domainevent.BehaviorProcessExit) {
-		out.WriteString(`  - call: "do_exit"
-    syscall: false
-    args:
-    - index: 0
-      type: "int"
-`)
-	}
 	if intentHasBehavior(intent, domainevent.BehaviorNetworkConnect) {
 		filter := behaviorFilter(intent, domainevent.BehaviorNetworkConnect)
 		families := filter.SocketFamilies
@@ -115,6 +76,7 @@ type filePermissionSelector struct {
 	Access             int32
 	BinaryPrefixes     []string
 	FilePrefixes       []string
+	FileWriteExcludes  []string
 	NamespaceSelectors []contract.NamespaceSelector
 }
 
@@ -126,14 +88,22 @@ func filePermissionSelectors(intent contract.CollectionIntent) []filePermissionS
 		}
 		filter := behaviorFilter(intent, behavior)
 		prefixes := filter.FilePrefixes
-		if len(prefixes) == 0 {
+		if len(prefixes) == 0 && !intentHasMandatoryBehavior(intent, behavior) {
 			prefixes = defaultFilePrefixesForBehavior(behavior)
+		}
+		if len(prefixes) == 0 && intentHasMandatoryBehavior(intent, behavior) {
+			prefixes = []string{"/"}
+		}
+		excludes := []string(nil)
+		if behavior == domainevent.BehaviorFileWrite {
+			excludes = intent.FileWriteExcludes
 		}
 		selectors = append(selectors, filePermissionSelector{
 			Behavior:           behavior,
 			Access:             access,
 			BinaryPrefixes:     filter.BinaryPrefixes,
 			FilePrefixes:       prefixes,
+			FileWriteExcludes:  excludes,
 			NamespaceSelectors: append([]contract.NamespaceSelector(nil), intent.NamespaceSelectors...),
 		})
 	}
@@ -168,6 +138,17 @@ func writeFilePermissionSelector(out *bytes.Buffer, selector filePermissionSelec
 		out.WriteString("        - ")
 		out.WriteString(fmt.Sprintf("%q", prefix))
 		out.WriteString("\n")
+	}
+	if excludes := mergeFilterStrings(selector.FileWriteExcludes); len(excludes) > 0 {
+		out.WriteString(`      - index: 0
+        operator: "NotPrefix"
+        values:
+`)
+		for _, prefix := range excludes {
+			out.WriteString("        - ")
+			out.WriteString(fmt.Sprintf("%q", prefix))
+			out.WriteString("\n")
+		}
 	}
 	if selector.Access != 0 {
 		out.WriteString(`      - index: 1
@@ -246,8 +227,21 @@ func intentHasBehavior(intent contract.CollectionIntent, behavior string) bool {
 	return false
 }
 
+func intentHasMandatoryBehavior(intent contract.CollectionIntent, behavior string) bool {
+	behavior = domainevent.NormalizeBehavior(behavior)
+	for _, required := range intent.MandatoryBehaviors {
+		if domainevent.NormalizeBehavior(required) == behavior {
+			return true
+		}
+	}
+	return false
+}
+
 func behaviorFilter(intent contract.CollectionIntent, behavior string) contract.CollectionBehaviorFilter {
 	behavior = domainevent.NormalizeBehavior(behavior)
+	if intentHasMandatoryBehavior(intent, behavior) {
+		return contract.CollectionBehaviorFilter{Behavior: behavior}
+	}
 	for _, filter := range intent.BehaviorFilters {
 		if domainevent.NormalizeBehavior(filter.Behavior) == behavior {
 			return filter

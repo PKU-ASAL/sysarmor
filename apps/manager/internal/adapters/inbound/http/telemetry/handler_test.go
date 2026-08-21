@@ -40,11 +40,36 @@ func TestIncidentByIDReturnsNotFoundWhenMissing(t *testing.T) {
 	}
 }
 
+func TestSignalsParseStage(t *testing.T) {
+	service := &telemetryServiceStub{}
+	handler := NewHandler(Options{Service: service, Resolve: telemetryResolver(t)})
+	recorder := httptest.NewRecorder()
+	handler.Signals(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/signals?stage=conclusion", nil))
+
+	if recorder.Code != http.StatusOK || service.signalQuery.Stage == nil ||
+		*service.signalQuery.Stage != domaintelemetry.SignalStageConclusion {
+		t.Fatalf("status=%d query=%+v body=%s", recorder.Code, service.signalQuery, recorder.Body.String())
+	}
+}
+
+func TestSignalsRejectInvalidStage(t *testing.T) {
+	service := &telemetryServiceStub{}
+	handler := NewHandler(Options{Service: service, Resolve: telemetryResolver(t)})
+	recorder := httptest.NewRecorder()
+	handler.Signals(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/signals?stage=terminal", nil))
+
+	if recorder.Code != http.StatusBadRequest || service.signalCalls != 0 {
+		t.Fatalf("status=%d calls=%d body=%s", recorder.Code, service.signalCalls, recorder.Body.String())
+	}
+}
+
 type telemetryServiceStub struct {
 	request       managerapp.RequestContext
 	eventQuery    telemetryapp.EventQuery
+	signalQuery   telemetryapp.SignalQuery
 	incidentQuery telemetryapp.IncidentQuery
 	events        []domaintelemetry.Document
+	signalCalls   int
 }
 
 func (stub *telemetryServiceStub) Events(_ context.Context, request managerapp.RequestContext, query telemetryapp.EventQuery) ([]domaintelemetry.Document, error) {
@@ -52,7 +77,9 @@ func (stub *telemetryServiceStub) Events(_ context.Context, request managerapp.R
 	return stub.events, nil
 }
 
-func (stub *telemetryServiceStub) Signals(context.Context, managerapp.RequestContext, telemetryapp.SignalQuery) ([]domaintelemetry.Document, error) {
+func (stub *telemetryServiceStub) Signals(_ context.Context, request managerapp.RequestContext, query telemetryapp.SignalQuery) ([]domaintelemetry.Document, error) {
+	stub.request, stub.signalQuery = request, query
+	stub.signalCalls++
 	return nil, nil
 }
 

@@ -8,6 +8,9 @@ import (
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	applicationpipeline "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/pipeline"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
+	dataplanecontract "github.com/sysarmor/sysarmor-next-project/packages/contracts/dataplane"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -20,8 +23,10 @@ type EndpointRuntime struct {
 	batches    *telemetryadapter.BatchBuilder
 }
 
-func NewEndpointRuntime(policy *policyRuntime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder) *EndpointRuntime {
-	return &EndpointRuntime{policy: policy, normalizer: normalizer, pipeline: applicationpipeline.New(&runtimeDetector{policy: policy}), batches: batches}
+func NewEndpointRuntime(policy *policyRuntime, normalizer *eventadapter.EventNormalizer, batches *telemetryadapter.BatchBuilder, learning ports.ProfileDetector, profiles *domainprocess.Profiles) *EndpointRuntime {
+	rules := applicationpipeline.NewDetectorSet(&runtimeDetector{policy: policy})
+	policyLearning := &policyProfileDetector{policy: policy, delegate: learning}
+	return &EndpointRuntime{policy: policy, normalizer: normalizer, pipeline: applicationpipeline.New(rules, policyLearning, profiles), batches: batches}
 }
 
 func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.DataBatch, error) {
@@ -44,12 +49,26 @@ func (r *EndpointRuntime) ProcessEvent(ev contract.EventEnvelope) (*dataplanev1.
 	for _, signal := range result.Signals {
 		signals = append(signals, contractmapper.Signal(*signal))
 	}
-	return r.batches.ForEvent(time.Now().UTC(), canonical, signals), nil
+	batch := r.batches.ForEvent(time.Now().UTC(), canonical, signals)
+	candidates := dataplanecontract.CountModelCandidates(batch)
+	r.policy.telemetry.candidateLifecycle.RecordCreated(candidates)
+	if err := dataplanecontract.ValidateCandidateReferences(batch); err != nil {
+		r.policy.telemetry.candidateLifecycle.RecordContractRejected(candidates)
+		return nil, fmt.Errorf("build endpoint data batch: %w", err)
+	}
+	return batch, nil
 }
 
 func (r *EndpointRuntime) ProcessSignals(signals []*signalv1.Signal) (*dataplanev1.DataBatch, error) {
 	if r == nil || r.policy == nil || r.batches == nil {
 		return nil, fmt.Errorf("endpoint runtime is not initialized")
 	}
-	return r.batches.ForSignals(time.Now().UTC(), signals), nil
+	batch := r.batches.ForSignals(time.Now().UTC(), signals)
+	candidates := dataplanecontract.CountModelCandidates(batch)
+	r.policy.telemetry.candidateLifecycle.RecordCreated(candidates)
+	if err := dataplanecontract.ValidateCandidateReferences(batch); err != nil {
+		r.policy.telemetry.candidateLifecycle.RecordContractRejected(candidates)
+		return nil, fmt.Errorf("build endpoint signal batch: %w", err)
+	}
+	return batch, nil
 }

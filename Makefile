@@ -1,14 +1,12 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api build build-agent-binary build-agent-tools build-binary business-docx install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle test-business-docx up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
 GOBIN_PATH := $(shell go env GOPATH)/bin
 BIN_DIR ?= dist/bin
 RELEASE_DIR ?= dist/release
-BUSINESS_DOCX_SOURCE ?= docs/business/sysarmor-project-proposal.zh-CN.md
-BUSINESS_DOCX_OUTPUT ?= dist/docs/sysarmor-project-proposal.zh-CN.docx
 PACKAGE_BASE_URL ?= http://packages
 RELEASE_VERSION ?= dev
 RELEASE_OS ?= linux
@@ -17,7 +15,7 @@ RELEASE_CHANNELS ?= dev-agent linux-systemd-dev linux-container-dev
 RELEASE_AGENT_BIN ?= $(BIN_DIR)/sysarmor-agent
 RELEASE_SIGNING_KEY ?= $(PKI_RUNTIME_DIR)/artifact-signing-key.pem
 RELEASE_PUBLIC_KEY ?= $(PKI_RUNTIME_DIR)/artifact-public.pem
-TETRAGON_ARCHIVE_CANDIDATE := $(firstword $(wildcard .cache/tetragon-v1.7.0-amd64.tar.gz .scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz))
+TETRAGON_ARCHIVE_CANDIDATE := $(wildcard .cache/tetragon-v1.7.0-amd64.tar.gz)
 TETRAGON_ARCHIVE ?= $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(if $(TETRAGON_ARCHIVE_CANDIDATE),$(abspath $(TETRAGON_ARCHIVE_CANDIDATE))))
 # Preserve release inputs as data instead of recursively expanding Make syntax.
 override VERSION := $(value VERSION)
@@ -29,6 +27,7 @@ FUNCTIONAL_TARGET_topology := functional-topology
 FUNCTIONAL_TARGET_all := functional-core
 FUNCTIONAL_TARGET := $(FUNCTIONAL_TARGET_$(DOMAIN))
 PERFORMANCE_TARGET_endpoint := performance-endpoint
+PERFORMANCE_TARGET_learning := performance-learning
 PERFORMANCE_TARGET_platform := performance-platform
 PERFORMANCE_TARGET_modules := performance-modules
 PERFORMANCE_TARGET_all := performance-endpoint performance-platform performance-modules
@@ -76,6 +75,7 @@ build-agent-binary:
 build-agent-tools: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmorctl ./apps/cli/cmd/sysarmorctl
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
+	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
 install-agent: build-agent-tools
 	sudo SYSARMOR_AGENT_BIN=$(BIN_DIR)/sysarmor-agent SYSARMOR_CTL_BIN=$(BIN_DIR)/sysarmorctl SYSARMOR_CONTENT_SIGN_BIN=$(BIN_DIR)/sysarmor-content-sign deployments/agent/install-agent.sh
@@ -93,9 +93,7 @@ build-binary: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-worker ./apps/manager/cmd/sysarmor-worker
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmorctl ./apps/cli/cmd/sysarmorctl
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
-
-business-docx:
-	bash tools/docs/build-business-docx.sh "$(BUSINESS_DOCX_SOURCE)" "$(BUSINESS_DOCX_OUTPUT)"
+	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
 test:
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go test ./...
@@ -133,7 +131,9 @@ else
 		SYSARMOR_BENCH_PROFILE=$(PROFILE) \
 		SYSARMOR_BENCH_WORKLOAD=$(WORKLOAD) \
 		SYSARMOR_BENCH_SCENARIO=$(SCENARIO) \
-		SYSARMOR_BENCH_POLICIES="$(POLICIES)"
+		SYSARMOR_BENCH_POLICIES="$(POLICIES)" \
+		TRAINING_DATA="$(TRAINING_DATA)" \
+		CALIBRATION_DATA="$(CALIBRATION_DATA)"
 endif
 
 test-distribution:
@@ -154,9 +154,6 @@ endif
 
 test-opensearch-lifecycle:
 	bash test/suites/functional/platform/opensearch-alias-lifecycle.sh
-
-test-business-docx:
-	bash test/suites/docs/business-docx.sh
 
 pki:
 	@if [ ! -f "$(PKI_RUNTIME_DIR)/gateway.pem" ] || [ ! -f "$(PKI_RUNTIME_DIR)/gateway-key.pem" ] || [ ! -f "$(PKI_RUNTIME_DIR)/ca.pem" ]; then \
@@ -267,7 +264,6 @@ help:
 	@echo "  make api        generate protobuf code"
 	@echo "  make build SERVICE=manager  build a compose service image"
 	@echo "  make build-binary           build agent/gateway/manager/worker/sysarmorctl"
-	@echo "  make business-docx          build formal proposal DOCX under dist/docs/"
 	@echo "  make install-agent          build and install a standalone Agent plus sysarmorctl"
 	@echo "  make uninstall-agent        remove binaries; add PURGE=1 to remove config and local data"
 	@echo "  make test       run Go tests"
@@ -303,7 +299,6 @@ help:
 	@echo "  make test-postgres-integration  run real PostgreSQL worker concurrency tests"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection    run truth-labeled detection tests"
-	@echo "  make test-performance DOMAIN=endpoint|platform|modules|all PROFILE=medium"
+	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"
 	@echo "  make test-distribution SOURCE=local|published URL=https://..."
 	@echo "  make test-release STAGE=pre-publish|post-publish URL=https://..."
-	@echo "  make test-business-docx validate the formal proposal DOCX build"

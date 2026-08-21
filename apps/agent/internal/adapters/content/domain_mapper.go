@@ -31,7 +31,7 @@ func domainValueSet(v ValueSet) domaincontent.ValueSet {
 }
 func duration(value string) time.Duration { parsed, _ := time.ParseDuration(value); return parsed }
 func domainRule(v Rule) domaincontent.Rule {
-	out := domaincontent.Rule{RuleID: v.RuleID, Version: v.Version, RuleSetRef: v.RuleSetRef, Severity: v.Severity, RuntimeType: v.RuntimeType, RuntimeEntry: v.RuntimeEntry, ContextRefs: append([]string(nil), v.ContextRefs...), IOCRefs: append([]string(nil), v.IOCRefs...), Terminal: v.Terminal, ResponseIntent: domaincontent.ResponseIntent{Action: v.ResponseIntent.Action, Confidence: v.ResponseIntent.Confidence, Reason: v.ResponseIntent.Reason}}
+	out := domaincontent.Rule{RuleID: v.RuleID, Version: v.Version, RuleSetRef: v.RuleSetRef, Severity: v.Severity, RuntimeType: v.RuntimeType, RuntimeEntry: v.RuntimeEntry, ContextRefs: append([]string(nil), v.ContextRefs...), IOCRefs: append([]string(nil), v.IOCRefs...), Stage: domaincontent.SignalStage(v.Stage), ResponseIntent: domaincontent.ResponseIntent{Action: v.ResponseIntent.Action, Confidence: v.ResponseIntent.Confidence, Reason: v.ResponseIntent.Reason}}
 	out.Expr = domaincontent.RuntimeExpr{Conditions: domainConditions(v.Expr.Conditions), ConditionGroup: domainNode(v.Expr.ConditionGroup)}
 	out.Sequence = domaincontent.RuntimeSequence{Within: duration(v.Sequence.Within), By: append([]string(nil), v.Sequence.By...)}
 	for _, step := range v.Sequence.Steps {

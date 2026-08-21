@@ -25,9 +25,9 @@ func (view View) Has(name string) bool {
 	return len(view.ByName[name]) > 0
 }
 
-func (view View) HasTerminal(name string) bool {
+func (view View) HasConclusion(name string) bool {
 	for _, signal := range view.ByName[name] {
-		if signal.Terminal {
+		if signal.Stage == domaintelemetry.SignalStageConclusion {
 			return true
 		}
 	}

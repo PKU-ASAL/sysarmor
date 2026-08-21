@@ -16,6 +16,9 @@ import (
 	agentcontrol "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/control"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/telemetry"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -25,13 +28,15 @@ type Options struct {
 }
 
 type Coordinator struct {
-	Config          config.Config
-	Sensor          contract.Sensor
-	Out             io.Writer
-	policyState     policyRuntime
-	managementState managementRuntime
-	telemetryState  telemetryRuntime
-	sensorState     sensorRuntime
+	Config           config.Config
+	Sensor           contract.Sensor
+	Out              io.Writer
+	policyState      policyRuntime
+	managementState  managementRuntime
+	telemetryState   telemetryRuntime
+	sensorState      sensorRuntime
+	processProfiles  *domainprocess.Profiles
+	learningDetector ports.ProfileDetector
 }
 
 type policyRuntime struct {
@@ -52,6 +57,7 @@ type policyRuntime struct {
 	sensor             *sensorRuntime
 	out                io.Writer
 	controller         PolicyControllerFactory
+	learningDetector   ports.ProfileDetector
 }
 
 type managementRuntime struct {
@@ -67,6 +73,7 @@ type managementRuntime struct {
 	managedControl          *TransportRuntime
 	revokeEnrollment        func(context.Context, sqlite.Enrollment, string) (string, time.Time, error)
 	reportUnenrollment      func(context.Context) (bool, error)
+	processProfiles         *domainprocess.Profiles
 	config                  config.Config
 	policy                  *policyRuntime
 	telemetry               *telemetryRuntime
@@ -74,6 +81,7 @@ type managementRuntime struct {
 
 type telemetryRuntime struct {
 	telemetryBatcher      *telemetryadapter.Batcher
+	candidateLifecycle    domaintelemetry.CandidateLifecycle
 	eventSeq              uint64
 	initialSignalSequence uint64
 	telemetrySeq          uint64
@@ -90,14 +98,16 @@ type sensorRuntime struct {
 }
 
 type Dependencies struct {
-	Config       config.Config
-	Sensor       contract.Sensor
-	Content      *agentcontent.Store
-	LocalStore   *sqlite.Store
-	FeatureFlags agenthealth.RuntimeFeatureFlags
-	EventSeq     uint64
-	SignalSeq    uint64
-	Policy       PolicyControllerFactory
+	Config           config.Config
+	Sensor           contract.Sensor
+	Content          *agentcontent.Store
+	LocalStore       *sqlite.Store
+	FeatureFlags     agenthealth.RuntimeFeatureFlags
+	EventSeq         uint64
+	SignalSeq        uint64
+	Policy           PolicyControllerFactory
+	LearningDetector ports.ProfileDetector
+	LearningError    error
 }
 
 type PolicyApplications struct {
@@ -120,13 +130,20 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	if dependencies.Policy == nil {
 		return nil, fmt.Errorf("runtime policy controller factory is required")
 	}
-	runtime := &Coordinator{Config: dependencies.Config, Sensor: dependencies.Sensor}
+	profiles, err := domainprocess.NewProfiles(processProfileLimits(dependencies.Config))
+	if err != nil {
+		return nil, fmt.Errorf("initialize process profiles: %w", err)
+	}
+	runtime := &Coordinator{Config: dependencies.Config, Sensor: dependencies.Sensor, processProfiles: profiles}
 	runtime.policyState.content = dependencies.Content
 	runtime.policyState.featureFlags = dependencies.FeatureFlags
 	runtime.policyState.controller = dependencies.Policy
 	runtime.managementState.localStore = dependencies.LocalStore
 	runtime.telemetryState.eventSeq = dependencies.EventSeq
 	runtime.telemetryState.initialSignalSequence = dependencies.SignalSeq
+	runtime.learningDetector = dependencies.LearningDetector
+	runtime.policyState.learningDetector = dependencies.LearningDetector
+	runtime.policyState.detectionStatus.Learning = learningHealth(dependencies.LearningDetector, dependencies.LearningError)
 	runtime.wireComponents()
 	runtime.managementState.setRuntimeIdentity(runtimeIdentity{
 		AgentID:  dependencies.Config.Agent.ID,
@@ -134,6 +151,27 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 		TenantID: dependencies.Config.Agent.TenantID,
 	})
 	return runtime, nil
+}
+
+func processProfileLimits(cfg config.Config) domainprocess.Limits {
+	maxProfiles := cfg.Sensor.ProcessCacheSize
+	if maxProfiles <= 0 {
+		maxProfiles = 4096
+	}
+	return domainprocess.Limits{
+		MaxProfiles: maxProfiles, MaxFiles: 32, MaxNetworks: 16, MaxEventRefs: 16,
+		ExitGrace: 30 * time.Second, RetainedTTL: 5 * time.Minute, SweepInterval: 30 * time.Second,
+	}
+}
+
+func learningHealth(detector ports.ProfileDetector, loadErr error) agenthealth.LearningHealth {
+	if loadErr != nil {
+		return agenthealth.LearningHealth{Status: "degraded", LastError: loadErr.Error()}
+	}
+	if detector != nil {
+		return agenthealth.LearningHealth{Status: "loaded"}
+	}
+	return agenthealth.LearningHealth{Status: "disabled"}
 }
 
 func (r *Coordinator) wireComponents() {
@@ -145,6 +183,7 @@ func (r *Coordinator) wireComponents() {
 	r.managementState.config = r.Config
 	r.managementState.policy = &r.policyState
 	r.managementState.telemetry = &r.telemetryState
+	r.managementState.processProfiles = r.processProfiles
 	r.telemetryState.config = r.Config
 	r.telemetryState.management = &r.managementState
 	r.telemetryState.policy = &r.policyState

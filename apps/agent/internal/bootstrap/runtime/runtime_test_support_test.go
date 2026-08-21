@@ -9,11 +9,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
+	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
+
+func newTestEventNormalizer(t testing.TB, runner *Coordinator, agentID, hostID string, options eventadapter.EventNormalizerOptions) *eventadapter.EventNormalizer {
+	t.Helper()
+	if runner.processProfiles == nil {
+		profiles, err := domainprocess.NewProfiles(processProfileLimits(runner.Config))
+		if err != nil {
+			t.Fatal(err)
+		}
+		runner.processProfiles = profiles
+	}
+	return eventadapter.NewEventNormalizer(agentID, hostID, options, runner.processProfiles)
+}
 
 type safeBuffer struct {
 	mu  sync.Mutex
@@ -182,12 +196,8 @@ func sensorEventEnvelope(behavior string, pid uint32, binary, filePath, dst stri
 	}
 }
 
-func runRuntimeUntilUploadedBatch(t *testing.T, runner *Coordinator, out *bytes.Buffer) *dataplanev1.DataBatch {
+func runRuntimeUntilPersistedBatch(t *testing.T, runner *Coordinator, out *bytes.Buffer) *dataplanev1.DataBatch {
 	t.Helper()
-	uploader := newRecordingUploader()
-	prev := newLocalBatchSender
-	newLocalBatchSender = func() dataappend.BatchSender { return uploader }
-	t.Cleanup(func() { newLocalBatchSender = prev })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errCh := make(chan error, 1)
@@ -201,20 +211,26 @@ func runRuntimeUntilUploadedBatch(t *testing.T, runner *Coordinator, out *bytes.
 	deadline := time.After(2 * time.Second)
 	for {
 		select {
-		case batch := <-uploader.ch:
-			cancel()
-			if err := <-errCh; err != nil && !errors.Is(err, context.Canceled) {
-				t.Fatalf("Run() error = %v", err)
-			}
-			return batch
 		case err := <-errCh:
 			if err != nil && !errors.Is(err, context.Canceled) {
 				t.Fatalf("Run() error = %v", err)
 			}
 			t.Fatalf("daemon exited before uploading a telemetry batch")
+		case <-time.After(10 * time.Millisecond):
+			batches, err := runner.managementState.localStore.ReadBatches(t.Context(), sqlite.ReadOptions{Limit: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(batches) > 0 {
+				cancel()
+				if err := <-errCh; err != nil && !errors.Is(err, context.Canceled) {
+					t.Fatalf("Run() error = %v", err)
+				}
+				return batches[0].Batch
+			}
 		case <-deadline:
 			cancel()
-			t.Fatalf("timed out waiting for uploaded telemetry batch")
+			t.Fatalf("timed out waiting for persisted telemetry batch")
 		}
 	}
 }

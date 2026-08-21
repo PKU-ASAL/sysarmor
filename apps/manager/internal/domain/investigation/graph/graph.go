@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/investigation/entity"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 )
 
@@ -10,6 +9,7 @@ type Graph struct {
 	nodeOrder []string
 	edges     map[string]domaintelemetry.GraphEdge
 	edgeOrder []string
+	adjacency map[string][]string
 }
 
 type pathParent struct {
@@ -19,28 +19,10 @@ type pathParent struct {
 
 func New() *Graph {
 	return &Graph{
-		nodes: make(map[string]domaintelemetry.GraphNode),
-		edges: make(map[string]domaintelemetry.GraphEdge),
+		nodes:     make(map[string]domaintelemetry.GraphNode),
+		edges:     make(map[string]domaintelemetry.GraphEdge),
+		adjacency: make(map[string][]string),
 	}
-}
-
-func FromSignals(signals []domaintelemetry.Signal) *Graph {
-	value := New()
-	for _, signal := range signals {
-		value.AddSignal(signal)
-	}
-	return value
-}
-
-func (value *Graph) AddSignal(signal domaintelemetry.Signal) {
-	if value == nil {
-		return
-	}
-	entities := entity.Unique(signal.Entities)
-	for _, current := range entities {
-		value.addNode(current)
-	}
-	value.addSignalEdges(signal, entities)
 }
 
 func (value *Graph) EvidenceSubgraph() domaintelemetry.EvidenceSubgraph {
@@ -95,7 +77,7 @@ func (value *Graph) ShortestPath(from, to string) domaintelemetry.EvidenceSubgra
 func (value *Graph) expand(frontier []string, nodes, edges map[string]bool) []string {
 	var next []string
 	for _, node := range frontier {
-		for _, edgeID := range value.edgeOrder {
+		for _, edgeID := range value.adjacency[node] {
 			edge := value.edges[edgeID]
 			other, connected := adjacent(edge, node)
 			if !connected {
@@ -113,7 +95,7 @@ func (value *Graph) expand(frontier []string, nodes, edges map[string]bool) []st
 
 func (value *Graph) discover(node, target string, seen map[string]bool, parents map[string]pathParent) (bool, []string) {
 	var next []string
-	for _, edgeID := range value.edgeOrder {
+	for _, edgeID := range value.adjacency[node] {
 		other, connected := adjacent(value.edges[edgeID], node)
 		if !connected || seen[other] {
 			continue
@@ -141,23 +123,6 @@ func (value *Graph) addNode(current domaintelemetry.Entity) {
 	value.nodeOrder = append(value.nodeOrder, current.Key)
 }
 
-func (value *Graph) addSignalEdges(signal domaintelemetry.Signal, entities []domaintelemetry.Entity) {
-	if len(entities) < 2 {
-		return
-	}
-	if subject, ok := subjectEntity(entities); ok {
-		for _, current := range entities {
-			if current.Key != subject.Key {
-				value.addEdge(subject.Key, current.Key, edgeKind(signal, current))
-			}
-		}
-		return
-	}
-	for index := 0; index < len(entities)-1; index++ {
-		value.addEdge(entities[index].Key, entities[index+1].Key, edgeKind(signal, entities[index+1]))
-	}
-}
-
 func (value *Graph) addEdge(from, to, kind string) {
 	if from == "" || to == "" || from == to {
 		return
@@ -168,6 +133,8 @@ func (value *Graph) addEdge(from, to, kind string) {
 	}
 	value.edges[id] = domaintelemetry.GraphEdge{ID: id, From: from, To: to, Kind: kind}
 	value.edgeOrder = append(value.edgeOrder, id)
+	value.adjacency[from] = append(value.adjacency[from], id)
+	value.adjacency[to] = append(value.adjacency[to], id)
 }
 
 func (value *Graph) pathSubgraph(from, to string, parents map[string]pathParent) domaintelemetry.EvidenceSubgraph {
@@ -210,34 +177,4 @@ func adjacent(edge domaintelemetry.GraphEdge, node string) (string, bool) {
 		return edge.From, true
 	}
 	return "", false
-}
-
-func subjectEntity(entities []domaintelemetry.Entity) (domaintelemetry.Entity, bool) {
-	for _, current := range entities {
-		if current.Role == "subject" {
-			return current, true
-		}
-	}
-	for _, current := range entities {
-		if current.Kind == "process" {
-			return current, true
-		}
-	}
-	return domaintelemetry.Entity{}, false
-}
-
-func edgeKind(signal domaintelemetry.Signal, target domaintelemetry.Entity) string {
-	switch target.Kind {
-	case "socket":
-		return "connect"
-	case "file":
-		if signal.Name == "payload_dropped" {
-			return "write"
-		}
-		return "load"
-	case "process":
-		return "exec"
-	default:
-		return "relates_to"
-	}
 }

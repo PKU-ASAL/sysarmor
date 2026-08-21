@@ -30,10 +30,10 @@ func (analyzer *Analyzer) Analyze(events []domaintelemetry.Event, signals []doma
 		signal := analyzer.cloudSignal("dropped_payload_executed_and_connects", view.Labels, 80,
 			view.CollectEntities("payload_dropped", "reverse_shell_pattern", "suspicious_exec_connect"))
 		signal.SignalRefs = view.CollectSignalRefs("payload_dropped", "reverse_shell_pattern", "suspicious_exec_connect")
-		signal.CrossLineage = view.Has("suspicious_exec_connect") && !view.HasTerminal("reverse_shell_pattern")
+		signal.CrossLineage = view.Has("suspicious_exec_connect") && !view.HasConclusion("reverse_shell_pattern")
 		result.CloudSignals = append(result.CloudSignals, signal)
 	}
-	if cloudRuleEnabled(policy, "web_shell_chain") && view.Has("web_runtime_spawns_shell") && view.HasTerminal("reverse_shell_pattern") {
+	if cloudRuleEnabled(policy, "web_shell_chain") && view.Has("web_runtime_spawns_shell") && view.HasConclusion("reverse_shell_pattern") {
 		result.CloudSignals = append(result.CloudSignals, analyzer.cloudSignal("web_shell_chain", view.Labels, 85,
 			view.CollectEntities("web_runtime_spawns_shell", "reverse_shell_pattern")))
 		result.CloudSignals[len(result.CloudSignals)-1].SignalRefs = view.CollectSignalRefs("web_runtime_spawns_shell", "reverse_shell_pattern")
@@ -41,7 +41,7 @@ func (analyzer *Analyzer) Analyze(events []domaintelemetry.Event, signals []doma
 	allSignals := append(append([]domaintelemetry.Signal(nil), signals...), result.CloudSignals...)
 	decision := convergence.Decide(view.ByName, result.CloudSignals, policy)
 	if decision.Incident {
-		result.Incidents = append(result.Incidents, analyzer.incidents.Build(allSignals, decision))
+		result.Incidents = append(result.Incidents, analyzer.incidents.Build(events, allSignals, decision))
 	}
 	return result
 }
@@ -50,7 +50,7 @@ func stagedPayloadDetected(view correlation.View, policy *detection.Policy) bool
 	if !view.Has("payload_dropped") {
 		return false
 	}
-	return view.HasTerminal("reverse_shell_pattern") || crossLineageEnabled(policy) && view.Has("suspicious_exec_connect")
+	return view.HasConclusion("reverse_shell_pattern") || crossLineageEnabled(policy) && view.Has("suspicious_exec_connect")
 }
 
 func crossLineageEnabled(policy *detection.Policy) bool {
@@ -73,6 +73,7 @@ func (analyzer *Analyzer) cloudSignal(name string, labels map[string]string, ris
 	signal := domaintelemetry.Signal{
 		Name: name, Where: domaintelemetry.SignalWhereCloud,
 		BaseRisk: risk, LocalRarity: 1, GlobalRarity: 1, Entities: entity.Unique(entities), Labels: cloneLabels(labels),
+		Stage: domaintelemetry.SignalStageConclusion, DetectorKind: domaintelemetry.DetectorKindRule,
 	}
 	signal.ID = "cloud-sig-" + telemetryidentity.DigestSignals([]domaintelemetry.Signal{signal}, nil)
 	return signal

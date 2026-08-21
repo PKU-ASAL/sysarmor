@@ -7,6 +7,14 @@ import (
 )
 
 func PermanentMessage(message ports.RawMessage, class string, cause error) error {
+	return permanentMessage(message, class, cause, nil)
+}
+
+func PermanentCandidateMessage(message ports.RawMessage, class string, cause error, rejection ports.CandidateRejection) error {
+	return permanentMessage(message, class, cause, &rejection)
+}
+
+func permanentMessage(message ports.RawMessage, class string, cause error, rejection *ports.CandidateRejection) error {
 	envelope, _ := json.Marshal(map[string]any{
 		"source_topic": message.Topic, "source_partition": message.Partition,
 		"source_offset": message.Offset, "source_key": message.Key,
@@ -15,5 +23,5 @@ func PermanentMessage(message ports.RawMessage, class string, cause error) error
 	})
 	deadLetter := message
 	deadLetter.Value = envelope
-	return ports.PermanentError{Err: cause, Message: &deadLetter}
+	return ports.PermanentError{Err: cause, Message: &deadLetter, CandidateRejection: rejection}
 }

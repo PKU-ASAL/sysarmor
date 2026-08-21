@@ -92,7 +92,7 @@ const testCollectionPolicyJSON = `{"behaviors":["process.exec","process.exit","p
 
 func appendEndpointEventForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, norm *eventadapter.EventNormalizer, ev contract.EventEnvelope) *dataplanev1.DataBatch {
 	t.Helper()
-	batch, err := NewEndpointRuntime(&runner.policyState, norm, telemetryadapter.NewBatchBuilder(&runner.telemetryState, runner.telemetryState.initialSignalSequence)).ProcessEvent(ev)
+	batch, err := NewEndpointRuntime(&runner.policyState, norm, telemetryadapter.NewBatchBuilder(&runner.telemetryState, runner.telemetryState.initialSignalSequence), nil, runner.processProfiles).ProcessEvent(ev)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func appendEndpointEventForTest(t testing.TB, runner *Coordinator, bus *telemetr
 
 func appendEndpointSignalsForTest(t testing.TB, runner *Coordinator, bus *telemetryadapter.Bus, signals []*signalv1.Signal) *dataplanev1.DataBatch {
 	t.Helper()
-	batch, err := NewEndpointRuntime(&runner.policyState, nil, telemetryadapter.NewBatchBuilder(&runner.telemetryState, runner.telemetryState.initialSignalSequence)).ProcessSignals(signals)
+	batch, err := NewEndpointRuntime(&runner.policyState, nil, telemetryadapter.NewBatchBuilder(&runner.telemetryState, runner.telemetryState.initialSignalSequence), nil, runner.processProfiles).ProcessSignals(signals)
 	if err != nil {
 		t.Fatal(err)
 	}

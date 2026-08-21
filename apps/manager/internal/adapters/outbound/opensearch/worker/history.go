@@ -15,7 +15,10 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-const historyPageSize = 1000
+const (
+	historyPageSize      = 1000
+	historyDocumentLimit = 100_000
+)
 
 type OpenSearchHistory struct {
 	searcher platformopensearch.PageSearcher
@@ -30,34 +33,47 @@ func (history *OpenSearchHistory) Read(ctx context.Context, tenantID tenant.ID, 
 		return ports.HistorySnapshot{}, nil
 	}
 	request := historyRequest(platformopensearch.EventsReadAlias, tenantID, labels, from, to)
-	events, err := readHistoryDocuments(ctx, history.searcher, request)
+	events, err := readHistoryDocuments(ctx, history.searcher, request, historyDocumentLimit)
 	if err != nil {
 		return ports.HistorySnapshot{}, fmt.Errorf("read event history: %w", err)
 	}
 	request.Index = platformopensearch.SignalsReadAlias
 	request.Exact["where"] = "SIGNAL_WHERE_ENDPOINT"
-	signals, err := readHistoryDocuments(ctx, history.searcher, request)
+	signals, err := readHistoryDocuments(ctx, history.searcher, request, historyDocumentLimit)
 	if err != nil {
 		return ports.HistorySnapshot{}, fmt.Errorf("read signal history: %w", err)
 	}
 	return decodeHistory(filterTenantDocuments(events, tenantID.String()), filterTenantDocuments(signals, tenantID.String()))
 }
 
-func readHistoryDocuments(ctx context.Context, searcher platformopensearch.PageSearcher, request platformopensearch.SearchRequest) ([]json.RawMessage, error) {
-	request.Size = historyPageSize
+func readHistoryDocuments(ctx context.Context, searcher platformopensearch.PageSearcher, request platformopensearch.SearchRequest, limit int) ([]json.RawMessage, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
 	request.SortField = "_id"
-	var result []json.RawMessage
+	result := make([]json.RawMessage, 0, min(limit, historyPageSize))
+	scanned := 0
 	for pageNumber := 0; ; pageNumber++ {
+		probingOverflow := scanned == limit
+		request.Size = 1
+		if !probingOverflow {
+			request.Size = min(historyPageSize, limit-scanned)
+		}
 		page, err := searcher.SearchPage(ctx, request)
 		if err != nil {
 			return nil, fmt.Errorf("search history page %d: %w", pageNumber, err)
 		}
-		for _, hit := range page.Hits {
+		hits := page.Hits[:min(len(page.Hits), request.Size)]
+		if probingOverflow && len(hits) > 0 {
+			return nil, fmt.Errorf("history exceeds document limit %d", limit)
+		}
+		scanned += len(hits)
+		for _, hit := range hits {
 			if len(hit.Source) > 0 {
 				result = append(result, hit.Source)
 			}
 		}
-		if len(page.Hits) < historyPageSize {
+		if len(page.Hits) < request.Size {
 			return result, nil
 		}
 		if len(page.Hits[len(page.Hits)-1].Sort) == 0 {

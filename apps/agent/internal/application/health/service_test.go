@@ -59,16 +59,63 @@ func TestServiceIsolatesComponentFailureAsDegradedHealth(t *testing.T) {
 	}
 }
 
-func TestServiceDegradesForLossPendingPolicyAndLifecycle(t *testing.T) {
+func TestServiceDegradesForPendingPolicyDetectionAndLifecycle(t *testing.T) {
 	service := NewService(source{
 		runtime:   domainhealth.Runtime{PendingPolicy: domainhealth.PendingPolicy{Status: "pending"}},
 		sensor:    domainhealth.Sensor{Running: true},
-		telemetry: domainhealth.Telemetry{Bus: domainhealth.Bus{EventDropped: 1}},
 		detection: domainhealth.Detection{CEP: domainhealth.CEP{EvictedGroups: 1}},
 		lifecycle: domainhealth.Lifecycle{TransitionPending: true},
 	})
 	if snapshot := service.Snapshot(t.Context()); snapshot.Status != domainhealth.StatusDegraded {
 		t.Fatalf("snapshot=%+v", snapshot)
+	}
+}
+
+func TestServiceDegradesForBatcherLoss(t *testing.T) {
+	tests := []struct {
+		name    string
+		batcher domainhealth.Batcher
+		assert  func(t *testing.T, telemetry domainhealth.Telemetry)
+	}{
+		{name: "batches", batcher: domainhealth.Batcher{DroppedBatches: 1}, assert: func(t *testing.T, telemetry domainhealth.Telemetry) {
+			if telemetry.DroppedBatches != 1 {
+				t.Fatalf("dropped batches=%d, want 1", telemetry.DroppedBatches)
+			}
+		}},
+		{name: "events", batcher: domainhealth.Batcher{DroppedEvents: 1}, assert: func(t *testing.T, telemetry domainhealth.Telemetry) {
+			if telemetry.DroppedEvents != 1 {
+				t.Fatalf("dropped events=%d, want 1", telemetry.DroppedEvents)
+			}
+		}},
+		{name: "signals", batcher: domainhealth.Batcher{DroppedSignals: 1}, assert: func(t *testing.T, telemetry domainhealth.Telemetry) {
+			if telemetry.DroppedSignals != 1 {
+				t.Fatalf("dropped signals=%d, want 1", telemetry.DroppedSignals)
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := NewService(source{
+				sensor:    domainhealth.Sensor{Running: true},
+				telemetry: domainhealth.Telemetry{Batcher: test.batcher},
+			}).Snapshot(t.Context())
+			if snapshot.Status != domainhealth.StatusDegraded {
+				t.Fatalf("status=%q, want degraded", snapshot.Status)
+			}
+			test.assert(t, snapshot.Telemetry)
+		})
+	}
+}
+
+func TestServiceDoesNotTreatStreamEvictionAsDataLoss(t *testing.T) {
+	service := NewService(source{
+		sensor: domainhealth.Sensor{Running: true},
+		telemetry: domainhealth.Telemetry{
+			Streams: domainhealth.Streams{EventEvicted: 1},
+		},
+	})
+	if snapshot := service.Snapshot(t.Context()); snapshot.Status != domainhealth.StatusOK {
+		t.Fatalf("status=%q, want ok: %+v", snapshot.Status, snapshot)
 	}
 }
 

@@ -12,7 +12,7 @@ The project is under active development and is intended for development, evaluat
 - **Efficiency balance:** Event, Signal, Evidence, and Incident progressively retain security meaning under explicit CPU, memory, disk, and network budgets.
 - **Endpoint-cloud collaboration:** the endpoint performs low-latency filtering and detection; the platform correlates history and entity graphs within tenant, scope, and time boundaries.
 
-The canonical principles and current-versus-target boundaries are documented in [Design Principles](docs/design-principles.zh-CN.md).
+The canonical principles and current-versus-target boundaries are documented in [Design Principles](docs/design-principles.md). The [Security Data Model](docs/concepts/security-data-model.md) defines Event, Signal, Evidence, and Incident.
 
 ## Architecture
 
@@ -72,8 +72,9 @@ Functional, Detection, and Performance suites answer different questions and do 
 
 ## Documentation
 
-- [Documentation home](docs/index.md)
-- [Design principles](docs/design-principles.zh-CN.md)
+- [Documentation home](docs/README.md)
+- [Security data model](docs/concepts/security-data-model.md)
+- [Design principles](docs/design-principles.md)
 - [System architecture](docs/architecture.md)
 - [Policy guide](docs/guides/policy.md)
 - [Agent management](docs/guides/agent-management.md)
@@ -82,10 +83,8 @@ Functional, Detection, and Performance suites answer different questions and do 
 - [Configuration reference](docs/reference/configuration.md)
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
-- [Development](docs/development/development.md)
+- [Contributing](CONTRIBUTING.md)
 - [Testing](docs/development/testing.md)
-
-See [CATALOG](CATALOG.md) for document ownership and maintenance rules.
 
 ## License
 

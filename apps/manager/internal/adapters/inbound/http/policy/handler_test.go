@@ -40,6 +40,46 @@ func TestPublishMapsRequestContextAndCanonicalResult(t *testing.T) {
 	}
 }
 
+func TestSaveResolvesRuleOnlyBundleBeforeApplication(t *testing.T) {
+	tenantID := mustHTTPPolicyTenant(t)
+	useCase := &saveRecorder{}
+	handler := NewHandler(Options{Save: useCase, Resolve: fixedResolver(t, tenantID)})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/policies", strings.NewReader(`{
+		"policy_id":"policy-a","version":1,"protection_mode":"rule-only",
+		"collection":{"behaviors":["process.exec"]},
+		"detection":{"rulesets":[{"ref":"ruleset:a","version":"v1"}]},
+		"telemetry":{},"response_policy":{}
+	}`))
+	rec := httptest.NewRecorder()
+
+	handler.Policies(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(string(useCase.command.Policy.Document), `"protection_mode":"rule-only"`) ||
+		!strings.Contains(string(useCase.command.Policy.DownlinkDocument), `"collection":{"behaviors":["process.exec"]}`) {
+		t.Fatalf("resolved policy = %+v", useCase.command.Policy)
+	}
+}
+
+func TestSaveRejectsPolicyWithoutProtectionMode(t *testing.T) {
+	tenantID := mustHTTPPolicyTenant(t)
+	useCase := &saveRecorder{}
+	handler := NewHandler(Options{Save: useCase, Resolve: fixedResolver(t, tenantID)})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/policies", strings.NewReader(`{
+		"policy_id":"policy-a","version":1,"collection":{},
+		"detection":{"rulesets":[{"ref":"ruleset:a"}]},"telemetry":{},"response_policy":{}
+	}`))
+	rec := httptest.NewRecorder()
+
+	handler.Policies(rec, req)
+
+	if rec.Code != http.StatusBadRequest || useCase.called {
+		t.Fatalf("status = %d called = %t body = %s", rec.Code, useCase.called, rec.Body.String())
+	}
+}
+
 func TestAssignMapsDownlinkTarget(t *testing.T) {
 	tenantID := mustHTTPPolicyTenant(t)
 	useCase := &assignRecorder{result: policyapp.AssignPolicyResult{Assignment: domainpolicy.Assignment{
@@ -80,6 +120,16 @@ type publishRecorder struct {
 	request managerapp.RequestContext
 	command policyapp.PublishPolicyCommand
 	result  policyapp.PublishPolicyResult
+}
+
+type saveRecorder struct {
+	called  bool
+	command policyapp.SavePolicyCommand
+}
+
+func (recorder *saveRecorder) Execute(_ context.Context, _ managerapp.RequestContext, command policyapp.SavePolicyCommand) (policyapp.SavePolicyResult, error) {
+	recorder.called, recorder.command = true, command
+	return policyapp.SavePolicyResult{Policy: command.Policy}, nil
 }
 
 func (recorder *publishRecorder) Execute(_ context.Context, request managerapp.RequestContext, command policyapp.PublishPolicyCommand) (policyapp.PublishPolicyResult, error) {

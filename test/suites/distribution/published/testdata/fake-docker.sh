@@ -45,7 +45,7 @@ done
 [[ -n "$rule" ]] || rule="web_runtime_spawns_shell"
 
 severity="high"
-terminal=false
+stage="SIGNAL_STAGE_CANDIDATE"
 missing='null'
 events='[]'
 case "$rule" in
@@ -58,7 +58,7 @@ case "$rule" in
     ;;
   reverse_shell_pattern)
     severity="critical"
-    terminal=true
+    stage="SIGNAL_STAGE_CONCLUSION"
     events="[{\"event\":{\"behavior\":\"network.connect\",\"subjectProc\":{\"binary\":\"/bin/bash\",\"argv\":[\"/bin/bash\",\"$marker\"]},\"object\":{\"socketAddr\":\"172.18.0.2:8443\"}}}]"
     ;;
   suspicious_exec_connect)
@@ -79,12 +79,12 @@ esac
 
 case "$case_name" in
   wrong-severity) severity="low" ;;
-  wrong-terminal) [[ "$terminal" == true ]] && terminal=false || terminal=true ;;
+  wrong-stage) [[ "$stage" == "SIGNAL_STAGE_CONCLUSION" ]] && stage="SIGNAL_STAGE_CANDIDATE" || stage="SIGNAL_STAGE_CONCLUSION" ;;
   missing-ref) missing='["event-missing"]' ;;
   missing-behavior) events="$(printf '%s' "$events" | jq -c '[.[] | select(.event.behavior != "file.write")]')" ;;
   wrong-port) events="$(printf '%s' "$events" | sed -e 's/:8080/:80/g' -e 's/:8443/:4443/g')" ;;
 esac
 
-jq -cn --arg rule "$rule" --arg signal_id "sig-fake-$rule" --arg severity "$severity" --argjson terminal "$terminal" \
+jq -cn --arg rule "$rule" --arg signal_id "sig-fake-$rule" --arg severity "$severity" --arg stage "$stage" \
   --argjson missing "$missing" --argjson events "$events" \
-  '{eventFrames:$events,missingEventRefs:$missing,signalFrame:{signal:{id:$signal_id,ruleId:$rule,severity:$severity,terminal:$terminal}}}'
+  '{eventFrames:$events,missingEventRefs:$missing,signalFrame:{signal:{id:$signal_id,ruleId:$rule,severity:$severity,stage:$stage}}}'

@@ -26,15 +26,41 @@ func TestDeliveryCheckpointsOnlyCommittedBatches(t *testing.T) {
 	}
 }
 
+func TestDeliveryRecordsCandidateGatewayOutcomes(t *testing.T) {
+	lifecycle := &domaintelemetry.CandidateLifecycle{}
+	spool := &spoolFake{batches: []domaintelemetry.StoredBatch{
+		batch("accepted", 1, "tenant-a", "agent-a"), batch("rejected", 2, "tenant-a", "agent-a"),
+	}}
+	spool.batches[0].Batch.ModelCandidates = 2
+	spool.batches[1].Batch.ModelCandidates = 1
+	sender := &senderFake{outcomes: []domaintelemetry.DeliveryOutcome{
+		domaintelemetry.DeliveryAccepted, domaintelemetry.DeliveryRejected,
+	}}
+
+	if err := NewDelivery(spool, sender, lifecycle).DeliverAvailable(t.Context(), DeliveryScope{}); err == nil {
+		t.Fatal("rejected Gateway batch did not fail delivery")
+	}
+
+	got := lifecycle.Snapshot()
+	if got.GatewayAccepted != 2 || got.GatewayRejected != 1 {
+		t.Fatalf("candidate lifecycle = %+v", got)
+	}
+}
+
 func TestDeliveryCheckpointsDuplicateBatch(t *testing.T) {
 	spool := &spoolFake{batches: []domaintelemetry.StoredBatch{batch("a", 1, "tenant-a", "agent-a")}}
+	spool.batches[0].Batch.ModelCandidates = 2
 	sender := &senderFake{outcomes: []domaintelemetry.DeliveryOutcome{domaintelemetry.DeliveryDuplicate}}
+	lifecycle := &domaintelemetry.CandidateLifecycle{}
 
-	if err := NewDelivery(spool, sender).DeliverAvailable(t.Context(), DeliveryScope{TenantID: "tenant-a", AgentID: "agent-a"}); err != nil {
+	if err := NewDelivery(spool, sender, lifecycle).DeliverAvailable(t.Context(), DeliveryScope{TenantID: "tenant-a", AgentID: "agent-a"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(spool.saved) != 1 || spool.saved[0].BatchID != "a" {
 		t.Fatalf("saved checkpoints = %+v", spool.saved)
+	}
+	if got := lifecycle.Snapshot(); got.GatewayAccepted != 0 || got.GatewayDuplicateAck != 2 {
+		t.Fatalf("candidate lifecycle = %+v, want duplicate separate from accepted", got)
 	}
 }
 

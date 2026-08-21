@@ -60,6 +60,16 @@ func TestManagedRestartLoadsPolicyWithProjectedIdentity(t *testing.T) {
 	}
 }
 
+func TestLoadStartupPolicyRequiresLocalStore(t *testing.T) {
+	runner := managementContextTestRuntime()
+
+	_, _, _, err := runner.policyState.loadStartupPolicy(t.Context())
+
+	if err == nil || !strings.Contains(err.Error(), "local policy store is required") {
+		t.Fatalf("loadStartupPolicy() error=%v", err)
+	}
+}
+
 func TestReconcileManagementContextUsesEnrollmentIdentityWhileEnrolling(t *testing.T) {
 	runner := managementContextTestRuntime()
 

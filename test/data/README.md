@@ -31,6 +31,8 @@ Policy 是 SysArmor 控制平面的测试输入，不等同于 Tetragon TracingP
 | `collection-minimal.json` | 最小常开采集面，作为低成本下界 |
 | `collection-balanced.json` | 默认平衡采集面，适合日常测试 |
 | `collection-deep.json` | 调查或高风险窗口采集面，成本更高 |
+| `collection-learning.json` | Learning/Hybrid 实验使用的完整因果骨架采集面 |
+| `collection-hybrid.json` | Hybrid 实验使用的 Rule 采集面与 Learning 因果骨架并集 |
 | `collection.yaml` | collection intent 设计样例 |
 | `detection.yaml` | 检测规则和收敛参数样例 |
 | `detection-additive.yaml` | 误报对照用 additive threshold 样例 |
@@ -76,6 +78,11 @@ Recorder 负责采样，Suite 负责按 phase 汇总。
 
 `labels.yaml` 至少声明 `name`、`kind` 和 `window`。正常 Workload 的
 `kind` 为 `benign`，若禁止终止型 Signal，应通过 `policy` 明确写出。
+
+Collection 文件名描述采集面，不是产品保护模式。Manager 的
+`EndpointProtectionMode` 只有 `rule-only`、`learning-only`、`hybrid`；Learning 性能矩阵
+统一使用 `collection-learning.json` 隔离 Detection 成本，rule-only 生产 Bundle 仍应按
+Ruleset 需要声明更小的 Collection。
 
 ## Scenario
 

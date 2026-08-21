@@ -37,6 +37,7 @@ type Event struct {
 	Object         *ObjectRef
 	ParentStableID string
 	LineageID      string
+	IdentityStatus string
 	RawRef         string
 	TenantID       string
 	Scope          *RuntimeScope
@@ -72,6 +73,8 @@ type RuntimeScope struct {
 }
 
 type SignalWhere int32
+type SignalStage int32
+type DetectorKind int32
 
 const (
 	SignalWhereUnspecified SignalWhere = 0
@@ -79,30 +82,49 @@ const (
 	SignalWhereCloud       SignalWhere = 2
 )
 
+const (
+	SignalStageUnspecified SignalStage = iota
+	SignalStageCandidate
+	SignalStageConclusion
+)
+
+const (
+	DetectorKindUnspecified DetectorKind = iota
+	DetectorKindRule
+	DetectorKindModel
+	DetectorKindGraph
+	DetectorKindSystem
+)
+
 type Signal struct {
-	ID           string
-	Name         string
-	Where        SignalWhere
-	BaseRisk     uint32
-	LocalRarity  float32
-	GlobalRarity float32
-	Entities     []Entity
-	Labels       map[string]string
-	LineageID    string
-	Terminal     bool
-	CrossLineage bool
-	EventRefs    []string
-	SignalRefs   []string
-	Evidence     *EvidenceBundle
-	Response     *ResponseIntent
-	RuleID       string
-	RuleVersion  uint64
-	RulesetRef   string
-	ContextRefs  []ContentRef
-	IOCRefs      []ContentRef
-	Severity     string
-	Confidence   uint32
-	Mode         string
+	ID            string
+	Name          string
+	Where         SignalWhere
+	BaseRisk      uint32
+	LocalRarity   float32
+	GlobalRarity  float32
+	Entities      []Entity
+	Labels        map[string]string
+	LineageID     string
+	Stage         SignalStage
+	DetectorKind  DetectorKind
+	CrossLineage  bool
+	EventRefs     []string
+	SignalRefs    []string
+	Evidence      *EvidenceBundle
+	Response      *ResponseIntent
+	RuleID        string
+	RuleVersion   uint64
+	RulesetRef    string
+	ModelRef      string
+	ModelVersion  string
+	ModelDigest   string
+	FeatureSchema string
+	ContextRefs   []ContentRef
+	IOCRefs       []ContentRef
+	Severity      string
+	Confidence    uint32
+	Mode          string
 }
 
 type EvidenceBundle struct {
@@ -134,10 +156,12 @@ type GraphNode struct {
 }
 
 type GraphEdge struct {
-	ID   string
-	From string
-	To   string
-	Kind string
+	ID         string
+	From       string
+	To         string
+	Kind       string
+	EventRefs  []string
+	Incomplete bool
 }
 
 type EvidenceSubgraph struct {
@@ -159,7 +183,7 @@ type Incident struct {
 	Severity            uint32
 	MITRE               []string
 	LineageIDs          []string
-	Terminals           []string
+	ConclusionEntities  []string
 	Evidence            *EvidenceSubgraph
 	Converge            *ConvergeTrace
 	ContributingSignals []Signal

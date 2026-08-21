@@ -12,6 +12,7 @@ import (
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	applicationhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/application/health"
 	domainhealth "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/health"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -22,10 +23,11 @@ type runtimeHealth struct {
 	policy     *policyRuntime
 	management *managementRuntime
 	sensor     *sensorRuntime
+	profiles   *domainprocess.Profiles
 }
 
 func newRuntimeHealth(cfg config.Config, out io.Writer, policy *policyRuntime, management *managementRuntime, sensor *sensorRuntime) runtimeHealth {
-	return runtimeHealth{config: cfg, out: out, policy: policy, management: management, sensor: sensor}
+	return runtimeHealth{config: cfg, out: out, policy: policy, management: management, sensor: sensor, profiles: management.processProfiles}
 }
 
 func (r runtimeHealth) reportSensorDegraded(stage string, err error) {

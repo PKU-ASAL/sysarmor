@@ -12,13 +12,14 @@ import (
 const maxAttempts = 3
 
 type Worker struct {
-	consumer  ports.RawConsumer
-	processor ports.BatchProcessor
-	dlq       ports.RawProducer
+	consumer   ports.RawConsumer
+	processor  ports.BatchProcessor
+	dlq        ports.RawProducer
+	rejections ports.CandidateRejectionRecorder
 }
 
-func New(consumer ports.RawConsumer, processor ports.BatchProcessor, dlq ports.RawProducer) *Worker {
-	return &Worker{consumer: consumer, processor: processor, dlq: dlq}
+func New(consumer ports.RawConsumer, processor ports.BatchProcessor, dlq ports.RawProducer, rejections ports.CandidateRejectionRecorder) *Worker {
+	return &Worker{consumer: consumer, processor: processor, dlq: dlq, rejections: rejections}
 }
 
 func (worker *Worker) Run(ctx context.Context) error {
@@ -45,6 +46,11 @@ func (worker *Worker) process(ctx context.Context, message ports.RawMessage) err
 		}
 		var permanent ports.PermanentError
 		if errors.As(err, &permanent) {
+			if permanent.CandidateRejection != nil && worker.rejections != nil {
+				if err := worker.rejections.RecordCandidateRejection(ctx, *permanent.CandidateRejection); err != nil {
+					return fmt.Errorf("record Candidate reference rejection: %w", err)
+				}
+			}
 			if err := worker.reject(ctx, message, err); err != nil {
 				return err
 			}

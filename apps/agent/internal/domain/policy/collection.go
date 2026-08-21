@@ -74,7 +74,9 @@ type ExpansionReport struct{ ResolvedRefs []ResolvedRef }
 
 type CollectionIntent struct {
 	Behaviors                                                 []string
+	MandatoryBehaviors                                        []string
 	BinaryPrefixes, FilePrefixes, SocketFamilies, SocketAddrs []string
+	FileWriteExcludes                                         []string
 	SocketPorts                                               []string
 	BehaviorFilters                                           []BehaviorFilter
 	ScopeType, ScopeSelector                                  string
@@ -210,9 +212,6 @@ func CompileCollectionIntent(value CollectionPolicy) (CollectionIntent, error) {
 			return CollectionIntent{}, err
 		}
 		filters = append(filters, behaviorFilter(spec))
-	}
-	if len(behaviors) == 0 {
-		return CollectionIntent{}, fmt.Errorf("collection policy has no supported behaviors")
 	}
 	if len(filters) == 0 {
 		filters = flatBehaviorFilters(behaviors, value)

@@ -43,6 +43,13 @@ type DetectionPolicy struct {
 	RuleOverrides []RuleOverride
 	ContextRefs   []ContentRef
 	IOCRefs       []ContentRef
+	LearningModel *LearningModelRef
+}
+
+type LearningModelRef struct {
+	Ref     string
+	Version string
+	Digest  string
 }
 
 type RuleSetRef struct {

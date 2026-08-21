@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -17,8 +18,8 @@ import (
 
 func TestPolicyRepositoryIsTenantScoped(t *testing.T) {
 	db := newPolicyTestDB(t)
-	insertPolicyDocument(t, db, "tenant-a", "policy-a", 1, `{"tenant_id":"tenant-a","policy_id":"policy-a","version":1}`)
-	insertPolicyDocument(t, db, "tenant-b", "policy-a", 1, `{"tenant_id":"tenant-b","policy_id":"policy-a","version":1}`)
+	insertPolicyDocument(t, db, "tenant-a", "policy-a", 1, ruleOnlyPolicyDocument("tenant-a", "policy-a", 1))
+	insertPolicyDocument(t, db, "tenant-b", "policy-a", 1, ruleOnlyPolicyDocument("tenant-b", "policy-a", 1))
 	uow := NewUnitOfWork(db)
 	tenantA := mustAdapterTenantID(t, "tenant-a")
 
@@ -54,7 +55,10 @@ func TestRuleRepositoryRejectsInvalidDocument(t *testing.T) {
 
 func TestPolicyRepositoryCanonicalizesDocumentIdentity(t *testing.T) {
 	db := newPolicyTestDB(t)
-	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{"tenant_id":"tenant-b","policy_id":"other","version":99}`)
+	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{
+		"tenant_id":"tenant-b","policy_id":"other","version":99,"protection_mode":"rule-only",
+		"collection":{},"detection":{"rulesets":[{"ref":"ruleset:a"}]},"telemetry":{},"response_policy":{}
+	}`)
 	uow := NewUnitOfWork(db)
 	tenantA := mustAdapterTenantID(t, "tenant-a")
 
@@ -78,8 +82,9 @@ func TestPolicyRepositoryBuildsEndpointDownlinkDocument(t *testing.T) {
 	db := newPolicyTestDB(t)
 	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{
 		"tenant_id":"tenant-a","policy_id":"policy-a","version":2,
+		"protection_mode":"rule-only",
 		"collection":{"behaviors":["process.exec"]},
-		"detection":{"policy_id":"detect-a","version":1},
+		"detection":{"policy_id":"detect-a","version":1,"rulesets":[{"ref":"ruleset:a"}]},
 		"telemetry":{"max_batch_items":64},
 		"response_policy":{"allowed_actions":["collect"]}
 	}`)
@@ -221,7 +226,7 @@ func newPolicyTestDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	for _, statement := range []string{
-		`CREATE TABLE policies (tenant_id TEXT, policy_id TEXT, version INTEGER, scope_type TEXT, scope_selector TEXT, mode TEXT, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, policy_id, version))`,
+		`CREATE TABLE policies (tenant_id TEXT, policy_id TEXT, version INTEGER, scope_type TEXT, scope_selector TEXT, protection_mode TEXT, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, policy_id, version))`,
 		`CREATE TABLE rules (tenant_id TEXT, rule_id TEXT, version INTEGER, rule_where TEXT, data BLOB, PRIMARY KEY (tenant_id, rule_id, version))`,
 		`CREATE TABLE policy_assignments (tenant_id TEXT, assignment_id TEXT, agent_id TEXT, scope_type TEXT, scope_selector TEXT, policy_id TEXT, policy_version INTEGER, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, assignment_id))`,
 		`CREATE TABLE policy_audit (tenant_id TEXT, audit_id TEXT, action TEXT, policy_id TEXT, policy_version INTEGER, assignment_id TEXT, actor TEXT, status TEXT, reason TEXT, created_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, audit_id))`,
@@ -239,6 +244,15 @@ func insertPolicyDocument(t *testing.T, db *sql.DB, tenantID, policyID string, v
 	if _, err := db.Exec(`INSERT INTO policies (tenant_id, policy_id, version, data) VALUES (?, ?, ?, ?)`, tenantID, policyID, version, []byte(document)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func ruleOnlyPolicyDocument(tenantID, policyID string, version uint64) string {
+	return fmt.Sprintf(`{
+		"tenant_id":%q,"policy_id":%q,"version":%d,"protection_mode":"rule-only",
+		"collection":{"behaviors":["process.exec"]},
+		"detection":{"rulesets":[{"ref":"ruleset:a","version":"v1"}]},
+		"telemetry":{},"response_policy":{}
+	}`, tenantID, policyID, version)
 }
 
 func insertAssignment(t *testing.T, db *sql.DB, value domainpolicy.Assignment) {

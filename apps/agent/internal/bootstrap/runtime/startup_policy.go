@@ -13,7 +13,7 @@ import (
 
 func (r *policyRuntime) loadStartupPolicy(ctx context.Context) (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
 	if r.management.localStore == nil {
-		return r.loadLegacyRuntimePolicy()
+		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, fmt.Errorf("local policy store is required")
 	}
 	if _, err := agentpolicy.EnsureStandaloneEndpointPolicy(ctx, r.management.localStore, r.config.Policy.Path); err != nil {
 		_, source, ok, activeErr := r.management.localStore.ActivePolicy(ctx, "endpoint")
@@ -73,8 +73,7 @@ func (r *policyRuntime) currentEndpointPolicy() policymodel.EndpointPolicy {
 
 func (r *policyRuntime) persistEndpointPolicy(ctx context.Context, source sqlite.PolicySource, policy policymodel.EndpointPolicy) error {
 	if r.management.localStore == nil {
-		r.setEndpointPolicy(policy)
-		return nil
+		return fmt.Errorf("local policy store is required")
 	}
 	var err error
 	if source == sqlite.PolicySourceManaged {
@@ -87,14 +86,4 @@ func (r *policyRuntime) persistEndpointPolicy(ctx context.Context, source sqlite
 	}
 	r.setEndpointPolicy(policy)
 	return nil
-}
-
-func (r *policyRuntime) loadLegacyRuntimePolicy() (contract.CollectionIntent, policymodel.Policy, config.EffectiveTelemetry, error) {
-	intent, err := agentpolicy.LoadCollectionIntent(r.config.Sensor.PolicyPath, r.config.Sensor.ObserveOnly)
-	if err != nil {
-		return contract.CollectionIntent{}, policymodel.Policy{}, config.EffectiveTelemetry{}, err
-	}
-	policy := r.activePolicy()
-	effectiveTelemetry, err := config.ResolveTelemetry(r.config.Telemetry, policy.Telemetry)
-	return intent, policy, effectiveTelemetry, err
 }

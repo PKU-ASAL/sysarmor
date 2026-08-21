@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
+	dataplanecontract "github.com/sysarmor/sysarmor-next-project/packages/contracts/dataplane"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
@@ -37,7 +38,11 @@ func TestBatchProcessorRejectsMissingIdentity(t *testing.T) {
 func TestBatchDecoderMapsWireFramesToDomain(t *testing.T) {
 	batch := validWorkerBatch()
 	batch.Events = []*dataplanev1.EventFrame{{ObservedAt: "2026-08-11T01:02:03Z", Event: &eventv1.CanonicalEvent{Id: "event-a", TenantId: "default", Labels: map[string]string{"scenario": "checkout", "policy_id": "policy-old", "policy_version": "3"}}}}
-	batch.Signals = []*dataplanev1.SignalFrame{{Signal: &signalv1.Signal{Id: "signal-a", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT, Labels: map[string]string{"policy_id": "policy-old", "policy_version": "3"}}}}
+	batch.Signals = []*dataplanev1.SignalFrame{{Signal: &signalv1.Signal{
+		Id: "signal-a", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
+		Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_RULE,
+		Labels: map[string]string{"policy_id": "policy-old", "policy_version": "3"},
+	}}}
 	raw, _ := protojson.Marshal(batch)
 
 	decoded, err := NewBatchDecoder().Decode(ports.RawMessage{Topic: "raw", Value: raw})
@@ -81,6 +86,31 @@ func TestBatchDecoderRejectsEventTenantMismatch(t *testing.T) {
 	_, err := NewBatchDecoder().Decode(ports.RawMessage{Topic: "raw", Value: raw})
 
 	assertPermanentEnvelope(t, err, "invalid_data_batch")
+}
+
+func TestBatchDecoderRejectsModelCandidateWithoutCurrentTrigger(t *testing.T) {
+	batch := validWorkerBatch()
+	batch.Signals = []*dataplanev1.SignalFrame{{Signal: &signalv1.Signal{
+		Id: "candidate-a", Where: signalv1.SignalWhere_SIGNAL_WHERE_ENDPOINT,
+		Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE, DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_MODEL,
+		EventRefs: []string{"missing-event"}, Entities: []*signalv1.EntityRef{{Kind: "process", Key: "process-a", Role: "subject"}},
+		ModelRef: "model:a", ModelVersion: "1",
+		ModelDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FeatureSchema: "FeatureSchemaV2",
+		Labels: map[string]string{"policy_id": "policy-a", "policy_version": "1"},
+	}}}
+	raw, _ := protojson.Marshal(batch)
+
+	_, err := NewBatchDecoder().Decode(ports.RawMessage{Topic: "raw", Value: raw})
+
+	assertPermanentEnvelope(t, err, string(dataplanecontract.MissingCurrentEvent))
+	var permanent ports.PermanentError
+	if !errors.As(err, &permanent) || permanent.CandidateRejection == nil ||
+		permanent.CandidateRejection.TenantID != "default" || permanent.CandidateRejection.BatchID != "batch-a" ||
+		permanent.CandidateRejection.AgentID != "agent-a" ||
+		len(permanent.CandidateRejection.Signals) != 1 || permanent.CandidateRejection.Signals[0].SignalID != "candidate-a" ||
+		permanent.CandidateRejection.FailureClass != string(dataplanecontract.MissingCurrentEvent) {
+		t.Fatalf("candidate rejection = %+v", permanent.CandidateRejection)
+	}
 }
 
 func TestStabilizeBatchTimeUsesLatestEvent(t *testing.T) {

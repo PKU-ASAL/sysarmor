@@ -42,6 +42,13 @@ type detectionWire struct {
 	RuleOverrides []ruleOverrideWire `json:"rule_overrides,omitempty"`
 	ContextRefs   []contentRefWire   `json:"context_refs,omitempty"`
 	IOCRefs       []contentRefWire   `json:"ioc_refs,omitempty"`
+	LearningModel *learningModelWire `json:"learning_model,omitempty"`
+}
+
+type learningModelWire struct {
+	Ref     string `json:"ref"`
+	Version string `json:"version"`
+	Digest  string `json:"digest"`
 }
 
 type ruleSetWire struct {

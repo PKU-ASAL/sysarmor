@@ -51,6 +51,36 @@ func TestCollectionIntentRejectsUnknownBehavior(t *testing.T) {
 	}
 }
 
+func TestCompileCollectionIntentDoesNotInjectCausalBaseline(t *testing.T) {
+	intent, err := CompileCollectionIntent(CollectionPolicy{Behaviors: []string{"file.read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intent.Behaviors) != 1 || intent.Behaviors[0] != "file.read" {
+		t.Fatalf("compiled behaviors = %v", intent.Behaviors)
+	}
+	if len(intent.MandatoryBehaviors) != 0 || len(intent.FileWriteExcludes) != 0 {
+		t.Fatalf("implicit causal requirements remain in %+v", intent)
+	}
+}
+
+func TestCompileCollectionIntentPreservesRequestedSelectors(t *testing.T) {
+	intent, err := CompileCollectionIntent(CollectionPolicy{
+		BehaviorSpecs: []BehaviorPolicy{{ID: "network.connect", Selectors: BehaviorSelectors{
+			Process: ProcessSelector{BinaryPrefixes: []string{"/tmp/"}},
+			Socket:  SocketSelector{Ports: []string{"443"}},
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, filter := range intent.BehaviorFilters {
+		if filter.Behavior == "network.connect" && (len(filter.BinaryPrefixes) != 1 || len(filter.SocketPorts) != 1) {
+			t.Fatalf("requested selectors were discarded: %+v", filter)
+		}
+	}
+}
+
 func TestNormalizeCollectionDropsEmptyBehaviorSpecs(t *testing.T) {
 	policy := NormalizeCollection(CollectionPolicy{BehaviorSpecs: []BehaviorPolicy{{ID: " "}, {ID: "file.write"}}})
 	if len(policy.BehaviorSpecs) != 1 || policy.BehaviorSpecs[0].ID != "file.write" {
@@ -76,7 +106,9 @@ func TestFlatProcessExitDoesNotClaimBinarySelector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(intent.BehaviorFilters) != 1 || len(intent.BehaviorFilters[0].BinaryPrefixes) != 0 {
-		t.Fatalf("process.exit filter = %+v", intent.BehaviorFilters)
+	for _, filter := range intent.BehaviorFilters {
+		if filter.Behavior == "process.exit" && len(filter.BinaryPrefixes) != 0 {
+			t.Fatalf("process.exit filter = %+v", filter)
+		}
 	}
 }

@@ -87,6 +87,9 @@ func (a *endpointPolicyApplication) PrepareEndpoint(_ context.Context, document 
 }
 
 func (a *endpointPolicyApplication) prepare(endpoint policymodel.EndpointPolicy, source applicationpolicy.Source) (*endpointCandidate, error) {
+	if err := validateLearningPolicy(endpoint.Detection.LearningModel, a.policy.learningDetector); err != nil {
+		return nil, err
+	}
 	collection, _, err := agentpolicy.ExpandCollectionPolicyRefs(endpoint.Collection, collectionContentSnapshot(a.policy.contentStore().Snapshot()))
 	if err != nil {
 		return nil, err

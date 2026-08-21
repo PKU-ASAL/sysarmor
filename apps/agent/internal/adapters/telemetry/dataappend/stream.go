@@ -16,6 +16,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/ringbuffer"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
+	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	eventv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/event/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
@@ -68,7 +69,11 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 	}
 	opts.Labels = replayLabels(opts.Labels, opts.PolicyID, opts.PolicyVersion)
 
-	norm := eventadapter.NewEventNormalizer(opts.AgentID, opts.HostID, eventadapter.EventNormalizerOptions{})
+	profiles, err := newReplayProfiles()
+	if err != nil {
+		return StreamStats{}, err
+	}
+	norm := eventadapter.NewEventNormalizer(opts.AgentID, opts.HostID, eventadapter.EventNormalizerOptions{}, profiles)
 	detector, _ := detectionadapter.New(policymodel.DefaultDetectionPolicy())
 	lines := scanLines(r)
 	ticker := time.NewTicker(opts.FlushInterval)
@@ -114,7 +119,7 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 			if len(scanned.data) == 0 {
 				continue
 			}
-			events, signals, err := decodeLine(scanned.data, norm, detector, opts.Labels, opts.RawRing, opts.SensorParser)
+			events, signals, err := decodeLine(scanned.data, norm, profiles, detector, opts.Labels, opts.RawRing, opts.SensorParser)
 			if err != nil {
 				return stats, fmt.Errorf("line %d: %w", line, err)
 			}
@@ -129,6 +134,13 @@ func StreamJSONL(ctx context.Context, r io.Reader, up BatchSender, opts StreamOp
 			}
 		}
 	}
+}
+
+func newReplayProfiles() (*domainprocess.Profiles, error) {
+	return domainprocess.NewProfiles(domainprocess.Limits{
+		MaxProfiles: 4096, MaxFiles: 32, MaxNetworks: 16, MaxEventRefs: 16,
+		ExitGrace: 30 * time.Second, RetainedTTL: 5 * time.Minute, SweepInterval: 30 * time.Second,
+	})
 }
 
 type scannedLine struct {
@@ -213,7 +225,7 @@ func appendFrames(batch *dataplanev1.DataBatch, events []*eventv1.CanonicalEvent
 	}
 }
 
-func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detectionruntime.State, labels map[string]string, rawRing *ringbuffer.Buffer, parser SensorLineParser) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
+func decodeLine(data []byte, norm *eventadapter.EventNormalizer, profiles *domainprocess.Profiles, detector *detectionruntime.State, labels map[string]string, rawRing *ringbuffer.Buffer, parser SensorLineParser) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
 	if sig, ok := decodeSignal(data); ok {
 		sig.Labels = mergeLabels(sig.GetLabels(), labels)
 		return nil, []*signalv1.Signal{sig}, nil
@@ -232,6 +244,7 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 		sev.RawRef = rawRing.Remember(sev.GetRawRef(), data)
 		domainEvent := norm.NormalizeDomain(sev)
 		domainEvent.Labels = mergeLabels(domainEvent.Labels, labels)
+		profiles.Observe(domainEvent)
 		ev := contractmapper.CanonicalEvent(domainEvent)
 		domainSignals := detector.Process(domainEvent)
 		signals := make([]*signalv1.Signal, 0, len(domainSignals))
@@ -243,13 +256,13 @@ func decodeLine(data []byte, norm *eventadapter.EventNormalizer, detector *detec
 	}
 	if parser != nil {
 		if sevs, ok := parser(data); ok {
-			return decodeSensorEvents(data, sevs, norm, detector, labels, rawRing)
+			return decodeSensorEvents(data, sevs, norm, profiles, detector, labels, rawRing)
 		}
 	}
 	return nil, nil, fmt.Errorf("not Signal, CanonicalEvent, SensorEvent nor Tetragon event")
 }
 
-func decodeSensorEvents(data []byte, sevs []*sensorv1.SensorEvent, norm *eventadapter.EventNormalizer, detector *detectionruntime.State, labels map[string]string, rawRing *ringbuffer.Buffer) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
+func decodeSensorEvents(data []byte, sevs []*sensorv1.SensorEvent, norm *eventadapter.EventNormalizer, profiles *domainprocess.Profiles, detector *detectionruntime.State, labels map[string]string, rawRing *ringbuffer.Buffer) ([]*eventv1.CanonicalEvent, []*signalv1.Signal, error) {
 	rawRef := rawRing.Put(data)
 	events := make([]*eventv1.CanonicalEvent, 0, len(sevs))
 	var signals []*signalv1.Signal
@@ -261,6 +274,7 @@ func decodeSensorEvents(data []byte, sevs []*sensorv1.SensorEvent, norm *eventad
 		}
 		domainEvent := norm.NormalizeDomain(sev)
 		domainEvent.Labels = mergeLabels(domainEvent.Labels, labels)
+		profiles.Observe(domainEvent)
 		ev := contractmapper.CanonicalEvent(domainEvent)
 		events = append(events, ev)
 		domainDetected := detector.Process(domainEvent)

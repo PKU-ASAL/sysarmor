@@ -2,10 +2,7 @@ package sqlite
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -221,9 +218,6 @@ upload_history,managed_from_seq,updated_at_ns FROM enrollment_v1;
 DROP TABLE enrollment_v1;`); err != nil {
 		return fmt.Errorf("migrate enrollment states: %w", err)
 	}
-	if err := migrateLegacyEndpointDetection(tx); err != nil {
-		return err
-	}
 	if _, err := tx.Exec(`INSERT OR IGNORE INTO policy_slots(kind, source, version, document_json, digest, updated_at_ns)
 	SELECT kind, 'standalone', version, document_json, digest, updated_at_ns FROM policy
 	WHERE NOT EXISTS (SELECT 1 FROM enrollment WHERE singleton=1 AND state='managed')`); err != nil {
@@ -245,72 +239,6 @@ WHERE EXISTS (SELECT 1 FROM enrollment WHERE singleton=1 AND state='managed')`);
 		return fmt.Errorf("record migrated schema version: %w", err)
 	}
 	return nil
-}
-
-func migrateLegacyEndpointDetection(tx *sql.Tx) error {
-	var document []byte
-	var digest string
-	err := tx.QueryRow(`SELECT document_json, digest FROM policy WHERE kind='endpoint'`).Scan(&document, &digest)
-	if err == sql.ErrNoRows {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read legacy endpoint policy: %w", err)
-	}
-	wantDigest := sha256.Sum256(document)
-	if digest != hex.EncodeToString(wantDigest[:]) {
-		return fmt.Errorf("migrate legacy endpoint policy: digest mismatch")
-	}
-	migrated, changed, err := addLegacyDetectionDefaults(document)
-	if err != nil {
-		return fmt.Errorf("migrate legacy endpoint policy: %w", err)
-	}
-	if !changed {
-		return nil
-	}
-	migratedDigest := sha256.Sum256(migrated)
-	if _, err := tx.Exec(`UPDATE policy SET document_json=?, digest=? WHERE kind='endpoint'`, migrated, hex.EncodeToString(migratedDigest[:])); err != nil {
-		return fmt.Errorf("persist migrated endpoint policy: %w", err)
-	}
-	return nil
-}
-
-func addLegacyDetectionDefaults(document []byte) ([]byte, bool, error) {
-	var endpoint map[string]json.RawMessage
-	if err := json.Unmarshal(document, &endpoint); err != nil {
-		return nil, false, fmt.Errorf("decode document: %w", err)
-	}
-	rawDetection, ok := endpoint["detection"]
-	if !ok {
-		return document, false, nil
-	}
-	var detection map[string]json.RawMessage
-	if err := json.Unmarshal(rawDetection, &detection); err != nil {
-		return nil, false, fmt.Errorf("decode detection: %w", err)
-	}
-	if detection == nil {
-		return document, false, nil
-	}
-	var ruleSets []json.RawMessage
-	if raw := detection["rulesets"]; len(raw) > 0 {
-		if err := json.Unmarshal(raw, &ruleSets); err != nil {
-			return nil, false, fmt.Errorf("decode detection rulesets: %w", err)
-		}
-	}
-	if len(ruleSets) > 0 {
-		return document, false, nil
-	}
-	detection["policy_id"] = json.RawMessage(`"default-endpoint-detection"`)
-	detection["version"] = json.RawMessage(`1`)
-	detection["mode"] = json.RawMessage(`"observe"`)
-	detection["rulesets"] = json.RawMessage(`[{"ref":"ruleset:cep-endpoint","version":"v1","enabled":true}]`)
-	migratedDetection, err := json.Marshal(detection)
-	if err != nil {
-		return nil, false, fmt.Errorf("encode detection: %w", err)
-	}
-	endpoint["detection"] = migratedDetection
-	migrated, err := json.Marshal(endpoint)
-	return migrated, err == nil, err
 }
 
 func migrateEnrollmentRevocation(tx *sql.Tx) error {

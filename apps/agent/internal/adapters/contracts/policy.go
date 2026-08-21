@@ -7,13 +7,15 @@ import (
 
 func SensorCollectionIntent(value domainpolicy.CollectionIntent) contract.CollectionIntent {
 	result := contract.CollectionIntent{
-		Behaviors:      append([]string(nil), value.Behaviors...),
-		BinaryPrefixes: append([]string(nil), value.BinaryPrefixes...),
-		FilePrefixes:   append([]string(nil), value.FilePrefixes...),
-		SocketFamilies: append([]string(nil), value.SocketFamilies...),
-		SocketAddrs:    append([]string(nil), value.SocketAddrs...),
-		SocketPorts:    append([]string(nil), value.SocketPorts...),
-		ScopeType:      value.ScopeType, ScopeSelector: value.ScopeSelector,
+		Behaviors:          append([]string(nil), value.Behaviors...),
+		MandatoryBehaviors: append([]string(nil), value.MandatoryBehaviors...),
+		BinaryPrefixes:     append([]string(nil), value.BinaryPrefixes...),
+		FilePrefixes:       append([]string(nil), value.FilePrefixes...),
+		FileWriteExcludes:  append([]string(nil), value.FileWriteExcludes...),
+		SocketFamilies:     append([]string(nil), value.SocketFamilies...),
+		SocketAddrs:        append([]string(nil), value.SocketAddrs...),
+		SocketPorts:        append([]string(nil), value.SocketPorts...),
+		ScopeType:          value.ScopeType, ScopeSelector: value.ScopeSelector,
 		ObserveOnly: value.ObserveOnly,
 	}
 	for _, filter := range value.BehaviorFilters {

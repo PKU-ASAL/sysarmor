@@ -41,6 +41,7 @@ STANDARD_LIBRARY = {
         "sync",
         "sync/atomic",
         "time",
+        "unicode",
     },
     "application": {
         "context",
@@ -414,6 +415,53 @@ class LayeredArchitectureContractTest(unittest.TestCase):
         for name in ("correlate.go", "evidence_entities.go"):
             source = (root / "domain/detection/runtime" / name).read_text()
             self.assertNotIn("packages/contracts/proto/signal", source)
+
+    def test_detection_signals_use_explicit_stage_and_detector_kind(self):
+        signal_proto = (
+            self.repo / "packages/contracts/proto/signal/v1/signal.proto"
+        ).read_text()
+        self.assertIn("enum SignalStage", signal_proto)
+        self.assertIn("enum DetectorKind", signal_proto)
+        self.assertIn("reserved 11;", signal_proto)
+        self.assertIn('reserved "terminal";', signal_proto)
+        self.assertNotIn("bool terminal", signal_proto)
+        self.assertRegex(signal_proto, r"SignalStage\s+stage\s*=\s*25;")
+        self.assertRegex(signal_proto, r"DetectorKind\s+detector_kind\s*=\s*26;")
+
+        incident_proto = (
+            self.repo / "packages/contracts/proto/incident/v1/incident.proto"
+        ).read_text()
+        self.assertIn("conclusion_entities", incident_proto)
+        self.assertNotIn("repeated string terminals", incident_proto)
+
+        sources = {
+            "agent signal": "apps/agent/internal/domain/detection/signal.go",
+            "manager signal": "apps/manager/internal/domain/telemetry/model.go",
+            "policy document": "apps/agent/internal/adapters/content/document.go",
+            "signal query": "apps/manager/internal/adapters/outbound/opensearch/telemetry_query.go",
+            "telemetry CLI": "apps/cli/cmd/sysarmorctl/manager_telemetry.go",
+        }
+        sources.update(
+            {
+                f"agent content {source.name}": str(source.relative_to(self.repo))
+                for source in (self.repo / "deployments/agent/content").rglob("*.json")
+            }
+        )
+        for label, relative in sources.items():
+            text = (self.repo / relative).read_text()
+            with self.subTest(source=label):
+                self.assertNotRegex(text, r"\b[Tt]erminal\b|GetTerminal|--terminal|json:\"terminal")
+
+    def test_signal_schema_migration_sets_canonical_dimensions(self):
+        migration = (self.repo / "deployments/opensearch/init.sh").read_text()
+        for assignment in (
+            "ctx._source.stage =",
+            "ctx._source.detectorKind =",
+            "ctx._source.where =",
+        ):
+            with self.subTest(assignment=assignment):
+                self.assertIn(assignment, migration)
+        self.assertIn("SIGNAL_WHERE_ENDPOINT", migration)
 
     def test_agent_detection_runtime_uses_domain_events(self):
         root = self.repo / "apps/agent/internal/domain/detection/runtime"

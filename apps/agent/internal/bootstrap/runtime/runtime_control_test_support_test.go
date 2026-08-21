@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,6 +24,12 @@ import (
 
 func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *Coordinator {
 	t.Helper()
+	if cfg.Local.StatePath == "" {
+		cfg.Local.StatePath = t.TempDir()
+	}
+	if cfg.Policy.Path == "" {
+		cfg.Policy.Path = filepath.Join("..", "..", "..", "..", "..", "deployments", "agent", "policy.json")
+	}
 	var sensor contract.Sensor
 	switch cfg.Sensor.Backend {
 	case "fake":
@@ -33,34 +40,32 @@ func newConfiguredTestRuntime(t testing.TB, cfg config.Config) *Coordinator {
 		t.Fatalf("unsupported test sensor backend %q", cfg.Sensor.Backend)
 	}
 	dependencies := Dependencies{Config: cfg, Sensor: sensor, Content: agentcontent.NewStore(), Policy: newTestPolicyController}
-	if cfg.Manager.Transport == "" {
-		store, err := sqlite.Open(context.Background(), sqlite.Options{
-			RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes, MinFreeBytes: cfg.Local.Storage.MinFreeBytes,
-			SegmentSize: cfg.Local.Storage.SegmentSize, SignalMaxCount: cfg.Local.Storage.SignalMaxCount,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = store.Close() })
-		identity, err := store.DeviceIdentity(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if dependencies.Config.Agent.ID == "" {
-			dependencies.Config.Agent.ID = identity.DeviceID
-		}
-		if dependencies.Config.Agent.HostID == "" {
-			dependencies.Config.Agent.HostID = identity.HostID
-		}
-		if dependencies.Config.Agent.TenantID == "" {
-			dependencies.Config.Agent.TenantID = "local"
-		}
-		cursor, err := store.SequenceCursor(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		dependencies.LocalStore, dependencies.EventSeq, dependencies.SignalSeq = store, cursor.Event, cursor.Signal
+	store, err := sqlite.Open(context.Background(), sqlite.Options{
+		RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes, MinFreeBytes: cfg.Local.Storage.MinFreeBytes,
+		SegmentSize: cfg.Local.Storage.SegmentSize, SignalMaxCount: cfg.Local.Storage.SignalMaxCount,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
+	identity, err := store.DeviceIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dependencies.Config.Agent.ID == "" {
+		dependencies.Config.Agent.ID = identity.DeviceID
+	}
+	if dependencies.Config.Agent.HostID == "" {
+		dependencies.Config.Agent.HostID = identity.HostID
+	}
+	if dependencies.Config.Agent.TenantID == "" {
+		dependencies.Config.Agent.TenantID = "local"
+	}
+	cursor, err := store.SequenceCursor(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dependencies.LocalStore, dependencies.EventSeq, dependencies.SignalSeq = store, cursor.Event, cursor.Signal
 	runtime, err := NewCoordinator(dependencies)
 	if err != nil {
 		t.Fatal(err)
@@ -239,5 +244,5 @@ func badRuntimeCandidatePolicy(tenantID string) policymodel.Policy {
 }
 
 func validBadRuntimeRulePackJSON() string {
-	return `{"api_version":"sysarmor.content/v1","kind":"rulepack","metadata":{"id":"rulepack:bad-runtime","version":"v1"},"spec":{"rulesets":[{"id":"ruleset:bad-runtime","version":"v1","rules":[{"rule_id":"valid_runtime_rule","version":1,"severity":"low","runtime":{"type":"sequence","sequence":{"within":"10s","steps":[{"id":"exit","event":"process.exit"}]}}}]}]}}`
+	return `{"api_version":"sysarmor.content/v1","kind":"rulepack","metadata":{"id":"rulepack:bad-runtime","version":"v1"},"spec":{"rulesets":[{"id":"ruleset:bad-runtime","version":"v1","rules":[{"rule_id":"valid_runtime_rule","version":1,"severity":"low","runtime":{"type":"sequence","sequence":{"within":"10s","steps":[{"id":"exit","event":"process.exit"}]}},"output":{"stage":"candidate"}}]}]}}`
 }

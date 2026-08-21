@@ -1,6 +1,6 @@
 package migrations
 
-const PostgresVersion = 6
+const PostgresVersion = 9
 
 type Migration struct {
 	Version int
@@ -51,6 +51,38 @@ ALTER TABLE telemetry_batches
   ALTER COLUMN claim_token SET NOT NULL;
 `
 
+const WorkerCandidateRejectionsSchema = `
+CREATE TABLE IF NOT EXISTS worker_candidate_rejections (
+  tenant_id TEXT NOT NULL,
+  batch_id TEXT NOT NULL,
+  failure_class TEXT NOT NULL,
+  candidate_count BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, batch_id)
+);
+`
+
+const WorkerSignalProcessingSchema = `
+CREATE TABLE IF NOT EXISTS worker_signal_processing (
+  tenant_id TEXT NOT NULL,
+  signal_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  batch_id TEXT NOT NULL,
+  subject_id TEXT NOT NULL DEFAULT '',
+  trigger_event_id TEXT NOT NULL DEFAULT '',
+  event_sequence BIGINT CHECK (event_sequence >= 0),
+  status TEXT NOT NULL CHECK (status IN ('correlated', 'projected', 'reference_rejected')),
+  failure_class TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, signal_id),
+  CHECK (status = 'reference_rejected' OR (subject_id <> '' AND trigger_event_id <> ''))
+);
+CREATE INDEX IF NOT EXISTS idx_worker_signal_processing_batch
+  ON worker_signal_processing (tenant_id, batch_id);
+DROP TABLE worker_candidate_rejections;
+`
+
 const ControlAuditSchema = `
 CREATE TABLE IF NOT EXISTS control_audit (
   tenant_id TEXT NOT NULL,
@@ -85,6 +117,17 @@ CREATE TABLE IF NOT EXISTS response_decisions (
 );
 CREATE INDEX IF NOT EXISTS idx_response_decisions_response
   ON response_decisions (tenant_id, response_id, created_at);
+`
+
+const EndpointProtectionModesSchema = `
+DELETE FROM policy_assignments;
+DELETE FROM policies;
+ALTER TABLE policies
+  ADD COLUMN IF NOT EXISTS protection_mode TEXT;
+ALTER TABLE policies
+  DROP COLUMN IF EXISTS mode;
+ALTER TABLE policies
+  ALTER COLUMN protection_mode SET NOT NULL;
 `
 
 const PostgresSchema = `
@@ -370,5 +413,8 @@ func Ordered() []Migration {
 		{Version: 4, Name: "telemetry_batch_claim_fencing", SQL: TelemetryBatchClaimFencingSchema},
 		{Version: 5, Name: "control_audit", SQL: ControlAuditSchema},
 		{Version: 6, Name: "response_decisions", SQL: ResponseDecisionsSchema},
+		{Version: 7, Name: "endpoint_protection_modes", SQL: EndpointProtectionModesSchema},
+		{Version: 8, Name: "worker_candidate_rejections", SQL: WorkerCandidateRejectionsSchema},
+		{Version: 9, Name: "worker_signal_processing", SQL: WorkerSignalProcessingSchema},
 	}
 }

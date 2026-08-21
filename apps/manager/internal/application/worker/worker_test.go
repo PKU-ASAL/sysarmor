@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
@@ -11,7 +12,7 @@ import (
 func TestWorkerRetriesBeforeCommit(t *testing.T) {
 	consumer := &workerConsumer{messages: []ports.RawMessage{{Key: "batch-a"}}}
 	processor := &workerProcessor{failures: 2}
-	if err := New(consumer, processor, nil).Run(context.Background()); !errors.Is(err, context.Canceled) {
+	if err := New(consumer, processor, nil, nil).Run(context.Background()); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if processor.attempts != 3 || consumer.commits != 1 {
@@ -21,20 +22,22 @@ func TestWorkerRetriesBeforeCommit(t *testing.T) {
 
 func TestWorkerSendsPermanentFailureToDLQThenCommits(t *testing.T) {
 	consumer := &workerConsumer{messages: []ports.RawMessage{{Topic: "raw", Key: "batch-a", Value: []byte("bad")}}}
-	processor := &workerProcessor{err: ports.PermanentError{Err: errors.New("invalid batch")}}
+	rejection := &ports.CandidateRejection{TenantID: "tenant-a", AgentID: "agent-a", BatchID: "batch-a", Signals: []ports.RejectedSignal{{SignalID: "signal-a"}, {SignalID: "signal-b"}}, FailureClass: "missing_current_candidate_event"}
+	processor := &workerProcessor{err: ports.PermanentError{Err: errors.New("invalid batch"), CandidateRejection: rejection}}
 	dlq := &workerProducer{}
-	if err := New(consumer, processor, dlq).Run(context.Background()); !errors.Is(err, context.Canceled) {
+	rejections := &candidateRejectionRecorder{}
+	if err := New(consumer, processor, dlq, rejections).Run(context.Background()); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if len(dlq.messages) != 1 || consumer.commits != 1 {
-		t.Fatalf("dlq=%+v commits=%d", dlq.messages, consumer.commits)
+	if len(dlq.messages) != 1 || consumer.commits != 1 || len(rejections.values) != 1 || !reflect.DeepEqual(rejections.values[0], *rejection) {
+		t.Fatalf("dlq=%+v commits=%d rejections=%+v", dlq.messages, consumer.commits, rejections.values)
 	}
 }
 
 func TestWorkerReturnsTransientFailureWithoutCommit(t *testing.T) {
 	consumer := &workerConsumer{messages: []ports.RawMessage{{Key: "batch-a"}}}
 	processor := &workerProcessor{err: errors.New("database unavailable")}
-	if err := New(consumer, processor, nil).Run(context.Background()); err == nil || consumer.commits != 0 {
+	if err := New(consumer, processor, nil, nil).Run(context.Background()); err == nil || consumer.commits != 0 {
 		t.Fatalf("err=%v commits=%d", err, consumer.commits)
 	}
 }
@@ -76,5 +79,12 @@ type workerProducer struct{ messages []ports.RawMessage }
 
 func (producer *workerProducer) Publish(_ context.Context, message ports.RawMessage) error {
 	producer.messages = append(producer.messages, message)
+	return nil
+}
+
+type candidateRejectionRecorder struct{ values []ports.CandidateRejection }
+
+func (recorder *candidateRejectionRecorder) RecordCandidateRejection(_ context.Context, value ports.CandidateRejection) error {
+	recorder.values = append(recorder.values, value)
 	return nil
 }

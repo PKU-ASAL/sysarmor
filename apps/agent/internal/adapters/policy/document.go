@@ -139,6 +139,12 @@ func domainEndpointPolicy(wire endpointPolicyWire) (domainpolicy.EndpointPolicy,
 	if err := candidate.Validate(); err != nil {
 		return domainpolicy.EndpointPolicy{}, err
 	}
+	if wire.Detection.LearningModel != nil {
+		model := wire.Detection.LearningModel
+		if strings.TrimSpace(model.Ref) == "" || strings.TrimSpace(model.Version) == "" || strings.TrimSpace(model.Digest) == "" {
+			return domainpolicy.EndpointPolicy{}, fmt.Errorf("learning model ref, version, and digest are required")
+		}
+	}
 	response := domainResponsePolicy(*wire.Response)
 	if len(response.AllowedActions) == 0 && len(response.AllowedModes) == 0 {
 		response = defaultDomainResponsePolicy()
@@ -169,6 +175,11 @@ func domainDetection(wire *detectionWire) *domainpolicy.DetectionPolicy {
 	}
 	value.ContextRefs = domainContentRefs(wire.ContextRefs)
 	value.IOCRefs = domainContentRefs(wire.IOCRefs)
+	if wire.LearningModel != nil {
+		value.LearningModel = &domainpolicy.LearningModelRef{
+			Ref: wire.LearningModel.Ref, Version: wire.LearningModel.Version, Digest: wire.LearningModel.Digest,
+		}
+	}
 	return value
 }
 
@@ -187,6 +198,11 @@ func wireDetection(value domainpolicy.DetectionPolicy) *detectionWire {
 	}
 	wire.ContextRefs = wireContentRefs(value.ContextRefs)
 	wire.IOCRefs = wireContentRefs(value.IOCRefs)
+	if value.LearningModel != nil {
+		wire.LearningModel = &learningModelWire{
+			Ref: value.LearningModel.Ref, Version: value.LearningModel.Version, Digest: value.LearningModel.Digest,
+		}
+	}
 	return wire
 }
 

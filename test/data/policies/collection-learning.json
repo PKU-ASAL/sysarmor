@@ -1,0 +1,13 @@
+{
+  "policy_id": "learning-causal-linux",
+  "version": 1,
+  "behaviors": [
+    "process.exec",
+    "process.exit",
+    "process.fork",
+    "file.write",
+    "network.connect"
+  ],
+  "scope_type": "host",
+  "observe_only": true
+}

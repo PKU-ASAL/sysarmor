@@ -16,12 +16,17 @@ type DeliveryScope struct {
 }
 
 type Delivery struct {
-	spool  ports.TelemetrySpool
-	sender ports.TelemetrySender
+	spool     ports.TelemetrySpool
+	sender    ports.TelemetrySender
+	lifecycle *domaintelemetry.CandidateLifecycle
 }
 
-func NewDelivery(spool ports.TelemetrySpool, sender ports.TelemetrySender) *Delivery {
-	return &Delivery{spool: spool, sender: sender}
+func NewDelivery(spool ports.TelemetrySpool, sender ports.TelemetrySender, lifecycle ...*domaintelemetry.CandidateLifecycle) *Delivery {
+	delivery := &Delivery{spool: spool, sender: sender}
+	if len(lifecycle) > 0 {
+		delivery.lifecycle = lifecycle[0]
+	}
+	return delivery
 }
 
 func (delivery *Delivery) Run(ctx context.Context, scope DeliveryScope) {
@@ -73,6 +78,7 @@ func (delivery *Delivery) DeliverAvailable(ctx context.Context, scope DeliverySc
 		if err != nil {
 			return err
 		}
+		delivery.recordOutcome(outcome, stored.Batch.ModelCandidates)
 		if outcome != domaintelemetry.DeliveryAccepted && outcome != domaintelemetry.DeliveryDuplicate {
 			return fmt.Errorf("batch %s was not committed", stored.Position.BatchID)
 		}
@@ -81,6 +87,19 @@ func (delivery *Delivery) DeliverAvailable(ctx context.Context, scope DeliverySc
 		}
 	}
 	return nil
+}
+
+func (delivery *Delivery) recordOutcome(outcome domaintelemetry.DeliveryOutcome, candidates uint64) {
+	if delivery.lifecycle == nil || candidates == 0 {
+		return
+	}
+	if outcome == domaintelemetry.DeliveryAccepted {
+		delivery.lifecycle.RecordGatewayAccepted(candidates)
+	} else if outcome == domaintelemetry.DeliveryDuplicate {
+		delivery.lifecycle.RecordGatewayDuplicateAck(candidates)
+	} else if outcome == domaintelemetry.DeliveryRejected {
+		delivery.lifecycle.RecordGatewayRejected(candidates)
+	}
 }
 
 func foreignIdentity(batch domaintelemetry.Batch, scope DeliveryScope) bool {

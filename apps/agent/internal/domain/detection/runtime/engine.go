@@ -10,7 +10,7 @@ import (
 	domainevent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/event"
 )
 
-const defaultMaxCEPGroups = 4096
+const defaultMaxCEPGroups = 16384
 const defaultMaxCEPRefs = 128
 const maxSuppressionKeys = 8192
 
@@ -91,7 +91,7 @@ type RuleSpec struct {
 	ContextRefs       []string
 	IOCRefs           []string
 	ResponseIntent    *domaindetection.ResponseIntent
-	Terminal          *bool
+	Stage             domaindetection.SignalStage
 	Mode              string
 }
 
@@ -225,6 +225,7 @@ func Compile(input ProgramInput) (Program, ApplyReport) {
 		report.RuleIDs = append(report.RuleIDs, rule.spec.RuleID)
 	}
 	errs := detectioncompiler.Validate(domainRules(rules))
+	errs = append(errs, validateSignalStages(rules)...)
 	errs = append(errs, validateContentRefs(rules, input.Content)...)
 	if len(errs) > 0 {
 		report.Status = "rejected"
@@ -237,6 +238,16 @@ func Compile(input ProgramInput) (Program, ApplyReport) {
 	program.sequence = compileSequenceRuntime(rules, input.Content)
 	program.correlation = compileCorrelateRuntime(rules, input.Content)
 	return program, report
+}
+
+func validateSignalStages(rules []effectiveRule) []string {
+	var errs []string
+	for _, rule := range rules {
+		if rule.spec.Stage != domaindetection.SignalStageCandidate && rule.spec.Stage != domaindetection.SignalStageConclusion {
+			errs = append(errs, fmt.Sprintf("rule %s requires candidate or conclusion signal stage", rule.spec.RuleID))
+		}
+	}
+	return errs
 }
 
 func NewState(program Program, limits Limits) *State {
@@ -363,7 +374,7 @@ func (e *Engine) rule(id string) (effectiveRule, bool) {
 	return rule, ok && rule.enabled
 }
 
-func (e *Engine) signal(ev domainevent.Event, rule effectiveRule, refs []string, terminal bool, entities ...domaindetection.Entity) *domaindetection.Signal {
+func (e *Engine) signal(ev domainevent.Event, rule effectiveRule, refs []string, stage domaindetection.SignalStage, entities ...domaindetection.Entity) *domaindetection.Signal {
 	refs = appendRefs(nil, refs...)
 	if len(refs) == 0 {
 		refs = []string{ev.ID}
@@ -385,12 +396,13 @@ func (e *Engine) signal(ev domainevent.Event, rule effectiveRule, refs []string,
 		LineageID:    ev.LineageID,
 		Entities:     entities,
 		EventRefs:    refs,
-		Terminal:     terminal,
+		Stage:        stage,
+		DetectorKind: domaindetection.DetectorKindRule,
 		Labels:       cloneLabels(ev.Labels),
 		ContextRefs:  e.signalContentRefs(rule.spec.ContextRefs, e.refs.ContextRefs),
 		IOCRefs:      e.signalContentRefs(rule.spec.IOCRefs, e.refs.IOCRefs),
 	}
-	if terminal || rule.intent != nil {
+	if stage == domaindetection.SignalStageConclusion || rule.intent != nil {
 		intent := rule.intent
 		if intent == nil {
 			intent = rule.spec.ResponseIntent
@@ -401,7 +413,7 @@ func (e *Engine) signal(ev domainevent.Event, rule effectiveRule, refs []string,
 			}
 		}
 	}
-	if terminal {
+	if stage == domaindetection.SignalStageConclusion {
 		sig.Evidence = &domaindetection.Evidence{
 			ID:        "evb-" + sig.ID,
 			EventRefs: append([]string(nil), refs...),

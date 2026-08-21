@@ -17,10 +17,10 @@ func Decide(byName map[string][]domaintelemetry.Signal, cloud []domaintelemetry.
 		if threshold == 0 {
 			threshold = 100
 		}
-		return Decision{Incident: additiveRisk(byName) >= threshold, Method: "additive_threshold", Controls: []string{"additive_threshold"}}
+		return Decision{Incident: hasAnyConclusion(byName) && additiveRisk(byName) >= threshold, Method: "additive_threshold", Controls: []string{"additive_threshold"}}
 	}
-	if hasTerminal(byName["reverse_shell_pattern"]) {
-		return Decision{Incident: true, Method: "rarity+causal-topk", Controls: []string{"terminal_reverse_shell"}}
+	if hasConclusion(byName["reverse_shell_pattern"]) {
+		return Decision{Incident: true, Method: "rarity+causal-topk", Controls: []string{"conclusion_reverse_shell"}}
 	}
 	if crossLineageEnabled(policy) && hasCrossLineageSignal(cloud) {
 		return Decision{Incident: true, Method: "rarity+causal-topk", Controls: []string{"cross_lineage_payload_connect"}}
@@ -36,9 +36,18 @@ func crossLineageEnabled(policy *detection.Policy) bool {
 	return policy == nil || policy.Converge == nil || policy.Converge.CrossLineage
 }
 
-func hasTerminal(signals []domaintelemetry.Signal) bool {
+func hasConclusion(signals []domaintelemetry.Signal) bool {
 	for _, signal := range signals {
-		if signal.Terminal {
+		if signal.Stage == domaintelemetry.SignalStageConclusion {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAnyConclusion(byName map[string][]domaintelemetry.Signal) bool {
+	for _, signals := range byName {
+		if hasConclusion(signals) {
 			return true
 		}
 	}
@@ -47,7 +56,7 @@ func hasTerminal(signals []domaintelemetry.Signal) bool {
 
 func hasCrossLineageSignal(signals []domaintelemetry.Signal) bool {
 	for _, signal := range signals {
-		if signal.Name == "dropped_payload_executed_and_connects" && signal.CrossLineage {
+		if signal.Name == "dropped_payload_executed_and_connects" && signal.Stage == domaintelemetry.SignalStageConclusion && signal.CrossLineage {
 			return true
 		}
 	}

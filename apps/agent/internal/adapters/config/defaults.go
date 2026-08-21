@@ -14,6 +14,6 @@ func defaults() Config {
 		Sensor:    SensorConfig{Backend: "tetragon", Mode: "managed", EventTransport: "grpc", ServerAddress: "unix:///var/run/tetragon/tetragon.sock", ProcessCacheSize: 4096, DataCacheSize: 128, EventQueueSize: 1024, RBQueueSize: "8192", ObserveOnly: true, Restart: "always", MaxRestarts: 5, RestartWindow: time.Minute},
 		Telemetry: DefaultTelemetryConfig(), Health: HealthConfig{Interval: 10 * time.Second},
 		Policy: PolicyConfig{Path: "/etc/sysarmor/agent/policy.json"}, Content: ContentConfig{Path: "/var/lib/sysarmor/agent/content"},
-		Resource: ResourceConfig{MaxActiveCEPGroups: 4096, MaxEventRefsPerSignal: 128},
+		Resource: ResourceConfig{MaxActiveCEPGroups: 16384, MaxEventRefsPerSignal: 128},
 	}
 }

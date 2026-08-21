@@ -34,7 +34,7 @@ make test-doctor
 | 无法读取 Vagrant 插件 | 确认 `VAGRANT_HOME` 可写，取消指向空目录的临时配置 |
 | 缺少 `vagrant-libvirt` | `vagrant plugin install vagrant-libvirt` |
 | 无法连接 libvirt | 启动 libvirt 服务，确认当前用户属于 `libvirt` 组 |
-| 找不到 Tetragon 包 | 设置 `SYSARMOR_TETRAGON_ARCHIVE`，或放到 `.cache/`、`.scratchpad/.cache/` |
+| 找不到 Tetragon 包 | 设置 `SYSARMOR_TETRAGON_ARCHIVE`，或放到仓库 `.cache/` |
 
 默认 libvirt URI 是 `qemu:///system`；需要其他连接时显式设置
 `LIBVIRT_DEFAULT_URI`。不要通过临时清空 `VAGRANT_HOME` 绕过插件或权限问题，这会让
@@ -155,6 +155,8 @@ Agent enrollment 模式按测试目标明确区分：
 | Topology functional | `managed` | Manager health/session 和接入状态 |
 | Detection topology | `managed` | Gateway -> Kafka -> Worker -> PostgreSQL/OpenSearch -> Manager 查询 |
 
+Learning managed 性能实验在负载结束后发布 `rule-only` drain Policy，停止产生新的 Model Candidate，同时保持 Agent spool、Gateway 和 Worker 运行。Agent 只冻结一次 Candidate 计数和 Event sequence cutoff；Worker 从 PostgreSQL `worker_signal_processing` 读取该 Agent、cutoff 以内的 Signal 终态，再与 OpenSearch Model Candidate 按同一 `Signal.id` 精确关联。`events.scope.ndjson` 与 `signals.scope.ndjson` 是有界观察流，只用于 truth、样本和诊断；Ring Buffer eviction 记为 `observation_gap`，不能单独证明生产 DataBatch 丢失。报告不截断或补齐计数，并分别展示端侧 storage drop、Gateway reject、Worker backlog 和引用拒绝。
+
 Detection topology 的每个 fresh VM case 会先创建一次性 enrollment，并通过 `sysarmorctl enroll` 切换 Agent 到 managed；collection/detection 策略通过 Manager publish/assign 下发，benchmark 内容在安装阶段签名进入 Agent 默认内容。这样 `EVALUATION_SCOPE=manager` 验收的是实际云端 Worker 链路，而不是 standalone 本地 spool。Standalone 端点能力由 Endpoint functional/performance 单独验收。
 
 Detection 的默认 `alert_score`/`evidence_score` 门槛为 `0.9`，同时仍要求所有真值文件中的 required Event/Signal 全部命中。可通过 `SYSARMOR_DETECTION_MIN_SCORE` 临时提高或降低分数门槛；降低门槛不会放宽 required 标签检查。
@@ -190,7 +192,7 @@ manager.incidents.json
 ```
 
 脚本将三者转换为对应的 `.ndjson` 文件。当前评分器只消费 Event、Signal 以及
-terminal/forbidden Signal；Incident 文件会被采集并记录到报告路径，但不参与评分或
+Conclusion/forbidden Signal；Incident 文件会被采集并记录到报告路径，但不参与评分或
 门禁。因此 Detection 通过不能证明 Incident 数量、内容或 Evidence 子图正确。
 本地 Agent watch 文件只用于诊断，不是默认评分源。恶意场景缺少 required truth，或
 良性场景产生 forbidden detection，均应使门禁失败。完整报告包括：
@@ -236,6 +238,9 @@ Profile 的结论边界：
 | `quick` | 验证 benchmark 接线、发现明显回归 | 否 |
 | `medium` | 日常检测与性能关联，单 Policy 约十分钟 | 可用于同条件日常比较 |
 | `long` | 长窗口端侧 CPU/RSS 基线 | 是 |
+
+`quick`、`medium`、`long` 只定义实验持续时间和采样条件，不是产品保护模式。产品模式由
+Manager 的 `EndpointProtectionMode` 选择：`rule-only`、`learning-only` 或 `hybrid`。
 
 Endpoint 采样指标包括 Agent/Sensor/EDR CPU 与 RSS、Event/Signal、吞吐、丢弃、
 解析错误和 phase 时间线。阶段语义：
@@ -303,6 +308,32 @@ make test-performance DOMAIN=modules BENCHTIME=200ms COUNT=1
 ```
 
 Module benchmark 适合定位算法回归，不包含 sensor、VM、网络或平台成本。
+
+### Endpoint Protection Mode 矩阵
+
+Learning 实验在相同 Endpoint Medium 和相同场景下依次运行 `rule-only`、`learning-only`、
+`hybrid`，每个模式由 Policy Resolver 选择自己的 Collection Policy，并生成一份运行级
+`report.md`。默认使用 managed Agent 与 `vm-topology`，从 Manager 抓取 Incident；只有显式
+设置 `SYSARMOR_LEARNING_AGENT_MODE=standalone` 时才跳过 Worker 与端到端门禁。执行时必须
+提供训练集和独立校准集：
+
+```bash
+make test-performance DOMAIN=learning PROFILE=medium \
+  TRAINING_DATA=/path/to/training.ndjson \
+  CALIBRATION_DATA=/path/to/calibration.ndjson
+```
+
+检测效果分三层验收，不能用上游结果替代下游结果：
+
+| 层级 | 指标 | 数据来源 | 门禁语义 |
+|---|---|---|---|
+| Agent 发现 | `attack_campaign_seed_recall` | Endpoint Event、ProcessProfile、Model Candidate | 始终 blocking，默认至少 0.90 |
+| Worker 构图 | `worker_graph_recall` | truth graph Event 与 Incident Evidence `event_refs` | managed `hybrid` 时 blocking，默认至少 0.90 |
+| 最终结论 | `conclusion_recall` | truth campaign 与 Incident campaign | managed `hybrid` 时 blocking，默认至少 0.90 |
+
+“缺失字段”和“空结果”含义不同：standalone 没有 Worker 产物时报告 unavailable 且不阻断；managed `hybrid` 缺少 Incident artifact 或 truth 时明确失败，合法空 Incident 则使 graph/conclusion recall 为 0 并失败。`learning-only` 只验收 Model Candidate，不借助不存在的 Incident 声称 Worker 图或最终结论覆盖率；完整 Provenance graph 与 Conclusion 由 `hybrid` 验收。报告同时保留三模式 CPU、稳定期 RSS、EPS、drop/parse error、hybrid 相对 rule-only 的 Rule 等价性、ProcessProfile 生命周期和身份缺口，以及 Profile observation、feature update、模型评分、纯生命周期观察和 suppressed checkpoint 五个 Learning 语义调度计数。只有 blocking 门禁全部通过，运行结论才是 passed。
+
+训练侧 Python 与 Agent 侧 Go 必须通过同一真实 Bundle 和 ProcessProfile 的推理合同：特征向量固定，score 按 `float32` 语义一致，且 `score >= threshold` 的 Candidate 结论一致。两端各自单测通过不能替代这项跨语言合同。
 
 ## Distribution 测试
 
@@ -377,6 +408,12 @@ RSS 结论。重复运行应固定输入并报告样本数、聚合方法和异�
 fixture 格式时更新 `test/data/README.md`。Suite 子目录不再新建 README。
 
 ## 故障排查
+
+### Tetragon 文件事件可能缺少进程身份
+
+真实测试曾观察到少量 `file.read` Event 的 Tetragon `Process` 对象缺少 binary、argv 和父进程身份，涉及 sensor 启动前已存在的进程、CRON fork 子进程和长生命周期 sshd。当前证据只确认缺失值来自上游对象，不能直接归因于进程退出过快或缓存淘汰。
+
+身份缺失时必须保留原始 Event 和相关 Signal，不将空 binary 视为可信，也不猜测程序路径。定位时分别复现 sensor 启动前进程、fork 后 exec 前读取和长生命周期进程读取，并保存原始 gRPC Process 对象、Tetragon 版本和进程缓存指标。
 
 先运行：
 

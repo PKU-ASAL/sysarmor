@@ -190,9 +190,6 @@ require_tetragon_archive() {
   if [[ -z "$archive" && -f "$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz" ]]; then
     archive="$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz"
   fi
-  if [[ -z "$archive" && -f "$REPO/.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz" ]]; then
-    archive="$REPO/.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz"
-  fi
   if [[ -z "$archive" || ! -f "$archive" ]]; then
     echo "[e2e-agent-namespace-self-container][ERROR] SYSARMOR_TETRAGON_ARCHIVE or local tetragon-v1.7.0-amd64.tar.gz cache is required" >&2
     exit 1

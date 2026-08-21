@@ -1,6 +1,6 @@
 # 调查指南
 
-本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。数据结构的整体定义见[系统架构](../architecture.md)，接口字段和查询参数以 [API Reference](../reference/api.md) 为准。
+本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。概念定义见[安全数据模型](../concepts/security-data-model.md)，生产流见[系统架构](../architecture.md)，接口字段和查询参数以 [API 参考](../reference/api.md)为准。
 
 ## 调查目标
 
@@ -19,7 +19,7 @@ Event -> Endpoint Signal -> Cloud Signal -> Incident
     +----------+---- Evidence --+------------+
 ```
 
-Signal 是中间行为信号，不天然等同于恶意告警。Incident 是可重复的分析报告，不是人工案件或工单。
+Signal 是检测发现，可以处于 Candidate 或 Conclusion 阶段，不天然等同于恶意告警。Incident 是可重复的安全分析报告，不是人工案件或工单。
 
 ## 调查前先固定边界
 
@@ -35,7 +35,7 @@ Signal 是中间行为信号，不天然等同于恶意告警。Incident 是可�
 
 ## 第一步：阅读 Incident
 
-从 Incident 获取当前调查入口：摘要、严重度、首次与末次观察时间、lineage、terminal、correlation key、analysis version、贡献 Signal、Evidence 子图，以及收敛方法、分数和控制条件。Schema 还预留了 MITRE、seed 和 path 字段，但当前 Incident Builder 不填充它们，不能将空值解释为“没有对应技术或路径”。
+从 Incident 获取当前调查入口：摘要、严重度、首次与末次观察时间、lineage、结论实体、correlation key、analysis version、贡献 Signal、Evidence 子图，以及收敛方法、分数和控制条件。Schema 还预留了 MITRE、seed 和 path 字段，但当前 Incident Builder 不填充它们，不能将空值解释为“没有对应技术或路径”。
 
 先验证稳定身份，而不是先相信摘要：
 
@@ -60,10 +60,10 @@ Incident 的确定性投影意味着相同语义输入会更新同一报告。�
 | `event_refs`、`signal_refs` | 回到输入事实或上游 Signal |
 | `entities`、`lineage_id` | 理解主体、客体和进程关系 |
 | `context_refs`、`ioc_refs` | 确认所用内容及版本 |
-| `terminal`、`cross_lineage` | 理解收敛条件和跨 lineage 意图 |
+| `stage`、`detector_kind`、`cross_lineage` | 区分候选/结论、检测器来源和跨 lineage 意图 |
 | `response_intent` | 查看建议，不将其误作已执行动作 |
 
-Endpoint Signal 在本地行为流附近生成，适合解释低延迟规则命中。Cloud Signal 来自当前批次和同作用域历史窗口的组合。当前 Cloud Signal 构造器主要填充稳定 ID、名称、位置、风险、稀有度、实体和标签，尚未填充 `rule_id`、`rule_version`、`event_refs`、`signal_refs`、严重度、置信度和模式；调查时必须从 Incident 的贡献 Signal、有效策略和分析作用域补充验证。完整派生引用链是需要补齐的工程约束。
+Endpoint Signal 在本地行为流附近生成，适合解释低延迟规则命中。Cloud Signal 来自当前批次和同作用域历史窗口的组合。当前 Cloud Signal 构造器填充稳定 ID、名称、位置、阶段、检测器类型、风险、稀有度、实体、标签和上游 Signal 引用，尚未填充 `rule_id`、`rule_version`、`event_refs`、严重度、置信度和模式；调查时必须从 Incident 的贡献 Signal、有效策略和分析作用域补充验证。完整派生引用链是需要补齐的工程约束。
 
 一个 Signal 可以表示值得保留的行为或异常，而非确定恶意。只有规则语义、上下文、Evidence 和收敛条件共同支持时，才应升级调查结论。
 
@@ -79,6 +79,7 @@ Event 是调查中的原子事实。检查行为类型、发生时间、Agent/�
 - Signal 引用是否存在，是否因本地淘汰而只能使用平台副本；
 - 原始引用是否可用，规范化结果是否足以复核；
 - collection、存储或 telemetry 是否报告丢弃和解析错误。
+- `identity_status` 是否为 `unavailable`，以及 Evidence 中是否存在相应 gap/incomplete。
 
 缺少 Event 不应被静默解释成“行为未发生”。应结合有效 collection policy、Agent health、storage-drop、batch drop、解析错误和上传 checkpoint 判断是未采集、未保存、未上传，还是确实不存在。
 
@@ -87,19 +88,19 @@ Event 是调查中的原子事实。检查行为类型、发生时间、Agent/�
 Evidence 按目标模型分为三个层次：
 
 1. Signal 自带的轻量引用：Event、上游 Signal、实体和 raw reference。
-2. Incident 的初始 Evidence 子图：由贡献 Signal 的实体关系构建。
+2. Incident 的 Evidence 子图：由 Event 构建关系边，贡献 Signal 只选择调查种子。
 3. 受控回拉的原始材料：目标能力，用于高风险调查补充，而不是生成 Incident 的前提。
 
 当前控制面已经具备 Evidence pullback 请求、下发和结果回传通道，但 Agent 只根据 `target` 返回一个实体占位子图，不读取 Event、`raw_ref` 或其他原始材料。该结果只能验证控制链路，不能作为“原始证据已回拉”的证明。
 
-当前实体图会把 Signal 中的实体组织为节点，并按进程与文件、socket 或其他实体的关系形成边。代码库已提供 Evidence 子图、K-hop 邻域和最短路径算法。它们可以回答“哪些实体相连”和“局部最短连接是什么”，但不能单独证明时间因果、攻击意图或唯一攻击路径。
+当前 Worker 将同一 tenant、分析作用域和时间窗口内的当前与历史 Event 组织为进程、文件和 socket 图。进程执行形成父进程到子进程的边，文件写入和网络连接形成进程到对象的边；贡献 Signal 只提供最多 32 个种子。Evidence 取这些种子在最多 100,000 条 Event 上的最短路径并集。它可以回答“哪些已观测事实连接了这些发现”，但不是完整 Steiner Tree，也不能单独证明攻击意图或唯一攻击路径。
 
 使用图结果时遵守：
 
-- 图边来自可追踪的 Signal 与实体引用；
+- 每条生产图边必须带可追踪的 `event_refs`，Signal 不能单独生成因果边；
 - 最短路径是拓扑结果，不等于最可能攻击路径；
 - K-hop 是邻域裁剪，不等于因果边界；
-- 缺失节点可能源于策略、保留、上传或回拉限制；
+- `gap` 节点和 `incomplete` 边表示身份无法恢复，缺失节点还可能源于策略、保留、上传或回拉限制；
 - 补充 Evidence 不能修改原始 Event 或伪造既有引用。
 
 ## 第五步：判断结论与缺口
@@ -137,9 +138,9 @@ Signal 中的 response intent 只表达建议。执行前确认：
 
 | 状态 | 调查能力 |
 |---|---|
-| 当前已具备 | Event、Endpoint/Cloud Signal 查询基础，15 分钟同作用域历史关联，稳定 Incident，贡献 Signal，Evidence 实体子图，K-hop 与最短路径算法，Evidence pullback 控制链路，确定性重算与投影 |
+| 当前已具备 | Event、Endpoint/Cloud Signal 查询基础，15 分钟同作用域历史关联，稳定 Incident，贡献 Signal，Event provenance Evidence 子图，显式 gap/incomplete，K-hop 与最短路径算法，Evidence pullback 控制链路，确定性重算与投影 |
 | 工程基础已具备但仍需产品化 | 从 Incident 连续下钻到所有原始材料、完整 Incident UI、调查过程中统一展示健康与数据缺口 |
-| 目标能力 | 实质原始材料回拉、完整派生引用链、完整因果路径恢复、候选路径排序、攻击阶段推理、自然语言根因解释、分析员反馈学习、受约束的 Agentic 调查与策略建议 |
+| 目标能力 | 实质原始材料回拉、完整派生引用链、跨保留缺口的完整因果路径恢复、Steiner Tree、候选路径排序、攻击阶段推理、自然语言根因解释、分析员反馈学习、受约束的 Agentic 调查与策略建议 |
 
 目标能力不能作为当前结论的证据。现阶段调查必须以可查询 Event、Signal、Evidence、策略版本和运行健康为准。
 

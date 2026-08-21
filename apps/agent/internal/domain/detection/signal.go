@@ -2,10 +2,28 @@ package detection
 
 type SignalWhere uint8
 
+type SignalStage uint8
+
+type DetectorKind uint8
+
 const (
 	SignalWhereUnspecified SignalWhere = iota
 	SignalWhereEndpoint
 	SignalWhereCloud
+)
+
+const (
+	SignalStageUnspecified SignalStage = iota
+	SignalStageCandidate
+	SignalStageConclusion
+)
+
+const (
+	DetectorKindUnspecified DetectorKind = iota
+	DetectorKindRule
+	DetectorKindModel
+	DetectorKindGraph
+	DetectorKindSystem
 )
 
 type Entity struct {
@@ -39,13 +57,18 @@ type Signal struct {
 	Entities       []Entity
 	EventRefs      []string
 	SignalRefs     []string
-	Terminal       bool
+	Stage          SignalStage
+	DetectorKind   DetectorKind
 	Evidence       *Evidence
 	CrossLineage   bool
 	ResponseIntent *ResponseIntent
 	RuleID         string
 	RuleVersion    uint64
 	RuleSetRef     string
+	ModelRef       string
+	ModelVersion   string
+	ModelDigest    string
+	FeatureSchema  string
 	ContextRefs    []ContentRef
 	IOCRefs        []ContentRef
 	Severity       string

@@ -69,8 +69,7 @@ func NormalizeDetectionPolicy(value DetectionPolicy) DetectionPolicy {
 func defaultCollectionPolicy() CollectionPolicy {
 	return CollectionPolicy{
 		Behaviors: []string{
-			"process.exec", "process.exit", "process.fork", "file.read",
-			"file.write", "file.chmod", "network.connect",
+			"process.exec", "file.read", "file.write", "file.chmod", "network.connect",
 		},
 		ObserveOnly: true,
 	}

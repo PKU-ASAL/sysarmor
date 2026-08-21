@@ -161,7 +161,7 @@ func (r *Coordinator) startDataPlane(ctx context.Context, startup runtimeStartup
 	dataCtx, cancel := context.WithCancel(ctx)
 	active := &activeRuntime{
 		sensor: startup.sensor, bus: bus, batcher: batcher, sender: sender,
-		endpoint: NewEndpointRuntime(&r.policyState, norm, builder), cancel: cancel, local: NewLocalRuntime(stopLocal),
+		endpoint: NewEndpointRuntime(&r.policyState, norm, builder, r.learningDetector, r.processProfiles), cancel: cancel, local: NewLocalRuntime(stopLocal),
 		dataContext: dataCtx,
 	}
 	active.stopSensor = idempotentSensorStop(startup.sensor)
@@ -177,7 +177,7 @@ func (r *Coordinator) startEventNormalizer(startup runtimeStartup) *eventadapter
 	norm := eventadapter.NewEventNormalizer(identity.AgentID, identity.HostID, eventadapter.EventNormalizerOptions{
 		TenantID: identity.TenantID, ScopeType: startup.scopeType, ScopeSelector: startup.scopeSelector,
 		Labels: r.telemetryState.runtimeLabels(startup.scopeType, startup.scopeSelector, startup.capability.Backend), InitialSequence: r.telemetryState.eventSeq,
-	})
+	}, r.processProfiles)
 	r.managementState.setNormalizer(norm)
 	return norm
 }

@@ -77,7 +77,7 @@ func TestBatchProjectorUsesCloudSignalObservedTime(t *testing.T) {
 
 func TestDecodeHistoryPreservesSignalObservedTime(t *testing.T) {
 	observedAt := time.Unix(20, 0).UTC()
-	raw := json.RawMessage(`{"id":"signal-a","where":"SIGNAL_WHERE_ENDPOINT","@timestamp":"` + observedAt.Format(time.RFC3339Nano) + `"}`)
+	raw := json.RawMessage(`{"id":"signal-a","where":"SIGNAL_WHERE_ENDPOINT","stage":"SIGNAL_STAGE_CANDIDATE","detectorKind":"DETECTOR_KIND_RULE","@timestamp":"` + observedAt.Format(time.RFC3339Nano) + `"}`)
 
 	history, err := decodeHistory(nil, []json.RawMessage{raw})
 

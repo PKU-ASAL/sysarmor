@@ -19,11 +19,11 @@ type EventQuery struct {
 }
 
 type SignalQuery struct {
-	Labels   map[string]string
-	Layer    string
-	Terminal *bool
-	Limit    int
-	Offset   int
+	Labels map[string]string
+	Layer  string
+	Stage  *domaintelemetry.SignalStage
+	Limit  int
+	Offset int
 }
 
 type IncidentQuery struct {
@@ -51,8 +51,11 @@ func (service *QueryService) Signals(ctx context.Context, request managerapp.Req
 	if err := service.authorize(request); err != nil {
 		return nil, err
 	}
+	if query.Stage != nil && *query.Stage != domaintelemetry.SignalStageCandidate && *query.Stage != domaintelemetry.SignalStageConclusion {
+		return nil, failure.New(failure.InvalidArgument, "signal stage must be candidate or conclusion")
+	}
 	return service.reader.Signals(ctx, request.Actor.TenantID, ports.SignalFilter{Labels: cloneLabels(query.Labels),
-		Layer: strings.TrimSpace(query.Layer), Terminal: query.Terminal, Limit: query.Limit, Offset: query.Offset})
+		Layer: strings.TrimSpace(query.Layer), Stage: query.Stage, Limit: query.Limit, Offset: query.Offset})
 }
 
 func (service *QueryService) Incidents(ctx context.Context, request managerapp.RequestContext, query IncidentQuery) ([]domaintelemetry.Document, error) {

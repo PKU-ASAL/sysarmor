@@ -2,6 +2,7 @@ package tetragon
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -136,13 +137,13 @@ func TestBackendAppliesNamespaceSelfTracingPolicy(t *testing.T) {
 	}
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "collection.yaml")
-	if err := os.WriteFile(policyPath, []byte(`{"behaviors":["process.exec"],"observe_only":true}
+	if err := os.WriteFile(policyPath, []byte(`{"behaviors":["network.connect"],"observe_only":true}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	appliedPath := filepath.Join(dir, "applied.yaml")
 	tetraPath := filepath.Join(dir, "tetra")
-	raw := `{"process_kprobe":{"process":{"pid":100,"uid":0,"binary":"/bin/busybox","arguments":"id","start_time":"2026-06-14T10:00:00Z"},"parent":{"pid":99,"binary":"/sbin/init","start_time":"2026-06-14T09:59:59Z"},"function_name":"security_bprm_creds_from_file","args":[{"file_arg":{"path":"/bin/busybox"}}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:00Z"}`
+	raw := `{"process_kprobe":{"process":{"pid":100,"uid":0,"binary":"/usr/bin/curl","start_time":"2026-06-14T10:00:00Z"},"parent":{"pid":99,"binary":"/bin/bash"},"function_name":"security_socket_connect","args":[{"sockaddr_arg":{"addr":"203.0.113.10","port":443}}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:00Z"}`
 	tetraScript := "#!/bin/sh\nif [ \"$1 $2\" = \"tracingpolicy add\" ]; then cp \"$3\" '" + appliedPath + "'; exit 0; fi\nif [ \"$1 $2\" = \"tracingpolicy list\" ]; then printf '%s\\n' 'sysarmor-runtime-collection'; exit 0; fi\nprintf '%s\\n' '" + raw + "'\n"
 	if err := os.WriteFile(tetraPath, []byte(tetraScript), 0o755); err != nil {
 		t.Fatal(err)
@@ -150,7 +151,7 @@ func TestBackendAppliesNamespaceSelfTracingPolicy(t *testing.T) {
 	backend := NewBackendWithBundle(policyPath, "", "test", BundleConfig{TetraPath: tetraPath})
 	backend.EventTransport = "tetra"
 	intent := contract.CollectionIntent{
-		Behaviors:     []string{"process.exec"},
+		Behaviors:     []string{"network.connect"},
 		ScopeType:     "namespace",
 		ScopeSelector: "self",
 		ObserveOnly:   true,
@@ -195,7 +196,7 @@ func TestBackendManagedSubscribeUsesPolicyScopedGetEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	argsPath := filepath.Join(dir, "getevents.args")
-	raw := `{"process_kprobe":{"process":{"pid":100,"uid":0,"binary":"/bin/busybox","arguments":"id","start_time":"2026-06-14T10:00:00Z"},"parent":{"pid":99,"binary":"/sbin/init","start_time":"2026-06-14T09:59:59Z"},"function_name":"security_bprm_creds_from_file","args":[{"file_arg":{"path":"/bin/busybox"}}],"policy_name":"sysarmor-runtime-collection"},"node_name":"node-a","time":"2026-06-14T10:00:00Z"}`
+	raw := `{"process_exec":{"process":{"pid":100,"uid":0,"exec_id":"exec-a","binary":"/bin/busybox","arguments":"id","start_time":"2026-06-14T10:00:00Z"},"parent":{"pid":99,"binary":"/sbin/init","start_time":"2026-06-14T09:59:59Z"}},"node_name":"node-a","time":"2026-06-14T10:00:00Z"}`
 	tetraPath := filepath.Join(dir, "tetra")
 	tetraScript := "#!/bin/sh\nif [ \"$1 $2\" = \"tracingpolicy add\" ]; then exit 0; fi\nif [ \"$1 $2\" = \"tracingpolicy list\" ]; then printf '%s\\n' 'sysarmor-runtime-collection'; exit 0; fi\nif [ \"$1 $2\" = \"tracingpolicy delete\" ]; then exit 0; fi\nprintf '%s\\n' \"$*\" > '" + argsPath + "'\nprintf '%s\\n' '" + raw + "'\n"
 	if err := os.WriteFile(tetraPath, []byte(tetraScript), 0o755); err != nil {
@@ -223,7 +224,7 @@ func TestBackendManagedSubscribeUsesPolicyScopedGetEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := string(args)
-	for _, want := range []string{"getevents -o json", "--policy-names sysarmor-runtime-collection", "--event-types PROCESS_KPROBE"} {
+	for _, want := range []string{"getevents -o json", "--event-types PROCESS_EXEC"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("tetra args = %q, missing %q", joined, want)
 		}
@@ -239,7 +240,7 @@ func TestBuildTracingPolicyUsesCollectionFilters(t *testing.T) {
 			{Behavior: "file.write", BinaryPrefixes: []string{"/usr/bin"}, FilePrefixes: []string{"/dev/shm", "/var/lib/app/plugins"}},
 		},
 	}))
-	for _, want := range []string{"security_bprm_creds_from_file", `"Prefix"`, `"security_socket_connect"`, "matchBinaries", `"/usr/bin"`, `"/opt/app/bin"`, `"AF_INET"`, `"security_file_permission"`, `"/dev/shm"`, `"/var/lib/app/plugins"`, `"Equal"`, `"2"`} {
+	for _, want := range []string{`"Prefix"`, `"security_socket_connect"`, "matchBinaries", `"/usr/bin"`, `"/opt/app/bin"`, `"AF_INET"`, `"security_file_permission"`, `"/dev/shm"`, `"/var/lib/app/plugins"`, `"Equal"`, `"2"`} {
 		if !strings.Contains(data, want) {
 			t.Fatalf("generated policy missing %q:\n%s", want, data)
 		}
@@ -251,6 +252,40 @@ func TestBuildTracingPolicyUsesCollectionFilters(t *testing.T) {
 	}
 	if strings.Contains(data, "AF_INET6") {
 		t.Fatalf("generated policy should honor explicit socket families:\n%s", data)
+	}
+}
+
+func TestBuildTracingPolicyMandatoryBaselineIgnoresNarrowSelectors(t *testing.T) {
+	data := string(buildTracingPolicy(contract.CollectionIntent{
+		Behaviors:          []string{"process.exec", "file.write", "network.connect"},
+		MandatoryBehaviors: []string{"process.exec", "file.write", "network.connect"},
+		BehaviorFilters: []contract.CollectionBehaviorFilter{{
+			Behavior: "network.connect", BinaryPrefixes: []string{"/tmp/"}, SocketPorts: []string{"443"},
+			FilePrefixes: []string{"/dev/shm/"},
+		}},
+	}))
+	if strings.Contains(data, `"/tmp/"`) || strings.Contains(data, `"/dev/shm/"`) {
+		t.Fatalf("mandatory baseline retained user selectors:\n%s", data)
+	}
+	if !strings.Contains(data, `- "/"`) {
+		t.Fatalf("mandatory file baseline did not widen file selector:\n%s", data)
+	}
+}
+
+func TestBuildTracingPolicyExcludesRecursiveFileWriteSinks(t *testing.T) {
+	data := string(buildTracingPolicy(contract.CollectionIntent{
+		Behaviors:          []string{"file.write"},
+		MandatoryBehaviors: []string{"file.write"},
+		FileWriteExcludes:  []string{"/var/log/syslog", "/var/lib/sysarmor", "/run/sysarmor"},
+	}))
+
+	if !strings.Contains(data, `operator: "NotPrefix"`) {
+		t.Fatalf("mandatory file.write exclusion operator missing:\n%s", data)
+	}
+	for _, prefix := range []string{"/var/log/syslog", "/var/lib/sysarmor", "/run/sysarmor"} {
+		if !strings.Contains(data, fmt.Sprintf("%q", prefix)) {
+			t.Fatalf("mandatory file.write exclusion %q missing:\n%s", prefix, data)
+		}
 	}
 }
 
@@ -272,7 +307,7 @@ func TestBuildTracingPolicyPushesNamespaceScope(t *testing.T) {
 			t.Fatalf("generated policy missing %q:\n%s", want, data)
 		}
 	}
-	if strings.Count(data, "matchNamespaces:") != 3 {
+	if strings.Count(data, "matchNamespaces:") != 2 {
 		t.Fatalf("generated policy should attach namespace selectors to each kprobe selector:\n%s", data)
 	}
 }
@@ -298,7 +333,7 @@ func TestBuildTracingPolicySeparatesReadAndWriteFileAccess(t *testing.T) {
 	}
 }
 
-func TestCompileReportMarksNamespaceScopeAsPushedDown(t *testing.T) {
+func TestCompileReportMarksNativeLifecycleNamespaceScopeAsAgentSide(t *testing.T) {
 	report := CompileReport(contract.CollectionIntent{
 		Behaviors: []string{"process.exec"},
 		ScopeType: "namespace", ScopeSelector: "self",
@@ -307,16 +342,11 @@ func TestCompileReportMarksNamespaceScopeAsPushedDown(t *testing.T) {
 			{Namespace: "Mnt", Values: []string{"4026533002"}},
 		},
 	})
-	if !selectorReportContains(report.PushedDownSelectors, "process.exec", "scope.namespace") {
-		t.Fatalf("namespace scope was not reported as pushed down: %+v", report)
+	if selectorReportContains(report.PushedDownSelectors, "process.exec", "scope.namespace") {
+		t.Fatalf("native lifecycle namespace scope cannot be pushed into a tracing policy: %+v", report)
 	}
-	if selectorReportContains(report.AgentSideSelectors, "process.exec", "scope.namespace") {
-		t.Fatalf("namespace scope should not be reported as agent-side when resolved: %+v", report)
-	}
-	for _, warning := range report.Warnings {
-		if strings.Contains(warning, "has no pushdown selectors") {
-			t.Fatalf("namespace scope should count as a pushdown selector, warnings = %v", report.Warnings)
-		}
+	if !selectorReportContains(report.AgentSideSelectors, "process.exec", "scope.namespace") {
+		t.Fatalf("native lifecycle namespace scope was not reported as agent-side: %+v", report)
 	}
 }
 
@@ -353,7 +383,7 @@ func TestTetraGetEventsArgsArePolicyScoped(t *testing.T) {
 		Behaviors: []string{"process.exec", "network.connect", "file.open"},
 	})
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"getevents", "-o json", "--policy-names " + runtimeTracingPolicyName, "--event-types PROCESS_KPROBE"} {
+	for _, want := range []string{"getevents", "-o json", "--event-types PROCESS_EXEC,PROCESS_KPROBE"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("args = %q, missing %q", joined, want)
 		}

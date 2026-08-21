@@ -12,6 +12,7 @@ import (
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
+	dataplanecontract "github.com/sysarmor/sysarmor-next-project/packages/contracts/dataplane"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/contracts/schema"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -32,12 +33,33 @@ func (decoder *BatchDecoder) Decode(message ports.RawMessage) (ports.DataBatch, 
 	if !validBatchIdentity(wire) {
 		return ports.DataBatch{}, contractmapper.PermanentMessage(message, "invalid_data_batch", errors.New("batch identity is required"))
 	}
+	if err := dataplanecontract.ValidateCandidateReferences(wire); err != nil {
+		failureClass := "invalid_data_batch"
+		var violation *dataplanecontract.ReferenceViolation
+		if errors.As(err, &violation) {
+			failureClass = string(violation.Code)
+		}
+		rejection := ports.CandidateRejection{
+			TenantID: wire.GetHeader().GetTenantId(), AgentID: wire.GetHeader().GetAgentId(), BatchID: wire.GetHeader().GetBatchId(),
+			FailureClass: failureClass, Signals: candidateRejections(wire),
+		}
+		return ports.DataBatch{}, contractmapper.PermanentCandidateMessage(message, failureClass, err, rejection)
+	}
 	stabilizeBatchTime(wire, decoder.currentTime())
 	batch, err := mapDataBatch(message, wire)
 	if err != nil {
 		return ports.DataBatch{}, contractmapper.PermanentMessage(message, "invalid_data_batch", err)
 	}
 	return batch, nil
+}
+
+func candidateRejections(batch *dataplanev1.DataBatch) []ports.RejectedSignal {
+	values := dataplanecontract.ModelCandidateRejections(batch)
+	result := make([]ports.RejectedSignal, 0, len(values))
+	for _, value := range values {
+		result = append(result, ports.RejectedSignal{SignalID: value.SignalID, EventSequence: value.EventSequence})
+	}
+	return result
 }
 
 func mapDataBatch(source ports.RawMessage, wire *dataplanev1.DataBatch) (ports.DataBatch, error) {

@@ -50,14 +50,14 @@ labels:
         - helper_download
     - id: payload_dropped
       name: payload_dropped
-      terminal: false
+      stage: candidate
       entities:
         - "file:/var/lib/app/plugins/helper"
       link_events:
         - helper_write
     - id: suspicious_exec_connect
       name: suspicious_exec_connect
-      terminal: false
+      stage: candidate
       entities:
         - "file:/var/lib/app/plugins/helper"
         - "socket:10.66.0.99:443"
@@ -75,4 +75,4 @@ labels:
         - helper_exec
         - helper_c2
 policy:
-  terminal_signals_allowed: 0
+  conclusion_signals_allowed: 0

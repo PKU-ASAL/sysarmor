@@ -71,16 +71,16 @@ assert_ready() {
 }
 
 signal_matches_scenario() {
-  local input="$1" marker="$2" rule="$3" severity="$4" terminal="$5" behaviors="$6" ports="$7"
+  local input="$1" marker="$2" rule="$3" severity="$4" stage="$5" behaviors="$6" ports="$7"
   jq -s -e --arg marker "$marker" --arg rule "$rule" --arg severity "$severity" \
-    --argjson terminal "$terminal" --arg behaviors "$behaviors" --arg ports "$ports" '
+    --arg stage "$stage" --arg behaviors "$behaviors" --arg ports "$ports" '
       ($behaviors | split(" ") | map(select(length > 0))) as $requiredBehaviors |
       ($ports | split(" ") | map(select(length > 0))) as $requiredPorts |
       any(.[];
         . as $record |
         .signalFrame.signal.ruleId == $rule and
         .signalFrame.signal.severity == $severity and
-        (.signalFrame.signal.terminal // false) == $terminal and
+        .signalFrame.signal.stage == $stage and
         ((.missingEventRefs // []) | length) == 0 and
         all($requiredBehaviors[];
           . as $behavior | any($record.eventFrames[]?; .event.behavior == $behavior)
@@ -103,14 +103,14 @@ signal_matches_scenario() {
 
 assert_detected() {
   local container="$1" scenario="$2" marker="$3" output="$4"
-  local rule severity terminal behaviors ports deadline=$((SECONDS + DETECTION_TIMEOUT))
+  local rule severity stage behaviors ports deadline=$((SECONDS + DETECTION_TIMEOUT))
   rule="$(scenario_rule "$scenario")" || fail "未知场景: $scenario"
   severity="$(scenario_severity "$scenario")"
-  terminal="$(scenario_terminal "$scenario")"
+  stage="$(scenario_stage "$scenario")"
   behaviors="$(scenario_behaviors "$scenario")"
   ports="$(scenario_ports "$scenario")"
   until query_signals_with_events "$container" "$rule" >"$output" 2>"$output.err" &&
-    signal_matches_scenario "$output" "$marker" "$rule" "$severity" "$terminal" "$behaviors" "$ports"; do
+    signal_matches_scenario "$output" "$marker" "$rule" "$severity" "$stage" "$behaviors" "$ports"; do
     if (( SECONDS >= deadline )); then
       cat "$output" >&2 2>/dev/null || true
       fail "未观察到场景 $scenario 的完整 Event/Signal 证据: $marker"

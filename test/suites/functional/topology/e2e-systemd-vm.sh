@@ -137,6 +137,7 @@ cat >"$TMP/topology-rollout-policy.json" <<'JSON'
   "policy_id": "topology-rollout-policy",
   "version": 2,
   "tenant_id": "default",
+	"protection_mode": "rule-only",
   "collection": {
     "behaviors": ["process.exec", "file.write", "network.connect"],
     "observe_only": true
@@ -147,8 +148,9 @@ cat >"$TMP/topology-rollout-policy.json" <<'JSON'
     "mode": "observe",
     "rulesets": [{"ref": "ruleset:cep-endpoint", "version": "v1", "enabled": true}]
   },
-  "mode": "observe",
-  "published": false
+	"telemetry": {"max_batch_items": 256, "max_batch_bytes": 262144, "flush_interval": "1s"},
+	"response_policy": {"allowed_actions": ["collect", "noop"], "allowed_modes": ["observe"]},
+	  "published": false
 }
 JSON
 vagrant ssh mgr -c "curl -sf -H 'Authorization: Bearer $MANAGER_JWT' -H 'Content-Type: application/json' -X POST http://127.0.0.1:9443/api/v1/policies --data-binary @-" \

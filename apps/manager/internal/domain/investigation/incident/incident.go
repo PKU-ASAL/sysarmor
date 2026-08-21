@@ -16,7 +16,7 @@ func NewBuilder() *Builder {
 	return &Builder{Scorer: rarity.CountScorer{}}
 }
 
-func (builder *Builder) Build(signals []domaintelemetry.Signal, decision convergence.Decision) domaintelemetry.Incident {
+func (builder *Builder) Build(events []domaintelemetry.Event, signals []domaintelemetry.Signal, decision convergence.Decision) domaintelemetry.Incident {
 	scorer := builder.Scorer
 	if scorer == nil {
 		scorer = rarity.CountScorer{}
@@ -28,15 +28,15 @@ func (builder *Builder) Build(signals []domaintelemetry.Signal, decision converg
 		Summary:             "SysArmor detected a causal attack chain",
 		Severity:            80,
 		LineageIDs:          lineageIDs(contributing),
-		Terminals:           terminalEntities(contributing),
-		Evidence:            evidenceSubgraph(contributing),
+		ConclusionEntities:  conclusionEntities(contributing),
+		Evidence:            evidenceSubgraph(events, contributing),
 		Converge:            &domaintelemetry.ConvergeTrace{Method: decision.Method, Score: scorer.Score(contributing), Controls: append([]string(nil), decision.Controls...)},
 		ContributingSignals: contributing,
 	}
 }
 
-func evidenceSubgraph(signals []domaintelemetry.Signal) *domaintelemetry.EvidenceSubgraph {
-	value := evidence.FromSignals(signals)
+func evidenceSubgraph(events []domaintelemetry.Event, signals []domaintelemetry.Signal) *domaintelemetry.EvidenceSubgraph {
+	value := evidence.FromEvents(events, signals)
 	return &value
 }
 
@@ -89,10 +89,10 @@ func cloneLabels(labels map[string]string) map[string]string {
 	return result
 }
 
-func terminalEntities(signals []domaintelemetry.Signal) []string {
+func conclusionEntities(signals []domaintelemetry.Signal) []string {
 	var result []string
 	for _, signal := range signals {
-		if !signal.Terminal {
+		if signal.Stage != domaintelemetry.SignalStageConclusion {
 			continue
 		}
 		for _, current := range signal.Entities {

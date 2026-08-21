@@ -166,6 +166,7 @@ func (r *policyRuntime) setDetectionStatus(policy policymodel.Policy, report det
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	status.Learning = r.detectionStatus.Learning
 	r.detectionStatus = status
 }
 

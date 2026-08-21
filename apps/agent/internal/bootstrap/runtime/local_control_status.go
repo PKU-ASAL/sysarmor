@@ -90,11 +90,9 @@ func healthResponse(health agenthealth.AgentHealth) *controlplanev1.HealthRespon
 		TelemetryBus: &controlplanev1.TelemetryBusHealth{
 			EventCapacity:     health.TelemetryBus.EventCapacity,
 			EventBuffered:     health.TelemetryBus.EventBuffered,
-			EventDropped:      health.TelemetryBus.EventDropped,
 			EventSubscribers:  health.TelemetryBus.EventSubscribers,
 			SignalCapacity:    health.TelemetryBus.SignalCapacity,
 			SignalBuffered:    health.TelemetryBus.SignalBuffered,
-			SignalDropped:     health.TelemetryBus.SignalDropped,
 			SignalSubscribers: health.TelemetryBus.SignalSubscribers,
 		},
 		TelemetryBatcher: &controlplanev1.TelemetryBatcherHealth{
@@ -135,6 +133,11 @@ func healthResponse(health agenthealth.AgentHealth) *controlplanev1.HealthRespon
 			LastApplyError:         health.Detection.LastApplyError,
 			UpdatedAt:              timestampString(health.Detection.UpdatedAt),
 			DefaultManifestVersion: health.Detection.DefaultManifestVersion,
+			Learning: &controlplanev1.LearningRuntimeHealth{
+				Status: health.Detection.Learning.Status, LastError: health.Detection.Learning.LastError,
+				Profiles:   processProfileHealthMessage(health.Detection.Learning.Profiles),
+				Candidates: candidateLifecycleHealthMessage(health.Detection.Learning.Candidates),
+			},
 		},
 		Cep: &controlplanev1.CEPHealth{
 			ActiveGroups:     health.CEP.ActiveGroups,
@@ -162,6 +165,25 @@ func healthResponse(health agenthealth.AgentHealth) *controlplanev1.HealthRespon
 			SignalSubscribers:    health.Streams.SignalSubscribers,
 		},
 		ObservedAt: timestampString(health.ObservedAt),
+	}
+}
+
+func candidateLifecycleHealthMessage(value agenthealth.CandidateLifecycleHealth) *controlplanev1.CandidateLifecycleRuntimeHealth {
+	return &controlplanev1.CandidateLifecycleRuntimeHealth{
+		Created: value.Created, Spooled: value.Spooled, GatewayAccepted: value.GatewayAccepted,
+		GatewayDuplicateAck: value.GatewayDuplicateAck,
+		ContractRejected:    value.ContractRejected, GatewayRejected: value.GatewayRejected,
+	}
+}
+
+func processProfileHealthMessage(value agenthealth.ProcessProfileHealth) *controlplanev1.ProcessProfileRuntimeHealth {
+	return &controlplanev1.ProcessProfileRuntimeHealth{
+		Active: value.Active, Exited: value.Exited, Retained: value.Retained,
+		Compactions: value.Compactions, Expired: value.Expired, CapacityEvictions: value.CapacityEvictions,
+		FileEvictions: value.FileEvictions, NetworkEvictions: value.NetworkEvictions, EventRefEvictions: value.EventRefEvictions,
+		IdentityRetained: value.IdentityRetained, IdentityEvictions: value.IdentityEvictions, ActiveEvictions: value.ActiveEvictions, IdentityGaps: value.IdentityGaps,
+		ProfileObservations: value.ProfileObservations, FeatureUpdates: value.FeatureUpdates, LearningScoreCalls: value.LearningScoreCalls,
+		LifecycleOnlyObservations: value.LifecycleOnlyObservations, SuppressedCheckpoints: value.SuppressedCheckpoints,
 	}
 }
 

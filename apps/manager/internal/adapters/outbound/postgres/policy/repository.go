@@ -148,14 +148,14 @@ func (repo repository) Put(ctx context.Context, value domainpolicy.Policy) error
 		return err
 	}
 	_, err = repo.db.ExecContext(ctx, `
-INSERT INTO policies (tenant_id, policy_id, version, scope_type, scope_selector, mode, created_at, data)
+INSERT INTO policies (tenant_id, policy_id, version, scope_type, scope_selector, protection_mode, created_at, data)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (tenant_id, policy_id, version) DO UPDATE SET
   scope_type = EXCLUDED.scope_type,
   scope_selector = EXCLUDED.scope_selector,
-  mode = EXCLUDED.mode,
+  protection_mode = EXCLUDED.protection_mode,
   data = EXCLUDED.data
-`, value.TenantID.String(), value.ID.String(), uint64(value.Version), columns.scopeType, columns.scopeSelector, columns.mode, value.CreatedAt, document)
+`, value.TenantID.String(), value.ID.String(), uint64(value.Version), columns.scopeType, columns.scopeSelector, columns.protectionMode, value.CreatedAt, document)
 	if err != nil {
 		return fmt.Errorf("put policy: %w", err)
 	}

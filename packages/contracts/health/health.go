@@ -41,6 +41,32 @@ type DetectionHealth struct {
 	LastApplyStatus        string              `json:"last_apply_status,omitempty"`
 	LastApplyError         string              `json:"last_apply_error,omitempty"`
 	UpdatedAt              time.Time           `json:"updated_at,omitempty"`
+	Learning               LearningHealth      `json:"learning,omitempty"`
+}
+
+type LearningHealth struct {
+	Status     string                   `json:"status,omitempty"`
+	LastError  string                   `json:"last_error,omitempty"`
+	Profiles   ProcessProfileHealth     `json:"profiles,omitempty"`
+	Candidates CandidateLifecycleHealth `json:"candidates,omitempty"`
+}
+
+type CandidateLifecycleHealth struct {
+	Created             uint64 `json:"created"`
+	Spooled             uint64 `json:"spooled"`
+	GatewayAccepted     uint64 `json:"gateway_accepted"`
+	GatewayDuplicateAck uint64 `json:"gateway_duplicate_ack"`
+	ContractRejected    uint64 `json:"contract_rejected"`
+	GatewayRejected     uint64 `json:"gateway_rejected"`
+}
+
+type ProcessProfileHealth struct {
+	Active, Exited, Retained                                           uint64
+	Compactions, Expired, CapacityEvictions                            uint64
+	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
+	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
+	ProfileObservations, FeatureUpdates, LearningScoreCalls            uint64
+	LifecycleOnlyObservations, SuppressedCheckpoints                   uint64
 }
 
 type ContentRef struct {
@@ -100,11 +126,9 @@ type CollectionBehaviorCapability struct {
 type TelemetryBusHealth struct {
 	EventCapacity     uint64 `json:"event_capacity"`
 	EventBuffered     uint64 `json:"event_buffered"`
-	EventDropped      uint64 `json:"event_dropped"`
 	EventSubscribers  uint64 `json:"event_subscribers"`
 	SignalCapacity    uint64 `json:"signal_capacity"`
 	SignalBuffered    uint64 `json:"signal_buffered"`
-	SignalDropped     uint64 `json:"signal_dropped"`
 	SignalSubscribers uint64 `json:"signal_subscribers"`
 }
 

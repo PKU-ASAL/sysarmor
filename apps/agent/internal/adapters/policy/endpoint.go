@@ -26,11 +26,6 @@ func LoadEffectiveEndpointPolicy(ctx context.Context, store *sqlite.Store, path 
 	} else if ok {
 		return ParseEndpointPolicy(record.Document)
 	}
-	if record, ok, err := store.Policy(ctx, endpointPolicyKind); err != nil {
-		return domainpolicy.EndpointPolicy{}, err
-	} else if ok {
-		return ParseEndpointPolicy(record.Document)
-	}
 	document, err := os.ReadFile(path)
 	if err != nil {
 		return domainpolicy.EndpointPolicy{}, fmt.Errorf("read bootstrap policy: %w", err)

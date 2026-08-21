@@ -18,6 +18,7 @@ import (
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry/dataappend"
+	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
@@ -43,7 +44,7 @@ func TestRuntimeUploadsFakeSensorEvent(t *testing.T) {
 	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
 	var out bytes.Buffer
-	runRuntimeUntilUploadedBatch(t, runner, &out)
+	runRuntimeUntilPersistedBatch(t, runner, &out)
 	got := out.String()
 	for _, want := range []string{"agent runtime started", "sensor=fake", "agent runtime event"} {
 		if !strings.Contains(got, want) {
@@ -112,7 +113,8 @@ func TestEndpointSignalIDsContinueAcrossDetectionReplacement(t *testing.T) {
 	policy := &policymodel.DetectionPolicy{RuleSets: []policymodel.RuleSetRef{{Ref: "ruleset:signal-sequence"}}}
 	content := detectionruntime.ContentSnapshot{Rules: []detectionruntime.RuleSpec{{
 		RuleID: "signal_sequence_test", RuleSetRef: "ruleset:signal-sequence", RuntimeType: "expr",
-		Expr: detectionruntime.ExprSpec{Conditions: []detectionruntime.ConditionSpec{{Field: "process.binary_name", Op: "eq", Value: "bash"}}},
+		Stage: domaindetection.SignalStageCandidate,
+		Expr:  detectionruntime.ExprSpec{Conditions: []detectionruntime.ConditionSpec{{Field: "process.binary_name", Op: "eq", Value: "bash"}}},
 	}}}
 	firstEngine, _ := detection.NewWithRuntime(policy, contract.CollectionIntent{}, content)
 	secondEngine, _ := detection.NewWithRuntime(policy, contract.CollectionIntent{}, content)
@@ -219,7 +221,7 @@ func TestRuntimeUploadsConfiguredLabels(t *testing.T) {
 	}
 	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
-	batch := runRuntimeUntilUploadedBatch(t, runner, nil)
+	batch := runRuntimeUntilPersistedBatch(t, runner, nil)
 	if got := batch.GetEvents()[0].GetEvent().GetLabels()["scenario"]; got != "daemon-scenario" {
 		t.Fatalf("event label scenario = %q", got)
 	}
@@ -275,7 +277,7 @@ func TestRuntimeRefreshesEndpointPolicy(t *testing.T) {
 	runner.wireComponents()
 	installTestDetection(t, runner)
 	runner.policyState.applyRuntimePolicy(policymodel.DefaultPolicy("default"))
-	norm := eventadapter.NewEventNormalizer(cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})
+	norm := newTestEventNormalizer(t, runner, cfg.Agent.ID, cfg.Agent.HostID, eventadapter.EventNormalizerOptions{})
 	first := appendEndpointEventForTest(t, runner, nil, norm, sensorEventEnvelope("file.write", 100, "/usr/bin/curl", "/dev/shm/x.sh", ""))
 	updated := runner.policyState.activePolicy()
 	updated.PolicyID = "no-payload-after-refresh"

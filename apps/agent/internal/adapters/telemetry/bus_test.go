@@ -10,7 +10,7 @@ import (
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 )
 
-func TestBusSnapshotsWatchesAndDropsOldestFrame(t *testing.T) {
+func TestBusSnapshotsWatchesAndEvictsOldestFrame(t *testing.T) {
 	bus := NewBus(2)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -27,7 +27,7 @@ func TestBusSnapshotsWatchesAndDropsOldestFrame(t *testing.T) {
 		t.Fatalf("snapshot=%+v", snapshot)
 	}
 	stats := bus.Stats()
-	if stats.EventDropped != 1 || stats.EventBuffered != 2 || stats.EventOldestSequence != 2 || stats.EventNewestSequence != 3 {
+	if stats.EventEvicted != 1 || stats.EventBuffered != 2 || stats.EventOldestSequence != 2 || stats.EventNewestSequence != 3 {
 		t.Fatalf("stats=%+v", stats)
 	}
 }
@@ -40,12 +40,18 @@ func TestBusWatchesSignalsAndRemovesCancelledSubscriber(t *testing.T) {
 	if got := <-watch; got.GetSignal().GetId() != "signal-4" {
 		t.Fatalf("watched signal=%+v", got)
 	}
+	bus.PublishSignal(&dataplanev1.SignalFrame{Sequence: 5, Signal: &signalv1.Signal{Id: "signal-5"}})
+	bus.PublishSignal(&dataplanev1.SignalFrame{Sequence: 6, Signal: &signalv1.Signal{Id: "signal-6"}})
+	snapshot := bus.SnapshotSignals()
+	if len(snapshot) != 2 || snapshot[0].GetSignal().GetId() != "signal-5" || snapshot[1].GetSignal().GetId() != "signal-6" {
+		t.Fatalf("snapshot=%+v", snapshot)
+	}
 	cancel()
 	deadline := time.Now().Add(time.Second)
 	for bus.Stats().SignalSubscribers != 0 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if stats := bus.Stats(); stats.SignalSubscribers != 0 || stats.SignalNewestSequence != 4 {
+	if stats := bus.Stats(); stats.SignalSubscribers != 0 || stats.SignalEvicted != 1 || stats.SignalOldestSequence != 5 || stats.SignalNewestSequence != 6 {
 		t.Fatalf("stats=%+v", stats)
 	}
 }

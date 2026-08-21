@@ -33,8 +33,8 @@ func TestTelemetryBatchesClaimsAreTenantScoped(t *testing.T) {
 
 func TestAddMetricsAccumulatesCountersAndLatency(t *testing.T) {
 	metrics := metricsDocument{DataBatches: 1, Events: 2, TotalLatency: 10, MaxLatency: 10}
-	addMetrics(&metrics, ports.TelemetryMetrics{DataBatches: 1, Events: 3, TotalLatencyMs: 20, MaxLatencyMs: 20, LastLatencyMs: 20})
-	if metrics.DataBatches != 2 || metrics.Events != 5 || metrics.TotalLatency != 30 || metrics.MaxLatency != 20 || metrics.LastLatency != 20 || metrics.AverageLatency != 15 {
+	addMetrics(&metrics, ports.TelemetryMetrics{DataBatches: 1, Events: 3, ModelCandidatesCorrelated: 2, ModelCandidatesProjected: 2, TotalLatencyMs: 20, MaxLatencyMs: 20, LastLatencyMs: 20})
+	if metrics.DataBatches != 2 || metrics.Events != 5 || metrics.ModelCandidatesCorrelated != 2 || metrics.ModelCandidatesProjected != 2 || metrics.TotalLatency != 30 || metrics.MaxLatency != 20 || metrics.LastLatency != 20 || metrics.AverageLatency != 15 {
 		t.Fatalf("metrics = %+v", metrics)
 	}
 }
@@ -96,6 +96,7 @@ func newTelemetryDB(t *testing.T) *sql.DB {
 		`CREATE TABLE telemetry_batches (tenant_id TEXT, batch_id TEXT, status TEXT, claim_token TEXT, lease_until TIMESTAMP, completed_at TIMESTAMP, PRIMARY KEY (tenant_id,batch_id))`,
 		`CREATE TABLE metrics (tenant_id TEXT, metric_key TEXT, data BLOB, PRIMARY KEY (tenant_id,metric_key))`,
 		`CREATE TABLE rarity_baseline (tenant_id TEXT, workload_key TEXT, signal_name TEXT, signal_count INTEGER, data BLOB, updated_at TIMESTAMP, PRIMARY KEY (tenant_id,workload_key,signal_name))`,
+		`CREATE TABLE worker_signal_processing (tenant_id TEXT, signal_id TEXT, agent_id TEXT, batch_id TEXT, subject_id TEXT, trigger_event_id TEXT, event_sequence INTEGER, status TEXT, failure_class TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id,signal_id))`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)

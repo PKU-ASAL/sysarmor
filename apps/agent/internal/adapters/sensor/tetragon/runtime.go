@@ -296,7 +296,7 @@ func defaultTetragonArgs() []string {
 }
 
 func tetraGetEventsArgs(intent contract.CollectionIntent) []string {
-	args := []string{"getevents", "-o", "json", "--policy-names", runtimeTracingPolicyName}
+	args := []string{"getevents", "-o", "json"}
 	eventTypes := tetraEventTypesForIntent(intent)
 	if len(eventTypes) > 0 {
 		args = append(args, "--event-types", strings.Join(eventTypes, ","))
@@ -308,10 +308,11 @@ func tetraEventTypesForIntent(intent contract.CollectionIntent) []string {
 	types := map[string]bool{}
 	for _, behavior := range intent.Behaviors {
 		switch domainevent.NormalizeBehavior(behavior) {
-		case domainevent.BehaviorProcessExec,
-			domainevent.BehaviorProcessFork,
-			domainevent.BehaviorProcessExit,
-			domainevent.BehaviorNetworkConnect,
+		case domainevent.BehaviorProcessExec, domainevent.BehaviorProcessFork:
+			types["PROCESS_EXEC"] = true
+		case domainevent.BehaviorProcessExit:
+			types["PROCESS_EXIT"] = true
+		case domainevent.BehaviorNetworkConnect,
 			domainevent.BehaviorFileOpen,
 			domainevent.BehaviorFileRead,
 			domainevent.BehaviorFileWrite,
@@ -320,7 +321,7 @@ func tetraEventTypesForIntent(intent contract.CollectionIntent) []string {
 		}
 	}
 	var out []string
-	for _, eventType := range []string{"PROCESS_KPROBE"} {
+	for _, eventType := range []string{"PROCESS_EXEC", "PROCESS_EXIT", "PROCESS_KPROBE"} {
 		if types[eventType] {
 			out = append(out, eventType)
 		}

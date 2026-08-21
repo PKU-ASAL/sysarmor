@@ -1,0 +1,48 @@
+{
+  "policy_id": "hybrid-linux",
+  "version": 1,
+  "behaviors": [
+    {
+      "id": "process.exec",
+      "enabled": true,
+      "selectors": {
+        "process": {
+          "binary_prefixes": ["/tmp/", "/dev/shm/", "/var/tmp/", "/var/lib/app/plugins/", "/bin/sh", "/bin/bash", "/usr/bin/sh", "/usr/bin/bash", "/usr/bin/curl", "/usr/bin/wget", "/usr/bin/chmod", "/bin/chmod"]
+        }
+      }
+    },
+    {"id": "process.exit", "enabled": true},
+    {"id": "process.fork", "enabled": true},
+    {
+      "id": "network.connect",
+      "enabled": true,
+      "selectors": {
+        "process": {
+          "binary_prefixes": ["/tmp/", "/dev/shm/", "/var/tmp/", "/var/lib/app/plugins/", "/usr/bin/curl", "/usr/bin/wget", "/usr/bin/nc", "/usr/bin/socat", "/bin/sh", "/bin/bash", "/usr/bin/sh", "/usr/bin/bash"]
+        },
+        "socket": {
+          "families": ["AF_INET", "AF_INET6"],
+          "addr_refs": ["ioc:c2-ip-feed"],
+          "port_refs": ["ioc:c2-download-port-feed", "ioc:c2-control-port-feed"]
+        }
+      }
+    },
+    {
+      "id": "file.read",
+      "enabled": true,
+      "selectors": {"file": {"prefix_refs": ["ctx:credential-path-prefixes"]}}
+    },
+    {
+      "id": "file.write",
+      "enabled": true,
+      "selectors": {"file": {"prefix_refs": ["ctx:payload-path-prefixes", "ctx:persistence-path-prefixes"]}}
+    },
+    {
+      "id": "file.chmod",
+      "enabled": true,
+      "selectors": {"file": {"prefix_refs": ["ctx:payload-path-prefixes", "ctx:persistence-path-prefixes"]}}
+    }
+  ],
+  "scope_type": "host",
+  "observe_only": true
+}

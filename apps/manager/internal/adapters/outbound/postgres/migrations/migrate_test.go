@@ -15,8 +15,8 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
-	if got.Version != 6 {
-		t.Fatalf("migration version = %d, want 6", got.Version)
+	if got.Version != 9 {
+		t.Fatalf("migration version = %d, want 9", got.Version)
 	}
 	query := FakeAllQueries()
 	for _, want := range []string{
@@ -34,6 +34,13 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 		"INSERT INTO schema_migrations (version) VALUES (5)",
 		"CREATE TABLE IF NOT EXISTS response_decisions",
 		"INSERT INTO schema_migrations (version) VALUES (6)",
+		"DELETE FROM policy_assignments",
+		"INSERT INTO schema_migrations (version) VALUES (7)",
+		"CREATE TABLE IF NOT EXISTS worker_candidate_rejections",
+		"INSERT INTO schema_migrations (version) VALUES (8)",
+		"CREATE TABLE IF NOT EXISTS worker_signal_processing",
+		"DROP TABLE worker_candidate_rejections",
+		"INSERT INTO schema_migrations (version) VALUES (9)",
 		"SELECT pg_advisory_unlock",
 	} {
 		if !strings.Contains(query, want) {
@@ -55,8 +62,8 @@ func TestApplyMigrationsUpgradesExistingV3Schema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 6 {
-		t.Fatalf("version=%d, want 6", got.Version)
+	if got.Version != 9 {
+		t.Fatalf("version=%d, want 9", got.Version)
 	}
 	queries := FakeAllQueries()
 	if !strings.Contains(queries, "ADD COLUMN IF NOT EXISTS claim_token") ||
@@ -64,11 +71,37 @@ func TestApplyMigrationsUpgradesExistingV3Schema(t *testing.T) {
 		!strings.Contains(queries, "CREATE TABLE IF NOT EXISTS control_audit") ||
 		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (5)") ||
 		!strings.Contains(queries, "CREATE TABLE IF NOT EXISTS response_decisions") ||
-		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") {
-		t.Fatalf("v3 upgrade did not apply v4 through v6:\n%s", queries)
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") ||
+		!strings.Contains(queries, "DELETE FROM policy_assignments") ||
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") ||
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (8)") ||
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (9)") {
+		t.Fatalf("v3 upgrade did not apply v4 through v9:\n%s", queries)
 	}
 	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (3)") {
 		t.Fatalf("v3 migration was replayed:\n%s", queries)
+	}
+}
+
+func TestApplyMigrationsUpgradesExistingV6SchemaWithPolicyResetOnly(t *testing.T) {
+	db := openFakeDB(t, nil)
+	FakeSetQueryResultSets([][][]driver.Value{
+		{{true}},
+		{{int64(1)}, {int64(2)}, {int64(3)}, {int64(4)}, {int64(5)}, {int64(6)}},
+	})
+	got, err := ApplyMigrations(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != 9 {
+		t.Fatalf("version=%d, want 9", got.Version)
+	}
+	queries := FakeAllQueries()
+	if !strings.Contains(queries, "DELETE FROM policy_assignments") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (8)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (9)") {
+		t.Fatalf("v6 upgrade did not apply v7 through v9:\n%s", queries)
+	}
+	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") {
+		t.Fatalf("v6 migration was replayed:\n%s", queries)
 	}
 }
 

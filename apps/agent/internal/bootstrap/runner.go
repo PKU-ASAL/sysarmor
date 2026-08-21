@@ -12,11 +12,13 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
 	agentcontent "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/content"
+	detectionadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/detection"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/fake"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	agentruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/bootstrap/runtime"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/matcher"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
@@ -69,7 +71,11 @@ func NewRunner(ctx context.Context, cfg config.Config) (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load startup content: %w", err)
 	}
-	dependencies := agentruntime.Dependencies{Config: cfg, Sensor: sensor, Content: contentStore, FeatureFlags: featureFlags, Policy: newPolicyController}
+	learningDetector, learningErr := learningDetectorFromConfig(cfg)
+	dependencies := agentruntime.Dependencies{
+		Config: cfg, Sensor: sensor, Content: contentStore, FeatureFlags: featureFlags, Policy: newPolicyController,
+		LearningDetector: learningDetector, LearningError: learningErr,
+	}
 	store, err := configureLocalState(ctx, &dependencies)
 	if err != nil {
 		return nil, err
@@ -85,6 +91,10 @@ func NewRunner(ctx context.Context, cfg config.Config) (*Runner, error) {
 	return &Runner{runtime: runtime, store: store, resources: resources}, nil
 }
 
+func learningDetectorFromConfig(cfg config.Config) (ports.ProfileDetector, error) {
+	return detectionadapter.LoadModelBundle(cfg.Learning.ModelPath, parseTrustKeys(cfg.Learning.TrustKeys))
+}
+
 func (runner *Runner) Run(ctx context.Context, out io.Writer) error {
 	return runner.runtime.Run(ctx, agentruntime.Options{Out: out})
 }
@@ -97,9 +107,6 @@ func (runner *Runner) Close() error {
 }
 
 func configureLocalState(ctx context.Context, dependencies *agentruntime.Dependencies) (*sqlite.Store, error) {
-	if dependencies.Config.Manager.Transport != "" {
-		return nil, nil
-	}
 	cfg := &dependencies.Config
 	store, err := sqlite.Open(ctx, sqlite.Options{
 		RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes,

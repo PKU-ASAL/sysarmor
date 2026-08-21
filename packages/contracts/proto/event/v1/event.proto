@@ -49,4 +49,5 @@ message CanonicalEvent {
   uint64 occurred_at_ns = 19;
   string behavior = 20;
   map<string, string> labels = 21;
+  string identity_status = 22;
 }

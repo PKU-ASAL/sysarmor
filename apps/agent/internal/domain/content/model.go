@@ -33,8 +33,16 @@ type Rule struct {
 	ContextRefs    []string
 	IOCRefs        []string
 	ResponseIntent ResponseIntent
-	Terminal       *bool
+	Stage          SignalStage
 }
+
+type SignalStage string
+
+const (
+	SignalStageCandidate  SignalStage = "candidate"
+	SignalStageConclusion SignalStage = "conclusion"
+)
+
 type RuntimeExpr struct {
 	Conditions     []RuntimeCondition
 	ConditionGroup *RuntimeConditionNode

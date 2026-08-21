@@ -55,6 +55,10 @@ policy:
 content:
   trust_keys: "" # comma-separated key_id=base64_ed25519_public_key
 
+learning:
+  model_path: "" # optional signed model bundle; empty disables learning detection
+  trust_keys: "" # comma-separated key_id=base64_ed25519_public_key
+
 resource:
   max_active_cep_groups: 4096
   max_event_refs_per_signal: 128

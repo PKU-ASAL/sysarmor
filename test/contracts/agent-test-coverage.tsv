@@ -11,7 +11,7 @@ test/suites/functional/endpoint/e2e-capability-btf.sh	lifecycle	missing required
 test/suites/functional/endpoint/e2e-capability-bpffs.sh	lifecycle	missing required bpffs causes explicit startup failure	test/suites/functional/endpoint/capability.sh	covered
 test/suites/functional/endpoint/e2e-daemon-container.sh	data	container daemon exports normalized events and health	test/suites/functional/platform/e2e-agent-gateway-manager-local.sh	covered
 test/suites/functional/endpoint/e2e-daemon.sh	data	fake sensor daemon exports events signals labels and health	apps/agent/internal/bootstrap/runtime/runtime_test.go	covered
-test/suites/functional/endpoint/e2e-dropped-health.sh	data	dropped sensor events degrade health and emit terminal signal	apps/agent/internal/bootstrap/runtime/runtime_test.go	covered
+test/suites/functional/endpoint/e2e-dropped-health.sh	data	dropped sensor events degrade health and emit System Conclusion	apps/agent/internal/bootstrap/runtime/runtime_test.go	covered
 test/suites/functional/endpoint/e2e-managed-container.sh	cloud	enrolled container installs sensor and exports one session	test/suites/functional/endpoint/e2e-namespace-self-container.sh	covered
 test/suites/functional/endpoint/e2e-managed-recover-container.sh	cloud	enrolled container recovers sensor and resumes export	apps/agent/internal/adapters/sensor/tetragon/managed_backend_test.go	covered
 test/suites/functional/endpoint/e2e-managed-restart-container.sh	cloud	enrolled container restarts sensor once and remains healthy	apps/agent/internal/adapters/sensor/tetragon/managed_backend_test.go	covered
@@ -22,7 +22,7 @@ test/suites/functional/endpoint/e2e-parse-health.sh	data	parse errors degrade Ag
 test/suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh	data	real VM Tetragon applies content policy and emits local detections	test/suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh	legacy
 test/suites/functional/endpoint/e2e-sensor-recover.sh	lifecycle	failed sensor process recovers and resumes events	apps/agent/internal/adapters/sensor/tetragon/managed_backend_test.go	covered
 test/suites/functional/endpoint/e2e-sensor-restart.sh	lifecycle	sensor process restarts once and health recovers	apps/agent/internal/adapters/sensor/tetragon/managed_backend_test.go	covered
-test/suites/functional/topology/e2e-scenario-apt-container.sh	cloud	apt scenario produces events signals incident and expected terminal state	test/suites/functional/topology/scenario-container.sh	covered
-test/suites/functional/topology/e2e-scenario-benign-container.sh	cloud	benign scenario produces events without signals incidents or terminal state	test/suites/functional/topology/scenario-container.sh	covered
-test/suites/functional/topology/e2e-scenario-staged-container.sh	cloud	staged scenario produces events signals incident and expected terminal state	test/suites/functional/topology/scenario-container.sh	covered
+test/suites/functional/topology/e2e-scenario-apt-container.sh	cloud	apt scenario produces Events Signals Incident and expected Conclusion	test/suites/functional/topology/scenario-container.sh	covered
+test/suites/functional/topology/e2e-scenario-benign-container.sh	cloud	benign scenario produces Events without Signals or Incidents	test/suites/functional/topology/scenario-container.sh	covered
+test/suites/functional/topology/e2e-scenario-staged-container.sh	cloud	staged scenario produces Events Signals Incident and expected Conclusion	test/suites/functional/topology/scenario-container.sh	covered
 test/suites/functional/topology/e2e-systemd-vm.sh	lifecycle	signed package installs enrolls restarts and preserves systemd service	test/suites/functional/topology/e2e-systemd-vm.sh	legacy

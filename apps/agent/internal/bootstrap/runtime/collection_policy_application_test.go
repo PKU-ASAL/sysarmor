@@ -43,7 +43,7 @@ func TestCollectionProductionPathPersistsUnifiedEndpointAfterSensorApply(t *test
 		Document: `{"policy_id":"collection-a","version":2,"behaviors":["process.exec"]}`,
 	})
 
-	if result.Status == "rejected" || len(sensor.lastIntent.Behaviors) != 1 || sensor.lastIntent.ScopeType != "container" {
+	if result.Status != "degraded" || len(sensor.lastIntent.Behaviors) != 1 || sensor.lastIntent.ScopeType != "container" {
 		t.Fatalf("result=%+v intent=%+v", result, sensor.lastIntent)
 	}
 	record, ok, err := store.Policy(t.Context(), "endpoint")

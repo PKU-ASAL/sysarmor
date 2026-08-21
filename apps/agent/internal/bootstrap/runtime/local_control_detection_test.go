@@ -11,6 +11,7 @@ import (
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
+	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
 )
 
@@ -66,7 +67,7 @@ func TestLocalControlContentApplyEnablesCEPRulePack(t *testing.T) {
 		t.Fatalf("policy ack = %+v", policyAck)
 	}
 
-	norm := eventadapter.NewEventNormalizer("agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host"})
+	norm := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "default", ScopeType: "host"})
 	for _, ev := range []contract.EventEnvelope{
 		cepSensorEventEnvelope("file.write", "/usr/bin/curl", "/dev/shm/cep-x", ""),
 		cepSensorEventEnvelope("file.chmod", "/usr/bin/chmod", "/dev/shm/cep-x", ""),
@@ -87,8 +88,9 @@ func TestLocalControlContentApplyEnablesCEPRulePack(t *testing.T) {
 	if got := frame.GetSignal().GetEventRefs(); len(got) != 4 {
 		t.Fatalf("event refs = %v, want 4", got)
 	}
-	if frame.GetSignal().GetTerminal() {
-		t.Fatalf("signal = %+v, want rulepack terminal=false", frame.GetSignal())
+	if frame.GetSignal().GetStage() != signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE ||
+		frame.GetSignal().GetDetectorKind() != signalv1.DetectorKind_DETECTOR_KIND_RULE {
+		t.Fatalf("signal = %+v, want rule candidate", frame.GetSignal())
 	}
 	health, err := client.Health(context.Background(), &controlplanev1.HealthRequest{Context: &controlplanev1.RequestContext{TenantId: "default", AgentId: "agent-a"}})
 	if err != nil {
@@ -147,7 +149,7 @@ func cepRulePackJSON() string {
 				{"behavior":"process.exec","fields":["process.binary","lineage_id"]},
 				{"behavior":"network.connect","fields":["socket.port","lineage_id"]}
 			]},
-			"output":{"terminal":false}
+			"output":{"stage":"candidate"}
 		}]}]}
 	}`
 }

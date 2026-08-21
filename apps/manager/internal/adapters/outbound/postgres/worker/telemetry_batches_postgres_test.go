@@ -97,6 +97,93 @@ func TestTelemetryBatchesPostgresCommitWaitsForMetricsRowLock(t *testing.T) {
 	}
 }
 
+func TestTelemetryBatchesPostgresCandidateRejectionsAreIdempotent(t *testing.T) {
+	db := newPostgresTelemetryDB(t)
+	repository := NewTelemetryBatches(db)
+	sequence := uint64(7)
+	value := ports.CandidateRejection{TenantID: "tenant-a", AgentID: "agent-a", BatchID: "batch-a", Signals: []ports.RejectedSignal{{SignalID: "signal-a", EventSequence: &sequence}, {SignalID: "signal-b"}}, FailureClass: "missing_current_candidate_event"}
+	for range 2 {
+		if err := repository.RecordCandidateRejection(context.Background(), value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if metrics := readPostgresMetrics(t, db, "tenant-a"); metrics.ModelCandidatesReferenceRejected != 2 {
+		t.Fatalf("metrics = %+v", metrics)
+	}
+}
+
+func TestTelemetryBatchesPostgresSignalLifecycleIsIdempotent(t *testing.T) {
+	db := newPostgresTelemetryDB(t)
+	repository := NewTelemetryBatches(db)
+	_, token, err := repository.Claim(context.Background(), "tenant-a", "batch-a", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signal := ports.SignalProcessingRecord{
+		SignalID: "signal-a", SubjectID: "process-a",
+		TriggerEventID: "event-a", EventSequence: 7,
+	}
+	batch := ports.SignalProcessingBatch{
+		TenantID: "tenant-a", AgentID: "agent-a", BatchID: "batch-a",
+		ClaimToken: token, Signals: []ports.SignalProcessingRecord{signal},
+	}
+	for range 2 {
+		if err := repository.CorrelateSignals(context.Background(), batch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repository.Commit(context.Background(), ports.TelemetryBatchDelta{
+		TenantID: "tenant-a", BatchID: "batch-a", ClaimToken: token,
+		ProjectedSignals: []ports.SignalProcessingRecord{signal},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM worker_signal_processing WHERE tenant_id=$1 AND signal_id=$2`, "tenant-a", "signal-a").Scan(&status); err != nil || status != "projected" {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+	metrics := readPostgresMetrics(t, db, "tenant-a")
+	if metrics.ModelCandidatesCorrelated != 1 || metrics.ModelCandidatesProjected != 1 {
+		t.Fatalf("metrics = %+v", metrics)
+	}
+}
+
+func TestTelemetryBatchesPostgresProjectionFailurePreservesCorrelatedState(t *testing.T) {
+	db := newPostgresTelemetryDB(t)
+	repository := NewTelemetryBatches(db)
+	_, token, err := repository.Claim(context.Background(), "tenant-a", "batch-a", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signal := ports.SignalProcessingRecord{
+		SignalID: "signal-a", SubjectID: "process-a",
+		TriggerEventID: "event-a", EventSequence: 7,
+	}
+	if err := repository.CorrelateSignals(context.Background(), ports.SignalProcessingBatch{
+		TenantID: "tenant-a", AgentID: "agent-a", BatchID: "batch-a",
+		ClaimToken: token, Signals: []ports.SignalProcessingRecord{signal},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	conflicting := signal
+	conflicting.SubjectID = "other-process"
+	err = repository.Commit(context.Background(), ports.TelemetryBatchDelta{
+		TenantID: "tenant-a", BatchID: "batch-a", ClaimToken: token,
+		ProjectedSignals: []ports.SignalProcessingRecord{conflicting},
+	})
+	if err == nil {
+		t.Fatal("Commit() succeeded with conflicting Signal identity")
+	}
+	var status string
+	if queryErr := db.QueryRow(`SELECT status FROM worker_signal_processing WHERE tenant_id=$1 AND signal_id=$2`, "tenant-a", "signal-a").Scan(&status); queryErr != nil || status != "correlated" {
+		t.Fatalf("status=%q err=%v", status, queryErr)
+	}
+	metrics := readPostgresMetrics(t, db, "tenant-a")
+	if metrics.ModelCandidatesCorrelated != 1 || metrics.ModelCandidatesProjected != 0 {
+		t.Fatalf("metrics = %+v", metrics)
+	}
+}
+
 func newPostgresTelemetryDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("SYSARMOR_TEST_POSTGRES_DSN")
@@ -130,6 +217,7 @@ func newPostgresTelemetryDB(t *testing.T) *sql.DB {
 		`CREATE TABLE telemetry_batches (tenant_id TEXT, batch_id TEXT, status TEXT, claim_token TEXT, lease_until TIMESTAMPTZ, completed_at TIMESTAMPTZ, PRIMARY KEY (tenant_id,batch_id))`,
 		`CREATE TABLE metrics (tenant_id TEXT, metric_key TEXT, data JSONB NOT NULL, PRIMARY KEY (tenant_id,metric_key))`,
 		`CREATE TABLE rarity_baseline (tenant_id TEXT, workload_key TEXT, signal_name TEXT, signal_count BIGINT, data JSONB, updated_at TIMESTAMPTZ, PRIMARY KEY (tenant_id,workload_key,signal_name))`,
+		`CREATE TABLE worker_signal_processing (tenant_id TEXT, signal_id TEXT, agent_id TEXT, batch_id TEXT, subject_id TEXT NOT NULL DEFAULT '', trigger_event_id TEXT NOT NULL DEFAULT '', event_sequence BIGINT CHECK (event_sequence >= 0), status TEXT, failure_class TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), PRIMARY KEY (tenant_id,signal_id))`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)

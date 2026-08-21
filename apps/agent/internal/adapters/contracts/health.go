@@ -54,9 +54,9 @@ func sensorHealth(value domainhealth.Sensor) agenthealth.SensorHealth {
 
 func busHealth(value domainhealth.Bus) agenthealth.TelemetryBusHealth {
 	return agenthealth.TelemetryBusHealth{
-		EventCapacity: value.EventCapacity, EventBuffered: value.EventBuffered, EventDropped: value.EventDropped,
+		EventCapacity: value.EventCapacity, EventBuffered: value.EventBuffered,
 		EventSubscribers: value.EventSubscribers, SignalCapacity: value.SignalCapacity,
-		SignalBuffered: value.SignalBuffered, SignalDropped: value.SignalDropped, SignalSubscribers: value.SignalSubscribers,
+		SignalBuffered: value.SignalBuffered, SignalSubscribers: value.SignalSubscribers,
 	}
 }
 
@@ -90,6 +90,24 @@ func detectionHealth(value domainhealth.Detection) agenthealth.DetectionHealth {
 		DefaultManifestVersion: value.DefaultManifestVersion,
 		FeatureFlags:           agenthealth.RuntimeFeatureFlags{MatcherStrategy: value.MatcherStrategy},
 		LastApplyStatus:        value.LastApplyStatus, LastApplyError: value.LastApplyError, UpdatedAt: value.UpdatedAt,
+		Learning: agenthealth.LearningHealth{
+			Status: value.Learning.Status, LastError: value.Learning.LastError,
+			Candidates: agenthealth.CandidateLifecycleHealth{
+				Created: value.Learning.Candidates.Created, Spooled: value.Learning.Candidates.Spooled,
+				GatewayAccepted:     value.Learning.Candidates.GatewayAccepted,
+				GatewayDuplicateAck: value.Learning.Candidates.GatewayDuplicateAck,
+				ContractRejected:    value.Learning.Candidates.ContractRejected,
+				GatewayRejected:     value.Learning.Candidates.GatewayRejected,
+			},
+			Profiles: agenthealth.ProcessProfileHealth{
+				Active: value.Learning.Profiles.Active, Exited: value.Learning.Profiles.Exited, Retained: value.Learning.Profiles.Retained,
+				Compactions: value.Learning.Profiles.Compactions, Expired: value.Learning.Profiles.Expired, CapacityEvictions: value.Learning.Profiles.CapacityEvictions,
+				FileEvictions: value.Learning.Profiles.FileEvictions, NetworkEvictions: value.Learning.Profiles.NetworkEvictions, EventRefEvictions: value.Learning.Profiles.EventRefEvictions,
+				IdentityRetained: value.Learning.Profiles.IdentityRetained, IdentityEvictions: value.Learning.Profiles.IdentityEvictions, ActiveEvictions: value.Learning.Profiles.ActiveEvictions, IdentityGaps: value.Learning.Profiles.IdentityGaps,
+				ProfileObservations: value.Learning.Profiles.ProfileObservations, FeatureUpdates: value.Learning.Profiles.FeatureUpdates, LearningScoreCalls: value.Learning.Profiles.LearningScoreCalls,
+				LifecycleOnlyObservations: value.Learning.Profiles.LifecycleOnlyObservations, SuppressedCheckpoints: value.Learning.Profiles.SuppressedCheckpoints,
+			},
+		},
 	}
 }
 

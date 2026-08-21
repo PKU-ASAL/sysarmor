@@ -49,6 +49,34 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 | `/api/v1/response-approvals` | `POST` | 响应审批 |
 | `/api/v1/evidence-pullbacks` | `GET`、`POST` | Evidence 回拉请求 |
 
+`POST /api/v1/policies` 接收 Manager 的 Versioned Policy Bundle，不接收 Agent 下发文档。
+请求必须显式包含保护模式和完整四层策略：
+
+```json
+{
+  "policy_id": "endpoint-default",
+  "version": 2,
+  "protection_mode": "hybrid",
+  "collection": {"behaviors": ["process.exec", "file.write", "network.connect"]},
+  "detection": {
+    "rulesets": [{"ref": "ruleset:cep-endpoint", "version": "v1", "enabled": true}],
+    "learning_model": {
+      "ref": "model:process-profile-v2",
+      "version": "2",
+      "digest": "sha256:0123456789abcdef"
+    }
+  },
+  "telemetry": {"max_batch_items": 256, "max_batch_bytes": 262144, "flush_interval": "1s"},
+  "response_policy": {"allowed_actions": ["collect", "noop"], "allowed_modes": ["observe"]}
+}
+```
+
+`protection_mode` 只允许 `rule-only`、`learning-only`、`hybrid`，默认产品策略是
+`rule-only`，但 API 请求不得省略字段。Resolver 校验模式与 Detection 能力，Learning 模式
+补齐因果 Collection；`learning-only` 必须保持 observe-only。下发给 Agent 的文档只包含
+`policy_id`、`version`、`collection`、`detection`、`telemetry`、`response`，不包含
+`protection_mode`。缺层次、能力冲突或模型身份不完整返回 `400`，不会推断旧格式。
+
 ### 状态与数据接口
 
 | Method | Path | 用途 |
@@ -86,18 +114,22 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 
 本地 CLI 默认连接 `/run/sysarmor/agent/control.sock`。Gateway 健康 HTTP 默认监听 `9445`，提供 `/healthz` 与 `/metrics`。
 
+`HealthResponse.detection.learning.profiles` 同时报告 ProcessProfile 生命周期和 Learning 语义调度累计计数。调度字段为 `profile_observations`、`feature_updates`、`learning_score_calls`、`lifecycle_only_observations` 和 `suppressed_checkpoints`；它们分别表示进入 Learning 观察的 Event、产生新模型特征的观察、实际模型评分、仅改变进程生命周期的观察，以及因没有新评分状态而被抑制的检查点。字段号固定为 14–18，零值表示当前进程生命周期内尚未发生，不表示指标不可用。
+
 ## Protobuf 包
 
 | 包 | 主要契约 |
 |---|---|
 | `sysarmor.event.v1` | 规范化 `CanonicalEvent` |
-| `sysarmor.signal.v1` | `Signal`、Entity、Evidence、Response intent |
+| `sysarmor.signal.v1` | `Signal`、Stage、DetectorKind、Where、Entity、Evidence、Response intent |
 | `sysarmor.incident.v1` | Incident、Evidence 子图和 converge trace |
 | `sysarmor.dataplane.v1` | `DataBatch`、序列、drop/parse delta 和 ack |
 | `sysarmor.controlplane.v1` | Agent 本地及远程控制帧 |
 | `sysarmor.policy.v1` | Policy wire model |
 
 当前数据面 `schema_version` 为 `sysarmor.dataplane/v1`；新 producer 必须在每个 `DataBatch` 中设置。
+
+Signal 的概念语义由[安全数据模型](../concepts/security-data-model.md)定义。生产输入必须明确设置 Stage、DetectorKind 和 Where；`UNSPECIFIED` 由可信边界拒绝。Graph Conclusion 当前只有合同，尚无生产生成器。
 
 ## 版本演进
 
