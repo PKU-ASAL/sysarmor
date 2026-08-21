@@ -32,6 +32,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 		"rarity_baseline",
 		"metrics",
 		"telemetry_batches",
+		"worker_signal_processing",
 	} {
 		if !strings.Contains(allSchema, "CREATE TABLE IF NOT EXISTS "+table) {
 			t.Fatalf("postgres schema missing table %s", table)
@@ -63,7 +64,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 			t.Fatalf("postgres schema still creates incident report table %s", removed)
 		}
 	}
-	if len(ordered) != 6 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" || ordered[4].Version != 5 || ordered[4].Name != "control_audit" || ordered[5].Version != 6 || ordered[5].Name != "response_decisions" {
+	if len(ordered) != 9 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 3 || ordered[2].Name != "tenant_telemetry_batches" || ordered[3].Version != 4 || ordered[3].Name != "telemetry_batch_claim_fencing" || ordered[4].Version != 5 || ordered[4].Name != "control_audit" || ordered[5].Version != 6 || ordered[5].Name != "response_decisions" || ordered[6].Version != 7 || ordered[6].Name != "endpoint_protection_modes" || ordered[7].Version != 8 || ordered[7].Name != "worker_candidate_rejections" || ordered[8].Version != 9 || ordered[8].Name != "worker_signal_processing" {
 		t.Fatalf("ordered migrations = %+v", ordered)
 	}
 	for _, want := range []string{"PRIMARY KEY (tenant_id, batch_id)", "processing", "completed", "lease_until"} {
@@ -81,17 +82,55 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationsReplaceAggregateCandidateRejectionsWithSignalState(t *testing.T) {
+	migration := Ordered()[8]
+	for _, want := range []string{
+		"CREATE TABLE IF NOT EXISTS worker_signal_processing",
+		"PRIMARY KEY (tenant_id, signal_id)",
+		"agent_id TEXT NOT NULL",
+		"correlated",
+		"projected",
+		"reference_rejected",
+		"DROP TABLE worker_candidate_rejections",
+	} {
+		if !strings.Contains(migration.SQL, want) {
+			t.Fatalf("worker Signal processing migration missing %q", want)
+		}
+	}
+}
+
+func TestPostgresMigrationsReplaceLegacyPolicyModeWithoutInference(t *testing.T) {
+	if !strings.Contains(PostgresSchema, "mode TEXT NOT NULL DEFAULT 'observe'") || strings.Contains(PostgresSchema, "protection_mode TEXT") {
+		t.Fatal("published v1 policy schema must retain its original mode column")
+	}
+	policyMigration := Ordered()[6]
+	assignments := strings.Index(policyMigration.SQL, "DELETE FROM policy_assignments")
+	policies := strings.Index(policyMigration.SQL, "DELETE FROM policies")
+	if assignments < 0 || policies < 0 || assignments > policies {
+		t.Fatalf("v7 must delete assignments before policies: %s", policyMigration.SQL)
+	}
+	for _, want := range []string{
+		"ADD COLUMN IF NOT EXISTS protection_mode TEXT",
+		"DROP COLUMN IF EXISTS mode",
+		"ALTER COLUMN protection_mode SET NOT NULL",
+	} {
+		if !strings.Contains(policyMigration.SQL, want) {
+			t.Fatalf("v7 policy migration missing %q", want)
+		}
+	}
+}
+
 func TestPostgresMigrationsAddResponseDecisions(t *testing.T) {
-	latest := Ordered()[len(Ordered())-1]
-	if latest.Version != 6 || latest.Name != "response_decisions" {
-		t.Fatalf("latest migration = %+v", latest)
+	responseDecisions := Ordered()[5]
+	if responseDecisions.Version != 6 || responseDecisions.Name != "response_decisions" {
+		t.Fatalf("response decisions migration = %+v", responseDecisions)
 	}
 	for _, want := range []string{
 		"CREATE TABLE IF NOT EXISTS response_decisions",
 		"PRIMARY KEY (tenant_id, audit_id)",
 		"CREATE INDEX IF NOT EXISTS idx_response_decisions_response",
 	} {
-		if !strings.Contains(latest.SQL, want) {
+		if !strings.Contains(responseDecisions.SQL, want) {
 			t.Fatalf("response decisions migration missing %q", want)
 		}
 	}
