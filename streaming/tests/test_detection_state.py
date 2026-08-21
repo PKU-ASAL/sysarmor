@@ -82,6 +82,22 @@ class DetectionStateTest(unittest.TestCase):
 
         self.assertEqual({"second", "third"}, state.event_ids("scope-a"))
 
+    def test_mixed_policy_retention_expires_each_record_independently(self):
+        state = load_state().DetectionState()
+        long_policy = detection_policy("tenant-a", "policy-a", 7, state_retention_ns=1_000)
+        short_policy = detection_policy("tenant-a", "policy-b", 8, state_retention_ns=10)
+        values = {policy_key(long_policy): long_policy, policy_key(short_policy): short_policy}
+
+        state.process(
+            event_record("scope-a", "policy-a", 7, 100, "long"), 0, values
+        )
+        state.process(
+            event_record("scope-a", "policy-b", 8, 100, "short"), 0, values
+        )
+        state.cleanup("scope-a", 120, long_policy)
+
+        self.assertEqual({"long"}, state.event_ids("scope-a"))
+
     def test_established_incident_is_not_reemitted_for_unrelated_event(self):
         state = load_state().DetectionState()
         policy = detection_policy("tenant-a", "policy-a", 7)

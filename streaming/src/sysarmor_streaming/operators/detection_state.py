@@ -21,6 +21,7 @@ class _ScopeState:
     events: list = field(default_factory=list)
     signals: list = field(default_factory=list)
     emitted: dict[str, int] = field(default_factory=dict)
+    expiries: dict[str, int] = field(default_factory=dict)
     latest_ns: int = 0
 
 
@@ -49,6 +50,7 @@ class DetectionState:
             scope.events.append((observed_ns, record))
         else:
             scope.signals.append((observed_ns, record))
+        scope.expiries[_record_id(record)] = observed_ns + _retention_ns(policy)
         self._evict(scope, policy)
         result = analyze(
             [item.event for _, item in scope.events],
@@ -75,13 +77,18 @@ class DetectionState:
             for _, record in self._scopes.get(scope_key, _ScopeState()).events
         }
 
-    def restore(self, scope_key: str, records) -> None:
+    def restore(self, scope_key: str, records, policies=None) -> None:
         scope = _ScopeState()
+        policies = policies or {}
         for record in records:
             observed_ns = _observed_at(record)
             scope.latest_ns = max(scope.latest_ns, observed_ns)
             target = scope.events if record.WhichOneof("payload") == "event" else scope.signals
             target.append((observed_ns, record))
+            policy = policies.get(_policy_identity(record))
+            scope.expiries[_record_id(record)] = observed_ns + (
+                _retention_ns(policy) if policy is not None else DEFAULT_STATE_RETENTION_NS
+            )
         self._scopes[scope_key] = scope
 
     def restore_emissions(self, scope_key: str, emissions) -> None:
@@ -104,8 +111,19 @@ class DetectionState:
     def _evict(self, scope: _ScopeState, policy) -> None:
         window = policy.detection.converge.state_retention_ns or DEFAULT_STATE_RETENTION_NS
         cutoff = scope.latest_ns - window
-        scope.events = [(time, item) for time, item in scope.events if time > cutoff]
-        scope.signals = [(time, item) for time, item in scope.signals if time > cutoff]
+        scope.events = [
+            item for item in scope.events
+            if scope.expiries.get(_record_id(item[1]), DEFAULT_STATE_RETENTION_NS + item[0]) > scope.latest_ns
+        ]
+        scope.signals = [
+            item for item in scope.signals
+            if scope.expiries.get(_record_id(item[1]), DEFAULT_STATE_RETENTION_NS + item[0]) > scope.latest_ns
+        ]
+        active_ids = {_record_id(item[1]) for item in [*scope.events, *scope.signals]}
+        scope.expiries = {
+            identity: expiry for identity, expiry in scope.expiries.items()
+            if identity in active_ids
+        }
         retained = sorted([*scope.events, *scope.signals], key=_record_order)[
             -self._max_scope_records :
         ]
@@ -139,6 +157,23 @@ def _failure(record, reason: str, retryable: bool):
         message=reason,
         retryable=retryable,
     )
+
+
+def _record_id(record) -> str:
+    payload = record.WhichOneof("payload")
+    identity = record.event.id if payload == "event" else record.signal.id
+    return payload + ":" + identity
+
+
+def _policy_identity(record):
+    context = record.context
+    return context.tenant_id, context.policy_id, context.policy_version
+
+
+def _retention_ns(policy) -> int:
+    if policy is None:
+        return DEFAULT_STATE_RETENTION_NS
+    return policy.detection.converge.state_retention_ns or DEFAULT_STATE_RETENTION_NS
 
 
 def _artifacts(context, observed_ns, result) -> list:

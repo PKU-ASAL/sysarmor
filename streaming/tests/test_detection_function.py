@@ -94,15 +94,15 @@ class DetectionFunctionTest(unittest.TestCase):
         record = event_record("scope-a", "policy-a", 7, 100, "event-a")
 
         self.assertEqual(
-            "tenant-a\x00scope-a\x00policy-a\x007",
+            "tenant-a\x00scope-a",
             detection.telemetry_key(record.SerializeToString()),
         )
 
-    def test_stream_key_separates_policy_versions(self):
+    def test_stream_key_keeps_scope_across_policy_versions(self):
         first = event_record("scope-a", "policy-a", 7, 100, "event-a")
         second = event_record("scope-a", "policy-a", 8, 100, "event-a")
 
-        self.assertNotEqual(
+        self.assertEqual(
             detection.telemetry_key(first.SerializeToString()),
             detection.telemetry_key(second.SerializeToString()),
         )

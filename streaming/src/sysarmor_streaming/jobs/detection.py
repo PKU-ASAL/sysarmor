@@ -133,7 +133,7 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
             self._telemetry_count.update(_state_count(self._telemetry_count) + 1)
             _register_cleanup_timer(ctx, record, policy)
             return
-        detector = self._restore_detector(record)
+        detector = self._restore_detector(record, ctx)
         identity = (policy.tenant_id, policy.policy_id, policy.policy_version)
         policies = {identity: policy}
         scope_key = record.context.analysis_scope_key
@@ -168,7 +168,7 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         policy = _require_policy(ctx, sample, POLICY_STATE)
         scope_key = sample.context.analysis_scope_key
         detector = DetectionState(max_scope_records=self._max_scope_records)
-        detector.restore(scope_key, stored)
+        detector.restore(scope_key, stored, self._policies_for(ctx, stored, policy))
         detector.restore_emissions(scope_key, map(_decode_emission, self._emitted.get()))
         detector.cleanup(scope_key, timestamp * 1_000_000, policy)
         self._persist_detector(detector, scope_key)
@@ -180,18 +180,33 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
             and _state_count(self._telemetry_count) < self._max_scope_records
         )
 
-    def _restore_detector(self, record):
+    def _restore_detector(self, record, ctx):
         detector = DetectionState(max_scope_records=self._max_scope_records)
         scope_key = record.context.analysis_scope_key
         stored = [
             streaming_pb2.NormalizedTelemetry.FromString(bytes(item))
             for item in self._telemetry.get()
         ]
-        detector.restore(scope_key, stored)
+        current_policy = _require_policy(ctx, record, POLICY_STATE)
+        detector.restore(
+            scope_key,
+            stored,
+            self._policies_for(ctx, stored, current_policy),
+        )
         detector.restore_emissions(
             scope_key, map(_decode_emission, self._emitted.get())
         )
         return detector
+
+    def _policies_for(self, ctx, records, current_policy):
+        policies = {
+            (current_policy.tenant_id, current_policy.policy_id, current_policy.policy_version): current_policy
+        }
+        for record in records:
+            policy = _read_policy_state(ctx, record, POLICY_STATE)
+            if policy is not None:
+                policies[(policy.tenant_id, policy.policy_id, policy.policy_version)] = policy
+        return policies
 
     def _persist_detector(self, detector, scope_key) -> None:
         records = detector.records(scope_key)
@@ -204,14 +219,7 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
 def telemetry_key(value) -> str:
     record = streaming_pb2.NormalizedTelemetry.FromString(bytes(value))
     context = record.context
-    return "\x00".join(
-        (
-            context.tenant_id,
-            context.analysis_scope_key,
-            context.policy_id,
-            str(context.policy_version),
-        )
-    )
+    return context.tenant_id + "\x00" + context.analysis_scope_key
 
 
 def tenant_key(value) -> str:
