@@ -4,6 +4,7 @@ import os
 
 from sysarmor_streaming.jobs.detection import build_graph
 from sysarmor_streaming.jobs.normalize import BYTE_ARRAY, NormalizeFunction, REJECTION_TAG
+from sysarmor_streaming.jobs.projection import ProjectionFunction
 from sysarmor_streaming.runtime.config import StreamingConfig
 from sysarmor_streaming.runtime.kafka import configure_environment, sink, source
 
@@ -39,12 +40,25 @@ def run_detection():
     env.execute("sysarmor-detection-v1")
 
 
+def run_projection():
+    config = StreamingConfig.from_env()
+    env = configure_environment(config)
+    artifacts = source(env, config.artifact_topic, "sysarmor-projection-v1", config)
+    projected = artifacts.process(
+        ProjectionFunction(), output_type=BYTE_ARRAY
+    ).uid("projection").name("projection")
+    sink(projected, config.projected_topic, config, "sysarmor-projection-v1")
+    env.execute("sysarmor-projection-v1")
+
+
 def main():
     job = os.getenv("SYSARMOR_FLINK_JOB", "detection").strip().lower()
     if job == "normalize":
         run_normalize()
     elif job == "detection":
         run_detection()
+    elif job == "projection":
+        run_projection()
     else:
         raise ValueError(f"unsupported SYSARMOR_FLINK_JOB: {job}")
 
