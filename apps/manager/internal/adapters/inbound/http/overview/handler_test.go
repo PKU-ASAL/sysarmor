@@ -20,7 +20,7 @@ func TestHandlerReturnsOverviewJSON(t *testing.T) {
 		Agents:    domainidentity.AgentOverview{Total: 3, Online: 2, Offline: 1},
 		Telemetry: overviewapp.TelemetrySummary{Events24h: 12, Signals24h: 5},
 		Incidents: domaintelemetry.IncidentOverview{Open: 2, Critical: 1, High: 1},
-		Storage:   overviewapp.StorageStatus{Backend: "postgres", PostgresSchemaVersion: 6},
+		Storage:   overviewapp.StorageStatus{Backend: "postgres", PostgresSchemaVersion: 9},
 	}}
 	handler := NewHandler(Options{Service: service, Resolve: requestResolver(t)})
 	recorder := httptest.NewRecorder()
@@ -30,7 +30,7 @@ func TestHandlerReturnsOverviewJSON(t *testing.T) {
 		t.Fatalf("status=%d request=%+v body=%s", recorder.Code, service.request, recorder.Body.String())
 	}
 	for _, want := range []string{`"generated_at":`, `"total":3`, `"events_24h":12`, `"signals_24h":5`,
-		`"open":2`, `"critical":1`, `"backend":"postgres"`, `"postgres_schema_version":6`} {
+		`"open":2`, `"critical":1`, `"backend":"postgres"`, `"postgres_schema_version":9`} {
 		if !strings.Contains(recorder.Body.String(), want) {
 			t.Fatalf("overview response missing %s: %s", want, recorder.Body.String())
 		}

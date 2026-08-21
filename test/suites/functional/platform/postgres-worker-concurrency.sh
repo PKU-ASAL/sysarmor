@@ -20,7 +20,7 @@ port="$(docker port "$container" 5432/tcp | sed -n 's/.*://p')"
 [[ "$port" =~ ^[0-9]+$ ]] || { echo "[postgres-worker-test][ERROR] invalid PostgreSQL port: $port" >&2; exit 1; }
 
 deadline=$((SECONDS + 60))
-until docker exec "$container" pg_isready -U sysarmor -d sysarmor >/dev/null 2>&1; do
+until docker exec "$container" pg_isready -h 127.0.0.1 -p 5432 -U sysarmor -d sysarmor >/dev/null 2>&1; do
   (( SECONDS < deadline )) || { docker logs "$container" >&2; exit 1; }
   sleep 1
 done

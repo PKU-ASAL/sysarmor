@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 _sa_build_managed_policy() {
-  local collection_file="$1" detection_file="$2" output_path="$3" agent_id="$4"
-  python3 - "$collection_file" "$detection_file" "$output_path" "$agent_id" <<'PY'
+	local collection_file="$1" detection_file="$2" output_path="$3" agent_id="$4" protection_mode="$5"
+	python3 - "$collection_file" "$detection_file" "$output_path" "$agent_id" "$protection_mode" <<'PY'
 import json
 import pathlib
 import re
 import sys
 
-collection_path, detection_path, output_path, agent_id = sys.argv[1:]
+collection_path, detection_path, output_path, agent_id, protection_mode = sys.argv[1:]
 collection = json.loads(pathlib.Path(collection_path).read_text())
 detection = json.loads(pathlib.Path(detection_path).read_text())
 base_id = collection.get("policy_id", "benchmark")
@@ -20,6 +20,7 @@ document = {
     "policy_id": policy_id,
     "version": version,
     "tenant_id": "default",
+    "protection_mode": protection_mode,
     "collection": collection,
     "detection": detection,
     "telemetry": {
@@ -27,7 +28,7 @@ document = {
         "max_batch_bytes": 262144,
         "flush_interval": "200ms",
     },
-    "mode": "observe",
+    "response_policy": {"allowed_actions": ["collect", "noop"], "allowed_modes": ["observe"]},
     "published": False,
 }
 pathlib.Path(output_path).write_text(json.dumps(document, separators=(",", ":")))
@@ -64,7 +65,8 @@ sa_agent_apply_managed_policy() (
   [[ -f "$manager_key" && -f "$collection_file" && -f "$detection_file" ]] || { echo "[managed-policy][ERROR] managed policy inputs are incomplete" >&2; exit 1; }
   [[ "$agent_id" =~ ^[A-Za-z0-9._:-]+$ && "$socket" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "[managed-policy][ERROR] invalid Agent identity or socket path" >&2; exit 1; }
   temp_dir="$(mktemp -d)"; trap 'rm -rf "$temp_dir"' EXIT; policy_file="$temp_dir/policy.json"
-  read -r policy_id version < <(_sa_build_managed_policy "$collection_file" "$detection_file" "$policy_file" "$agent_id")
+  local protection_mode="${SYSARMOR_BENCH_PROTECTION_MODE:-rule-only}"
+  read -r policy_id version < <(_sa_build_managed_policy "$collection_file" "$detection_file" "$policy_file" "$agent_id" "$protection_mode")
   [[ "$policy_id" =~ ^[A-Za-z0-9._:-]+$ && "$version" =~ ^[0-9]+$ ]] || {
     echo "[managed-policy][ERROR] generated policy identity is invalid" >&2
     exit 1

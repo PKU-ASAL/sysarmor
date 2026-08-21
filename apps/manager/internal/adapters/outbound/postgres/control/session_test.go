@@ -80,7 +80,7 @@ func insertControlFixture(t *testing.T, db *sql.DB) {
 	t.Helper()
 	queries := []string{
 		`INSERT INTO policies VALUES ('tenant-a','draft',2,'{"policy_id":"draft","published":false}')`,
-		`INSERT INTO policies VALUES ('tenant-a','published',1,'{"tenant_id":"tenant-a","policy_id":"published","version":1,"mode":"observe","published":true}')`,
+		`INSERT INTO policies VALUES ('tenant-a','published',1,'{"tenant_id":"tenant-a","policy_id":"published","version":1,"protection_mode":"rule-only","collection":{"behaviors":["process.exec"]},"detection":{"rulesets":[{"ref":"ruleset:a","version":"v1"}]},"telemetry":{},"response_policy":{},"published":true}')`,
 		`INSERT INTO policies VALUES ('tenant-b','foreign',9,'{"policy_id":"foreign","published":true}')`,
 		`INSERT INTO policy_assignments VALUES ('tenant-a','assignment-a','agent-a','','','published',1,CURRENT_TIMESTAMP)`,
 		`INSERT INTO agent_sessions VALUES ('tenant-a','data-a','agent-a','active','data','batch-7',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'{}')`,

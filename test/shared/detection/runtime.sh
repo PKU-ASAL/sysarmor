@@ -37,7 +37,7 @@ capture_manager_resource() {
   esac
 
   printf '%s\n' "$manager_jwt" | (cd "$env_dir" && vagrant ssh mgr -c \
-    "IFS= read -r SYSARMOR_MANAGER_JWT; export SYSARMOR_MANAGER_JWT; exec /tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager $resource list $labels --limit 1000")
+    "IFS= read -r SYSARMOR_MANAGER_JWT; export SYSARMOR_MANAGER_JWT; exec /tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager $resource list $labels --limit 10000")
 }
 
 wait_manager_resource() {
