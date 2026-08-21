@@ -41,6 +41,22 @@ func TestFromEventsMarksUnavailableParentAsGap(t *testing.T) {
 	}
 }
 
+func TestFromEventsKeepsRootProcessAsSignalSeedWithoutGap(t *testing.T) {
+	value := FromEvents([]domaintelemetry.Event{{
+		ID: "exec-root", Behavior: "process.exec",
+		SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-root"},
+	}}).ConnectingEvidence([]domaintelemetry.Signal{{
+		Entities: []domaintelemetry.Entity{{Kind: "process", Key: "p-root", Role: "subject"}},
+	}})
+
+	if !hasNode(value.Nodes, "process:p-root") {
+		t.Fatalf("root process node missing: %+v", value.Nodes)
+	}
+	if hasNode(value.Nodes, "gap:seed:process:p-root") {
+		t.Fatalf("root process was replaced by seed gap: %+v", value.Nodes)
+	}
+}
+
 func TestFromEventsPreservesForkOperation(t *testing.T) {
 	value := FromEvents([]domaintelemetry.Event{
 		{
@@ -58,6 +74,19 @@ func TestFromEventsPreservesForkOperation(t *testing.T) {
 	}
 	if !hasEdge(value.Edges, "gap:parent:fork-orphan", "process:p-orphan", "fork", "fork-orphan", true) {
 		t.Fatalf("fork gap edge = %+v", value.Edges)
+	}
+}
+
+func TestFromEventsUsesProvenanceDirectionAndAggregatesRepeatedEdges(t *testing.T) {
+	process := &domaintelemetry.ProcessRef{StableID: "p-shell"}
+	value := FromEvents([]domaintelemetry.Event{
+		{ID: "read-1", Behavior: "file.read", SubjectProcess: process, Object: &domaintelemetry.ObjectRef{FilePath: "/tmp/input"}},
+		{ID: "read-2", Behavior: "file.read", SubjectProcess: process, Object: &domaintelemetry.ObjectRef{FilePath: "/tmp/input"}},
+		{ID: "exit-1", Behavior: "process.exit", SubjectProcess: process},
+	}).EvidenceSubgraph()
+
+	if len(value.Edges) != 1 || !hasEdge(value.Edges, "file:/tmp/input", "process:p-shell", "read", "read-1", false) || !hasEventRef(value.Edges, "read-2") {
+		t.Fatalf("provenance edges = %+v", value.Edges)
 	}
 }
 
@@ -80,6 +109,25 @@ func TestConnectingEvidenceSelectsSeedsDeterministically(t *testing.T) {
 
 	if !reflect.DeepEqual(first, second) || len(first.Nodes) != maxEvidenceSeeds {
 		t.Fatalf("first = %+v, second = %+v", first, second)
+	}
+}
+
+func TestConnectingEvidenceKeepsAllSignalSeedsWithinBound(t *testing.T) {
+	const seedCount = 64
+	events := make([]domaintelemetry.Event, seedCount)
+	signals := make([]domaintelemetry.Signal, seedCount)
+	for index := range events {
+		processID := fmt.Sprintf("process-%02d", index)
+		events[index] = domaintelemetry.Event{
+			ID: fmt.Sprintf("event-%02d", index), Behavior: "process.exec",
+			OccurredAtNS: uint64(index), SubjectProcess: &domaintelemetry.ProcessRef{StableID: processID},
+		}
+		signals[index] = domaintelemetry.Signal{Entities: []domaintelemetry.Entity{{Kind: "process", Key: processID, Role: "subject"}}}
+	}
+
+	value := FromEvents(events).ConnectingEvidence(signals)
+	if len(value.Nodes) != seedCount {
+		t.Fatalf("nodes = %d, want %d", len(value.Nodes), seedCount)
 	}
 }
 

@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/investigation/entity"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/investigation/provenance"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
 )
 
 const (
-	maxEvidenceSeeds = 32
+	maxEvidenceSeeds = 128
 	maxGraphEvents   = 100_000
 )
 
@@ -36,24 +37,24 @@ func orderedEvents(events []domaintelemetry.Event) []domaintelemetry.Event {
 }
 
 func (value *Graph) AddEvent(event domaintelemetry.Event) {
-	if value == nil || event.SubjectProcess == nil || event.SubjectProcess.StableID == "" {
+	if value == nil {
 		return
 	}
-	subject := entityID("process", event.SubjectProcess.StableID)
-	value.addNode(domaintelemetry.Entity{Kind: "process", Key: subject, Role: "subject"})
-	behavior := strings.ToLower(strings.TrimSpace(event.Behavior))
-	switch behavior {
-	case "process.exec", "process.fork":
-		value.addProcessEvent(event, subject, strings.TrimPrefix(behavior, "process."))
-	case "file.open", "file.read", "file.write", "file.chmod":
-		if event.Object != nil {
-			value.addObjectEvent(event, subject, event.Object.FilePath, "file", strings.TrimPrefix(event.Behavior, "file."))
-		}
-	case "network.connect":
-		if event.Object != nil {
-			value.addObjectEvent(event, subject, event.Object.SocketAddress, "socket", "connect")
-		}
+	value.addSubjectProcess(event)
+	edge, ok := provenance.FromEvent(event)
+	if !ok {
+		return
 	}
+	value.addProvenanceEdge(edge)
+}
+
+func (value *Graph) addSubjectProcess(event domaintelemetry.Event) {
+	if event.SubjectProcess == nil {
+		return
+	}
+	value.addNode(entity.Normalize(domaintelemetry.Entity{
+		Kind: "process", Key: event.SubjectProcess.StableID, Role: "subject",
+	}))
 }
 
 func (value *Graph) ConnectingEvidence(signals []domaintelemetry.Signal) domaintelemetry.EvidenceSubgraph {
@@ -87,29 +88,6 @@ func (value *Graph) includeAdjacentGaps(nodes, edges map[string]bool) {
 	}
 }
 
-func (value *Graph) addProcessEvent(event domaintelemetry.Event, subject, relation string) {
-	if event.ParentStableID != "" {
-		parent := entityID("process", event.ParentStableID)
-		value.addNode(domaintelemetry.Entity{Kind: "process", Key: parent, Role: "parent"})
-		value.addEventEdge(parent, subject, relation, event.ID, false)
-		return
-	}
-	if event.IdentityStatus == "unavailable" {
-		gap := "gap:parent:" + event.ID
-		value.addRawNode(gap, "gap")
-		value.addEventEdge(gap, subject, relation, event.ID, true)
-	}
-}
-
-func (value *Graph) addObjectEvent(event domaintelemetry.Event, subject, key, kind, relation string) {
-	if event.Object == nil || strings.TrimSpace(key) == "" {
-		return
-	}
-	object := entityID(kind, key)
-	value.addNode(domaintelemetry.Entity{Kind: kind, Key: object, Role: "object"})
-	value.addEventEdge(subject, object, relation, event.ID, false)
-}
-
 func (value *Graph) addSignalSeeds(signals []domaintelemetry.Signal) []string {
 	entities := make(map[string]domaintelemetry.Entity)
 	for _, signal := range signals {
@@ -138,15 +116,34 @@ func (value *Graph) addSignalSeeds(signals []domaintelemetry.Signal) []string {
 	return seeds
 }
 
-func (value *Graph) addEventEdge(from, to, kind, eventID string, incomplete bool) {
-	value.addEdge(from, to, kind)
-	id := kind + ":" + from + "->" + to
-	edge := value.edges[id]
-	if eventID != "" && !containsString(edge.EventRefs, eventID) {
-		edge.EventRefs = append(edge.EventRefs, eventID)
+func (value *Graph) addProvenanceEdge(provenanceEdge provenance.ProvenanceEdge) {
+	value.addProvenanceNode(provenanceEdge.From, provenanceEdge.Operation, true)
+	value.addProvenanceNode(provenanceEdge.To, provenanceEdge.Operation, false)
+	value.addEdge(provenanceEdge.From, provenanceEdge.To, provenanceEdge.Operation)
+	edge := value.edges[provenanceEdge.ID]
+	for _, eventID := range provenanceEdge.EventRefs {
+		if eventID != "" && !containsString(edge.EventRefs, eventID) {
+			edge.EventRefs = append(edge.EventRefs, eventID)
+		}
 	}
-	edge.Incomplete = edge.Incomplete || incomplete
-	value.edges[id] = edge
+	edge.Incomplete = edge.Incomplete || provenanceEdge.Incomplete
+	value.edges[provenanceEdge.ID] = edge
+}
+
+func (value *Graph) addProvenanceNode(id, operation string, source bool) {
+	if strings.HasPrefix(id, "gap:") {
+		value.addRawNode(id, "gap")
+		return
+	}
+	kind := strings.SplitN(id, ":", 2)[0]
+	role := "object"
+	if kind == "process" {
+		role = "subject"
+		if source && (operation == "exec" || operation == "fork" || operation == "clone") {
+			role = "parent"
+		}
+	}
+	value.addNode(domaintelemetry.Entity{Kind: kind, Key: id, Role: role})
 }
 
 func (value *Graph) addRawNode(id, kind string) {
@@ -158,10 +155,6 @@ func (value *Graph) addRawNode(id, kind string) {
 	}
 	value.nodes[id] = domaintelemetry.GraphNode{ID: id, Kind: kind, Label: id}
 	value.nodeOrder = append(value.nodeOrder, id)
-}
-
-func entityID(kind, key string) string {
-	return entity.Normalize(domaintelemetry.Entity{Kind: kind, Key: key}).Key
 }
 
 func mergeSubgraph(subgraph domaintelemetry.EvidenceSubgraph, nodes, edges map[string]bool) {
