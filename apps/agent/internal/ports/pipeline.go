@@ -13,3 +13,19 @@ type EventDetector interface {
 type ProfileDetector interface {
 	Process(domainprocess.Snapshot) []*domaindetection.Signal
 }
+
+type ProfileDetectorIdentity struct {
+	Ref     string
+	Version string
+	Digest  string
+}
+
+type IdentifiedProfileDetector interface {
+	ProfileDetector
+	Identity() ProfileDetectorIdentity
+}
+
+type ConditionalProfileDetector interface {
+	ProfileDetector
+	Enabled() bool
+}

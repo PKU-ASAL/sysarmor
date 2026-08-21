@@ -93,9 +93,8 @@ func TestDetectorEmitsImmutableModelCandidateLifecycle(t *testing.T) {
 	}
 	profile.State = domainprocess.StateExited
 	profile.EventRefs = append(profile.EventRefs, "event-exit")
-	final := detector.Process(profile)
-	if len(final) != 1 || final[0].ID == candidate.ID {
-		t.Fatalf("exit candidate = %+v, first = %+v", final, candidate)
+	if final := detector.Process(profile); len(final) != 0 {
+		t.Fatalf("exit emitted unchanged candidate = %+v", final)
 	}
 	if candidate.EventRefs[0] != "event-a" {
 		t.Fatalf("previous candidate mutated = %+v", candidate)

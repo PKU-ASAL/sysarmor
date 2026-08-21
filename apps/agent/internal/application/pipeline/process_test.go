@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -71,6 +72,57 @@ func TestProcessSkipsLearningForProcesslessEvent(t *testing.T) {
 	}
 }
 
+func TestProcessRunsLearningOnlyForSemanticFeatureChanges(t *testing.T) {
+	detector := &detectorFake{}
+	profiles := testProfiles(t)
+	identity := profiles.Resolve(domainprocess.IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 7, SensorExecID: "exec-a"}})
+	learning := &profileDetectorFake{}
+	service := New(detector, learning, profiles)
+
+	events := []domainevent.Event{
+		{ID: "exec", Behavior: domainevent.BehaviorProcessExec, Subject: identity.Process, SubjectPresent: true},
+		{ID: "exec", Behavior: domainevent.BehaviorProcessExec, Subject: identity.Process, SubjectPresent: true},
+		{ID: "fork", Behavior: domainevent.BehaviorProcessFork, Subject: identity.Process, SubjectPresent: true},
+		{ID: "file-1", Behavior: "file.write", Subject: identity.Process, SubjectPresent: true, Object: domainevent.Object{FilePath: "/tmp/payload"}},
+		{ID: "file-2", Behavior: "file.write", Subject: identity.Process, SubjectPresent: true, Object: domainevent.Object{FilePath: "/tmp/payload"}},
+		{ID: "exit", Behavior: domainevent.BehaviorProcessExit, Subject: identity.Process, SubjectPresent: true},
+	}
+	for _, event := range events {
+		if _, err := service.Process(event, nil); err != nil {
+			t.Fatalf("Process(%s): %v", event.ID, err)
+		}
+	}
+	if learning.calls != 2 {
+		t.Fatalf("learning calls = %d, want 2 after duplicate exec", learning.calls)
+	}
+}
+
+func TestProcessSerializesProfileObservationAndLearning(t *testing.T) {
+	profiles := testProfiles(t)
+	identity := profiles.Resolve(domainprocess.IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 7, SensorExecID: "exec-a"}})
+	learning := &profileDetectorFake{firstStarted: make(chan struct{}), secondEntered: make(chan struct{}), release: make(chan struct{})}
+	service := New(&detectorFake{}, learning, profiles)
+	firstDone := make(chan struct{})
+	go func() {
+		_, _ = service.Process(domainevent.Event{ID: "exec", Behavior: domainevent.BehaviorProcessExec, Subject: identity.Process, SubjectPresent: true}, nil)
+		close(firstDone)
+	}()
+	<-learning.firstStarted
+	secondDone := make(chan struct{})
+	go func() {
+		_, _ = service.Process(domainevent.Event{ID: "file", Behavior: "file.write", Subject: identity.Process, SubjectPresent: true, Object: domainevent.Object{FilePath: "/tmp/payload"}}, nil)
+		close(secondDone)
+	}()
+	select {
+	case <-learning.secondEntered:
+		t.Fatal("second event entered Learning before first event completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(learning.release)
+	<-firstDone
+	<-secondDone
+}
+
 type detectorFake struct {
 	event   domainevent.Event
 	signals []*domaindetection.Signal
@@ -82,11 +134,25 @@ func (detector *detectorFake) Process(event domainevent.Event) []*domaindetectio
 }
 
 type profileDetectorFake struct {
-	snapshot domainprocess.Snapshot
-	signals  []*domaindetection.Signal
+	snapshot                             domainprocess.Snapshot
+	signals                              []*domaindetection.Signal
+	calls                                int
+	callMu                               sync.Mutex
+	firstStarted, secondEntered, release chan struct{}
 }
 
 func (detector *profileDetectorFake) Process(snapshot domainprocess.Snapshot) []*domaindetection.Signal {
+	detector.callMu.Lock()
+	detector.calls++
+	call := detector.calls
+	detector.callMu.Unlock()
+	if call == 1 && detector.firstStarted != nil {
+		close(detector.firstStarted)
+		<-detector.release
+	}
+	if call == 2 && detector.secondEntered != nil {
+		close(detector.secondEntered)
+	}
 	detector.snapshot = snapshot
 	return detector.signals
 }

@@ -66,8 +66,7 @@ func (detector *Detector) shouldEmit(profile domainprocess.Snapshot, score float
 	detector.mu.Lock()
 	defer detector.mu.Unlock()
 	previous, exists := detector.emitted[profile.StableID]
-	emit := !exists || profile.State == domainprocess.StateExited ||
-		(profile.Revision != previous.revision && score-previous.score >= materialScoreIncrease)
+	emit := !exists || (profile.Revision != previous.revision && score-previous.score >= materialScoreIncrease)
 	if profile.State == domainprocess.StateExited {
 		delete(detector.emitted, profile.StableID)
 	} else if emit {

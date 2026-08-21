@@ -45,25 +45,34 @@ type ResolvedIdentity struct {
 type Snapshot struct {
 	StableID, ParentStableID, LineageID, Binary string
 	Argv                                        []string
-	Revision                                    uint64
+	Revision, FeatureRevision                   uint64
 	State                                       State
 	BehaviorCounts                              map[string]uint64
 	Labels                                      map[string]string
 	Files, Networks, EventRefs                  []string
 }
 
+type Observation struct {
+	Snapshot
+	LifecycleChanged bool
+	FeatureChanged   bool
+	ScoreRequired    bool
+}
+
 type Profile struct {
-	process        domainevent.Process
-	parentStableID string
-	identityStatus IdentityStatus
-	revision       uint64
-	behaviorCounts map[string]uint64
-	files          boundedValues
-	networks       boundedValues
-	eventRefs      []string
-	state          State
-	lastSeenNS     uint64
-	exitedAtNS     uint64
+	process               domainevent.Process
+	parentStableID        string
+	identityStatus        IdentityStatus
+	revision              uint64
+	featureRevision       uint64
+	scoredFeatureRevision uint64
+	behaviorCounts        map[string]uint64
+	files                 boundedValues
+	networks              boundedValues
+	eventRefs             []string
+	state                 State
+	lastSeenNS            uint64
+	exitedAtNS            uint64
 }
 
 type identityAnchor struct {
@@ -78,6 +87,8 @@ type Metrics struct {
 	Compactions, Expired, CapacityEvictions                            uint64
 	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
 	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
+	ProfileObservations, FeatureUpdates, LearningScoreCalls            uint64
+	LifecycleOnlyObservations, SuppressedCheckpoints                   uint64
 }
 
 type Profiles struct {
@@ -166,45 +177,98 @@ func (profiles *Profiles) Observe(event domainevent.Event) {
 }
 
 func (profiles *Profiles) ObserveSnapshot(event domainevent.Event) (Snapshot, bool) {
+	observation, ok := profiles.ObserveChanges(event)
+	return observation.Snapshot, ok
+}
+
+func (profiles *Profiles) ObserveChanges(event domainevent.Event) (Observation, bool) {
 	profiles.mu.Lock()
 	defer profiles.mu.Unlock()
-	profile := profiles.observe(event)
+	profile, changes := profiles.observe(event)
 	if profile == nil {
-		return Snapshot{}, false
+		return Observation{}, false
 	}
 	snapshot := profile.snapshot()
 	snapshot.Labels = cloneLabels(event.Labels)
-	return snapshot, true
+	scoreRequired := changes.feature || changes.exit && profile.featureRevision > profile.scoredFeatureRevision
+	profiles.metrics.ProfileObservations++
+	if changes.feature {
+		profiles.metrics.FeatureUpdates++
+	}
+	if changes.lifecycle && !changes.feature {
+		profiles.metrics.LifecycleOnlyObservations++
+	}
+	if !scoreRequired {
+		profiles.metrics.SuppressedCheckpoints++
+	}
+	return Observation{
+		Snapshot: snapshot, LifecycleChanged: changes.lifecycle, FeatureChanged: changes.feature,
+		ScoreRequired: scoreRequired,
+	}, true
 }
 
-func (profiles *Profiles) observe(event domainevent.Event) *Profile {
+func (profiles *Profiles) MarkScored(stableID string, featureRevision uint64) {
+	profiles.mu.Lock()
+	defer profiles.mu.Unlock()
+	profile := profiles.profiles[stableID]
+	if profile != nil && featureRevision > profile.scoredFeatureRevision {
+		profile.scoredFeatureRevision = featureRevision
+		profiles.metrics.LearningScoreCalls++
+	}
+}
+
+type observationChanges struct {
+	lifecycle, feature, exit bool
+}
+
+func (profiles *Profiles) observe(event domainevent.Event) (*Profile, observationChanges) {
 	nowNS := eventTimeNS(event)
 	profiles.sweepIfDue(nowNS)
 	profile := profiles.profiles[event.Subject.StableID]
 	if profile == nil {
-		return nil
+		return nil, observationChanges{}
 	}
 	if profile.state == StateRetained {
-		return profile
+		return profile, observationChanges{}
 	}
-	profile.revision++
-	profile.behaviorCounts[event.Behavior]++
-	if profile.files.add(event.Object.FilePath) {
-		profiles.metrics.FileEvictions++
+	changes := observationChanges{}
+	duplicate := event.ID != "" && contains(profile.eventRefs, event.ID)
+	if !duplicate {
+		profile.revision++
+		profile.behaviorCounts[event.Behavior]++
+		if event.Object.FilePath != "" && !contains(profile.files.values, event.Object.FilePath) {
+			changes.feature = true
+			profile.featureRevision++
+		}
+		if profile.files.add(event.Object.FilePath) {
+			profiles.metrics.FileEvictions++
+		}
+		if event.Object.SocketAddress != "" && !contains(profile.networks.values, event.Object.SocketAddress) {
+			changes.feature = true
+			profile.featureRevision++
+		}
+		if profile.networks.add(event.Object.SocketAddress) {
+			profiles.metrics.NetworkEvictions++
+		}
+		var evicted bool
+		profile.eventRefs, evicted = appendBounded(profile.eventRefs, event.ID, profiles.limits.MaxEventRefs)
+		if evicted {
+			profiles.metrics.EventRefEvictions++
+		}
+		profile.lastSeenNS = nowNS
+		if event.Behavior == domainevent.BehaviorProcessExec {
+			changes.lifecycle, changes.feature = true, true
+			profile.featureRevision++
+		}
+		if event.Behavior == domainevent.BehaviorProcessFork {
+			changes.lifecycle = true
+		}
+		if event.Behavior == domainevent.BehaviorProcessExit {
+			changes.lifecycle, changes.exit = true, true
+			profile.state, profile.exitedAtNS = StateExited, profile.lastSeenNS
+		}
 	}
-	if profile.networks.add(event.Object.SocketAddress) {
-		profiles.metrics.NetworkEvictions++
-	}
-	var evicted bool
-	profile.eventRefs, evicted = appendBounded(profile.eventRefs, event.ID, profiles.limits.MaxEventRefs)
-	if evicted {
-		profiles.metrics.EventRefEvictions++
-	}
-	profile.lastSeenNS = nowNS
-	if event.Behavior == domainevent.BehaviorProcessExit {
-		profile.state, profile.exitedAtNS = StateExited, profile.lastSeenNS
-	}
-	return profile
+	return profile, changes
 }
 
 func (profiles *Profiles) Sweep(nowNS uint64) {
@@ -302,7 +366,7 @@ func cloneProcess(process domainevent.Process) domainevent.Process {
 func (profile *Profile) snapshot() Snapshot {
 	return Snapshot{
 		StableID: profile.process.StableID, ParentStableID: profile.parentStableID,
-		LineageID: profile.process.LineageID, Binary: profile.process.Binary, Argv: append([]string(nil), profile.process.Argv...), Revision: profile.revision,
+		LineageID: profile.process.LineageID, Binary: profile.process.Binary, Argv: append([]string(nil), profile.process.Argv...), Revision: profile.revision, FeatureRevision: profile.featureRevision,
 		State:          profile.state,
 		BehaviorCounts: cloneCounts(profile.behaviorCounts), Files: append([]string(nil), profile.files.values...),
 		Networks: append([]string(nil), profile.networks.values...), EventRefs: append([]string(nil), profile.eventRefs...),

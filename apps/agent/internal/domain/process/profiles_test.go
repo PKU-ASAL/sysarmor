@@ -144,6 +144,114 @@ func TestProfilesObserveBuildsBoundedImmutableBehaviorSnapshot(t *testing.T) {
 	}
 }
 
+func TestProfilesObserveChangesClassifiesLearningCheckpoints(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 8, MaxFiles: 4, MaxNetworks: 4, MaxEventRefs: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", Process: domainevent.Process{PID: 100, SensorExecID: "exec-a", Binary: "/bin/bash"},
+	})
+
+	checks := []struct {
+		name               string
+		event              domainevent.Event
+		lifecycle, feature bool
+		needsScore         bool
+	}{
+		{name: "exec", event: profileEvent(identity.Process, "exec-1", domainevent.BehaviorProcessExec), lifecycle: true, feature: true, needsScore: true},
+		{name: "fork", event: profileEvent(identity.Process, "fork-1", domainevent.BehaviorProcessFork), lifecycle: true},
+		{name: "new file", event: fileEvent(identity.Process, "file-1", "/tmp/payload"), feature: true, needsScore: true},
+		{name: "duplicate file", event: fileEvent(identity.Process, "file-2", "/tmp/payload")},
+		{name: "exit", event: profileEvent(identity.Process, "exit-1", domainevent.BehaviorProcessExit), lifecycle: true},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			observation, ok := profiles.ObserveChanges(check.event)
+			if !ok {
+				t.Fatal("ObserveChanges() did not find profile")
+			}
+			if observation.LifecycleChanged != check.lifecycle || observation.FeatureChanged != check.feature || observation.ScoreRequired != check.needsScore {
+				t.Fatalf("observation = %+v", observation)
+			}
+		})
+		if check.needsScore {
+			profiles.MarkScored(identity.Process.StableID, observationFeatureRevision(t, profiles, identity.Process.StableID))
+		}
+	}
+}
+
+func TestProfilesMetricsTrackLearningSemanticScheduling(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 4, MaxFiles: 2, MaxNetworks: 2, MaxEventRefs: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := profiles.Resolve(IdentityObservation{HostID: "host-a", Process: domainevent.Process{PID: 7, SensorExecID: "exec-a"}})
+	observe := func(id, behavior, file string) Observation {
+		t.Helper()
+		observation, ok := profiles.ObserveChanges(domainevent.Event{
+			ID: id, Behavior: behavior, SubjectPresent: true, Subject: resolved.Process,
+			Object: domainevent.Object{FilePath: file},
+		})
+		if !ok {
+			t.Fatalf("observation %s was not recorded", id)
+		}
+		return observation
+	}
+
+	exec := observe("event-exec", domainevent.BehaviorProcessExec, "")
+	profiles.MarkScored(exec.StableID, exec.FeatureRevision)
+	observe("event-fork", domainevent.BehaviorProcessFork, "")
+	file := observe("event-file", domainevent.BehaviorFileOpen, "/tmp/a")
+	profiles.MarkScored(file.StableID, file.FeatureRevision)
+	observe("event-exit", domainevent.BehaviorProcessExit, "")
+
+	metrics := profiles.Metrics()
+	if metrics.ProfileObservations != 4 || metrics.FeatureUpdates != 2 || metrics.LearningScoreCalls != 2 ||
+		metrics.LifecycleOnlyObservations != 2 || metrics.SuppressedCheckpoints != 2 {
+		t.Fatalf("scheduling metrics = %+v", metrics)
+	}
+}
+
+func TestProfilesExitRequiresScoreForUnscoredFeatureChanges(t *testing.T) {
+	profiles, err := NewProfiles(Limits{MaxProfiles: 4, MaxFiles: 2, MaxNetworks: 2, MaxEventRefs: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := profiles.Resolve(IdentityObservation{
+		HostID: "host-a", Process: domainevent.Process{PID: 8, SensorExecID: "exec-a"},
+	})
+	profiles.Observe(fileEvent(identity.Process, "file-1", "/tmp/payload"))
+	observation, ok := profiles.ObserveChanges(profileEvent(identity.Process, "exit-1", domainevent.BehaviorProcessExit))
+	if !ok || !observation.ScoreRequired || !observation.LifecycleChanged || observation.FeatureChanged {
+		t.Fatalf("exit observation = %+v ok=%v", observation, ok)
+	}
+	profiles.MarkScored(identity.Process.StableID, observation.FeatureRevision)
+	observation, ok = profiles.ObserveChanges(profileEvent(identity.Process, "exit-2", domainevent.BehaviorProcessExit))
+	if !ok || observation.ScoreRequired {
+		t.Fatalf("repeated exit observation = %+v ok=%v", observation, ok)
+	}
+}
+
+func observationFeatureRevision(t *testing.T, profiles *Profiles, stableID string) uint64 {
+	t.Helper()
+	snapshot, ok := profiles.Snapshot(stableID)
+	if !ok {
+		t.Fatalf("profile %q not found", stableID)
+	}
+	return snapshot.FeatureRevision
+}
+
+func profileEvent(process domainevent.Process, id, behavior string) domainevent.Event {
+	return domainevent.Event{ID: id, Behavior: behavior, SubjectPresent: true, Subject: process}
+}
+
+func fileEvent(process domainevent.Process, id, path string) domainevent.Event {
+	event := profileEvent(process, id, "file.write")
+	event.Object = domainevent.Object{Kind: "file", FilePath: path}
+	return event
+}
+
 func TestProfilesCapacityPrefersExitedProfile(t *testing.T) {
 	profiles, err := NewProfiles(Limits{
 		MaxProfiles: 2, MaxFiles: 1, MaxNetworks: 1, MaxEventRefs: 1,
@@ -254,7 +362,7 @@ func TestProfilesDoesNotFallbackToReusedPIDWhenParentSensorIdentityIsMissing(t *
 		t.Fatal(err)
 	}
 	unrelated := profiles.Resolve(IdentityObservation{
-		HostID: "host-a",
+		HostID:  "host-a",
 		Process: domainevent.Process{PID: 10, SensorExecID: "exec-unrelated"},
 	})
 	child := profiles.Resolve(IdentityObservation{
