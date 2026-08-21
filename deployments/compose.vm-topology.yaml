@@ -29,16 +29,21 @@ services:
       MINIO_ROOT_PASSWORD: sysarmor-secret
     volumes:
       - flink-checkpoints:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   minio-init:
     image: minio/mc:RELEASE.2024-06-13T21-53-57Z
     entrypoint: ["/bin/sh", "-c"]
     command: >-
-      "until mc alias set local http://minio:9000 sysarmor sysarmor-secret; do sleep 1; done;
+      "mc alias set local http://minio:9000 sysarmor sysarmor-secret &&
       mc mb --ignore-existing local/sysarmor-flink"
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
 
   flink-jobmanager:
     build:
@@ -48,13 +53,18 @@ services:
     depends_on:
       kafka:
         condition: service_started
-      minio:
+      minio-init:
         condition: service_completed_successfully
     env_file:
       - streaming/streaming.env.example
     environment:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
       AWS_ENDPOINT: http://minio:9000
+      FLINK_PROPERTIES: |
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: sysarmor
+        s3.secret-key: sysarmor-secret
 
   flink-taskmanager:
     build:
@@ -70,6 +80,59 @@ services:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
       TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "2"
       AWS_ENDPOINT: http://minio:9000
+      FLINK_PROPERTIES: |
+        s3.endpoint: http://minio:9000
+        s3.path.style.access: true
+        s3.access-key: sysarmor
+        s3.secret-key: sysarmor-secret
+
+  flink-normalize:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/sysarmor_streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: normalize
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+  flink-detection:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/sysarmor_streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: detection
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+  flink-projection:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/sysarmor_streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: projection
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
 
   redis:
     build:

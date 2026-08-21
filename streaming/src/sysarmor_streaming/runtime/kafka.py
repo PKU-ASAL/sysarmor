@@ -1,5 +1,6 @@
 from pyflink.common import Types
-from pyflink.common.serialization import ByteArraySchema
+from pyflink.common.serialization import DeserializationSchema, SerializationSchema
+from pyflink.java_gateway import get_gateway
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.connectors.kafka import (
     DeliveryGuarantee,
@@ -11,6 +12,15 @@ from pyflink.datastream.connectors.kafka import (
 )
 
 from sysarmor_streaming.runtime.config import StreamingConfig
+
+
+class ByteArraySchema(SerializationSchema, DeserializationSchema):
+    """Use Flink core's byte-preserving schema for protobuf Kafka values."""
+
+    def __init__(self):
+        schema = get_gateway().jvm.org.apache.flink.api.common.serialization.ByteArraySchema()
+        SerializationSchema.__init__(self, schema)
+        DeserializationSchema.__init__(self, schema)
 
 
 def configure_environment(config: StreamingConfig):
