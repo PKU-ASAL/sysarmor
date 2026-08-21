@@ -129,11 +129,10 @@ class DetectionState:
         ]
         scope.events = [item for item in retained if item[1].WhichOneof("payload") == "event"]
         scope.signals = [item for item in retained if item[1].WhichOneof("payload") == "signal"]
-        emissions = [
+        emissions = sorted(
             (observed_ns, identity)
             for identity, observed_ns in scope.emitted.items()
-            if observed_ns > cutoff
-        ][-self._max_scope_records :]
+        )[-self._max_scope_records :]
         scope.emitted = {identity: observed_ns for observed_ns, identity in emissions}
 
 
