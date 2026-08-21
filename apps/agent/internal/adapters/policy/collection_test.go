@@ -8,33 +8,6 @@ import (
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 )
 
-func TestParseCollectionIntent(t *testing.T) {
-	intent, err := ParseCollectionIntent(`{"behaviors":["process.exec","process.exit","process.fork","file.open","file.write","file.chmod","network.connect"]}`, true)
-	if err != nil {
-		t.Fatalf("ParseCollectionIntent() error = %v", err)
-	}
-	if !intent.ObserveOnly {
-		t.Fatal("ObserveOnly = false")
-	}
-	if len(intent.Behaviors) != 7 {
-		t.Fatalf("Behaviors len = %d", len(intent.Behaviors))
-	}
-	if intent.Behaviors[0] != "process.exec" {
-		t.Fatalf("first behavior = %v", intent.Behaviors[0])
-	}
-}
-
-func TestLoadCollectionIntentFromRepoPolicy(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "..", "..", "test", "data", "policies", "collection.yaml")
-	intent, err := LoadCollectionIntent(path, true)
-	if err != nil {
-		t.Fatalf("LoadCollectionIntent() error = %v", err)
-	}
-	if len(intent.Behaviors) == 0 {
-		t.Fatal("Behaviors is empty")
-	}
-}
-
 func TestBalancedPolicyResolvesContentRefs(t *testing.T) {
 	path := filepath.Join("..", "..", "..", "..", "..", "test", "data", "policies", "collection-balanced.json")
 	policy, err := ParseCollectionPolicyJSON(mustReadFile(t, path), true)
@@ -61,18 +34,11 @@ func TestBalancedPolicyResolvesContentRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.Behaviors) != 7 || len(intent.MandatoryBehaviors) != 5 {
+	if len(intent.Behaviors) != 5 || len(intent.MandatoryBehaviors) != 0 {
 		t.Fatalf("behaviors = %v", intent.Behaviors)
 	}
 	if len(report.ResolvedRefs) != 8 {
 		t.Fatalf("resolved refs = %+v", report.ResolvedRefs)
-	}
-}
-
-func TestParseCollectionIntentRequiresJSONBehaviors(t *testing.T) {
-	_, err := ParseCollectionIntent(`kinds: [SETUID]`, true)
-	if err == nil {
-		t.Fatal("ParseCollectionIntent() error = nil")
 	}
 }
 
@@ -106,21 +72,21 @@ func TestParseCollectionPolicyJSONBehaviorsAndFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.Behaviors) != 5 || len(intent.MandatoryBehaviors) != 5 {
+	if len(intent.Behaviors) != 2 || len(intent.MandatoryBehaviors) != 0 {
 		t.Fatalf("Behaviors = %v", intent.Behaviors)
 	}
-	if intent.Behaviors[0] != "process.exec" {
+	if intent.Behaviors[0] != "network.connect" {
 		t.Fatalf("first behavior = %v", intent.Behaviors[0])
 	}
-	if len(intent.BehaviorFilters) != 5 {
+	if len(intent.BehaviorFilters) != 2 {
 		t.Fatalf("BehaviorFilters = %+v", intent.BehaviorFilters)
 	}
-	network := intent.BehaviorFilters[4]
-	if network.Behavior != "network.connect" || len(network.SocketFamilies) != 0 {
+	network := intent.BehaviorFilters[0]
+	if network.Behavior != "network.connect" || len(network.SocketFamilies) != 1 {
 		t.Fatalf("network filter = %+v", network)
 	}
-	file := intent.BehaviorFilters[3]
-	if file.Behavior != "file.write" || len(file.FilePrefixes) != 0 {
+	file := intent.BehaviorFilters[1]
+	if file.Behavior != "file.write" || len(file.FilePrefixes) != 2 {
 		t.Fatalf("file filter = %+v", file)
 	}
 	if intent.ScopeType != "container" || intent.ScopeSelector != "abc123" {
@@ -160,13 +126,13 @@ func TestExpandCollectionPolicyRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if got := intent.BehaviorFilters[3].SocketAddrs; len(got) != 0 {
+	if got := intent.BehaviorFilters[0].SocketAddrs; len(got) != 1 {
 		t.Fatalf("socket addrs = %v", got)
 	}
-	if got := intent.BehaviorFilters[3].SocketPorts; len(got) != 0 {
+	if got := intent.BehaviorFilters[0].SocketPorts; len(got) != 2 {
 		t.Fatalf("socket ports = %v", got)
 	}
-	if got := intent.BehaviorFilters[2].FilePrefixes; len(got) != 0 {
+	if got := intent.BehaviorFilters[1].FilePrefixes; len(got) != 2 {
 		t.Fatalf("file prefixes = %v", got)
 	}
 	if len(report.ResolvedRefs) != 3 {
@@ -204,13 +170,13 @@ func TestCollectionPolicyFlatFieldsBecomeBehaviorFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectionPolicyIntent() error = %v", err)
 	}
-	if len(intent.BehaviorFilters) != 5 {
+	if len(intent.BehaviorFilters) != 2 {
 		t.Fatalf("BehaviorFilters = %+v", intent.BehaviorFilters)
 	}
-	if got := intent.BehaviorFilters[4].SocketFamilies; len(got) != 0 {
+	if got := intent.BehaviorFilters[0].SocketFamilies; len(got) != 1 {
 		t.Fatalf("network socket families = %v", got)
 	}
-	if got := intent.BehaviorFilters[3].FilePrefixes; len(got) != 0 {
+	if got := intent.BehaviorFilters[1].FilePrefixes; len(got) != 1 {
 		t.Fatalf("file prefixes = %v", got)
 	}
 }

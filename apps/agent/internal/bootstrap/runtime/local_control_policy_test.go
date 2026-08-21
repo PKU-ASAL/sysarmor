@@ -393,21 +393,21 @@ func TestLocalControlApplyCollectionPolicyUpdatesSensorRuntime(t *testing.T) {
 	if got.ScopeType != "container" || got.ScopeSelector != "container-a" {
 		t.Fatalf("intent scope = %q/%q", got.ScopeType, got.ScopeSelector)
 	}
-	if len(got.Behaviors) != 5 || len(got.MandatoryBehaviors) != 5 {
+	if len(got.Behaviors) != 2 || len(got.MandatoryBehaviors) != 0 {
 		t.Fatalf("intent behaviors = %v", got.Behaviors)
 	}
-	if len(got.BehaviorFilters) != 5 {
+	if len(got.BehaviorFilters) != 2 {
 		t.Fatalf("intent behavior filters = %+v", got.BehaviorFilters)
 	}
-	if got.BehaviorFilters[4].Behavior != "network.connect" || len(got.BehaviorFilters[4].SocketFamilies) != 0 {
-		t.Fatalf("mandatory network filter = %+v", got.BehaviorFilters[3])
+	if got.BehaviorFilters[0].Behavior != "network.connect" || len(got.BehaviorFilters[0].SocketFamilies) != 1 {
+		t.Fatalf("network filter = %+v", got.BehaviorFilters[0])
 	}
-	if got.BehaviorFilters[3].Behavior != "file.write" || len(got.BehaviorFilters[3].FilePrefixes) != 0 {
-		t.Fatalf("mandatory file filter = %+v", got.BehaviorFilters[2])
+	if got.BehaviorFilters[1].Behavior != "file.write" || len(got.BehaviorFilters[1].FilePrefixes) == 0 {
+		t.Fatalf("file filter = %+v", got.BehaviorFilters[1])
 	}
 }
 
-func TestLocalControlDoesNotNarrowMandatoryNetworkBaseline(t *testing.T) {
+func TestLocalControlPreservesRequestedNetworkSelectors(t *testing.T) {
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "agent.sock")
 	sensor := &recordingCollectionSensor{healthOnlySensor: healthOnlySensor{health: contract.Health{Backend: "fake", Running: true, Installed: true, PolicyLoaded: true}}}
@@ -449,10 +449,10 @@ func TestLocalControlDoesNotNarrowMandatoryNetworkBaseline(t *testing.T) {
 	if ack.Status != "degraded" {
 		t.Fatalf("ack status = %q, want degraded from detection dependencies: %+v", ack.Status, ack)
 	}
-	if strings.Contains(ack.ReportJson, `"process.binary_prefix"`) {
+	if !strings.Contains(ack.ReportJson, `"process.binary_prefix"`) {
 		t.Fatalf("ack report_json = %q", ack.ReportJson)
 	}
-	if len(sensor.lastIntent.Behaviors) != 5 || len(sensor.lastIntent.MandatoryBehaviors) != 5 || len(sensor.lastIntent.BehaviorFilters[4].BinaryPrefixes) != 0 {
+	if len(sensor.lastIntent.Behaviors) != 1 || len(sensor.lastIntent.MandatoryBehaviors) != 0 || len(sensor.lastIntent.BehaviorFilters[0].BinaryPrefixes) != 1 {
 		t.Fatalf("sensor intent = %+v", sensor.lastIntent)
 	}
 }

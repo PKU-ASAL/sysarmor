@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +34,25 @@ func TestLoadEffectiveEndpointPolicyBootstrapsAndRestoresSQLite(t *testing.T) {
 	}
 	if first.PolicyID != "bootstrap" || second.PolicyID != "bootstrap" || second.Version != 1 {
 		t.Fatalf("first=%+v second=%+v", first, second)
+	}
+}
+
+func TestLoadEffectiveEndpointPolicyDoesNotReadLegacyPolicyRow(t *testing.T) {
+	store, err := sqlite.Open(t.Context(), sqlite.Options{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	document := []byte(`{"policy_id":"legacy","version":1,"collection":{"behaviors":["process.exec"]},"detection":{},"telemetry":{},"response":{}}`)
+	digest := sha256.Sum256(document)
+	if err := store.PutPolicy(t.Context(), sqlite.PolicyRecord{
+		Kind: "endpoint", Version: 1, Document: document, Digest: hex.EncodeToString(digest[:]),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = LoadEffectiveEndpointPolicy(t.Context(), store, filepath.Join(t.TempDir(), "missing.json"))
+	if err == nil || !strings.Contains(err.Error(), "read bootstrap policy") {
+		t.Fatalf("LoadEffectiveEndpointPolicy() error=%v, want bootstrap policy error", err)
 	}
 }
 
@@ -86,7 +107,7 @@ func TestEffectiveEndpointPolicyPreservesStructuredCollectionBehaviors(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(intent.Behaviors) != 5 || len(intent.MandatoryBehaviors) != 5 || len(intent.BehaviorFilters[0].BinaryPrefixes) != 0 {
+	if len(intent.Behaviors) != 1 || len(intent.MandatoryBehaviors) != 0 || len(intent.BehaviorFilters[0].BinaryPrefixes) != 1 {
 		t.Fatalf("restored collection intent = %+v", intent)
 	}
 }

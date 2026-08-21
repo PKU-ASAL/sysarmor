@@ -51,24 +51,20 @@ func TestCollectionIntentRejectsUnknownBehavior(t *testing.T) {
 	}
 }
 
-func TestCompileCollectionIntentAlwaysIncludesMandatoryCausalBaseline(t *testing.T) {
+func TestCompileCollectionIntentDoesNotInjectCausalBaseline(t *testing.T) {
 	intent, err := CompileCollectionIntent(CollectionPolicy{Behaviors: []string{"file.read"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, behavior := range []string{"process.exec", "process.exit", "process.fork", "file.write", "network.connect"} {
-		if !contains(intent.Behaviors, behavior) || !contains(intent.MandatoryBehaviors, behavior) {
-			t.Fatalf("baseline behavior %q missing from %+v", behavior, intent)
-		}
+	if len(intent.Behaviors) != 1 || intent.Behaviors[0] != "file.read" {
+		t.Fatalf("compiled behaviors = %v", intent.Behaviors)
 	}
-	for _, prefix := range []string{"/var/log/syslog", "/var/lib/sysarmor", "/run/sysarmor"} {
-		if !contains(intent.FileWriteExcludes, prefix) {
-			t.Fatalf("mandatory file.write exclusion %q missing from %+v", prefix, intent)
-		}
+	if len(intent.MandatoryBehaviors) != 0 || len(intent.FileWriteExcludes) != 0 {
+		t.Fatalf("implicit causal requirements remain in %+v", intent)
 	}
 }
 
-func TestCompileCollectionIntentBaselineIgnoresUserSelectors(t *testing.T) {
+func TestCompileCollectionIntentPreservesRequestedSelectors(t *testing.T) {
 	intent, err := CompileCollectionIntent(CollectionPolicy{
 		BehaviorSpecs: []BehaviorPolicy{{ID: "network.connect", Selectors: BehaviorSelectors{
 			Process: ProcessSelector{BinaryPrefixes: []string{"/tmp/"}},
@@ -79,8 +75,8 @@ func TestCompileCollectionIntentBaselineIgnoresUserSelectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, filter := range intent.BehaviorFilters {
-		if filter.Behavior == "network.connect" && len(filter.BinaryPrefixes)+len(filter.SocketPorts) != 0 {
-			t.Fatalf("baseline filter narrowed by user selectors: %+v", filter)
+		if filter.Behavior == "network.connect" && (len(filter.BinaryPrefixes) != 1 || len(filter.SocketPorts) != 1) {
+			t.Fatalf("requested selectors were discarded: %+v", filter)
 		}
 	}
 }

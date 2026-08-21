@@ -70,3 +70,38 @@ func TestDetectionProtoCopiesDomainParameters(t *testing.T) {
 		t.Fatalf("rarity = %+v", got.GetRarity())
 	}
 }
+
+func TestEndpointPolicyRoundTripPreservesLearningModelReference(t *testing.T) {
+	input := []byte(`{
+		"policy_id":"learning-a","version":3,
+		"collection":{"behaviors":["process.exec"]},
+		"detection":{"learning_model":{"ref":"model:process-profile-v2","version":"2","digest":"sha256:abc"}},
+		"telemetry":{},"response":{}
+	}`)
+
+	decoded, err := DecodeEndpointPolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Detection.LearningModel == nil || decoded.Detection.LearningModel.Ref != "model:process-profile-v2" || decoded.Detection.LearningModel.Version != "2" {
+		t.Fatalf("learning model = %+v", decoded.Detection.LearningModel)
+	}
+	output, err := EncodeEndpointPolicy(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(output), `"learning_model":{"ref":"model:process-profile-v2","version":"2","digest":"sha256:abc"}`) {
+		t.Fatalf("encoded endpoint policy = %s", output)
+	}
+}
+
+func TestEndpointPolicyRejectsIncompleteLearningModelReference(t *testing.T) {
+	_, err := DecodeEndpointPolicy([]byte(`{
+		"policy_id":"learning-a","version":3,
+		"collection":{},"detection":{"learning_model":{"ref":"model:a","version":"2"}},
+		"telemetry":{},"response":{}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "learning model") {
+		t.Fatalf("error = %v", err)
+	}
+}

@@ -48,6 +48,7 @@ func TestNewRunnerAppliesMatcherFeatureFlag(t *testing.T) {
 	t.Cleanup(func() { matcher.SetDefaultStrategy(matcher.StrategyLinear) })
 	runner, err := NewRunner(t.Context(), config.Config{
 		Manager: config.ManagerConfig{Transport: "local"},
+		Local:   config.LocalConfig{StatePath: t.TempDir()},
 		Runtime: config.RuntimeConfig{FeatureFlags: config.RuntimeFeatureFlags{MatcherStrategy: "linear"}},
 		Sensor:  config.SensorConfig{Backend: "fake"},
 	})
@@ -96,6 +97,7 @@ func TestNewRunnerKeepsCoreRuntimeWhenLearningBundleFails(t *testing.T) {
 	path := writeTestFile(t, t.TempDir(), "model.json", `{"model_ref":"model:bad"}`)
 	runner, err := NewRunner(t.Context(), config.Config{
 		Manager:  config.ManagerConfig{Transport: "local"},
+		Local:    config.LocalConfig{StatePath: t.TempDir()},
 		Sensor:   config.SensorConfig{Backend: "fake"},
 		Learning: config.LearningConfig{ModelPath: path},
 	})
@@ -145,16 +147,18 @@ func TestNewRunnerOwnsStandaloneLocalState(t *testing.T) {
 	}
 }
 
-func TestNewRunnerDoesNotCreateManagedLocalState(t *testing.T) {
+func TestNewRunnerOwnsManagedLocalState(t *testing.T) {
 	runner, err := NewRunner(t.Context(), config.Config{
 		Manager: config.ManagerConfig{Transport: "grpc"},
+		Local:   config.LocalConfig{StatePath: t.TempDir()},
 		Sensor:  config.SensorConfig{Backend: "fake"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runner.store != nil {
-		t.Fatal("managed local store must be nil")
+	defer runner.Close()
+	if runner.store == nil {
+		t.Fatal("managed local store = nil")
 	}
 }
 

@@ -129,7 +129,25 @@ func decodeModelBundle(raw []byte, trustedKeys map[string]ed25519.PublicKey) (po
 	if err := verifyModelBundle(document, trustedKeys); err != nil {
 		return nil, err
 	}
-	return domainmodel.NewDetector(document.bundle())
+	detector, err := domainmodel.NewDetector(document.bundle())
+	if err != nil {
+		return nil, err
+	}
+	return &identifiedProfileDetector{
+		ProfileDetector: detector,
+		identity: ports.ProfileDetectorIdentity{
+			Ref: document.ModelRef, Version: document.ModelVersion, Digest: document.ModelDigest,
+		},
+	}, nil
+}
+
+type identifiedProfileDetector struct {
+	ports.ProfileDetector
+	identity ports.ProfileDetectorIdentity
+}
+
+func (detector *identifiedProfileDetector) Identity() ports.ProfileDetectorIdentity {
+	return detector.identity
 }
 
 func parseModelBundle(raw []byte) (modelBundleDocument, error) {

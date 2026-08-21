@@ -17,6 +17,7 @@ import (
 	detectionruntime "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection/runtime"
 	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/telemetry"
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -56,6 +57,7 @@ type policyRuntime struct {
 	sensor             *sensorRuntime
 	out                io.Writer
 	controller         PolicyControllerFactory
+	learningDetector   ports.ProfileDetector
 }
 
 type managementRuntime struct {
@@ -79,6 +81,7 @@ type managementRuntime struct {
 
 type telemetryRuntime struct {
 	telemetryBatcher      *telemetryadapter.Batcher
+	candidateLifecycle    domaintelemetry.CandidateLifecycle
 	eventSeq              uint64
 	initialSignalSequence uint64
 	telemetrySeq          uint64
@@ -139,6 +142,7 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	runtime.telemetryState.eventSeq = dependencies.EventSeq
 	runtime.telemetryState.initialSignalSequence = dependencies.SignalSeq
 	runtime.learningDetector = dependencies.LearningDetector
+	runtime.policyState.learningDetector = dependencies.LearningDetector
 	runtime.policyState.detectionStatus.Learning = learningHealth(dependencies.LearningDetector, dependencies.LearningError)
 	runtime.wireComponents()
 	runtime.managementState.setRuntimeIdentity(runtimeIdentity{

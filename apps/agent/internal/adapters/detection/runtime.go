@@ -24,8 +24,11 @@ func NewWithRuntime(policy *policymodel.DetectionPolicy, collection contract.Col
 }
 
 func NewWithRuntimeLimits(policy *policymodel.DetectionPolicy, collection contract.CollectionIntent, content domainruntime.ContentSnapshot, limits domainruntime.EngineLimits) (*domainruntime.State, domainruntime.ApplyReport) {
-	if policy == nil || len(policy.RuleSets) == 0 {
+	if policy == nil || len(policy.RuleSets) == 0 && policy.LearningModel == nil {
 		return domainruntime.NewState(domainruntime.Program{}, limits), domainruntime.ApplyReport{Status: "rejected", Message: "detection policy rejected: explicit ruleset is required", Details: []string{"detection policy requires at least one explicit ruleset"}}
+	}
+	if len(policy.RuleSets) == 0 {
+		return domainruntime.NewState(domainruntime.Program{}, limits), domainruntime.ApplyReport{Status: "applied", Message: "learning detection policy applied"}
 	}
 	input := domainruntime.ProgramInput{Content: content, Rules: resolve(policy, content)}
 	program, report := domainruntime.Compile(input)

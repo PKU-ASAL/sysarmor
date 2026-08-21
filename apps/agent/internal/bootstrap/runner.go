@@ -107,9 +107,6 @@ func (runner *Runner) Close() error {
 }
 
 func configureLocalState(ctx context.Context, dependencies *agentruntime.Dependencies) (*sqlite.Store, error) {
-	if dependencies.Config.Manager.Transport != "" {
-		return nil, nil
-	}
 	cfg := &dependencies.Config
 	store, err := sqlite.Open(ctx, sqlite.Options{
 		RootDir: cfg.Local.StatePath, MaxBytes: cfg.Local.Storage.MaxBytes,

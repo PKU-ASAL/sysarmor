@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
 	managerapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager"
 	policyapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/manager/policy"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/failure"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
 )
@@ -24,10 +26,16 @@ func (handler *Handler) savePolicy(w http.ResponseWriter, r *http.Request, reque
 		writeFailure(w, err)
 		return
 	}
+	resolved, err := contractmapper.ResolvePolicyBundle(raw)
+	if err != nil {
+		writeFailure(w, failure.New(failure.InvalidArgument, err.Error()))
+		return
+	}
 	result, err := handler.options.Save.Execute(r.Context(), request, policyapp.SavePolicyCommand{
 		Policy: domainpolicy.Policy{
 			TenantID: request.Actor.TenantID, ID: domainpolicy.ID(identity.PolicyID),
-			Version: domainpolicy.Version(identity.Version), Published: identity.Published, Document: raw,
+			Version: domainpolicy.Version(identity.Version), Published: identity.Published,
+			Document: resolved.ManagerDocument, DownlinkDocument: resolved.EndpointDocument,
 		},
 		Reason: r.URL.Query().Get("reason"),
 	})

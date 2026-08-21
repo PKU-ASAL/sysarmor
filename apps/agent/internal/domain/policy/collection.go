@@ -13,20 +13,6 @@ const (
 	maxSocketPorts  = 128
 )
 
-var mandatoryCausalityBehaviors = []string{
-	domainevent.BehaviorProcessExec,
-	domainevent.BehaviorProcessExit,
-	domainevent.BehaviorProcessFork,
-	domainevent.BehaviorFileWrite,
-	domainevent.BehaviorNetworkConnect,
-}
-
-var mandatoryFileWriteExcludes = []string{
-	"/var/log/syslog",
-	"/var/lib/sysarmor",
-	"/run/sysarmor",
-}
-
 type CollectionPolicy struct {
 	Identity       Identity
 	Behaviors      []string
@@ -212,11 +198,6 @@ func CompileCollectionIntent(value CollectionPolicy) (CollectionIntent, error) {
 		}
 		return nil
 	}
-	for _, behavior := range mandatoryCausalityBehaviors {
-		if err := add(behavior); err != nil {
-			return CollectionIntent{}, err
-		}
-	}
 	for _, behavior := range value.Behaviors {
 		if err := add(behavior); err != nil {
 			return CollectionIntent{}, err
@@ -235,24 +216,7 @@ func CompileCollectionIntent(value CollectionPolicy) (CollectionIntent, error) {
 	if len(filters) == 0 {
 		filters = flatBehaviorFilters(behaviors, value)
 	}
-	return CollectionIntent{Behaviors: behaviors, MandatoryBehaviors: clone(mandatoryCausalityBehaviors), BinaryPrefixes: clone(value.BinaryPrefixes), FilePrefixes: clone(value.FilePrefixes), FileWriteExcludes: clone(mandatoryFileWriteExcludes), SocketFamilies: clone(value.SocketFamilies), SocketAddrs: clone(value.SocketAddrs), SocketPorts: clone(value.SocketPorts), BehaviorFilters: mandatoryFilters(behaviors, filters), ScopeType: value.ScopeType, ScopeSelector: value.ScopeSelector, ObserveOnly: value.ObserveOnly}, nil
-}
-
-func mandatoryFilters(behaviors []string, filters []BehaviorFilter) []BehaviorFilter {
-	result := make([]BehaviorFilter, 0, len(behaviors))
-	for _, behavior := range behaviors {
-		if contains(mandatoryCausalityBehaviors, behavior) {
-			result = append(result, BehaviorFilter{Behavior: behavior})
-			continue
-		}
-		for _, filter := range filters {
-			if filter.Behavior == behavior {
-				result = append(result, filter)
-				break
-			}
-		}
-	}
-	return result
+	return CollectionIntent{Behaviors: behaviors, BinaryPrefixes: clone(value.BinaryPrefixes), FilePrefixes: clone(value.FilePrefixes), SocketFamilies: clone(value.SocketFamilies), SocketAddrs: clone(value.SocketAddrs), SocketPorts: clone(value.SocketPorts), BehaviorFilters: filters, ScopeType: value.ScopeType, ScopeSelector: value.ScopeSelector, ObserveOnly: value.ObserveOnly}, nil
 }
 
 func normalizeBehaviorPolicy(value *BehaviorPolicy) {

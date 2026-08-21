@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/contracts"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
 	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
@@ -23,13 +24,13 @@ type policyEnvelope struct {
 		Type     string `json:"type,omitempty"`
 		Selector string `json:"selector,omitempty"`
 	} `json:"scope,omitempty"`
-	Mode string `json:"mode,omitempty"`
+	ProtectionMode string `json:"protection_mode"`
 }
 
 type policyColumns struct {
-	scopeType     string
-	scopeSelector string
-	mode          string
+	scopeType      string
+	scopeSelector  string
+	protectionMode string
 }
 
 func decodePolicy(tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.Version, document []byte) (domainpolicy.Policy, error) {
@@ -41,14 +42,14 @@ func decodePolicy(tenantID tenant.ID, id domainpolicy.ID, version domainpolicy.V
 	if err != nil {
 		return domainpolicy.Policy{}, err
 	}
-	downlink, err := EndpointDocument(canonical, id, version)
+	resolved, err := contractmapper.ResolvePolicyBundle(canonical)
 	if err != nil {
 		return domainpolicy.Policy{}, err
 	}
 	return domainpolicy.Policy{
 		TenantID: tenantID, ID: id, Version: version, Published: envelope.Published,
 		CreatedAt: envelope.CreatedAt, UpdatedAt: envelope.UpdatedAt,
-		Document: canonical, DownlinkDocument: downlink,
+		Document: resolved.ManagerDocument, DownlinkDocument: resolved.EndpointDocument,
 	}, nil
 }
 
@@ -68,29 +69,15 @@ func canonicalPolicyDocument(document []byte, tenantID tenant.ID, id domainpolic
 }
 
 func EndpointDocument(document []byte, id domainpolicy.ID, version domainpolicy.Version) ([]byte, error) {
-	var source map[string]json.RawMessage
-	if err := json.Unmarshal(document, &source); err != nil {
-		return nil, fmt.Errorf("decode endpoint policy source: %w", err)
-	}
-	endpoint := map[string]json.RawMessage{}
-	setJSONField(endpoint, "policy_id", id.String())
-	setJSONField(endpoint, "version", uint64(version))
-	endpoint["collection"] = rawOrDefault(source["collection"], `{"behaviors":["process.exec","process.exit","process.fork","file.read","file.write","file.chmod","network.connect"],"observe_only":true}`)
-	endpoint["detection"] = rawOrDefault(source["detection"], `{"policy_id":"default-endpoint-detection","version":1,"mode":"observe"}`)
-	endpoint["telemetry"] = rawOrDefault(source["telemetry"], `{"max_batch_items":256,"max_batch_bytes":262144,"flush_interval":"1s"}`)
-	endpoint["response"] = rawOrDefault(source["response_policy"], `{"allowed_actions":["collect","noop"],"allowed_modes":["observe"]}`)
-	encoded, err := json.Marshal(endpoint)
+	canonical, err := canonicalPolicyDocument(document, "", id, version)
 	if err != nil {
-		return nil, fmt.Errorf("encode endpoint policy: %w", err)
+		return nil, err
 	}
-	return encoded, nil
-}
-
-func rawOrDefault(value json.RawMessage, fallback string) json.RawMessage {
-	if len(value) > 0 && string(value) != "null" {
-		return append(json.RawMessage(nil), value...)
+	resolved, err := contractmapper.ResolvePolicyBundle(canonical)
+	if err != nil {
+		return nil, err
 	}
-	return json.RawMessage(fallback)
+	return resolved.EndpointDocument, nil
 }
 
 func encodePolicy(value domainpolicy.Policy) ([]byte, policyColumns, error) {
@@ -116,7 +103,11 @@ func encodePolicy(value domainpolicy.Policy) ([]byte, policyColumns, error) {
 	if err := json.Unmarshal(encoded, &envelope); err != nil {
 		return nil, policyColumns{}, fmt.Errorf("read policy columns: %w", err)
 	}
-	return encoded, policyColumns{envelope.Scope.Type, envelope.Scope.Selector, envelope.Mode}, nil
+	resolved, err := contractmapper.ResolvePolicyBundle(encoded)
+	if err != nil {
+		return nil, policyColumns{}, err
+	}
+	return resolved.ManagerDocument, policyColumns{envelope.Scope.Type, envelope.Scope.Selector, envelope.ProtectionMode}, nil
 }
 
 func setJSONField(fields map[string]json.RawMessage, name string, value any) {

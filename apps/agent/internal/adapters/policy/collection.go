@@ -3,7 +3,6 @@ package policy
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	contractmapper "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/contracts"
@@ -26,29 +25,6 @@ type CollectionValueSet struct {
 
 type CollectionExpansionReport struct {
 	ResolvedRefs []contract.CollectionResolvedRef
-}
-
-func LoadCollectionIntent(path string, observeOnly bool) (contract.CollectionIntent, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return contract.CollectionIntent{}, err
-	}
-	intent, err := ParseCollectionIntent(string(data), observeOnly)
-	if err != nil {
-		return contract.CollectionIntent{}, fmt.Errorf("%s: %w", path, err)
-	}
-	return intent, nil
-}
-
-func ParseCollectionIntent(data string, observeOnly bool) (contract.CollectionIntent, error) {
-	if !strings.HasPrefix(strings.TrimSpace(data), "{") {
-		return contract.CollectionIntent{}, fmt.Errorf("collection policy must be json with behaviors")
-	}
-	policy, err := ParseCollectionPolicyJSON([]byte(data), observeOnly)
-	if err != nil {
-		return contract.CollectionIntent{}, err
-	}
-	return CollectionPolicyIntent(policy)
 }
 
 func ParseCollectionPolicyJSON(data []byte, defaultObserveOnly bool) (domainpolicy.CollectionPolicy, error) {
