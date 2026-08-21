@@ -227,6 +227,28 @@ wheels = [
 ]
 
 [[package]]
+name = "grpcio-tools"
+version = "1.59.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "grpcio" },
+    { name = "protobuf" },
+    { name = "setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/df/6c/e503e9fe5055d83413336c70bf9f15e54cec79ca8794c564af2843488809/grpcio-tools-1.59.3.tar.gz", hash = "sha256:cd160ac4281cd1ae77a2c880377a7728349340b4c91e24285037b57c18e9f651", size = 4623919 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/b9/b9ec8defa24e1bfe9fe03a74e6d2138702ce62e8d81c4167b2bc0a6c9cc1/grpcio_tools-1.59.3-cp311-cp311-linux_armv7l.whl", hash = "sha256:b4418b78408ff56ee70a0b14484c07f5e48c2e6f4fa7be390d486a686d0cd6e4", size = 59231761 },
+    { url = "https://files.pythonhosted.org/packages/0a/d5/41f9e4924b7e8000ac0483207c07529c0da343c82fba7101299a43417daa/grpcio_tools-1.59.3-cp311-cp311-macosx_10_10_universal2.whl", hash = "sha256:58de83ced4f86458f45288a5f76d9765dc245a9ce4e783a194decccc7e0674ea", size = 4887896 },
+    { url = "https://files.pythonhosted.org/packages/a7/50/f1a57a9b406002fe4318c5e9a61abc882e94eb04e09d3dc2d289175baf64/grpcio_tools-1.59.3-cp311-cp311-manylinux_2_17_aarch64.whl", hash = "sha256:76b0cdcbcb38722840d3eaff6439ddb4b8f0210c6718553d7b7c911834b10e60", size = 2516822 },
+    { url = "https://files.pythonhosted.org/packages/df/9a/3cefc33c62dd9ed897787b00de2ab061d4a192d0417b8d4439254f74eb33/grpcio_tools-1.59.3-cp311-cp311-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:a0cacf59513b100bfb3d8de51ba43db6140aa9bcb7bba872badb48acb430c002", size = 2922750 },
+    { url = "https://files.pythonhosted.org/packages/e2/53/ddb3db7f688374b8a124b11f1d77a03eab42ff269ac58492b39b40f8cace/grpcio_tools-1.59.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:019fdd986c80b13187574c291df5054f241bdbe87dbc86e4cee73ffa28328647", size = 2664242 },
+    { url = "https://files.pythonhosted.org/packages/ba/c7/5d2f0feb600b9596bacb4601121f940e531b4cc4297a0b626888ae2ed39a/grpcio_tools-1.59.3-cp311-cp311-musllinux_1_1_i686.whl", hash = "sha256:ff304b9d6c23d8e2ecc860bebac1ec6768a2d920985bcea9ce4a7aaeeea44f76", size = 3473224 },
+    { url = "https://files.pythonhosted.org/packages/1a/f9/7072330f47f679ff78a2402962537e6e0d6c313cd63046ae14d7eae31cf6/grpcio_tools-1.59.3-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:ca286affe613beaf2d5a6b8bd83203dcf488917194b416da48aa849047b5f081", size = 3087392 },
+    { url = "https://files.pythonhosted.org/packages/39/a5/e2cfe417ccdfab2efa60265069fcf49623ef74fb482041da3df587c69072/grpcio_tools-1.59.3-cp311-cp311-win32.whl", hash = "sha256:8f69141ff370729ceaad0286b8c6e15352c9bb39aa8f18c0500ce3d0238c2981", size = 903955 },
+    { url = "https://files.pythonhosted.org/packages/5a/b1/353fb804e3f67de3e6e5025f572f5e19bc81aa0e5c8c64e0cf1560f8e703/grpcio_tools-1.59.3-cp311-cp311-win_amd64.whl", hash = "sha256:05ec4ffe16b6eab12813476e6d7465a0027bee33999d4776ae1d9c0664d0fc54", size = 1056283 },
+]
+
+[[package]]
 name = "hdfs"
 version = "2.7.3"
 source = { registry = "https://pypi.org/simple" }
@@ -326,7 +348,7 @@ name = "pemja"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "find-libpython" },
+    { name = "find-libpython", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/90/2b/2ca14e70edd1c8bb38fcef6c6902d08702fa9a3a1e60da81b1a9cb22a200/pemja-0.4.1.tar.gz", hash = "sha256:38b0466ba48822cd9fa65bf8465c45474bf3f048d6458388e0bf895904258e8c", size = 50674 }
 wheels = [
@@ -498,6 +520,15 @@ wheels = [
 ]
 
 [[package]]
+name = "setuptools"
+version = "70.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/d8/10a70e86f6c28ae59f101a9de6d77bf70f147180fbf40c3af0f64080adc3/setuptools-70.3.0.tar.gz", hash = "sha256:f171bab1dfbc86b132997f26a119f6056a57950d058587841a0082e8830f9dc5", size = 2333112 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/15/88e46eb9387e905704b69849618e699dc2f54407d8953cc4ec4b8b46528d/setuptools-70.3.0-py3-none-any.whl", hash = "sha256:fe384da74336c398e0d956d1cae0669bc02eed936cdb1d49b57de1990dc11ffc", size = 931070 },
+]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -514,8 +545,20 @@ dependencies = [
     { name = "apache-flink" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "grpcio-tools" },
+    { name = "setuptools" },
+]
+
 [package.metadata]
 requires-dist = [{ name = "apache-flink", specifier = "==1.20.2" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "grpcio-tools", specifier = "==1.59.3" },
+    { name = "setuptools", specifier = "==70.3.0" },
+]
 
 [[package]]
 name = "typing-extensions"

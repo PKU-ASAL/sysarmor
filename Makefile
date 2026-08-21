@@ -1,10 +1,11 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api api-go api-python build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
 GOBIN_PATH := $(shell go env GOPATH)/bin
+PYTHON_PROTO_OUT := streaming/src
 BIN_DIR ?= dist/bin
 RELEASE_DIR ?= dist/release
 PACKAGE_BASE_URL ?= http://packages
@@ -54,9 +55,15 @@ WEB_RUN_DIR ?= .run
 WEB_LOG ?= $(WEB_RUN_DIR)/manager-console.log
 WEB_PID ?= $(WEB_RUN_DIR)/manager-console.pid
 
-api:
+api: api-go api-python
+
+api-go:
 	PATH="$(GOBIN_PATH):$$PATH" protoc --go_out=. --go_opt=paths=source_relative $(PROTO_FILES)
 	PATH="$(GOBIN_PATH):$$PATH" protoc --go-grpc_out=. --go-grpc_opt=paths=source_relative $(PROTO_FILES)
+
+api-python:
+	mkdir -p $(PYTHON_PROTO_OUT)
+	PYTHONWARNINGS=ignore::DeprecationWarning uv run --project streaming --group dev python -m grpc_tools.protoc -I . --python_out=$(PYTHON_PROTO_OUT) $(PROTO_FILES)
 
 build:
 	@if [ -z "$(SERVICE)" ]; then \
