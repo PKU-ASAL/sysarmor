@@ -63,3 +63,10 @@ message LateTelemetry {
   NormalizedTelemetry telemetry = 1;
   int64 watermark_unix_nano = 2;
 }
+
+message DetectionFailure {
+  NormalizedTelemetry telemetry = 1;
+  string reason_code = 2;
+  string message = 3;
+  bool retryable = 4;
+}
