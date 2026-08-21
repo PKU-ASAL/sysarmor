@@ -41,6 +41,65 @@ services:
       timeout: 5s
       retries: 30
 
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    container_name: sysarmor-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sysarmor
+      MINIO_ROOT_PASSWORD: sysarmor-secret
+    volumes:
+      - flink-checkpoints:/data
+    ports:
+      - "${SYSARMOR_MINIO_PORT:-19000}:9000"
+      - "${SYSARMOR_MINIO_CONSOLE_PORT:-19001}:9001"
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-06-13T21-53-57Z
+    container_name: sysarmor-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      "until mc alias set local http://minio:9000 sysarmor sysarmor-secret; do sleep 1; done;
+      mc mb --ignore-existing local/sysarmor-flink"
+
+  flink-jobmanager:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    container_name: sysarmor-flink-jobmanager
+    command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_completed_successfully
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      AWS_ENDPOINT: http://minio:9000
+    ports:
+      - "${SYSARMOR_FLINK_UI_PORT:-18081}:8081"
+
+  flink-taskmanager:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    container_name: sysarmor-flink-taskmanager
+    command: taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "2"
+      AWS_ENDPOINT: http://minio:9000
+
   redis:
     build: ./infra/redis
     container_name: sysarmor-redis
@@ -186,6 +245,7 @@ volumes:
   redis-data:
   opensearch-data:
   manager-artifacts:
+  flink-checkpoints:
 
 secrets:
   auth-secret:

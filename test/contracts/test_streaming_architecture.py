@@ -19,6 +19,14 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         missing = [path for path in required if not (STREAMING / path).is_file()]
 
         self.assertEqual([], missing)
+        self.assertTrue((STREAMING / "src/sysarmor_streaming/entrypoints.py").is_file())
+
+    def test_streaming_deployment_has_flink_managers_and_checkpoint_store(self):
+        compose = (REPO / "deployments/compose.platform.yaml").read_text()
+        self.assertIn("flink-jobmanager:", compose)
+        self.assertIn("flink-taskmanager:", compose)
+        self.assertIn("minio:", compose)
+        self.assertIn("flink-checkpoints:", compose)
 
     def test_streaming_contract_is_versioned_protobuf(self):
         path = REPO / "packages/contracts/proto/streaming/v1/streaming.proto"
