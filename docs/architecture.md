@@ -167,6 +167,61 @@ flowchart LR
 
 Worker 先把 Event 规范化为有方向的 `ProvenanceEdge`，再构建进程、文件和 socket provenance 图：进程创建从父进程指向子进程，读操作从对象指向进程，写和发送操作从进程指向对象，每条边聚合对应的 `event_refs`；`process.exit` 只结束生命周期，不生成图边。合法 root process 即使没有父边也必须保留为图节点。Signal 只提供 Evidence 种子，不产生或补造 ProvenanceEdge。父身份缺失时图中保留明确的 gap 节点，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；Model Candidate 不会单独晋升为 Incident，因此真实 managed 图与结论 recall 由 `hybrid` 路径验收。候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
 
+### 目标：Flink 流式检测平面
+
+云侧分析将一次性迁移到真实 Apache Flink 集群。迁移验收完成前，本节描述已批准但尚未成为当前生产事实的目标边界；验收完成后删除上面的旧 Worker 路径和本段过渡说明，不保留双跑、fallback 或兼容 facade。
+
+目标架构划分四个互不越界的平面：
+
+| 平面 | 组件 | 责任 |
+|---|---|---|
+| 控制平面 | Go Manager、PostgreSQL | Tenant、Agent、Enrollment、Policy、Response 和 Audit |
+| 数据接入平面 | Gateway、Kafka | 身份校验、DataBatch 接收、可靠交接和有界重放 |
+| 流式检测平面 | Flink JobManager、TaskManager、PyFlink Job | 标准化、有状态检测、Evidence 和 Incident 收敛 |
+| 查询平面 | OpenSearch | Event、Signal、Evidence 和 Incident 查询投影 |
+
+PostgreSQL 只保存 Manager 控制面状态。Flink Job 的镜像、配置、依赖和运行时均不得包含 PostgreSQL 驱动或 DSN，也不得通过 Manager API 回写逐 Event、逐 Signal、逐批次或检测窗口状态。Kafka 是可重放的流式日志；Flink checkpoint/savepoint 是有界计算状态；OpenSearch 是可重建查询投影。三者都不能被替换为 PostgreSQL Worker 账本。
+
+Flink 集群是通用运行平台，SysArmor 流式任务是独立发布单元。首个生产拓扑由三个 Job 组成：
+
+```mermaid
+flowchart LR
+  Raw["DataBatch raw.v1"] --> Normalize["Normalize Job<br/>解码、复验、标准化"]
+  Normalize --> Normalized["telemetry normalized.v1"]
+  Normalize --> Rejected["telemetry rejected.v1"]
+  Normalized --> Detection["Detection Job<br/>窗口、Provenance、检测、收敛"]
+  Policy["detection-policy.v1<br/>compacted"] -->|"Broadcast State"| Detection
+  Detection --> Artifact["analysis artifact.v1"]
+  Detection --> Late["telemetry late.v1"]
+  Normalized --> Projection["Projection Job<br/>确定性 OpenSearch 投影"]
+  Artifact --> Projection
+  Projection --> Search["OpenSearch"]
+```
+
+三个 Job 的边界如下：
+
+1. **Normalize Job** 消费原始 DataBatch，复验 Protobuf、tenant、策略版本和 Candidate 当前触发 Event 强引用，生成具有确定性身份和 event time 的规范化记录。永久非法输入写入 rejection Topic；临时依赖错误不能被伪装成拒绝。
+2. **Detection Job** 按 `tenant_id + analysis_scope` 分区，以 keyed state 保存有界 Event、ProvenanceEdge、Candidate seed、rarity 和 feature 状态。它使用 event-time watermark、timer 和显式淘汰策略产生 Cloud Signal、Evidence 和 Incident，不从 OpenSearch 回读历史，不查询 PostgreSQL。
+3. **Projection Job** 消费规范化事实和分析产物，以确定性文档 ID 写入 OpenSearch。投影采用 at-least-once 交付和幂等覆盖；重复输入不能放大逻辑 Event、Signal、Evidence 或 Incident。
+
+任务之间只使用版本化 Kafka 合同，不直接调用彼此，也不共享进程内状态。基线与实验 Detection Job 可以用独立 consumer group、checkpoint 路径和输出 Topic 消费同一规范化输入；实验 Job 不能写入生产 artifact Topic。首版只维护以上三类职责，不为每一种 Event、Signal 或算法创建独立 Topic。
+
+Manager 使用 transactional outbox 在同一个 PostgreSQL 事务中保存已发布策略和待发布消息，再由控制面 relay 将不可变版本投递到 compacted Policy Topic；Kafka 确认后才能完成 outbox。该 outbox 是控制面 Policy 状态，不包含 Event、Signal 或 Worker 处理明细。Topic key 包含 tenant、Policy ID 和 version，历史版本至少保留到所有引用它的 DataBatch 超出 Kafka 最大重放窗口。Detection Job 通过 Broadcast State 使用精确版本；版本缺失时明确失败并停止越过该输入，不读取 PostgreSQL，也不使用默认策略。
+
+Flink JVM Runtime 负责调度、反压、checkpoint、watermark、状态后端和故障恢复；Python Worker 只承载版本化合同映射与检测领域算子。Job 使用 PyFlink DataStream API，Python 依赖由 `uv` 管理。状态按稳定 key 增量更新，禁止在 JVM 与 Python 间反复传输完整租户图；经实测确认的热点算子才允许单独下沉为 Java Operator。
+
+checkpoint 和 savepoint 只依赖 S3-compatible 接口，路径按稳定 Job ID 隔离。Compose/VM 首先使用 MinIO 作为默认实现；对象存储供应商不能进入 Job 代码。RustFS 等替代实现必须通过 checkpoint 创建、JobManager/TaskManager 重启恢复、并发 checkpoint、savepoint 升级、网络中断恢复和过期对象清理测试后，才能替换默认实现。
+
+交付语义遵循以下不变量：
+
+- Normalize 和 Detection 的 Kafka source offset 与 Kafka sink 输出由同一 Flink checkpoint 协调；失败从最后成功 checkpoint 重放。
+- Projection 只有在 OpenSearch 请求成功后才能确认对应输入进度；局部成功通过确定性文档 ID 安全重放。
+- checkpoint 只保存恢复所需的有界状态，不能充当永久安全数据仓库。
+- 超出实时允许迟到范围的事实仍需投影，并进入明确的 late-data 流；不得静默丢弃或倒灌已经关闭的实时窗口。
+- 生产健康通过 Flink/Kafka/OpenTelemetry 指标表达，包括输入、拒绝、迟到、投影、checkpoint、恢复、backpressure、watermark 和 state size；不得为观测指标建立逐 Signal PostgreSQL 表。
+
+迁移完成必须同时满足：真实 JobManager 和 TaskManager 运行三个 Job；TaskManager 与 JobManager 故障后可从 checkpoint 恢复；managed medium 的 Rule 等价性、Candidate 引用、graph recall 和 conclusion recall 达到既定门槛；PostgreSQL 中不存在 Worker 专属表或安全数据；旧 `sysarmor-worker` 命令、Bootstrap、Application、Adapter、镜像、配置、测试 fixture 和部署入口全部删除。
+
 ## 平台组件与存储职责
 
 | 组件或存储 | 责任 |
