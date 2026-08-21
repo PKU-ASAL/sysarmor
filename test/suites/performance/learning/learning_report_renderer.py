@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Markdown rendering for a Learning Detector A/B summary."""
+"""Markdown rendering for a protection mode matrix summary."""
 
 from __future__ import annotations
 
@@ -9,8 +9,11 @@ import shlex
 from typing import Any
 
 
+PROTECTION_MODES = ("rule-only", "learning-only", "hybrid")
+
+
 def render_report(summary: dict[str, Any]) -> str:
-    lines = ["# Learning Detector A/B 实验报告", "", f"**结论：`{summary.get('verdict', 'unavailable')}`**", ""]
+    lines = ["# Endpoint Protection Mode 实验报告", "", f"**结论：`{summary.get('verdict', 'unavailable')}`**", ""]
     lines.extend(failure_section(summary))
     lines.extend(gate_section(summary.get("gates", {})))
     lines.extend(experiment_section(summary.get("experiment", {})))
@@ -18,6 +21,8 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(performance_section(summary.get("variants", {})))
     lines.extend(reliability_section(summary.get("variants", {}), summary.get("observations", {})))
     lines.extend(profile_lifecycle_section(summary.get("variants", {})))
+    lines.extend(learning_scheduling_section(summary.get("variants", {})))
+    lines.extend(candidate_lifecycle_section(summary.get("variants", {})))
     lines.extend(candidate_section(summary.get("variants", {})))
     lines.extend(truth_section(summary.get("truth_steps", {}), summary.get("observations", {})))
     lines.extend(sample_section(summary.get("samples", {})))
@@ -74,25 +79,32 @@ def model_section(model: dict[str, Any]) -> list[str]:
 
 
 def performance_section(variants: dict[str, Any]) -> list[str]:
-    disabled = variants.get("disabled", {}).get("performance", {})
-    enabled = variants.get("enabled", {}).get("performance", {})
+    performance = {mode: variants.get(mode, {}).get("performance", {}) for mode in PROTECTION_MODES}
     rows = (
         ("Agent CPU avg (normal activity)", "agent_cpu_avg_pct", "%"),
         ("Agent RSS avg (steady)", "agent_rss_steady_avg_mb", "MiB"),
         ("Agent RSS max (steady, observation)", "agent_rss_steady_max_mb", "MiB"),
         ("EPS (normal activity)", "eps", "events/s"),
     )
-    lines = ["## A/B 性能", "", "| 指标 | Disabled | Enabled | Delta | 单位 |", "|---|---:|---:|---:|---|"]
+    lines = [
+        "## 模式性能比较", "",
+        "| 指标 | rule-only | learning-only | hybrid | learning-only Delta | hybrid Delta | 单位 |",
+        "|---|---:|---:|---:|---:|---:|---|",
+    ]
     for label, key, unit in rows:
-        first, second = numeric(disabled.get(key)), numeric(enabled.get(key))
-        delta = second - first if first is not None and second is not None else None
-        lines.append(f"| {label} | {display(first)} | {display(second)} | {display(delta)} | {unit} |")
+        values = {mode: numeric(performance[mode].get(key)) for mode in PROTECTION_MODES}
+        learning_delta = difference(values["learning-only"], values["rule-only"])
+        hybrid_delta = difference(values["hybrid"], values["rule-only"])
+        lines.append(
+            f"| {label} | {display(values['rule-only'])} | {display(values['learning-only'])} | "
+            f"{display(values['hybrid'])} | {display(learning_delta)} | {display(hybrid_delta)} | {unit} |"
+        )
     return lines + [""]
 
 
 def reliability_section(variants: dict[str, Any], observations: dict[str, Any]) -> list[str]:
-    lines = ["## 可靠性", "", "| Variant | Health | Learning | Sensor drop | Batcher drop | Parse error | Stream eviction |", "|---|---|---|---:|---:|---:|---:|"]
-    for name in ("disabled", "enabled"):
+    lines = ["## 可靠性", "", "| Mode | Health | Learning | Sensor drop | Batcher drop | Parse error | Stream eviction |", "|---|---|---|---:|---:|---:|---:|"]
+    for name in PROTECTION_MODES:
         item = variants.get(name, {})
         health, reliability = item.get("health", {}), item.get("reliability", {})
         lines.append(f"| {name} | {display(health.get('status'))} | {display(health.get('learning'))} | {display(reliability.get('sensor_drop'))} | {display(reliability.get('batcher_drop'))} | {display(reliability.get('parse_errors'))} | {display(item.get('stream_evictions'))} |")
@@ -109,54 +121,100 @@ def profile_lifecycle_section(variants: dict[str, Any]) -> list[str]:
         ("Identity retained", "identity_retained"), ("Identity evictions", "identity_evictions"),
         ("Active evictions", "active_evictions"), ("Identity gaps", "identity_gaps"),
     )
-    lines = ["## ProcessProfile 生命周期", "", "| 指标 | Disabled | Enabled |", "|---|---:|---:|"]
+    lines = ["## ProcessProfile 生命周期", "", "| 指标 | rule-only | learning-only | hybrid |", "|---|---:|---:|---:|"]
     for label, key in fields:
         lines.append(
-            f"| {label} | {display(variants.get('disabled', {}).get('profile_health', {}).get(key))} | "
-            f"{display(variants.get('enabled', {}).get('profile_health', {}).get(key))} |"
+            f"| {label} | {display(variants.get('rule-only', {}).get('profile_health', {}).get(key))} | "
+            f"{display(variants.get('learning-only', {}).get('profile_health', {}).get(key))} | "
+            f"{display(variants.get('hybrid', {}).get('profile_health', {}).get(key))} |"
         )
+    return lines + [""]
+
+
+def learning_scheduling_section(variants: dict[str, Any]) -> list[str]:
+    fields = (
+        ("Profile observations", "profile_observations"),
+        ("Feature updates", "feature_updates"),
+        ("Learning score calls", "learning_score_calls"),
+        ("Lifecycle-only observations", "lifecycle_only_observations"),
+        ("Suppressed checkpoints", "suppressed_checkpoints"),
+    )
+    lines = ["## Learning 语义调度", "", "| 指标 | rule-only | learning-only | hybrid |", "|---|---:|---:|---:|"]
+    for label, key in fields:
+        values = [variants.get(mode, {}).get("profile_health", {}).get(key) for mode in PROTECTION_MODES]
+        lines.append(f"| {label} | {display(values[0])} | {display(values[1])} | {display(values[2])} |")
     return lines + [""]
 
 
 def candidate_section(variants: dict[str, Any]) -> list[str]:
     lines = [
         "## Profile 检测效果", "",
-        "| Variant | Events | Profiles | Model Candidates | Candidate profiles | Score min / p50 / max |",
+        "| Mode | Events | Profiles | Model Candidates | Candidate profiles | Score min / p50 / max |",
         "|---|---:|---:|---:|---:|---|",
     ]
-    for name in ("disabled", "enabled"):
+    for name in PROTECTION_MODES:
         item, scores = variants.get(name, {}), variants.get(name, {}).get("candidate_scores", {})
         score_text = " / ".join(display(scores.get(key)) for key in ("min", "p50", "max"))
         lines.append(
             f"| {name} | {display(item.get('event_count'))} | {display(item.get('profile_count'))} | "
             f"{display(item.get('model_candidate_count'))} | {display(item.get('candidate_profile_count'))} | {score_text} |"
         )
-    enabled = variants.get("enabled", {})
-    lines.extend([
-        "", "| 效果指标 | 总数 | 命中 | 比率 |", "|---|---:|---:|---:|",
-        f"| Normal profiles | {display(enabled.get('normal_profile_count'))} | {display(enabled.get('normal_candidate_count'))} | {percent(enabled.get('normal_candidate_rate'))} |",
-        f"| Attack campaigns seeded by Agent | {display(enabled.get('truth_campaign_count'))} | {display(enabled.get('seeded_campaign_count'))} | {percent(enabled.get('attack_campaign_seed_recall'))} |",
-        "",
-    ])
+    lines.extend(["", "| Mode | 效果指标 | 总数 | 命中 | 比率 |", "|---|---|---:|---:|---:|"])
+    for name in ("learning-only", "hybrid"):
+        item = variants.get(name, {})
+        lines.extend([
+            f"| {name} | Normal profiles | {display(item.get('normal_profile_count'))} | {display(item.get('normal_candidate_count'))} | {percent(item.get('normal_candidate_rate'))} |",
+            f"| {name} | Attack campaigns seeded by Agent | {display(item.get('truth_campaign_count'))} | {display(item.get('seeded_campaign_count'))} | {percent(item.get('attack_campaign_seed_recall'))} |",
+        ])
+    lines.append("")
+    return lines
+
+
+def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
+    stages = (
+        ("Created", "created"), ("Spooled", "spooled"),
+        ("Gateway accepted unique", "gateway_accepted"), ("Gateway duplicate ACK", "gateway_duplicate_ack"),
+        ("Worker correlated", "worker_correlated"), ("Worker projected", "worker_projected"),
+        ("Worker projection artifacts", "worker_projection_artifacts"),
+        ("Worker pending backlog", "worker_pending_backlog"),
+    )
+    gaps = (
+        ("Observation gap", "observation_gap"), ("Endpoint storage drop", "endpoint_storage_drop"),
+        ("Agent contract reject", "agent_contract_reject"), ("Agent spool backlog", "agent_spool_backlog"),
+        ("Gateway reject", "gateway_reject"),
+        ("Agent delivery backlog", "agent_delivery_backlog"),
+        ("Worker reference reject", "worker_reference_rejected"),
+    )
+    lines = ["## Candidate 生命周期与引用完整性", "", "| 指标 | rule-only | learning-only | hybrid |", "|---|---:|---:|---:|"]
+    for label, key in stages:
+        values = [variants.get(mode, {}).get("candidate_lifecycle", {}).get(key) for mode in PROTECTION_MODES]
+        lines.append(f"| {label} | {display(values[0])} | {display(values[1])} | {display(values[2])} |")
+    for label, key in gaps:
+        values = [variants.get(mode, {}).get("reference_gaps", {}).get(key) for mode in PROTECTION_MODES]
+        lines.append(f"| {label} | {display(values[0])} | {display(values[1])} | {display(values[2])} |")
+    lines.extend(["", "> Observation gap 仅表示测试观察 Ring Buffer 覆盖；delivery/backlog 表示尚未收敛，reference reject 才表示引用合同失败。", ""])
     return lines
 
 
 def truth_section(truth: dict[str, Any], observations: dict[str, Any]) -> list[str]:
-    indexed = {name: {(s.get("label_type"), s.get("label_id")): s for s in truth.get(name, [])} for name in ("disabled", "enabled")}
-    keys = sorted(set(indexed["disabled"]) | set(indexed["enabled"]))
-    lines = ["## Attack Truth 与 Rule 回归", "", "| Truth step | Disabled | Enabled | Quality A / B |", "|---|---|---|---|"]
+    indexed = {name: {(s.get("label_type"), s.get("label_id")): s for s in truth.get(name, [])} for name in PROTECTION_MODES}
+    keys = sorted(set().union(*(set(indexed[mode]) for mode in PROTECTION_MODES)))
+    lines = ["## Attack Truth 与 Rule 回归", "", "| Truth step | rule-only | learning-only | hybrid | Quality rule / learning / hybrid |", "|---|---|---|---|---|"]
     for kind, label_id in keys:
-        first, second = indexed["disabled"].get((kind, label_id), {}), indexed["enabled"].get((kind, label_id), {})
-        lines.append(f"| {kind}:{label_id} | {matched(first)} | {matched(second)} | {display(first.get('match_quality'))} / {display(second.get('match_quality'))} |")
+        steps = [indexed[mode].get((kind, label_id), {}) for mode in PROTECTION_MODES]
+        lines.append(
+            f"| {kind}:{label_id} | {matched(steps[0])} | {matched(steps[1])} | {matched(steps[2])} | "
+            f"{' / '.join(display(step.get('match_quality')) for step in steps)} |"
+        )
     baseline = observations.get("rule_truth_baseline_status", {})
-    lines.extend(["", f"> Rule baseline：disabled=`{baseline.get('disabled', 'unavailable')}`，enabled=`{baseline.get('enabled', 'unavailable')}`。硬门禁判断 A/B 是否发生回归，不掩盖既有 baseline 缺口。", ""])
+    lines.extend(["", f"> Rule baseline：rule-only=`{baseline.get('rule-only', 'unavailable')}`，hybrid=`{baseline.get('hybrid', 'unavailable')}`。硬门禁判断 hybrid 是否引入 Rule 回归，不掩盖既有 baseline 缺口。", ""])
     return lines
 
 
 def sample_section(samples: dict[str, Any]) -> list[str]:
     lines = ["## 有界样本", ""]
-    for variant in ("disabled", "enabled"):
-        lines.extend([f"### {variant}", "", "```json", json.dumps(samples.get(variant, {}), indent=2, sort_keys=True), "```", ""])
+    for mode in PROTECTION_MODES:
+        lines.extend([f"### {mode}", "", "```json", json.dumps(samples.get(mode, {}), indent=2, sort_keys=True), "```", ""])
     return lines
 
 
@@ -177,6 +235,10 @@ def numeric(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return result if math.isfinite(result) else None
+
+
+def difference(value: float | None, baseline: float | None) -> float | None:
+    return value - baseline if value is not None and baseline is not None else None
 
 
 def display(value: Any) -> str:

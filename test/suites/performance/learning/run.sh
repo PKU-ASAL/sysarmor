@@ -10,6 +10,15 @@ OUT_DIR="$RESULTS/learning-detector/$RUN_ID"
 TRAINING_DATA="${SYSARMOR_LEARNING_TRAINING_DATA:-${TRAINING_DATA:-}}"
 CALIBRATION_DATA="${SYSARMOR_LEARNING_CALIBRATION_DATA:-${CALIBRATION_DATA:-}}"
 PROFILE="${SYSARMOR_LEARNING_PROFILE:-${PROFILE:-medium}}"
+AGENT_MODE="${SYSARMOR_LEARNING_AGENT_MODE:-managed}"
+case "$AGENT_MODE" in
+  managed) VM_ENV="vm-topology" ;;
+  standalone) VM_ENV="vm-endpoint" ;;
+  *)
+    echo "[learning-performance][ERROR] unsupported Agent mode: $AGENT_MODE" >&2
+    exit 1
+    ;;
+esac
 MODEL_DIR="$OUT_DIR/model"
 UNSIGNED_MODEL="$MODEL_DIR/model-bundle.json"
 SIGNED_MODEL="$MODEL_DIR/model-bundle.signed.json"
@@ -60,12 +69,18 @@ cat > "$OUT_DIR/manifest.json" <<EOF
   "suite": "learning-detector-performance",
   "run_id": "$RUN_ID",
   "benchmark_profile": "$PROFILE",
-  "policy": "test/data/policies/collection-balanced.json",
+  "agent_mode": "$AGENT_MODE",
+  "policy": "mode-specific",
+  "collection_policy_by_mode": {
+    "rule-only": "test/data/policies/collection-balanced.json",
+    "learning-only": "test/data/policies/collection-learning.json",
+    "hybrid": "test/data/policies/collection-hybrid.json"
+  },
   "activity_mode": "serial",
   "scenario": "apt-fileless-c2-local",
   "git_commit": "$GIT_COMMIT",
   "git_dirty": $GIT_DIRTY,
-  "git_provenance_source": "captured-before-variants",
+  "git_provenance_source": "captured-before-modes",
   "training_data": "$TRAINING_DATA",
   "training_digest": "$TRAINING_DIGEST",
   "calibration_data": "$CALIBRATION_DATA",
@@ -76,7 +91,8 @@ cat > "$OUT_DIR/manifest.json" <<EOF
   "feature_schema": "$FEATURE_SCHEMA",
   "threshold": $THRESHOLD,
   "gate_config": {
-    "cpu_relative": 1.15,
+    "learning_only_cpu_pct": 30.0,
+    "hybrid_cpu_pct": 15.0,
     "rss_delta_mb": 16.0,
     "eps_relative": 0.90,
     "normal_candidate_rate": 0.01,
@@ -87,25 +103,36 @@ cat > "$OUT_DIR/manifest.json" <<EOF
 }
 EOF
 
-run_variant() {
-  local variant="$1"
-  local child_run="${RUN_ID}-${variant}"
+run_mode() {
+  local protection_mode="$1"
+  local child_run="${RUN_ID}-${protection_mode}"
   local child_dir="$RESULTS/performance-endpoint/$child_run"
   local status=0
   local model_args=()
-  if [[ "$variant" == "enabled" ]]; then
+  local collection_policy collection_name
+  if [[ "$protection_mode" == "rule-only" ]]; then
+    collection_policy="test/data/policies/collection-balanced.json"
+  elif [[ "$protection_mode" == "hybrid" ]]; then
+    collection_policy="test/data/policies/collection-hybrid.json"
+  else
+    collection_policy="test/data/policies/collection-learning.json"
+  fi
+  collection_name="${collection_policy##*/}"
+  collection_name="${collection_name%.json}"
+  if [[ "$protection_mode" != "rule-only" ]]; then
     model_args=(
       SYSARMOR_BENCH_LEARNING_MODEL="$SIGNED_MODEL"
       SYSARMOR_BENCH_LEARNING_TRUST_KEYS="learning-experiment=$PUBLIC_KEY"
     )
   fi
   if ! env \
-    SYSARMOR_VM_ENV=vm-endpoint \
+    SYSARMOR_VM_ENV="$VM_ENV" \
+    SYSARMOR_BENCH_AGENT_MODE="$AGENT_MODE" \
     SYSARMOR_BENCH_PROFILE="$PROFILE" \
     SYSARMOR_BENCH_RUN_ID="$child_run" \
-    SYSARMOR_BENCH_VARIANT="learning-$variant" \
-    SYSARMOR_BENCH_LEARNING_VARIANT="$variant" \
-    SYSARMOR_BENCH_POLICIES="test/data/policies/collection-balanced.json" \
+    SYSARMOR_BENCH_VARIANT="$protection_mode" \
+    SYSARMOR_BENCH_PROTECTION_MODE="$protection_mode" \
+    SYSARMOR_BENCH_POLICIES="$collection_policy" \
     SYSARMOR_BENCH_WORKLOAD="business-normal" \
     SYSARMOR_BENCH_SCENARIO="apt-fileless-c2-local" \
     SYSARMOR_BENCH_ACTIVITY_MODE=serial \
@@ -114,19 +141,17 @@ run_variant() {
     bash "$ENDPOINT_RUNNER"; then
     status=1
   fi
-  if [[ -d "$child_dir/collection-balanced" ]]; then
-    ln -sfn "$child_dir" "$OUT_DIR/$variant"
+  if [[ -d "$child_dir/$collection_name" ]]; then
+    ln -sfn "$child_dir" "$OUT_DIR/$protection_mode"
   fi
   return "$status"
 }
 
-if ! run_variant disabled; then
-  python3 "$REPORTER" "$OUT_DIR" --aggregate >/dev/null 2>&1 || true
-  exit 1
-fi
-if ! run_variant enabled; then
-  python3 "$REPORTER" "$OUT_DIR" --aggregate >/dev/null 2>&1 || true
-  exit 1
-fi
+for protection_mode in rule-only learning-only hybrid; do
+  if ! run_mode "$protection_mode"; then
+    python3 "$REPORTER" "$OUT_DIR" --aggregate >/dev/null 2>&1 || true
+    exit 1
+  fi
+done
 
 python3 "$REPORTER" "$OUT_DIR" --aggregate
