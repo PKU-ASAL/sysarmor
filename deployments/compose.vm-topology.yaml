@@ -160,10 +160,5 @@ services:
       - "9444:9444"
       - "9445:9445"
 
-  worker:
-    build:
-      context: ./vm-build/worker
-      dockerfile: Dockerfile
-
 volumes:
   flink-checkpoints:

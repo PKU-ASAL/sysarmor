@@ -282,30 +282,6 @@ services:
       - "${SYSARMOR_GATEWAY_PORT:-19444}:9444"
       - "${SYSARMOR_GATEWAY_HEALTH_PORT:-19445}:9445"
 
-  worker:
-    build:
-      context: ..
-      dockerfile: deployments/worker/Dockerfile
-    container_name: sysarmor-worker
-    restart: on-failure
-    depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
-      opensearch-init:
-        condition: service_completed_successfully
-    env_file:
-      - ./worker/worker.env.example
-    environment:
-      SYSARMOR_POSTGRES_DSN: postgres://sysarmor:sysarmor@postgres:5432/sysarmor?sslmode=disable
-      SYSARMOR_KAFKA_BROKERS: kafka:9092
-      SYSARMOR_KAFKA_TOPIC: sysarmor.agent.databatch.raw
-      SYSARMOR_KAFKA_GROUP_ID: sysarmor-ingest-worker
-      SYSARMOR_OPENSEARCH_URL: http://opensearch:9200
-
 volumes:
   postgres-data:
   redis-data:
