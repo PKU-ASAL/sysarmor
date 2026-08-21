@@ -188,6 +188,16 @@ message LearningRuntimeHealth {
   string status = 1;
   string last_error = 2;
   ProcessProfileRuntimeHealth profiles = 3;
+  CandidateLifecycleRuntimeHealth candidates = 4;
+}
+
+message CandidateLifecycleRuntimeHealth {
+  uint64 created = 1;
+  uint64 spooled = 2;
+  uint64 gateway_accepted = 3;
+  uint64 contract_rejected = 4;
+  uint64 gateway_rejected = 5;
+  uint64 gateway_duplicate_ack = 6;
 }
 
 message ProcessProfileRuntimeHealth {
@@ -204,6 +214,11 @@ message ProcessProfileRuntimeHealth {
   uint64 identity_evictions = 11;
   uint64 active_evictions = 12;
   uint64 identity_gaps = 13;
+  uint64 profile_observations = 14;
+  uint64 feature_updates = 15;
+  uint64 learning_score_calls = 16;
+  uint64 lifecycle_only_observations = 17;
+  uint64 suppressed_checkpoints = 18;
 }
 
 message DetectionRuntimeHealth {

@@ -44,6 +44,10 @@ func NewWorker(ctx context.Context, config WorkerConfig) (*workerapp.Worker, io.
 		return nil, nil, err
 	}
 	resources.consumer = consumer
+	if err := kafkain.EnsureTopic(ctx, config.KafkaBrokers, config.KafkaTopic+".dlq"); err != nil {
+		_ = resources.Close()
+		return nil, nil, fmt.Errorf("ensure kafka dead letter topic: %w", err)
+	}
 	dlq, err := kafkaout.NewRawProducer(config.KafkaBrokers)
 	if err != nil {
 		_ = resources.Close()
@@ -56,7 +60,7 @@ func NewWorker(ctx context.Context, config WorkerConfig) (*workerapp.Worker, io.
 		return nil, nil, fmt.Errorf("open opensearch indexer: %w", err)
 	}
 	service := newWorkerProcessBatch(db, indexer)
-	return workerapp.New(consumer, service, dlq), resources, nil
+	return workerapp.New(consumer, service, dlq, workerpostgres.NewTelemetryBatches(db)), resources, nil
 }
 
 func (config WorkerConfig) validate() error {

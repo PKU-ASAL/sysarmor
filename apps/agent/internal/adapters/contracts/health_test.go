@@ -22,8 +22,13 @@ func TestAgentHealthMapsDomainSnapshot(t *testing.T) {
 		},
 		Detection: domainhealth.Detection{
 			PolicyID: "detection-a", DefaultManifestVersion: "release-v1",
-			Learning: domainhealth.Learning{Status: "degraded", LastError: "invalid model bundle"},
-			CEP:      domainhealth.CEP{ActiveGroups: 5, Degraded: true},
+			Learning: domainhealth.Learning{Status: "degraded", LastError: "invalid model bundle", Candidates: domainhealth.CandidateLifecycleHealth{
+				Created: 9, Spooled: 8, GatewayAccepted: 7, ContractRejected: 1, GatewayRejected: 2,
+			}, Profiles: domainhealth.ProcessProfileHealth{
+				ProfileObservations: 11, FeatureUpdates: 7, LearningScoreCalls: 5,
+				LifecycleOnlyObservations: 3, SuppressedCheckpoints: 6,
+			}},
+			CEP: domainhealth.CEP{ActiveGroups: 5, Degraded: true},
 		},
 	}
 
@@ -42,5 +47,14 @@ func TestAgentHealthMapsDomainSnapshot(t *testing.T) {
 	}
 	if got.Detection.Learning.Status != "degraded" || got.Detection.Learning.LastError != "invalid model bundle" {
 		t.Fatalf("learning health = %+v", got.Detection.Learning)
+	}
+	if candidates := got.Detection.Learning.Candidates; candidates.Created != 9 || candidates.Spooled != 8 ||
+		candidates.GatewayAccepted != 7 || candidates.ContractRejected != 1 || candidates.GatewayRejected != 2 {
+		t.Fatalf("candidate lifecycle health = %+v", candidates)
+	}
+	profiles := got.Detection.Learning.Profiles
+	if profiles.ProfileObservations != 11 || profiles.FeatureUpdates != 7 || profiles.LearningScoreCalls != 5 ||
+		profiles.LifecycleOnlyObservations != 3 || profiles.SuppressedCheckpoints != 6 {
+		t.Fatalf("learning scheduling health = %+v", profiles)
 	}
 }

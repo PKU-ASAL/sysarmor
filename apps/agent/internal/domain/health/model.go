@@ -127,6 +127,12 @@ type Detection struct {
 type Learning struct {
 	Status, LastError string
 	Profiles          ProcessProfileHealth
+	Candidates        CandidateLifecycleHealth
+}
+
+type CandidateLifecycleHealth struct {
+	Created, Spooled, GatewayAccepted, GatewayDuplicateAck uint64
+	ContractRejected, GatewayRejected                      uint64
 }
 
 type ProcessProfileHealth struct {
@@ -134,6 +140,8 @@ type ProcessProfileHealth struct {
 	Compactions, Expired, CapacityEvictions                            uint64
 	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
 	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
+	ProfileObservations, FeatureUpdates, LearningScoreCalls            uint64
+	LifecycleOnlyObservations, SuppressedCheckpoints                   uint64
 }
 
 type ContentRef struct{ Ref, Kind, Version, Digest string }

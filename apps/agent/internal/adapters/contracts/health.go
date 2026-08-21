@@ -92,11 +92,20 @@ func detectionHealth(value domainhealth.Detection) agenthealth.DetectionHealth {
 		LastApplyStatus:        value.LastApplyStatus, LastApplyError: value.LastApplyError, UpdatedAt: value.UpdatedAt,
 		Learning: agenthealth.LearningHealth{
 			Status: value.Learning.Status, LastError: value.Learning.LastError,
+			Candidates: agenthealth.CandidateLifecycleHealth{
+				Created: value.Learning.Candidates.Created, Spooled: value.Learning.Candidates.Spooled,
+				GatewayAccepted:     value.Learning.Candidates.GatewayAccepted,
+				GatewayDuplicateAck: value.Learning.Candidates.GatewayDuplicateAck,
+				ContractRejected:    value.Learning.Candidates.ContractRejected,
+				GatewayRejected:     value.Learning.Candidates.GatewayRejected,
+			},
 			Profiles: agenthealth.ProcessProfileHealth{
 				Active: value.Learning.Profiles.Active, Exited: value.Learning.Profiles.Exited, Retained: value.Learning.Profiles.Retained,
 				Compactions: value.Learning.Profiles.Compactions, Expired: value.Learning.Profiles.Expired, CapacityEvictions: value.Learning.Profiles.CapacityEvictions,
 				FileEvictions: value.Learning.Profiles.FileEvictions, NetworkEvictions: value.Learning.Profiles.NetworkEvictions, EventRefEvictions: value.Learning.Profiles.EventRefEvictions,
 				IdentityRetained: value.Learning.Profiles.IdentityRetained, IdentityEvictions: value.Learning.Profiles.IdentityEvictions, ActiveEvictions: value.Learning.Profiles.ActiveEvictions, IdentityGaps: value.Learning.Profiles.IdentityGaps,
+				ProfileObservations: value.Learning.Profiles.ProfileObservations, FeatureUpdates: value.Learning.Profiles.FeatureUpdates, LearningScoreCalls: value.Learning.Profiles.LearningScoreCalls,
+				LifecycleOnlyObservations: value.Learning.Profiles.LifecycleOnlyObservations, SuppressedCheckpoints: value.Learning.Profiles.SuppressedCheckpoints,
 			},
 		},
 	}

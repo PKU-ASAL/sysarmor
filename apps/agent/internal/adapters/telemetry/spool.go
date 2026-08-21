@@ -6,6 +6,7 @@ import (
 
 	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
 	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/telemetry"
+	dataplanecontract "github.com/sysarmor/sysarmor-next-project/packages/contracts/dataplane"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -40,7 +41,10 @@ func (spool *LocalSpool) Read(ctx context.Context, fromSequence uint64, limit in
 		header := item.Batch.GetHeader()
 		out = append(out, domaintelemetry.StoredBatch{
 			Position: domainPosition(item.Position),
-			Batch:    domaintelemetry.Batch{ID: header.GetBatchId(), TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), Payload: payload},
+			Batch: domaintelemetry.Batch{
+				ID: header.GetBatchId(), TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), Payload: payload,
+				ModelCandidates: dataplanecontract.CountModelCandidates(item.Batch),
+			},
 		})
 	}
 	return out, nil

@@ -11,7 +11,9 @@ import (
 	eventadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sensor/tetragon"
 	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
 	domaindetection "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/detection"
+	policymodel "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/policy"
 	domainprocess "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/domain/process"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/ports"
 	sensorv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/sensor/v1"
 	signalv1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1"
 	"github.com/sysarmor/sysarmor-next-project/packages/sensor-sdk/contract"
@@ -26,6 +28,9 @@ func TestEndpointRuntimeIncludesLearningCandidateInDataBatch(t *testing.T) {
 		Stage: domaindetection.SignalStageCandidate, DetectorKind: domaindetection.DetectorKindModel,
 		ModelRef: "model:profile-v2", ModelVersion: "2", ModelDigest: "sha256:test", FeatureSchema: "FeatureSchemaV2",
 	}}
+	runner.policyState.setEndpointPolicy(policymodel.EndpointPolicy{Detection: policymodel.DetectionPolicy{
+		LearningModel: &policymodel.LearningModelRef{Ref: "model:profile-v2", Version: "2", Digest: "sha256:test"},
+	}})
 	runtime := NewEndpointRuntime(
 		&runner.policyState,
 		normalizer,
@@ -51,6 +56,49 @@ func TestEndpointRuntimeIncludesLearningCandidateInDataBatch(t *testing.T) {
 	if learning.profile.StableID == "" || learning.profile.Revision != 1 {
 		t.Fatalf("learning detector profile = %+v", learning.profile)
 	}
+	if got := runner.telemetryState.candidateLifecycle.Snapshot(); got.Created != 1 || got.ContractRejected != 0 {
+		t.Fatalf("candidate lifecycle = %+v", got)
+	}
+}
+
+func TestEndpointRuntimeRejectsCandidateWithMismatchedTriggerSubject(t *testing.T) {
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}}}
+	runner.wireComponents()
+	runner.policyState.setEndpointPolicy(policymodel.EndpointPolicy{Detection: policymodel.DetectionPolicy{
+		LearningModel: &policymodel.LearningModelRef{Ref: "model:profile-v2", Version: "2", Digest: "sha256:test"},
+	}})
+	learning := &learningDetectorStub{subjectOverride: "different-process", signal: &domaindetection.Signal{
+		Name: "model_anomaly", Where: domaindetection.SignalWhereEndpoint, Stage: domaindetection.SignalStageCandidate,
+		DetectorKind: domaindetection.DetectorKindModel, ModelRef: "model:profile-v2", ModelVersion: "2",
+		ModelDigest: "sha256:test", FeatureSchema: "FeatureSchemaV2",
+	}}
+	runtime := NewEndpointRuntime(
+		&runner.policyState,
+		newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "tenant-a"}),
+		telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0), learning, runner.processProfiles,
+	)
+
+	if _, err := runtime.ProcessEvent(sensorEventEnvelope("process.exec", 101, "/usr/bin/bash", "", "")); err == nil {
+		t.Fatal("candidate with mismatched trigger subject accepted")
+	}
+	if got := runner.telemetryState.candidateLifecycle.Snapshot(); got.Created != 1 || got.ContractRejected != 1 {
+		t.Fatalf("candidate lifecycle = %+v", got)
+	}
+}
+
+func TestEndpointRuntimeRejectsDetachedModelCandidate(t *testing.T) {
+	runner := &Coordinator{}
+	runner.wireComponents()
+	runtime := &EndpointRuntime{policy: &runner.policyState, batches: telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0)}
+	signal := &signalv1.Signal{
+		Id: "candidate-a", Stage: signalv1.SignalStage_SIGNAL_STAGE_CANDIDATE,
+		DetectorKind: signalv1.DetectorKind_DETECTOR_KIND_MODEL, EventRefs: []string{"event-a"},
+		Entities: []*signalv1.EntityRef{{Kind: "process", Key: "process-a", Role: "subject"}},
+	}
+
+	if _, err := runtime.ProcessSignals([]*signalv1.Signal{signal}); err == nil {
+		t.Fatal("detached Model Candidate accepted")
+	}
 }
 
 func TestEndpointRuntimeReplaysCollectedModelBundle(t *testing.T) {
@@ -75,8 +123,12 @@ func TestEndpointRuntimeReplaysCollectedModelBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	identity := learning.(ports.IdentifiedProfileDetector).Identity()
 	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}}}
 	runner.wireComponents()
+	runner.policyState.setEndpointPolicy(policymodel.EndpointPolicy{Detection: policymodel.DetectionPolicy{
+		LearningModel: &policymodel.LearningModelRef{Ref: identity.Ref, Version: identity.Version, Digest: identity.Digest},
+	}})
 	normalizer := newTestEventNormalizer(t, runner, "agent-a", "host-a", eventadapter.EventNormalizerOptions{TenantID: "tenant-a", ScopeType: "host"})
 	runtime := NewEndpointRuntime(&runner.policyState, normalizer, telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0), learning, runner.processProfiles)
 
@@ -113,11 +165,29 @@ func TestEndpointRuntimeReplaysCollectedModelBundle(t *testing.T) {
 }
 
 type learningDetectorStub struct {
-	profile domainprocess.Snapshot
-	signal  *domaindetection.Signal
+	profile         domainprocess.Snapshot
+	signal          *domaindetection.Signal
+	subjectOverride string
 }
 
 func (detector *learningDetectorStub) Process(profile domainprocess.Snapshot) []*domaindetection.Signal {
 	detector.profile = profile
+	if detector.signal != nil && detector.signal.DetectorKind == domaindetection.DetectorKindModel {
+		detector.signal.EventRefs = append([]string(nil), profile.EventRefs...)
+		subject := profile.StableID
+		if detector.subjectOverride != "" {
+			subject = detector.subjectOverride
+		}
+		detector.signal.Entities = []domaindetection.Entity{{Kind: "process", Key: subject, Role: "subject"}}
+	}
 	return []*domaindetection.Signal{detector.signal}
+}
+
+func (detector *learningDetectorStub) Identity() ports.ProfileDetectorIdentity {
+	if detector.signal == nil {
+		return ports.ProfileDetectorIdentity{}
+	}
+	return ports.ProfileDetectorIdentity{
+		Ref: detector.signal.ModelRef, Version: detector.signal.ModelVersion, Digest: detector.signal.ModelDigest,
+	}
 }

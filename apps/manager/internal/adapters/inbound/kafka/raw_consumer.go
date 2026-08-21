@@ -47,6 +47,33 @@ func WaitForTopic(ctx context.Context, brokers []string, topic string) error {
 	}
 }
 
+func EnsureTopic(ctx context.Context, brokers []string, topic string) error {
+	clean := cleanBrokers(brokers)
+	if len(clean) == 0 || strings.TrimSpace(topic) == "" {
+		return ErrDisabled
+	}
+	dialer := &kafkago.Dialer{Timeout: 2 * time.Second}
+	for _, broker := range clean {
+		conn, err := dialer.DialContext(ctx, "tcp", broker)
+		if err != nil {
+			continue
+		}
+		if err := createTopicIfMissing(conn, topic); err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		_ = conn.Close()
+	}
+	return readTopicPartitions(ctx, dialer, clean, topic)
+}
+
+func createTopicIfMissing(conn *kafkago.Conn, topic string) error {
+	if partitions, err := conn.ReadPartitions(topic); err == nil && len(partitions) > 0 {
+		return nil
+	}
+	return conn.CreateTopics(kafkago.TopicConfig{Topic: topic, NumPartitions: 1, ReplicationFactor: 1})
+}
+
 func readTopicPartitions(ctx context.Context, dialer *kafkago.Dialer, brokers []string, topic string) error {
 	var lastErr error
 	for _, broker := range brokers {

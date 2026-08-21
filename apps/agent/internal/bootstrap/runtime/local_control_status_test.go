@@ -111,10 +111,14 @@ func TestHealthResponseIncludesDefaultManifestVersion(t *testing.T) {
 
 func TestHealthResponseIncludesLearningStatus(t *testing.T) {
 	response := healthResponse(agenthealth.AgentHealth{Detection: agenthealth.DetectionHealth{
-		Learning: agenthealth.LearningHealth{Status: "loaded", Profiles: agenthealth.ProcessProfileHealth{
+		Learning: agenthealth.LearningHealth{Status: "loaded", Candidates: agenthealth.CandidateLifecycleHealth{
+			Created: 19, Spooled: 18, GatewayAccepted: 17, ContractRejected: 2, GatewayRejected: 1,
+		}, Profiles: agenthealth.ProcessProfileHealth{
 			Active: 3, Exited: 2, Retained: 1, Compactions: 4, Expired: 5,
 			CapacityEvictions: 6, FileEvictions: 7, NetworkEvictions: 8, EventRefEvictions: 9,
 			IdentityRetained: 10, IdentityEvictions: 11, ActiveEvictions: 12, IdentityGaps: 13,
+			ProfileObservations: 14, FeatureUpdates: 15, LearningScoreCalls: 16,
+			LifecycleOnlyObservations: 17, SuppressedCheckpoints: 18,
 		}},
 	}})
 	if got := response.GetDetection().GetLearning().GetStatus(); got != "loaded" {
@@ -123,6 +127,15 @@ func TestHealthResponseIncludesLearningStatus(t *testing.T) {
 	profiles := response.GetDetection().GetLearning().GetProfiles()
 	if profiles.GetActive() != 3 || profiles.GetRetained() != 1 || profiles.GetEventRefEvictions() != 9 || profiles.GetIdentityRetained() != 10 || profiles.GetIdentityGaps() != 13 {
 		t.Fatalf("process profile health = %+v", profiles)
+	}
+	if profiles.GetProfileObservations() != 14 || profiles.GetFeatureUpdates() != 15 || profiles.GetLearningScoreCalls() != 16 ||
+		profiles.GetLifecycleOnlyObservations() != 17 || profiles.GetSuppressedCheckpoints() != 18 {
+		t.Fatalf("process profile scheduling health = %+v", profiles)
+	}
+	candidates := response.GetDetection().GetLearning().GetCandidates()
+	if candidates.GetCreated() != 19 || candidates.GetSpooled() != 18 || candidates.GetGatewayAccepted() != 17 ||
+		candidates.GetContractRejected() != 2 || candidates.GetGatewayRejected() != 1 {
+		t.Fatalf("candidate lifecycle health = %+v", candidates)
 	}
 }
 

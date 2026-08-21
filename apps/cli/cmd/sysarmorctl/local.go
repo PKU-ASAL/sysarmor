@@ -155,7 +155,7 @@ func queryLocalAgentWithManager(socketPath, managerURL string, args []string) ([
 		if err != nil {
 			return nil, err
 		}
-		return marshalProtoJSON(resp)
+		return marshalHealthJSON(resp)
 	case "agent capability":
 		resp, err := client.Capability(ctx, &controlplanev1.CapabilityRequest{Context: reqCtx})
 		if err != nil {

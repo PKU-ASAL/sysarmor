@@ -122,6 +122,11 @@ func (repo *TelemetryBatches) Commit(ctx context.Context, delta ports.TelemetryB
 	}
 	defer tx.Rollback()
 	if err = lockBatch(ctx, tx, delta); err == nil {
+		var projected uint64
+		projected, err = projectSignals(ctx, tx, delta.TenantID, delta.BatchID, delta.ProjectedSignals)
+		delta.Metrics.ModelCandidatesProjected += projected
+	}
+	if err == nil {
 		err = mergeMetrics(ctx, tx, delta)
 	}
 	if err == nil {
@@ -162,16 +167,19 @@ func (repo *TelemetryBatches) Abandon(ctx context.Context, tenantID, batchID, to
 }
 
 type metricsDocument struct {
-	DataBatches     uint64  `json:"data_batches_appended"`
-	Events          uint64  `json:"events_ingested"`
-	EndpointSignals uint64  `json:"endpoint_signals_ingested"`
-	CloudSignals    uint64  `json:"cloud_signals_emitted"`
-	Signals         uint64  `json:"signals_emitted"`
-	Incidents       uint64  `json:"incidents_created"`
-	LastLatency     uint64  `json:"last_convergence_latency_ms"`
-	MaxLatency      uint64  `json:"max_convergence_latency_ms"`
-	TotalLatency    uint64  `json:"total_convergence_latency_ms"`
-	AverageLatency  float64 `json:"average_convergence_latency_ms"`
+	DataBatches                      uint64  `json:"data_batches_appended"`
+	Events                           uint64  `json:"events_ingested"`
+	EndpointSignals                  uint64  `json:"endpoint_signals_ingested"`
+	CloudSignals                     uint64  `json:"cloud_signals_emitted"`
+	Signals                          uint64  `json:"signals_emitted"`
+	Incidents                        uint64  `json:"incidents_created"`
+	ModelCandidatesCorrelated        uint64  `json:"model_candidates_correlated"`
+	ModelCandidatesProjected         uint64  `json:"model_candidates_projected"`
+	ModelCandidatesReferenceRejected uint64  `json:"model_candidates_reference_rejected"`
+	LastLatency                      uint64  `json:"last_convergence_latency_ms"`
+	MaxLatency                       uint64  `json:"max_convergence_latency_ms"`
+	TotalLatency                     uint64  `json:"total_convergence_latency_ms"`
+	AverageLatency                   float64 `json:"average_convergence_latency_ms"`
 }
 
 func mergeMetrics(ctx context.Context, tx *sql.Tx, delta ports.TelemetryBatchDelta) error {
@@ -205,6 +213,9 @@ func addMetrics(value *metricsDocument, delta ports.TelemetryMetrics) {
 	value.CloudSignals += delta.CloudSignals
 	value.Signals += delta.Signals
 	value.Incidents += delta.Incidents
+	value.ModelCandidatesCorrelated += delta.ModelCandidatesCorrelated
+	value.ModelCandidatesProjected += delta.ModelCandidatesProjected
+	value.ModelCandidatesReferenceRejected += delta.ModelCandidatesReferenceRejected
 	value.LastLatency = delta.LastLatencyMs
 	value.TotalLatency += delta.TotalLatencyMs
 	if delta.MaxLatencyMs > value.MaxLatency {
@@ -213,6 +224,29 @@ func addMetrics(value *metricsDocument, delta ports.TelemetryMetrics) {
 	if value.DataBatches > 0 {
 		value.AverageLatency = float64(value.TotalLatency) / float64(value.DataBatches)
 	}
+}
+
+func (repo *TelemetryBatches) RecordCandidateRejection(ctx context.Context, value ports.CandidateRejection) error {
+	if repo == nil || repo.db == nil || strings.TrimSpace(value.TenantID) == "" || strings.TrimSpace(value.AgentID) == "" || strings.TrimSpace(value.BatchID) == "" ||
+		strings.TrimSpace(value.FailureClass) == "" || len(value.Signals) == 0 {
+		return fmt.Errorf("database and complete Candidate rejection identity are required")
+	}
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin Candidate rejection: %w", err)
+	}
+	defer tx.Rollback()
+	inserted, err := insertRejectedSignals(ctx, tx, value)
+	if err != nil {
+		return fmt.Errorf("store Candidate rejection: %w", err)
+	}
+	if inserted > 0 {
+		delta := ports.TelemetryBatchDelta{TenantID: value.TenantID, Metrics: ports.TelemetryMetrics{ModelCandidatesReferenceRejected: inserted}}
+		if err := mergeMetrics(ctx, tx, delta); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func mergeRarity(ctx context.Context, tx *sql.Tx, delta ports.TelemetryBatchDelta) error {

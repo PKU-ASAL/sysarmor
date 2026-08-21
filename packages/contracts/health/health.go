@@ -45,9 +45,19 @@ type DetectionHealth struct {
 }
 
 type LearningHealth struct {
-	Status    string               `json:"status,omitempty"`
-	LastError string               `json:"last_error,omitempty"`
-	Profiles  ProcessProfileHealth `json:"profiles,omitempty"`
+	Status     string                   `json:"status,omitempty"`
+	LastError  string                   `json:"last_error,omitempty"`
+	Profiles   ProcessProfileHealth     `json:"profiles,omitempty"`
+	Candidates CandidateLifecycleHealth `json:"candidates,omitempty"`
+}
+
+type CandidateLifecycleHealth struct {
+	Created             uint64 `json:"created"`
+	Spooled             uint64 `json:"spooled"`
+	GatewayAccepted     uint64 `json:"gateway_accepted"`
+	GatewayDuplicateAck uint64 `json:"gateway_duplicate_ack"`
+	ContractRejected    uint64 `json:"contract_rejected"`
+	GatewayRejected     uint64 `json:"gateway_rejected"`
 }
 
 type ProcessProfileHealth struct {
@@ -55,6 +65,8 @@ type ProcessProfileHealth struct {
 	Compactions, Expired, CapacityEvictions                            uint64
 	FileEvictions, NetworkEvictions, EventRefEvictions                 uint64
 	IdentityRetained, IdentityEvictions, ActiveEvictions, IdentityGaps uint64
+	ProfileObservations, FeatureUpdates, LearningScoreCalls            uint64
+	LifecycleOnlyObservations, SuppressedCheckpoints                   uint64
 }
 
 type ContentRef struct {

@@ -120,12 +120,25 @@ func (service *ProcessBatch) executeClaimed(ctx context.Context, batch ports.Dat
 	if err != nil {
 		return ProcessBatchResult{}, ports.TelemetryBatchDelta{}, err
 	}
+	modelSignals, err := modelSignalProcessingRecords(batch)
+	if err != nil {
+		return ProcessBatchResult{}, ports.TelemetryBatchDelta{}, err
+	}
+	if len(modelSignals) > 0 {
+		correlation := ports.SignalProcessingBatch{
+			TenantID: batch.TenantID.String(), AgentID: string(batch.AgentID), BatchID: batch.ID, ClaimToken: token, Signals: modelSignals,
+		}
+		if err := service.batches.CorrelateSignals(ctx, correlation); err != nil {
+			return ProcessBatchResult{}, ports.TelemetryBatchDelta{}, fmt.Errorf("record Signal correlation: %w", err)
+		}
+	}
 	projection := batchProjection(batch, analysis)
 	if err := service.projector.Project(ctx, projection); err != nil {
 		return ProcessBatchResult{}, ports.TelemetryBatchDelta{}, err
 	}
 	result := processResult(batch, analysis)
 	delta := telemetryBatchDelta(batch, token, result, time.Since(started))
+	delta.ProjectedSignals = modelSignals
 	return result, delta, nil
 }
 

@@ -183,7 +183,7 @@ started_at, last_seen_at, last_data_seen_at, last_control_seen_at, data
 
 func TestSnapshotRepositoryReadsProductionMetricsAndRarityTables(t *testing.T) {
 	db := newIdentityTestDB(t)
-	if _, err := db.Exec(`INSERT INTO metrics (tenant_id, metric_key, data) VALUES (?, 'manager', ?)`, "tenant-a", []byte(`{"events_ingested":7}`)); err != nil {
+	if _, err := db.Exec(`INSERT INTO metrics (tenant_id, metric_key, data) VALUES (?, 'manager', ?)`, "tenant-a", []byte(`{"events_ingested":7,"model_candidates_correlated":3,"model_candidates_projected":3,"model_candidates_reference_rejected":2}`)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO rarity_baseline (tenant_id, workload_key, signal_name, signal_count, data) VALUES (?, ?, ?, ?, '{}')`, "tenant-a", "host:a", "signal-a", 3); err != nil {
@@ -199,7 +199,8 @@ func TestSnapshotRepositoryReadsProductionMetricsAndRarityTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metrics.EventsIngested != 7 || baseline.Count("host:a", "signal-a") != 3 {
+	if metrics.EventsIngested != 7 || metrics.ModelCandidatesCorrelated != 3 || metrics.ModelCandidatesProjected != 3 ||
+		metrics.ModelCandidatesReferenceRejected != 2 || baseline.Count("host:a", "signal-a") != 3 {
 		t.Fatalf("metrics=%+v baseline=%+v", metrics, baseline)
 	}
 }

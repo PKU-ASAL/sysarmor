@@ -118,6 +118,23 @@ func TestEnrollmentCommandTimeoutDefaultsToPolicyActivationWindow(t *testing.T) 
 	}
 }
 
+func TestHealthJSONEmitsZeroCandidateLifecycleCounters(t *testing.T) {
+	raw, err := marshalHealthJSON(&controlplanev1.HealthResponse{
+		Detection: &controlplanev1.DetectionRuntimeHealth{
+			Learning: &controlplanev1.LearningRuntimeHealth{Candidates: &controlplanev1.CandidateLifecycleRuntimeHealth{}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, field := range []string{"created", "spooled", "gatewayAccepted", "gatewayDuplicateAck", "contractRejected", "gatewayRejected"} {
+		if !strings.Contains(text, `"`+field+`":"0"`) {
+			t.Fatalf("health JSON does not contain explicit %s zero: %s", field, text)
+		}
+	}
+}
+
 func TestLocalEnrollmentReadsTokenFile(t *testing.T) {
 	tokenPath := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tokenPath, []byte("secret-from-file\n"), 0o600); err != nil {

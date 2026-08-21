@@ -70,6 +70,18 @@ func TestProjectionFailureAbandonsClaim(t *testing.T) {
 	}
 }
 
+func TestProjectionFailureLeavesModelSignalCorrelated(t *testing.T) {
+	fixture := newProcessFixture()
+	addModelCandidate(fixture)
+	fixture.projector.err = errors.New("opensearch unavailable")
+
+	_, err := fixture.service.Execute(context.Background(), fixture.decoder.batch)
+
+	if err == nil || fixture.batches.correlated != 1 || fixture.batches.projected != 0 {
+		t.Fatalf("err=%v correlated=%d projected=%d", err, fixture.batches.correlated, fixture.batches.projected)
+	}
+}
+
 func TestProcessBatchReportsAbandonFailure(t *testing.T) {
 	fixture := newProcessFixture()
 	projectionErr := errors.New("opensearch unavailable")
@@ -196,7 +208,7 @@ func TestProcessBatchRejectsAnalysisScopeWithoutPolicyIdentity(t *testing.T) {
 
 func TestProcessBatchProjectsDomainModelsAndMetrics(t *testing.T) {
 	fixture := newProcessFixture()
-	fixture.decoder.batch.Signals = []ports.ObservedSignal{{Signal: domaintelemetry.Signal{ID: "signal-a", Where: domaintelemetry.SignalWhereEndpoint}}}
+	addModelCandidate(fixture)
 
 	result, err := fixture.service.Execute(context.Background(), fixture.decoder.batch)
 
@@ -208,9 +220,21 @@ func TestProcessBatchProjectsDomainModelsAndMetrics(t *testing.T) {
 	if projection.TenantID != tenant.ID("tenant-a") || len(projection.Events) != 1 || len(projection.Signals) != 1 {
 		t.Fatalf("projection=%+v", projection)
 	}
-	if delta.TenantID != "tenant-a" || delta.BatchID != "batch-a" || delta.Metrics.Events != 1 || delta.Metrics.EndpointSignals != 1 {
+	if delta.TenantID != "tenant-a" || delta.BatchID != "batch-a" || delta.Metrics.Events != 1 ||
+		delta.Metrics.EndpointSignals != 1 || fixture.batches.correlated != 1 || fixture.batches.projected != 1 {
 		t.Fatalf("delta=%+v", delta)
 	}
+}
+
+func addModelCandidate(fixture *processFixture) {
+	fixture.decoder.batch.Events[0].Event.Sequence = 7
+	fixture.decoder.batch.Events[0].Event.SubjectProcess = &domaintelemetry.ProcessRef{StableID: "process-a"}
+	fixture.decoder.batch.Signals = []ports.ObservedSignal{{Signal: domaintelemetry.Signal{
+		ID: "signal-a", Where: domaintelemetry.SignalWhereEndpoint,
+		Stage: domaintelemetry.SignalStageCandidate, DetectorKind: domaintelemetry.DetectorKindModel,
+		Entities:  []domaintelemetry.Entity{{Kind: "process", Key: "process-a", Role: "subject"}},
+		EventRefs: []string{"event-a"},
+	}}}
 }
 
 func TestObserveCloudSignalsUsesLatestContributingSignalTime(t *testing.T) {
@@ -344,6 +368,7 @@ type telemetryBatchesStub struct {
 	abandoned                                 int
 	renewed                                   chan struct{}
 	delta                                     ports.TelemetryBatchDelta
+	correlated, projected                     int
 }
 
 func (stub *telemetryBatchesStub) Claim(context.Context, string, string, time.Duration) (ports.TelemetryClaim, string, error) {
@@ -354,7 +379,13 @@ func (stub *telemetryBatchesStub) Claim(context.Context, string, string, time.Du
 func (stub *telemetryBatchesStub) Commit(_ context.Context, delta ports.TelemetryBatchDelta) error {
 	stub.committed++
 	stub.delta = delta
+	stub.projected += len(delta.ProjectedSignals)
 	return stub.commitErr
+}
+
+func (stub *telemetryBatchesStub) CorrelateSignals(_ context.Context, value ports.SignalProcessingBatch) error {
+	stub.correlated += len(value.Signals)
+	return nil
 }
 
 func (stub *telemetryBatchesStub) Renew(context.Context, string, string, string, time.Duration) error {

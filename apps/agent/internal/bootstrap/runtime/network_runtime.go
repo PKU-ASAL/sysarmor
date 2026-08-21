@@ -14,7 +14,7 @@ import (
 
 func (r *managementRuntime) batchSender() (dataappend.BatchSender, error) {
 	if r.localStore != nil {
-		return &localStoreBatchSender{store: r.localStore}, nil
+		return &localStoreBatchSender{store: r.localStore, lifecycle: &r.telemetry.candidateLifecycle}, nil
 	}
 	return newBatchSender(r.config.Manager.Address, r.config.Manager.Transport, r.config.Local.Export.RequestTimeout, r.config.Agent.Token, r.managerTLS())
 }
@@ -37,7 +37,7 @@ func (r *managementRuntime) runManagedNetwork(ctx context.Context, enrollment sq
 	go func() {
 		defer close(exportDone)
 		defer cloud.Close()
-		applicationtelemetry.NewDelivery(telemetryadapter.NewLocalSpool(r.localStore), cloud).Run(ctx, applicationtelemetry.DeliveryScope{
+		applicationtelemetry.NewDelivery(telemetryadapter.NewLocalSpool(r.localStore), cloud, &r.telemetry.candidateLifecycle).Run(ctx, applicationtelemetry.DeliveryScope{
 			FromSequence: enrollment.ManagedFromSequence, TenantID: enrollment.TenantID, AgentID: enrollment.AgentID,
 		})
 	}()

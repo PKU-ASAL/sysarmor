@@ -67,16 +67,29 @@ const (
 )
 
 type TelemetryMetrics struct {
-	DataBatches, Events, EndpointSignals, CloudSignals uint64
-	Signals, Incidents                                 uint64
-	LastLatencyMs, MaxLatencyMs, TotalLatencyMs        uint64
-	AverageLatencyMs                                   float64
+	DataBatches, Events, EndpointSignals, CloudSignals  uint64
+	Signals, Incidents                                  uint64
+	ModelCandidatesCorrelated, ModelCandidatesProjected uint64
+	ModelCandidatesReferenceRejected                    uint64
+	LastLatencyMs, MaxLatencyMs, TotalLatencyMs         uint64
+	AverageLatencyMs                                    float64
 }
 
 type TelemetryBatchDelta struct {
 	TenantID, BatchID, ClaimToken string
 	Metrics                       TelemetryMetrics
 	Rarity                        identity.RarityBaseline
+	ProjectedSignals              []SignalProcessingRecord
+}
+
+type SignalProcessingRecord struct {
+	SignalID, SubjectID, TriggerEventID string
+	EventSequence                       uint64
+}
+
+type SignalProcessingBatch struct {
+	TenantID, AgentID, BatchID, ClaimToken string
+	Signals                                []SignalProcessingRecord
 }
 
 type TelemetryBatches interface {
@@ -84,6 +97,7 @@ type TelemetryBatches interface {
 	Renew(context.Context, string, string, string, time.Duration) error
 	Commit(context.Context, TelemetryBatchDelta) error
 	Abandon(context.Context, string, string, string) error
+	CorrelateSignals(context.Context, SignalProcessingBatch) error
 }
 
 type DetectionPolicyReader interface {
@@ -91,9 +105,24 @@ type DetectionPolicyReader interface {
 }
 
 type PermanentError struct {
-	Err     error
-	Message *RawMessage
+	Err                error
+	Message            *RawMessage
+	CandidateRejection *CandidateRejection
 }
 
 func (err PermanentError) Error() string { return err.Err.Error() }
 func (err PermanentError) Unwrap() error { return err.Err }
+
+type CandidateRejection struct {
+	TenantID, AgentID, BatchID, FailureClass string
+	Signals                                  []RejectedSignal
+}
+
+type RejectedSignal struct {
+	SignalID      string
+	EventSequence *uint64
+}
+
+type CandidateRejectionRecorder interface {
+	RecordCandidateRejection(context.Context, CandidateRejection) error
+}

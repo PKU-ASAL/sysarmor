@@ -11,6 +11,7 @@ import (
 	grpcauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/adapters/inbound/grpc/auth"
 	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
+	dataplanecontract "github.com/sysarmor/sysarmor-next-project/packages/contracts/dataplane"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -87,6 +88,9 @@ func mapBatch(batch *dataplanev1.DataBatch) (ports.BatchEnvelope, error) {
 	if batch == nil || batch.GetHeader() == nil {
 		return ports.BatchEnvelope{}, fmt.Errorf("batch header identity is required")
 	}
+	if err := dataplanecontract.ValidateCandidateReferences(batch); err != nil {
+		return ports.BatchEnvelope{}, err
+	}
 	header := batch.GetHeader()
 	raw, err := protojson.Marshal(batch)
 	if err != nil {
@@ -105,7 +109,12 @@ func acceptedAck(batch *dataplanev1.DataBatch, value dataplanev1.DataAck_Status,
 	return &dataplanev1.DataAck{BatchId: batch.GetHeader().GetBatchId(), Accepted: true, Status: value, Message: message, ReasonCode: message, CommittedCursor: batch.GetHeader().GetBatchId(), ServerTime: time.Now().UTC().Format(time.RFC3339Nano), ContractVersion: "dataplane.v1"}
 }
 func rejectedAck(batch *dataplanev1.DataBatch, err error) *dataplanev1.DataAck {
-	return &dataplanev1.DataAck{BatchId: batchID(batch), Status: dataplanev1.DataAck_STATUS_REJECTED, Message: err.Error(), ReasonCode: "invalid_data_batch", ContractVersion: "dataplane.v1"}
+	reason := "invalid_data_batch"
+	var violation *dataplanecontract.ReferenceViolation
+	if errors.As(err, &violation) {
+		reason = string(violation.Code)
+	}
+	return &dataplanev1.DataAck{BatchId: batchID(batch), Status: dataplanev1.DataAck_STATUS_REJECTED, Message: err.Error(), ReasonCode: reason, ContractVersion: "dataplane.v1"}
 }
 func retryableAck(batch *dataplanev1.DataBatch, err error) *dataplanev1.DataAck {
 	return &dataplanev1.DataAck{BatchId: batchID(batch), Status: dataplanev1.DataAck_STATUS_RETRYABLE, Message: err.Error(), ReasonCode: "retryable_server_error", Retryable: true, RetryAfterMs: 1000, ContractVersion: "dataplane.v1"}

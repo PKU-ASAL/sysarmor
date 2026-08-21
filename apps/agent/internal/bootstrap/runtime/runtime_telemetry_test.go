@@ -44,7 +44,7 @@ func TestRuntimeUploadsFakeSensorEvent(t *testing.T) {
 	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
 	var out bytes.Buffer
-	runRuntimeUntilUploadedBatch(t, runner, &out)
+	runRuntimeUntilPersistedBatch(t, runner, &out)
 	got := out.String()
 	for _, want := range []string{"agent runtime started", "sensor=fake", "agent runtime event"} {
 		if !strings.Contains(got, want) {
@@ -221,7 +221,7 @@ func TestRuntimeUploadsConfiguredLabels(t *testing.T) {
 	}
 	runner := newConfiguredTestRuntime(t, cfg)
 	installTestDetection(t, runner)
-	batch := runRuntimeUntilUploadedBatch(t, runner, nil)
+	batch := runRuntimeUntilPersistedBatch(t, runner, nil)
 	if got := batch.GetEvents()[0].GetEvent().GetLabels()["scenario"]; got != "daemon-scenario" {
 		t.Fatalf("event label scenario = %q", got)
 	}

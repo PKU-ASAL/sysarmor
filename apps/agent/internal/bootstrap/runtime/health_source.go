@@ -103,6 +103,7 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 	}
 	metrics := s.health.policy.currentDetection().Metrics()
 	profileMetrics := domainprocess.Metrics{}
+	candidates := s.health.management.telemetry.candidateLifecycle.Snapshot()
 	if s.health.profiles != nil {
 		profileMetrics = s.health.profiles.Metrics()
 	}
@@ -113,11 +114,18 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 		LastApplyStatus: status.LastApplyStatus, LastApplyError: status.LastApplyError, UpdatedAt: status.UpdatedAt,
 		Learning: domainhealth.Learning{
 			Status: status.Learning.Status, LastError: status.Learning.LastError,
+			Candidates: domainhealth.CandidateLifecycleHealth{
+				Created: candidates.Created, Spooled: candidates.Spooled, GatewayAccepted: candidates.GatewayAccepted,
+				GatewayDuplicateAck: candidates.GatewayDuplicateAck,
+				ContractRejected:    candidates.ContractRejected, GatewayRejected: candidates.GatewayRejected,
+			},
 			Profiles: domainhealth.ProcessProfileHealth{
 				Active: profileMetrics.Active, Exited: profileMetrics.Exited, Retained: profileMetrics.Retained,
 				Compactions: profileMetrics.Compactions, Expired: profileMetrics.Expired, CapacityEvictions: profileMetrics.CapacityEvictions,
 				FileEvictions: profileMetrics.FileEvictions, NetworkEvictions: profileMetrics.NetworkEvictions, EventRefEvictions: profileMetrics.EventRefEvictions,
 				IdentityRetained: profileMetrics.IdentityRetained, IdentityEvictions: profileMetrics.IdentityEvictions, ActiveEvictions: profileMetrics.ActiveEvictions, IdentityGaps: profileMetrics.IdentityGaps,
+				ProfileObservations: profileMetrics.ProfileObservations, FeatureUpdates: profileMetrics.FeatureUpdates, LearningScoreCalls: profileMetrics.LearningScoreCalls,
+				LifecycleOnlyObservations: profileMetrics.LifecycleOnlyObservations, SuppressedCheckpoints: profileMetrics.SuppressedCheckpoints,
 			},
 		},
 		CEP: domainhealth.CEP{ActiveGroups: metrics.ActiveCEPGroups, EvictedGroups: metrics.EvictedCEPGroups,

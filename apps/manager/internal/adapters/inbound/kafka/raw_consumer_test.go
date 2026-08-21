@@ -25,3 +25,12 @@ func TestWaitForTopicReturnsCanceledContext(t *testing.T) {
 		t.Fatalf("WaitForTopic() error = %v, want context canceled", err)
 	}
 }
+
+func TestEnsureTopicRejectsMissingConfiguration(t *testing.T) {
+	if err := EnsureTopic(context.Background(), nil, "topic"); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("EnsureTopic() error = %v, want %v", err, ErrDisabled)
+	}
+	if err := EnsureTopic(context.Background(), []string{"broker:9092"}, ""); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("EnsureTopic() error = %v, want %v", err, ErrDisabled)
+	}
+}
