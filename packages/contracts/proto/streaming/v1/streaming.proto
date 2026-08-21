@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package sysarmor.streaming.v1;
+
+option go_package = "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/streaming/v1;streamingv1";
+
+import "packages/contracts/proto/event/v1/event.proto";
+import "packages/contracts/proto/incident/v1/incident.proto";
+import "packages/contracts/proto/policy/v1/policy.proto";
+import "packages/contracts/proto/signal/v1/signal.proto";
+
+message RecordContext {
+  string tenant_id = 1;
+  string agent_id = 2;
+  string host_id = 3;
+  string batch_id = 4;
+  string policy_id = 5;
+  uint64 policy_version = 6;
+  string policy_mode = 7;
+  int64 observed_at_unix_nano = 8;
+  string analysis_scope_key = 9;
+  map<string, string> labels = 10;
+}
+
+message NormalizedTelemetry {
+  string schema_version = 1;
+  RecordContext context = 2;
+  oneof payload {
+    sysarmor.event.v1.CanonicalEvent event = 3;
+    sysarmor.signal.v1.Signal signal = 4;
+  }
+}
+
+message DetectionPolicySnapshot {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string policy_id = 3;
+  uint64 policy_version = 4;
+  sysarmor.policy.v1.DetectionPolicy detection = 5;
+}
+
+message AnalysisArtifact {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string analysis_scope_key = 3;
+  int64 observed_at_unix_nano = 4;
+  oneof payload {
+    sysarmor.signal.v1.Signal signal = 5;
+    sysarmor.incident.v1.Incident incident = 6;
+  }
+}
+
+message RejectedTelemetry {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string agent_id = 3;
+  string batch_id = 4;
+  string reason_code = 5;
+  string message = 6;
+}
+
+message LateTelemetry {
+  NormalizedTelemetry telemetry = 1;
+  int64 watermark_unix_nano = 2;
+}
