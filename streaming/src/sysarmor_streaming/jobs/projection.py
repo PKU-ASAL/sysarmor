@@ -13,10 +13,16 @@ FAILURE_TAG = OutputTag("projection-failures", BYTE_ARRAY)
 
 
 class ProjectionFunction(ProcessFunction):
+    def __init__(self, projector=None):
+        self._projector = projector
+
     def process_element(self, value, ctx):
         artifact = streaming_pb2.AnalysisArtifact.FromString(bytes(value))
         try:
-            yield project_artifact(bytes(value))
+            document = project_artifact(bytes(value))
+            if self._projector is not None:
+                self._projector.put(document)
+            yield document
         except ValueError as error:
             yield FAILURE_TAG, streaming_pb2.ProjectionFailure(
                 artifact=artifact,

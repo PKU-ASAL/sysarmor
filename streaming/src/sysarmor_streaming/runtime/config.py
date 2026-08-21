@@ -10,6 +10,7 @@ class StreamingConfig:
     policy_topic: str
     artifact_topic: str
     projected_topic: str
+    opensearch_url: str
     late_topic: str
     failure_topic: str
     checkpoint_uri: str
@@ -34,6 +35,7 @@ class StreamingConfig:
             projected_topic=_env(
                 "SYSARMOR_KAFKA_PROJECTED_TOPIC", "sysarmor.analysis.projected"
             ),
+            opensearch_url=_env("SYSARMOR_OPENSEARCH_URL", ""),
             late_topic=_env("SYSARMOR_KAFKA_LATE_TOPIC", "sysarmor.analysis.late"),
             failure_topic=_env(
                 "SYSARMOR_KAFKA_FAILURE_TOPIC", "sysarmor.analysis.failure"

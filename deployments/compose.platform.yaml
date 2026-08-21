@@ -157,11 +157,14 @@ services:
         condition: service_started
       flink-taskmanager:
         condition: service_started
+      opensearch-init:
+        condition: service_completed_successfully
     env_file:
       - ./streaming/streaming.env.example
     environment:
       SYSARMOR_FLINK_JOB: projection
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      SYSARMOR_OPENSEARCH_URL: http://opensearch:9200
 
   redis:
     build: ./infra/redis

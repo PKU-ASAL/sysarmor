@@ -7,6 +7,7 @@ from sysarmor_streaming.jobs.normalize import BYTE_ARRAY, NormalizeFunction, REJ
 from sysarmor_streaming.jobs.projection import FAILURE_TAG, ProjectionFunction
 from sysarmor_streaming.runtime.config import StreamingConfig
 from sysarmor_streaming.runtime.kafka import configure_environment, sink, source
+from sysarmor_streaming.runtime.opensearch import OpenSearchProjector
 
 
 def run_normalize():
@@ -44,8 +45,11 @@ def run_projection():
     config = StreamingConfig.from_env()
     env = configure_environment(config)
     artifacts = source(env, config.artifact_topic, "sysarmor-projection-v1", config)
+    if not config.opensearch_url:
+        raise ValueError("SYSARMOR_OPENSEARCH_URL is required for projection")
     projected = artifacts.process(
-        ProjectionFunction(), output_type=BYTE_ARRAY
+        ProjectionFunction(OpenSearchProjector(config.opensearch_url)),
+        output_type=BYTE_ARRAY,
     ).uid("projection").name("projection")
     sink(projected, config.projected_topic, config, "sysarmor-projection-v1")
     sink(
