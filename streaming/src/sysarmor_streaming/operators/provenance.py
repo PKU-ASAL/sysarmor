@@ -107,6 +107,15 @@ class ProvenanceGraph:
         self._include_adjacent_gaps(nodes, edges)
         return self._subgraph(nodes, edges)
 
+    def connects(self, left, right) -> bool:
+        left_nodes = self._existing_signal_nodes(left)
+        right_nodes = self._existing_signal_nodes(right)
+        for start in left_nodes:
+            for target in right_nodes:
+                if start == target or self._shortest_path(start, target)[1]:
+                    return True
+        return False
+
     def _add_provenance_edge(self, edge: ProvenanceEdge) -> None:
         self._add_edge_node(edge.from_id, edge.operation, True)
         self._add_edge_node(edge.to_id, edge.operation, False)
@@ -162,6 +171,14 @@ class ProvenanceGraph:
                 self._add_node(gap, "gap", "")
                 seeds.append(gap)
         return seeds
+
+    def _existing_signal_nodes(self, signal):
+        nodes = {
+            entity_id(entity.kind, entity.key)
+            for entity in signal.entities
+            if entity_id(entity.kind, entity.key) in self._nodes
+        }
+        return sorted(nodes)[:MAX_EVIDENCE_SEEDS]
 
     def _k_hop(self, seed: str, hops: int):
         nodes, edges, frontier = {seed}, set(), [seed]
