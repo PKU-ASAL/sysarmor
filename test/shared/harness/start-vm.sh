@@ -14,6 +14,20 @@ PLATFORM_IMAGE_BUNDLE="$PLATFORM_IMAGES_DIR/vm-images.tar"
 PLATFORM_IMAGE_MANIFEST="$PLATFORM_IMAGES_DIR/images.manifest"
 BUILD_BINARIES="${SYSARMOR_VM_BUILD_BINARIES:-1}"
 
+ensure_image() {
+  local image="$1"
+  local mirror
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    return
+  fi
+  mirror="${SYSARMOR_DOCKER_REGISTRY_MIRROR:-https://docker.1ms.run}"
+  mirror="${mirror#https://}"
+  mirror="${mirror#http://}"
+  echo ">>> 通过 Docker registry mirror 拉取 $image"
+  docker pull "${mirror%/}/$image"
+  docker tag "${mirror%/}/$image" "$image"
+}
+
 case "$ENV_NAME" in
   vm-endpoint|vm-topology) ;;
   *) echo "[start-vm][ERROR] unsupported VM ENV=$ENV_NAME" >&2; exit 2 ;;
@@ -71,17 +85,14 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   rsync -a --delete "$PKI_DIR/" "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime/"
   tar -C "$PLATFORM_UPLOAD_DIR" -cf "$PLATFORM_SOURCE_BUNDLE" .
   required_images=(ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine)
+  for image in "${required_images[@]}"; do
+    ensure_image "$image"
+  done
+  docker build --network=host -t sysarmor-flink:1.20.2 -f "$REPO/deployments/streaming/Dockerfile" "$REPO"
+  required_images+=(sysarmor-flink:1.20.2)
   tmp_manifest="$PLATFORM_IMAGE_MANIFEST.tmp"
   : > "$tmp_manifest"
   for image in "${required_images[@]}"; do
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
-      mirror="${SYSARMOR_DOCKER_REGISTRY_MIRROR:-https://docker.1ms.run}"
-      mirror="${mirror#https://}"
-      mirror="${mirror#http://}"
-      echo ">>> 通过 Docker registry mirror 拉取 $image"
-      docker pull "${mirror%/}/$image"
-      docker tag "${mirror%/}/$image" "$image"
-    fi
     image_id="$(docker image inspect --format '{{.Id}}' "$image")"
     printf '%s %s\n' "$image" "$image_id" >> "$tmp_manifest"
   done
@@ -102,7 +113,7 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   vagrant upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr >/dev/null
   vagrant upload "$PLATFORM_IMAGE_MANIFEST" /tmp/sysarmor-vm-images.manifest mgr >/dev/null
   image_upload=0
-  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine >/dev/null" >/dev/null 2>&1; then
+  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine sysarmor-flink:1.20.2 >/dev/null" >/dev/null 2>&1; then
     echo ">>> 复用 mgr VM image bundle"
   else
     image_upload=1
@@ -138,7 +149,7 @@ else
   COMPOSE='docker-compose'
 fi
 sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml down -v --remove-orphans >/tmp/sysarmor-compose-down.log 2>&1 || true
-sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml up -d --build >/tmp/sysarmor-compose-up.log 2>&1
+sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml up -d --no-build >/tmp/sysarmor-compose-up.log 2>&1
 " >/dev/null
   ready=0
   for _ in $(seq 1 120); do

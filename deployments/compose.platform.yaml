@@ -81,6 +81,7 @@ services:
       S3_BUCKET: sysarmor-flink
 
   flink-jobmanager:
+    image: sysarmor-flink:1.20.2
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
@@ -105,6 +106,7 @@ services:
       - "${SYSARMOR_FLINK_UI_PORT:-18081}:8081"
 
   flink-taskmanager:
+    image: sysarmor-flink:1.20.2
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
@@ -126,6 +128,7 @@ services:
         s3.secret-key: sysarmor-secret
 
   flink-normalize:
+    image: sysarmor-flink:1.20.2
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
@@ -142,6 +145,7 @@ services:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
 
   flink-detection:
+    image: sysarmor-flink:1.20.2
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
@@ -158,6 +162,7 @@ services:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
 
   flink-projection:
+    image: sysarmor-flink:1.20.2
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile

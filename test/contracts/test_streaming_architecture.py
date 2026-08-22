@@ -30,6 +30,17 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertNotIn("minio:", compose)
         self.assertIn("flink-checkpoints:", compose)
 
+    def test_vm_topology_uses_prebuilt_streaming_image(self):
+        platform = (REPO / "deployments/compose.platform.yaml").read_text()
+        harness = (REPO / "test/shared/harness/start-vm.sh").read_text()
+
+        self.assertGreaterEqual(platform.count("image: sysarmor-flink:1.20.2"), 5)
+        self.assertIn("sysarmor-flink:1.20.2", harness)
+        self.assertIn(
+            "docker build --network=host -t sysarmor-flink:1.20.2", harness
+        )
+        self.assertIn("up -d --no-build", harness)
+
     def test_streaming_contract_is_versioned_protobuf(self):
         path = REPO / "packages/contracts/proto/streaming/v1/streaming.proto"
         self.assertTrue(path.is_file(), "missing versioned streaming contract")
