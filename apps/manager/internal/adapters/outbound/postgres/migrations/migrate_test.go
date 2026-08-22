@@ -15,8 +15,8 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
-	if got.Version != 9 {
-		t.Fatalf("migration version = %d, want 9", got.Version)
+	if got.Version != 10 {
+		t.Fatalf("migration version = %d, want 10", got.Version)
 	}
 	query := FakeAllQueries()
 	for _, want := range []string{
@@ -26,21 +26,16 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 		"INSERT INTO schema_migrations (version) VALUES (1)",
 		"CREATE TABLE IF NOT EXISTS agent_unenrollments",
 		"INSERT INTO schema_migrations (version) VALUES (2)",
-		"CREATE TABLE IF NOT EXISTS telemetry_batches",
-		"INSERT INTO schema_migrations (version) VALUES (3)",
-		"ADD COLUMN IF NOT EXISTS claim_token",
-		"INSERT INTO schema_migrations (version) VALUES (4)",
 		"CREATE TABLE IF NOT EXISTS control_audit",
 		"INSERT INTO schema_migrations (version) VALUES (5)",
 		"CREATE TABLE IF NOT EXISTS response_decisions",
 		"INSERT INTO schema_migrations (version) VALUES (6)",
 		"DELETE FROM policy_assignments",
 		"INSERT INTO schema_migrations (version) VALUES (7)",
-		"CREATE TABLE IF NOT EXISTS worker_candidate_rejections",
-		"INSERT INTO schema_migrations (version) VALUES (8)",
-		"CREATE TABLE IF NOT EXISTS worker_signal_processing",
-		"DROP TABLE worker_candidate_rejections",
-		"INSERT INTO schema_migrations (version) VALUES (9)",
+		"DROP TABLE IF EXISTS worker_signal_processing",
+		"DROP TABLE IF EXISTS worker_candidate_rejections",
+		"DROP TABLE IF EXISTS telemetry_batches",
+		"INSERT INTO schema_migrations (version) VALUES (10)",
 		"SELECT pg_advisory_unlock",
 	} {
 		if !strings.Contains(query, want) {
@@ -62,21 +57,18 @@ func TestApplyMigrationsUpgradesExistingV3Schema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 9 {
-		t.Fatalf("version=%d, want 9", got.Version)
+	if got.Version != 10 {
+		t.Fatalf("version=%d, want 10", got.Version)
 	}
 	queries := FakeAllQueries()
-	if !strings.Contains(queries, "ADD COLUMN IF NOT EXISTS claim_token") ||
-		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (4)") ||
-		!strings.Contains(queries, "CREATE TABLE IF NOT EXISTS control_audit") ||
+	if !strings.Contains(queries, "CREATE TABLE IF NOT EXISTS control_audit") ||
 		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (5)") ||
 		!strings.Contains(queries, "CREATE TABLE IF NOT EXISTS response_decisions") ||
 		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") ||
 		!strings.Contains(queries, "DELETE FROM policy_assignments") ||
 		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") ||
-		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (8)") ||
-		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (9)") {
-		t.Fatalf("v3 upgrade did not apply v4 through v9:\n%s", queries)
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (10)") {
+		t.Fatalf("existing schema upgrade did not apply current migrations:\n%s", queries)
 	}
 	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (3)") {
 		t.Fatalf("v3 migration was replayed:\n%s", queries)
@@ -93,12 +85,12 @@ func TestApplyMigrationsUpgradesExistingV6SchemaWithPolicyResetOnly(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 9 {
-		t.Fatalf("version=%d, want 9", got.Version)
+	if got.Version != 10 {
+		t.Fatalf("version=%d, want 10", got.Version)
 	}
 	queries := FakeAllQueries()
-	if !strings.Contains(queries, "DELETE FROM policy_assignments") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (8)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (9)") {
-		t.Fatalf("v6 upgrade did not apply v7 through v9:\n%s", queries)
+	if !strings.Contains(queries, "DELETE FROM policy_assignments") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (10)") {
+		t.Fatalf("existing schema upgrade did not apply current migrations:\n%s", queries)
 	}
 	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") {
 		t.Fatalf("v6 migration was replayed:\n%s", queries)

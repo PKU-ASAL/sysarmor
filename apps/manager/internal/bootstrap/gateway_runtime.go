@@ -78,10 +78,20 @@ func (config GatewayRuntimeConfig) validate() error {
 	if strings.TrimSpace(config.PostgresDriver) != "postgres" {
 		return errors.New("postgres driver must be postgres")
 	}
-	if len(cleanWorkerBrokers(config.KafkaBrokers)) == 0 {
+	if len(cleanKafkaBrokers(config.KafkaBrokers)) == 0 {
 		return errors.New("kafka brokers are required")
 	}
 	return nil
+}
+
+func cleanKafkaBrokers(values []string) []string {
+	clean := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			clean = append(clean, value)
+		}
+	}
+	return clean
 }
 
 func newGatewaySecurity(config GatewayRuntimeConfig) (Gateway, error) {
