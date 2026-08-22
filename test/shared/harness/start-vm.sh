@@ -70,7 +70,7 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   mkdir -p "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime"
   rsync -a --delete "$PKI_DIR/" "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime/"
   tar -C "$PLATFORM_UPLOAD_DIR" -cf "$PLATFORM_SOURCE_BUNDLE" .
-  required_images=(ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17)
+  required_images=(ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine)
   tmp_manifest="$PLATFORM_IMAGE_MANIFEST.tmp"
   : > "$tmp_manifest"
   for image in "${required_images[@]}"; do
@@ -102,7 +102,7 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   vagrant upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr >/dev/null
   vagrant upload "$PLATFORM_IMAGE_MANIFEST" /tmp/sysarmor-vm-images.manifest mgr >/dev/null
   image_upload=0
-  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 >/dev/null" >/dev/null 2>&1; then
+  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine >/dev/null" >/dev/null 2>&1; then
     echo ">>> 复用 mgr VM image bundle"
   else
     image_upload=1

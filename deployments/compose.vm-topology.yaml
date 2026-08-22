@@ -40,16 +40,16 @@ services:
       retries: 20
 
   rustfs-init:
-    build:
-      context: ..
-      dockerfile: deployments/streaming/Dockerfile
-    entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      "python3 -m sysarmor_streaming.s3_init"
+    image: python:3.12-alpine
+    command: ["python3", "-m", "sysarmor_streaming.s3_init"]
+    working_dir: /opt/sysarmor
+    volumes:
+      - ./streaming/src:/opt/sysarmor/streaming/src:ro
     depends_on:
       rustfs:
         condition: service_healthy
     environment:
+      PYTHONPATH: /opt/sysarmor/streaming/src
       S3_ENDPOINT: http://rustfs:9000
       S3_ACCESS_KEY: sysarmor
       S3_SECRET_KEY: sysarmor-secret
