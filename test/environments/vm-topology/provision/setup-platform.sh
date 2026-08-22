@@ -33,6 +33,8 @@ apt_install() {
 
 apt_install ca-certificates curl docker.io rsync
 
+DOCKER_REGISTRY_MIRROR="${SYSARMOR_DOCKER_REGISTRY_MIRROR:-https://docker.1ms.run}"
+
 rm -f /etc/resolv.conf
 cat >/etc/resolv.conf <<'EOF'
 nameserver 1.1.1.1
@@ -40,9 +42,10 @@ nameserver 8.8.8.8
 EOF
 
 mkdir -p /etc/docker
-cat >/etc/docker/daemon.json <<'EOF'
+cat >/etc/docker/daemon.json <<EOF
 {
-  "dns": ["1.1.1.1", "8.8.8.8"]
+  "dns": ["1.1.1.1", "8.8.8.8"],
+  "registry-mirrors": ["$DOCKER_REGISTRY_MIRROR"]
 }
 EOF
 

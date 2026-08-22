@@ -41,34 +41,42 @@ services:
       timeout: 5s
       retries: 30
 
-  minio:
-    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
-    container_name: sysarmor-minio
-    command: server /data --console-address ":9001"
+  rustfs:
+    image: rustfs/rustfs:1.0.0-alpha.84
+    container_name: sysarmor-rustfs
     environment:
-      MINIO_ROOT_USER: sysarmor
-      MINIO_ROOT_PASSWORD: sysarmor-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: sysarmor
+      RUSTFS_SECRET_KEY: sysarmor-secret
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
     volumes:
       - flink-checkpoints:/data
     ports:
       - "${SYSARMOR_MINIO_PORT:-19000}:9000"
       - "${SYSARMOR_MINIO_CONSOLE_PORT:-19001}:9001"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  minio-init:
-    image: minio/mc:RELEASE.2024-06-13T21-53-57Z
-    container_name: sysarmor-minio-init
+  rustfs-init:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    container_name: sysarmor-rustfs-init
     depends_on:
-      minio:
+      rustfs:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      "mc alias set local http://minio:9000 sysarmor sysarmor-secret &&
-      mc mb --ignore-existing local/sysarmor-flink"
+    command: ["python3", "-m", "sysarmor_streaming.s3_init"]
+    environment:
+      S3_ENDPOINT: http://rustfs:9000
+      S3_ACCESS_KEY: sysarmor
+      S3_SECRET_KEY: sysarmor-secret
+      S3_BUCKET: sysarmor-flink
 
   flink-jobmanager:
     build:
@@ -79,15 +87,15 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      minio-init:
+      rustfs-init:
         condition: service_completed_successfully
     env_file:
       - ./streaming/streaming.env.example
     environment:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
-      AWS_ENDPOINT: http://minio:9000
+      AWS_ENDPOINT: http://rustfs:9000
       FLINK_PROPERTIES: |
-        s3.endpoint: http://minio:9000
+        s3.endpoint: http://rustfs:9000
         s3.path.style.access: true
         s3.access-key: sysarmor
         s3.secret-key: sysarmor-secret
@@ -108,9 +116,9 @@ services:
     environment:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
       TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "2"
-      AWS_ENDPOINT: http://minio:9000
+      AWS_ENDPOINT: http://rustfs:9000
       FLINK_PROPERTIES: |
-        s3.endpoint: http://minio:9000
+        s3.endpoint: http://rustfs:9000
         s3.path.style.access: true
         s3.access-key: sysarmor
         s3.secret-key: sysarmor-secret

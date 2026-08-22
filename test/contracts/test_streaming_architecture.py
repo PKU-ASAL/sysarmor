@@ -25,7 +25,9 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         compose = (REPO / "deployments/compose.platform.yaml").read_text()
         self.assertIn("flink-jobmanager:", compose)
         self.assertIn("flink-taskmanager:", compose)
-        self.assertIn("minio:", compose)
+        self.assertIn("rustfs:", compose)
+        self.assertNotIn("minio/mc", compose)
+        self.assertNotIn("minio:", compose)
         self.assertIn("flink-checkpoints:", compose)
 
     def test_streaming_contract_is_versioned_protobuf(self):
