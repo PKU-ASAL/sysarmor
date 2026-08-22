@@ -30,11 +30,11 @@ def managed_candidate_artifacts(
     ]
     candidate_ids = [signal.get("id") for signal in candidates]
     if any(not isinstance(signal_id, str) or not signal_id for signal_id in candidate_ids):
-        return missing_stream_processing("projected Model Signal ID is missing")
+        return missing_stream_processing("projected Model Candidate ID is missing")
     if len(candidate_ids) != len(set(candidate_ids)):
-        return missing_stream_processing("projected Model Signal ID is duplicated")
+        return missing_stream_processing("projected Model Candidate ID is duplicated")
     if set(candidate_ids) != projected_ids:
-        return missing_stream_processing("Stream projected Signal IDs do not match OpenSearch artifacts")
+        return missing_stream_processing("Stream projected Candidate IDs do not match OpenSearch artifacts")
     correlated = sum(row["status"] in ("correlated", "projected") for row in cohort)
     projected = sum(row["status"] == "projected" for row in cohort)
     reference_rejected = sum(row["status"] == "reference_rejected" for row in cohort)
