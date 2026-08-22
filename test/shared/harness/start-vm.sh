@@ -75,7 +75,9 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   : > "$tmp_manifest"
   for image in "${required_images[@]}"; do
     if ! docker image inspect "$image" >/dev/null 2>&1; then
-      mirror="${SYSARMOR_DOCKER_REGISTRY_MIRROR:-docker.1ms.run}"
+      mirror="${SYSARMOR_DOCKER_REGISTRY_MIRROR:-https://docker.1ms.run}"
+      mirror="${mirror#https://}"
+      mirror="${mirror#http://}"
       echo ">>> 通过 Docker registry mirror 拉取 $image"
       docker pull "${mirror%/}/$image"
       docker tag "${mirror%/}/$image" "$image"
