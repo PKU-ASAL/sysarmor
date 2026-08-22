@@ -174,16 +174,16 @@ def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
     stages = (
         ("Created", "created"), ("Spooled", "spooled"),
         ("Gateway accepted unique", "gateway_accepted"), ("Gateway duplicate ACK", "gateway_duplicate_ack"),
-        ("Worker correlated", "worker_correlated"), ("Worker projected", "worker_projected"),
-        ("Worker projection artifacts", "worker_projection_artifacts"),
-        ("Worker pending backlog", "worker_pending_backlog"),
+        ("Stream correlated", "stream_correlated"), ("Stream projected", "stream_projected"),
+        ("Stream projection artifacts", "stream_projection_artifacts"),
+        ("Stream pending backlog", "stream_pending_backlog"),
     )
     gaps = (
         ("Observation gap", "observation_gap"), ("Endpoint storage drop", "endpoint_storage_drop"),
         ("Agent contract reject", "agent_contract_reject"), ("Agent spool backlog", "agent_spool_backlog"),
         ("Gateway reject", "gateway_reject"),
         ("Agent delivery backlog", "agent_delivery_backlog"),
-        ("Worker reference reject", "worker_reference_rejected"),
+        ("Stream reference reject", "stream_reference_rejected"),
     )
     lines = ["## Candidate 生命周期与引用完整性", "", "| 指标 | rule-only | learning-only | hybrid |", "|---|---:|---:|---:|"]
     for label, key in stages:

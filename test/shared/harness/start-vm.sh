@@ -64,10 +64,9 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   mkdir -p \
     "$PLATFORM_UPLOAD_DIR/deployments/vm-build/manager" \
     "$PLATFORM_UPLOAD_DIR/deployments/vm-build/gateway" \
-    "$PLATFORM_UPLOAD_DIR/deployments/vm-build/worker"
+    "$PLATFORM_UPLOAD_DIR/deployments/vm-build"
   install -m 0755 "$REPO/dist/bin/sysarmor-manager" "$PLATFORM_UPLOAD_DIR/deployments/vm-build/manager/sysarmor-manager"
   install -m 0755 "$REPO/dist/bin/sysarmor-gateway" "$PLATFORM_UPLOAD_DIR/deployments/vm-build/gateway/sysarmor-gateway"
-  install -m 0755 "$REPO/dist/bin/sysarmor-worker" "$PLATFORM_UPLOAD_DIR/deployments/vm-build/worker/sysarmor-worker"
   mkdir -p "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime"
   rsync -a --delete "$PKI_DIR/" "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime/"
   tar -C "$PLATFORM_UPLOAD_DIR" -cf "$PLATFORM_SOURCE_BUNDLE" .
@@ -152,7 +151,6 @@ sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-to
     vagrant ssh mgr -c "cd /opt/sysarmor/platform && if docker compose version >/dev/null 2>&1; then sudo docker compose -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps; else sudo docker-compose -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps; fi || true" >&2 2>/dev/null || true
     vagrant ssh mgr -c "sudo docker logs sysarmor-manager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
     vagrant ssh mgr -c "sudo docker logs sysarmor-gateway --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
-    vagrant ssh mgr -c "sudo docker logs sysarmor-worker --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
     exit 1
   fi
 fi

@@ -103,8 +103,8 @@ wait_contains() {
       vagrant ssh mgr -c "sudo docker logs sysarmor-manager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
       echo "--- gateway log ---" >&2
       vagrant ssh mgr -c "sudo docker logs sysarmor-gateway --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
-      echo "--- worker log ---" >&2
-      vagrant ssh mgr -c "sudo docker logs sysarmor-worker --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
+      echo "--- Flink logs ---" >&2
+      vagrant ssh mgr -c "sudo docker logs sysarmor-flink-jobmanager --tail 120 2>/dev/null || true; sudo docker logs sysarmor-flink-taskmanager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
       exit 1
     fi
     sleep 1

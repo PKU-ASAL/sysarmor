@@ -30,7 +30,8 @@ class PerformancePlatformContractTest(unittest.TestCase):
         for container in (
             "sysarmor-manager",
             "sysarmor-gateway",
-            "sysarmor-worker",
+            "sysarmor-flink-jobmanager",
+            "sysarmor-flink-taskmanager",
             "sysarmor-postgres",
             "sysarmor-kafka",
         ):

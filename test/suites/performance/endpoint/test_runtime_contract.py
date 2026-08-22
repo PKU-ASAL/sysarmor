@@ -107,7 +107,7 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn("manager policies assign", managed)
         self.assertIn('remote_policy\\"\' EXIT', managed)
 
-    def test_managed_benchmark_captures_worker_incidents_per_policy(self):
+    def test_managed_benchmark_captures_stream_incidents_per_policy(self):
         script = ENDPOINT_RUNNER.read_text()
 
         self.assertIn('source "$ROOT/shared/detection/runtime.sh"', script)
@@ -116,24 +116,23 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn('"managed_incidents": "managed-incidents.json"', script)
         self.assertIn('"managed-incidents.json"', script)
 
-    def test_managed_benchmark_captures_worker_candidate_lifecycle_artifacts(self):
+    def test_managed_benchmark_captures_stream_candidate_lifecycle_artifacts(self):
         script = ENDPOINT_RUNNER.read_text()
 
-        self.assertIn('capture_managed_worker_artifacts "$policy_out" "$name"', script)
+        self.assertIn('capture_managed_stream_artifacts "$policy_out" "$name"', script)
         self.assertIn('"managed_signals": "managed-signals.json"', script)
         self.assertIn('"manager_metrics": "manager-metrics.json"', script)
-        self.assertIn('"worker_signal_processing": "worker-signal-processing.json"', script)
+        self.assertIn('"stream_processing": "stream-processing.json"', script)
 
-    def test_managed_benchmark_waits_for_worker_candidate_terminal_state(self):
+    def test_managed_benchmark_builds_stream_projection_artifact(self):
         script = ENDPOINT_RUNNER.read_text()
 
         self.assertIn("capture_final_candidate_lifecycle", script)
-        self.assertIn("wait_for_candidate_terminal_state", script)
-        self.assertIn('worker_signal_processing', script)
+        self.assertIn("build_stream_processing_artifact", script)
+        self.assertIn('stream_processing', script)
         self.assertIn('eventSequenceCutoff', script)
-        self.assertIn('agent_id', script)
-        self.assertIn('event_sequence IS NOT NULL', script)
-        self.assertIn('worker Candidate lifecycle did not settle', script)
+        self.assertNotIn('stream_processing FROM', script)
+        self.assertNotIn('docker exec -i sysarmor-postgres psql', script)
 
     def test_managed_benchmark_freezes_agent_candidate_cohort_with_one_health_read(self):
         script = ENDPOINT_RUNNER.read_text()
@@ -162,7 +161,7 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn("SYSARMOR_BENCH_PROTECTION_MODE=rule-only", script)
         self.assertLess(
             script.index('quiesce_managed_candidate_production "$policy_out" "$policy"'),
-            script.index('capture_managed_worker_artifacts "$policy_out" "$name"'),
+            script.index('capture_managed_stream_artifacts "$policy_out" "$name"'),
         )
 
     def test_managed_sync_installs_signed_benchmark_content(self):

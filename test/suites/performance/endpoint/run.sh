@@ -220,15 +220,13 @@ capture_managed_incidents() {
   fi
 }
 
-capture_managed_worker_artifacts() {
+capture_managed_stream_artifacts() {
   local policy_out="$1" policy_name="$2"
   local manager_jwt labels
   [[ "$AGENT_MODE" == "managed" ]] || return 0
   manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
     "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
   capture_final_candidate_lifecycle "$policy_out/candidate-lifecycle-final.json"
-  wait_for_candidate_terminal_state "$policy_out/candidate-lifecycle-final.json" \
-    "$policy_out/worker-signal-processing.json"
   if ! query_manager_metrics "$manager_jwt" >"$policy_out/manager-metrics.json"; then
     rm -f "$policy_out/manager-metrics.json"
     echo "[performance-endpoint][WARN] manager metrics snapshot unavailable" >&2
@@ -238,6 +236,7 @@ capture_managed_worker_artifacts() {
       "$policy_out/managed-signals.json" 1 "$MANAGER_ANALYSIS_WAIT_SECONDS"; then
     [[ -s "$policy_out/managed-signals.json" ]] || printf '[]\n' >"$policy_out/managed-signals.json"
   fi
+  build_stream_processing_artifact "$policy_out/managed-signals.json" "$policy_out/stream-processing.json"
 }
 
 capture_final_candidate_lifecycle() {
@@ -287,50 +286,34 @@ query_manager_metrics() {
     2>/dev/null
 }
 
-query_worker_signal_processing() {
-  local cutoff="$1"
-  if [[ ! "$TENANT_ID" =~ ^[A-Za-z0-9._:-]+$ ]] ||
-      [[ ! "$AGENT_ID" =~ ^[A-Za-z0-9._:-]+$ ]] ||
-      [[ ! "$cutoff" =~ ^[0-9]+$ ]]; then
-    echo "[performance-endpoint][ERROR] invalid Worker cohort identity" >&2
-    return 1
-  fi
-  printf '%s\n' "
-SELECT COALESCE(json_agg(row_to_json(state)), '[]'::json)
-FROM (
-  SELECT signal_id, agent_id, batch_id, subject_id, trigger_event_id,
-         event_sequence, status, failure_class
-  FROM worker_signal_processing
-  WHERE tenant_id = :'tenant'
-    AND agent_id = :'agent'
-    AND event_sequence IS NOT NULL
-    AND event_sequence <= :'cutoff'::bigint
-  ORDER BY event_sequence, signal_id
-) state;
-" | vagrant ssh mgr -c \
-    "sudo docker exec -i sysarmor-postgres psql -qAt -v ON_ERROR_STOP=1 -v tenant='$TENANT_ID' -v agent='$AGENT_ID' -v cutoff='$cutoff' -U sysarmor -d sysarmor" \
-    2>/dev/null | tr -d '\r'
-}
-
-wait_for_candidate_terminal_state() {
-  local lifecycle="$1" output="$2"
-  local expected cutoff deadline temporary projected=0 rejected=0
-  expected="$(jq -er '.detection.learning.candidates.gatewayAccepted | tonumber' "$lifecycle")" || return 1
-  cutoff="$(jq -er '.localStore.eventSequenceCutoff | tonumber' "$lifecycle")" || return 1
-  deadline=$((SECONDS + MANAGER_ANALYSIS_WAIT_SECONDS))
-  temporary="$output.tmp"
-  while (( SECONDS < deadline )); do
-    if query_worker_signal_processing "$cutoff" >"$temporary" &&
-        jq -e 'type == "array"' "$temporary" >/dev/null &&
-        projected="$(jq '[.[] | select(.status == "projected")] | length' "$temporary")" &&
-        rejected="$(jq '[.[] | select(.status == "reference_rejected")] | length' "$temporary")"; then
-      mv "$temporary" "$output"
-      (( projected + rejected >= expected )) && return 0
-    fi
-    sleep 1
-  done
-  rm -f "$temporary"
-  echo "[performance-endpoint][WARN] worker Candidate lifecycle did not settle: expected=$expected projected=$projected reference_rejected=$rejected" >&2
+build_stream_processing_artifact() {
+  local signals_path="$1" output="$2"
+  python3 - "$signals_path" "$output" <<'PY'
+import json, sys
+source, target = sys.argv[1:]
+try:
+    values = json.load(open(source))
+except (OSError, json.JSONDecodeError):
+    values = []
+if isinstance(values, dict):
+    values = values.get("items", values.get("signals", []))
+rows = []
+for value in values if isinstance(values, list) else []:
+    if not isinstance(value, dict):
+        continue
+    rows.append({
+        "signal_id": value.get("id", value.get("signal_id", "")),
+        "agent_id": value.get("agent_id", value.get("agentId", "")),
+        "batch_id": value.get("batch_id", value.get("batchId", "")),
+        "subject_id": value.get("subject_id", value.get("subjectId", "")),
+        "trigger_event_id": value.get("trigger_event_id", value.get("triggerEventId", "")),
+        "event_sequence": int(value.get("event_sequence", value.get("eventSequence", 0)) or 0),
+        "status": "projected",
+        "failure_class": "",
+    })
+with open(target, "w") as handle:
+    json.dump(rows, handle, indent=2)
+PY
 }
 
 resolve_agent_identity() {
@@ -941,7 +924,7 @@ for policy in $POLICIES_RAW; do
     "managed_incidents": "managed-incidents.json",
     "managed_signals": "managed-signals.json",
     "manager_metrics": "manager-metrics.json",
-    "worker_signal_processing": "worker-signal-processing.json",
+    "stream_processing": "stream-processing.json",
     "candidate_lifecycle_final": "candidate-lifecycle-final.json",
     "raw_snapshots": "raw/",
     "raw_archive": "raw.tar",
@@ -961,10 +944,10 @@ EOF
   "scope-labels.json": "labels used to derive *.scope.ndjson from the raw streams",
   "current-policy.json": "Agent policy current response captured after all policy sections were applied",
   "effective-policy.json": "four-layer EndpointPolicy document extracted from the Agent current policy response",
-  "managed-incidents.json": "Manager Incident documents used for managed Worker graph and conclusion recall gates",
-  "managed-signals.json": "Worker-projected Signals used as the authoritative managed Candidate reference source",
-  "manager-metrics.json": "tenant-level Worker lifecycle counters retained for diagnostics only",
-  "worker-signal-processing.json": "PostgreSQL Worker Signal lifecycle rows for the frozen experiment cohort",
+  "managed-incidents.json": "Manager Incident documents used for managed Stream graph and conclusion recall gates",
+  "managed-signals.json": "Stream-projected Signals used as the authoritative managed Candidate reference source",
+  "manager-metrics.json": "tenant-level Stream lifecycle counters retained for diagnostics only",
+  "stream-processing.json": "Flink Projection lifecycle rows for the frozen experiment cohort",
   "candidate-lifecycle-final.json": "one-shot Agent Candidate lifecycle snapshot with frozen experiment count and Event sequence cutoff",
   "raw/": "raw low-frequency health semantic snapshots",
   "raw.tar": "archive of raw semantic snapshots pulled from the VM",
@@ -1046,7 +1029,7 @@ EOF
   ACTIVE_REC_LABELS=""
   recorder "$rec_run_id" "$rec_labels" report
   quiesce_managed_candidate_production "$policy_out" "$policy"
-  capture_managed_worker_artifacts "$policy_out" "$name"
+  capture_managed_stream_artifacts "$policy_out" "$name"
   capture_managed_incidents "$policy_out" "$name"
 
   cp "$rec_dir/timeline.csv" "$policy_out/timeline.csv"

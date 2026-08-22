@@ -119,7 +119,7 @@ sa_build_go_bins() {
   for pkg in "$@"; do
     case "$pkg" in
       sysarmor-agent|sysarmor-content-sign) app="agent" ;;
-      sysarmor-gateway|sysarmor-manager|sysarmor-worker) app="manager" ;;
+      sysarmor-gateway|sysarmor-manager) app="manager" ;;
       sysarmorctl) app="cli" ;;
       *) echo "unsupported SysArmor binary: $pkg" >&2; return 2 ;;
     esac

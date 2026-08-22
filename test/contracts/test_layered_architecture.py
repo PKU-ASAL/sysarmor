@@ -563,7 +563,7 @@ import (
 
     def test_manager_commands_depend_on_bootstrap_only(self):
         violations = []
-        for command in ("sysarmor-manager", "sysarmor-gateway", "sysarmor-worker"):
+        for command in ("sysarmor-manager", "sysarmor-gateway"):
             source = self.repo / "apps" / "manager" / "cmd" / command / "main.go"
             for imported in IMPORT_PATTERN.findall(source.read_text()):
                 if imported == f"{MODULE}apps/manager/internal/bootstrap":
