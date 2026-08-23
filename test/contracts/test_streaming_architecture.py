@@ -30,6 +30,25 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertNotIn("minio:", compose)
         self.assertIn("flink-checkpoints:", compose)
 
+    def test_kafka_topics_are_explicit_versioned_contracts(self):
+        compose = (REPO / "deployments/compose.platform.yaml").read_text()
+        manifest = (REPO / "deployments/kafka/topics.tsv").read_text()
+        required = (
+            "sysarmor.control.policy.endpoint.published.v1",
+            "sysarmor.data.telemetry.endpoint.batch.ingress.v1",
+            "sysarmor.data.telemetry.record.normalized.v1",
+            "sysarmor.data.detection.artifact.analyzed.v1",
+            "sysarmor.data.detection.record.late.v1",
+            "sysarmor.data.projection.document.projected.v1",
+            "sysarmor.data.pipeline.failure.rejected.v1",
+        )
+
+        self.assertIn('KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"', compose)
+        self.assertIn("kafka-init:", compose)
+        self.assertIn("condition: service_completed_successfully", compose)
+        for topic in required:
+            self.assertIn(topic, manifest)
+
     def test_vm_topology_uses_prebuilt_streaming_image(self):
         platform = (REPO / "deployments/compose.platform.yaml").read_text()
         harness = (REPO / "test/shared/harness/start-vm.sh").read_text()

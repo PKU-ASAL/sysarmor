@@ -31,7 +31,7 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
@@ -42,6 +42,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+
+  kafka-init:
+    image: sysarmor-kafka:latest
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/opt/sysarmor/kafka/init.sh"]
+    environment:
+      SYSARMOR_KAFKA_BROKERS: kafka:9092
+    volumes:
+      - ./kafka:/opt/sysarmor/kafka:ro
 
   rustfs:
     image: rustfs/rustfs:1.0.0-alpha.84
@@ -92,6 +103,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       rustfs-init:
         condition: service_completed_successfully
     env_file:
@@ -289,6 +302,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     env_file:

@@ -10,8 +10,8 @@ class StreamingConfigTest(unittest.TestCase):
         with patch.dict(os.environ, {"SYSARMOR_KAFKA_BROKERS": "kafka:9092"}, clear=True):
             config = StreamingConfig.from_env()
 
-        self.assertEqual("sysarmor.agent.databatch.raw", config.raw_topic)
-        self.assertEqual("sysarmor.control.policy.published", config.policy_topic)
+        self.assertEqual("sysarmor.data.telemetry.endpoint.batch.ingress.v1", config.raw_topic)
+        self.assertEqual("sysarmor.control.policy.endpoint.published.v1", config.policy_topic)
         self.assertEqual("s3://sysarmor-flink/checkpoints", config.checkpoint_uri)
 
     def test_invalid_runtime_values_fail_explicitly(self):

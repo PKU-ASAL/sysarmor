@@ -103,7 +103,7 @@ func mapBatch(batch *dataplanev1.DataBatch) (ports.BatchEnvelope, error) {
 			break
 		}
 	}
-	return ports.BatchEnvelope{TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), HostID: header.GetHostId(), BatchID: header.GetBatchId(), Transport: "grpc_stream", Topic: "sysarmor.agent.databatch.raw", Key: header.GetTenantId() + ":" + key, Payload: raw}, nil
+	return ports.BatchEnvelope{TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), HostID: header.GetHostId(), BatchID: header.GetBatchId(), Transport: "grpc_stream", Topic: "sysarmor.data.telemetry.endpoint.batch.ingress.v1", Key: header.GetTenantId() + ":" + key, Payload: raw}, nil
 }
 func acceptedAck(batch *dataplanev1.DataBatch, value dataplanev1.DataAck_Status, message string) *dataplanev1.DataAck {
 	return &dataplanev1.DataAck{BatchId: batch.GetHeader().GetBatchId(), Accepted: true, Status: value, Message: message, ReasonCode: message, CommittedCursor: batch.GetHeader().GetBatchId(), ServerTime: time.Now().UTC().Format(time.RFC3339Nano), ContractVersion: "dataplane.v1"}

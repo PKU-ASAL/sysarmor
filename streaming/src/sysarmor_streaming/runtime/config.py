@@ -22,23 +22,34 @@ class StreamingConfig:
     def from_env(cls):
         return cls(
             brokers=_required("SYSARMOR_KAFKA_BROKERS"),
-            raw_topic=_env("SYSARMOR_KAFKA_RAW_TOPIC", "sysarmor.agent.databatch.raw"),
+            raw_topic=_env(
+                "SYSARMOR_KAFKA_RAW_TOPIC",
+                "sysarmor.data.telemetry.endpoint.batch.ingress.v1",
+            ),
             normalized_topic=_env(
-                "SYSARMOR_KAFKA_NORMALIZED_TOPIC", "sysarmor.telemetry.normalized"
+                "SYSARMOR_KAFKA_NORMALIZED_TOPIC",
+                "sysarmor.data.telemetry.record.normalized.v1",
             ),
             policy_topic=_env(
-                "SYSARMOR_KAFKA_POLICY_TOPIC", "sysarmor.control.policy.published"
+                "SYSARMOR_KAFKA_POLICY_TOPIC",
+                "sysarmor.control.policy.endpoint.published.v1",
             ),
             artifact_topic=_env(
-                "SYSARMOR_KAFKA_ARTIFACT_TOPIC", "sysarmor.analysis.artifact"
+                "SYSARMOR_KAFKA_ARTIFACT_TOPIC",
+                "sysarmor.data.detection.artifact.analyzed.v1",
             ),
             projected_topic=_env(
-                "SYSARMOR_KAFKA_PROJECTED_TOPIC", "sysarmor.analysis.projected"
+                "SYSARMOR_KAFKA_PROJECTED_TOPIC",
+                "sysarmor.data.projection.document.projected.v1",
             ),
             opensearch_url=_env("SYSARMOR_OPENSEARCH_URL", ""),
-            late_topic=_env("SYSARMOR_KAFKA_LATE_TOPIC", "sysarmor.analysis.late"),
+            late_topic=_env(
+                "SYSARMOR_KAFKA_LATE_TOPIC",
+                "sysarmor.data.detection.record.late.v1",
+            ),
             failure_topic=_env(
-                "SYSARMOR_KAFKA_FAILURE_TOPIC", "sysarmor.analysis.failure"
+                "SYSARMOR_KAFKA_FAILURE_TOPIC",
+                "sysarmor.data.pipeline.failure.rejected.v1",
             ),
             checkpoint_uri=_env(
                 "SYSARMOR_FLINK_CHECKPOINT_URI",
