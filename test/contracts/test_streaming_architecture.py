@@ -48,6 +48,7 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         kafka_runtime = (STREAMING / "src/sysarmor_streaming/runtime/kafka.py").read_text()
         self.assertIn("FileSystemCheckpointStorage(config.checkpoint_uri)", kafka_runtime)
         self.assertIn("io.sysarmor.streaming.ByteArraySchema", kafka_runtime)
+        self.assertIn('f"kafka-{topic}"', kafka_runtime)
         schema = REPO / "deployments/streaming/java/io/sysarmor/streaming/ByteArraySchema.java"
         self.assertTrue(schema.is_file())
 

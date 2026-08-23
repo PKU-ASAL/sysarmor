@@ -47,7 +47,12 @@ def source(env, topic: str, group_id: str, config: StreamingConfig):
         .set_value_only_deserializer(ByteArraySchema())
         .build()
     )
-    return env.from_source(kafka_source, _no_watermark(), Types.PRIMITIVE_ARRAY(Types.BYTE()))
+    return env.from_source(
+        kafka_source,
+        _no_watermark(),
+        f"kafka-{topic}",
+        Types.PRIMITIVE_ARRAY(Types.BYTE()),
+    )
 
 
 def sink(stream, topic: str, config: StreamingConfig, transaction_prefix: str):
