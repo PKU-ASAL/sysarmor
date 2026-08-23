@@ -4,7 +4,14 @@ set -euo pipefail
 base_url="${SYSARMOR_OPENSEARCH_URL:-http://opensearch:9200}"
 mapping_dir="${SYSARMOR_OPENSEARCH_MAPPING_DIR:-/opt/sysarmor/opensearch/mappings}"
 timeout="${SYSARMOR_OPENSEARCH_INIT_TIMEOUT_SECONDS:-120}"
-curl_args=(-fsS --max-time 10)
+curl_args=(
+  -fsS
+  --connect-timeout 5
+  --max-time 20
+  --retry 5
+  --retry-delay 2
+  --retry-all-errors
+)
 if [[ -n "${SYSARMOR_OPENSEARCH_USERNAME:-}" ]]; then
   curl_args+=(-u "${SYSARMOR_OPENSEARCH_USERNAME}:${SYSARMOR_OPENSEARCH_PASSWORD:-}")
 fi

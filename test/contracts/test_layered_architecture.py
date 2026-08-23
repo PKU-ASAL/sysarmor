@@ -454,6 +454,7 @@ class LayeredArchitectureContractTest(unittest.TestCase):
 
     def test_signal_schema_migration_sets_canonical_dimensions(self):
         migration = (self.repo / "deployments/opensearch/init.sh").read_text()
+        self.assertIn("--retry-all-errors", migration)
         for assignment in (
             "ctx._source.stage =",
             "ctx._source.detectorKind =",
