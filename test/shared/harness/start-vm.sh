@@ -88,8 +88,17 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   for image in "${required_images[@]}"; do
     ensure_image "$image"
   done
+  docker compose -f "$REPO/deployments/compose.platform.yaml" build \
+    postgres kafka redis manager manager-ui gateway
   docker build --network=host -t sysarmor-flink:1.20.2 -f "$REPO/deployments/streaming/Dockerfile" "$REPO"
-  required_images+=(sysarmor-flink:1.20.2)
+  required_images+=(
+    sysarmor-flink:1.20.2
+    sysarmor-kafka:latest
+    sysarmor-redis:latest
+    sysarmor-manager:latest
+    sysarmor-manager-ui:latest
+    sysarmor-gateway:latest
+  )
   tmp_manifest="$PLATFORM_IMAGE_MANIFEST.tmp"
   : > "$tmp_manifest"
   for image in "${required_images[@]}"; do
@@ -113,7 +122,7 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   vagrant upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr >/dev/null
   vagrant upload "$PLATFORM_IMAGE_MANIFEST" /tmp/sysarmor-vm-images.manifest mgr >/dev/null
   image_upload=0
-  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine sysarmor-flink:1.20.2 >/dev/null" >/dev/null 2>&1; then
+  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine sysarmor-flink:1.20.2 sysarmor-kafka:latest sysarmor-redis:latest sysarmor-manager:latest sysarmor-manager-ui:latest sysarmor-gateway:latest >/dev/null" >/dev/null 2>&1; then
     echo ">>> 复用 mgr VM image bundle"
   else
     image_upload=1

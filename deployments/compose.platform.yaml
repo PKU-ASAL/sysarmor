@@ -1,5 +1,6 @@
 services:
   postgres:
+    image: sysarmor-postgres:latest
     build: ./infra/postgres
     container_name: sysarmor-postgres
     environment:
@@ -17,6 +18,7 @@ services:
       retries: 20
 
   kafka:
+    image: sysarmor-kafka:latest
     build: ./infra/kafka
     container_name: sysarmor-kafka
     environment:
@@ -182,6 +184,7 @@ services:
       SYSARMOR_OPENSEARCH_URL: http://opensearch:9200
 
   redis:
+    image: sysarmor-redis:latest
     build: ./infra/redis
     container_name: sysarmor-redis
     ports:
@@ -228,6 +231,7 @@ services:
       - "${SYSARMOR_PACKAGE_PORT:-18080}:80"
 
   manager:
+    image: sysarmor-manager:latest
     build:
       context: ..
       dockerfile: deployments/manager/Dockerfile
@@ -256,6 +260,7 @@ services:
       - "${SYSARMOR_MANAGER_PORT:-19443}:9443"
 
   manager-ui:
+    image: sysarmor-manager-ui:latest
     build:
       context: ..
       dockerfile: deployments/manager-ui/Dockerfile
@@ -274,6 +279,7 @@ services:
       - "${SYSARMOR_MANAGER_UI_PORT:-4173}:4173"
 
   gateway:
+    image: sysarmor-gateway:latest
     build:
       context: ..
       dockerfile: deployments/gateway/Dockerfile

@@ -31,6 +31,7 @@ class LearningRunContractTest(unittest.TestCase):
         self.assertIn('SYSARMOR_BENCH_VM_FRESH="${SYSARMOR_LEARNING_VM_FRESH:-1}"', self.script)
         self.assertIn('endpoint-run.log', self.script)
         self.assertIn('failure.txt', self.script)
+        self.assertIn('$ROOT/environments/$VM_ENV', self.script)
         self.assertLess(
             self.script.index('mkdir -p "$child_dir"'),
             self.script.index('>"$child_dir/endpoint-run.log"'),

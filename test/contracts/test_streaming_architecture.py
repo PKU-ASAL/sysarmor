@@ -40,6 +40,16 @@ class StreamingArchitectureContractTest(unittest.TestCase):
             "docker build --network=host -t sysarmor-flink:1.20.2", harness
         )
         self.assertIn("up -d --no-build", harness)
+        for image in (
+            "sysarmor-postgres:latest",
+            "sysarmor-kafka:latest",
+            "sysarmor-redis:latest",
+            "sysarmor-manager:latest",
+            "sysarmor-gateway:latest",
+            "sysarmor-manager-ui:latest",
+        ):
+            self.assertIn(f"image: {image}", platform)
+            self.assertIn(image, harness)
         self.assertEqual(platform.count("- ../streaming/src:/opt/sysarmor/streaming/src:ro"), 1)
         topology = (REPO / "deployments/compose.vm-topology.yaml").read_text()
         self.assertIn("- ../streaming/src:/opt/sysarmor/streaming/src:ro", topology)

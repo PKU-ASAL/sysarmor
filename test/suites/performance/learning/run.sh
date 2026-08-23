@@ -146,8 +146,9 @@ run_mode() {
       echo "endpoint_log=$child_dir/endpoint-run.log"
       echo "vm_env=$VM_ENV"
       echo "vm_status:"
-      (cd "$ROOT/test/environments/$VM_ENV" && vagrant status) || true
+      (cd "$ROOT/environments/$VM_ENV" && vagrant status) || true
     } >"$child_dir/failure.txt"
+    ln -sfn "$child_dir" "$OUT_DIR/$protection_mode"
   fi
   if [[ -d "$child_dir/$collection_name" ]]; then
     ln -sfn "$child_dir" "$OUT_DIR/$protection_mode"
