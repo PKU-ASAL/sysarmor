@@ -40,6 +40,9 @@ class StreamingArchitectureContractTest(unittest.TestCase):
             "docker build --network=host -t sysarmor-flink:1.20.2", harness
         )
         self.assertIn("up -d --no-build", harness)
+        self.assertEqual(platform.count("- ../streaming/src:/opt/sysarmor/streaming/src:ro"), 1)
+        topology = (REPO / "deployments/compose.vm-topology.yaml").read_text()
+        self.assertIn("- ../streaming/src:/opt/sysarmor/streaming/src:ro", topology)
 
     def test_streaming_contract_is_versioned_protobuf(self):
         path = REPO / "packages/contracts/proto/streaming/v1/streaming.proto"

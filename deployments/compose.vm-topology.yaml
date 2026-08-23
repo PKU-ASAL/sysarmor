@@ -44,7 +44,7 @@ services:
     command: ["python3", "-m", "sysarmor_streaming.s3_init"]
     working_dir: /opt/sysarmor
     volumes:
-      - ./streaming/src:/opt/sysarmor/streaming/src:ro
+      - ../streaming/src:/opt/sysarmor/streaming/src:ro
     depends_on:
       rustfs:
         condition: service_healthy
