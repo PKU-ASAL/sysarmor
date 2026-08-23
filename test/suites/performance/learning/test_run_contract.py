@@ -28,7 +28,9 @@ class LearningRunContractTest(unittest.TestCase):
     def test_uses_fixed_policy_fresh_vm_and_serial_activity(self):
         self.assertIn("collection-learning.json", self.script)
         self.assertIn("SYSARMOR_BENCH_PROTECTION_MODE", self.script)
-        self.assertIn("SYSARMOR_BENCH_VM_FRESH=1", self.script)
+        self.assertIn('SYSARMOR_BENCH_VM_FRESH="${SYSARMOR_LEARNING_VM_FRESH:-1}"', self.script)
+        self.assertIn('endpoint-run.log', self.script)
+        self.assertIn('failure.txt', self.script)
         self.assertIn("SYSARMOR_BENCH_ACTIVITY_MODE=serial", self.script)
 
     def test_defaults_to_managed_topology_for_stream_graph_recall(self):

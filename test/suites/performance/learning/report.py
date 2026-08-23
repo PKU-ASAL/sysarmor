@@ -499,6 +499,11 @@ def aggregate_runs(run_dir: Path) -> dict[str, Any]:
     missing = [mode for mode, path in paths.items() if not path.exists()]
     if missing:
         summary = {"verdict": "failed", "status": "partial", "gates": {}, "observations": {}, "missing": missing}
+        summary["failure_evidence"] = {
+            mode: str(paths[mode] / "failure.txt")
+            for mode in missing
+            if (paths[mode] / "failure.txt").is_file()
+        }
     else:
         try:
             experiment = require_json(run_dir / "manifest.json")
