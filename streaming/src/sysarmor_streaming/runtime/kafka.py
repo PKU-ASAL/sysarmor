@@ -19,7 +19,7 @@ class ByteArraySchema(SerializationSchema, DeserializationSchema):
     """Use Flink core's byte-preserving schema for protobuf Kafka values."""
 
     def __init__(self):
-        schema = get_gateway().jvm.org.apache.flink.api.common.serialization.ByteArraySchema()
+        schema = get_gateway().jvm.io.sysarmor.streaming.ByteArraySchema()
         SerializationSchema.__init__(self, schema)
         DeserializationSchema.__init__(self, schema)
 
