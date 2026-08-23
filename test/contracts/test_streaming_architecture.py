@@ -43,6 +43,8 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertEqual(platform.count("- ../streaming/src:/opt/sysarmor/streaming/src:ro"), 1)
         topology = (REPO / "deployments/compose.vm-topology.yaml").read_text()
         self.assertIn("- ../streaming/src:/opt/sysarmor/streaming/src:ro", topology)
+        dockerfile = (REPO / "deployments/streaming/Dockerfile").read_text()
+        self.assertIn("ln -s /usr/bin/python3 /usr/local/bin/python", dockerfile)
 
     def test_streaming_contract_is_versioned_protobuf(self):
         path = REPO / "packages/contracts/proto/streaming/v1/streaming.proto"

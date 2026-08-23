@@ -3,6 +3,7 @@ FROM flink:1.20.2-scala_2.12-java17
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-pip curl \
+    && ln -s /usr/bin/python3 /usr/local/bin/python \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install --no-cache-dir apache-flink==1.20.2 \
     && curl -fsSL -o /opt/flink/lib/flink-sql-connector-kafka-3.3.0-1.20.jar \
