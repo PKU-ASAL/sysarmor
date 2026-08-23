@@ -125,6 +125,7 @@ run_mode() {
       SYSARMOR_BENCH_LEARNING_TRUST_KEYS="learning-experiment=$PUBLIC_KEY"
     )
   fi
+  mkdir -p "$child_dir"
   if ! env \
     SYSARMOR_VM_ENV="$VM_ENV" \
     SYSARMOR_BENCH_AGENT_MODE="$AGENT_MODE" \
