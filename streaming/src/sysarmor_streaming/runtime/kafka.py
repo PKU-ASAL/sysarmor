@@ -2,6 +2,7 @@ from pyflink.common import Types
 from pyflink.common.serialization import DeserializationSchema, SerializationSchema
 from pyflink.java_gateway import get_gateway
 from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream.checkpoint_storage import FileSystemCheckpointStorage
 from pyflink.datastream.connectors.kafka import (
     DeliveryGuarantee,
     KafkaOffsetResetStrategy,
@@ -27,7 +28,8 @@ def configure_environment(config: StreamingConfig):
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(config.parallelism)
     env.enable_checkpointing(config.checkpoint_interval_ms)
-    env.get_checkpoint_config().set_checkpoint_storage(config.checkpoint_uri)
+    storage = FileSystemCheckpointStorage(config.checkpoint_uri)
+    env.get_checkpoint_config().set_checkpoint_storage(storage)
     if config.kafka_connector_jar:
         env.add_jars(config.kafka_connector_jar)
     return env

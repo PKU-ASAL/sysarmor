@@ -45,6 +45,8 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertIn("- ../streaming/src:/opt/sysarmor/streaming/src:ro", topology)
         dockerfile = (REPO / "deployments/streaming/Dockerfile").read_text()
         self.assertIn("ln -s /usr/bin/python3 /usr/local/bin/python", dockerfile)
+        kafka_runtime = (STREAMING / "src/sysarmor_streaming/runtime/kafka.py").read_text()
+        self.assertIn("FileSystemCheckpointStorage(config.checkpoint_uri)", kafka_runtime)
 
     def test_streaming_contract_is_versioned_protobuf(self):
         path = REPO / "packages/contracts/proto/streaming/v1/streaming.proto"
