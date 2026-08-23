@@ -55,7 +55,11 @@ systemctl restart docker.socket 2>/dev/null || true
 systemctl restart docker
 
 if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-  apt_install docker-compose-plugin || apt_install docker-compose
+  if apt-cache show docker-compose-plugin >/dev/null 2>&1; then
+    apt_install docker-compose-plugin
+  else
+    apt_install docker-compose
+  fi
 fi
 
 systemctl restart docker
