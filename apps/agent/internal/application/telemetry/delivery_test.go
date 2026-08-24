@@ -117,17 +117,17 @@ type spoolFake struct {
 	reads   int
 }
 
-func (s *spoolFake) Checkpoint(context.Context) (domaintelemetry.Position, error) {
+func (s *spoolFake) Checkpoint(context.Context, string) (domaintelemetry.Position, error) {
 	return domaintelemetry.Position{}, nil
 }
 
-func (s *spoolFake) Read(_ context.Context, from uint64, _ int) ([]domaintelemetry.StoredBatch, error) {
+func (s *spoolFake) Read(_ context.Context, _ string, from uint64, _ int) ([]domaintelemetry.StoredBatch, error) {
 	s.from = from
 	s.reads++
 	return s.batches, nil
 }
 
-func (s *spoolFake) SaveCheckpoint(_ context.Context, position domaintelemetry.Position) error {
+func (s *spoolFake) SaveCheckpoint(_ context.Context, _ string, position domaintelemetry.Position) error {
 	s.saved = append(s.saved, position)
 	return nil
 }

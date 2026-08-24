@@ -57,11 +57,11 @@ func (delivery *Delivery) DeliverAvailable(ctx context.Context, scope DeliverySc
 	if delivery == nil || delivery.spool == nil || delivery.sender == nil {
 		return fmt.Errorf("telemetry delivery is not initialized")
 	}
-	checkpoint, err := delivery.spool.Checkpoint(ctx)
+	checkpoint, err := delivery.spool.Checkpoint(ctx, scope.EnrollmentEpoch)
 	if err != nil {
 		return err
 	}
-	batches, err := delivery.spool.Read(ctx, scope.FromSequence, 1000)
+	batches, err := delivery.spool.Read(ctx, scope.EnrollmentEpoch, scope.FromSequence, 1000)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (delivery *Delivery) DeliverAvailable(ctx context.Context, scope DeliverySc
 		if outcome != domaintelemetry.DeliveryAccepted && outcome != domaintelemetry.DeliveryDuplicate {
 			return fmt.Errorf("batch %s was not committed", stored.Position.BatchID)
 		}
-		if err := delivery.spool.SaveCheckpoint(ctx, stored.Position); err != nil {
+		if err := delivery.spool.SaveCheckpoint(ctx, scope.EnrollmentEpoch, stored.Position); err != nil {
 			return err
 		}
 	}

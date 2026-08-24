@@ -153,7 +153,7 @@ func TestLocalStoreBatchSenderEnforcesCapacityBeforeAck(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.SaveCheckpoint(t.Context(), sqlite.Checkpoint{SegmentID: 3}); err != nil {
+	if err := store.SaveCheckpoint(t.Context(), "enroll-a", sqlite.Checkpoint{SegmentID: 3}); err != nil {
 		t.Fatal(err)
 	}
 

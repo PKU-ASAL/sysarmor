@@ -14,8 +14,14 @@ func TestLocalSpoolRoundTripsStoredBatchAndCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
+	old := &dataplanev1.DataBatch{Header: &dataplanev1.BatchHeader{
+		BatchId: "standalone", EnrollmentEpoch: "standalone", EventSeqStart: 6, TenantId: "local", AgentId: "device-a",
+	}}
+	if _, err := store.AppendBatch(t.Context(), old); err != nil {
+		t.Fatal(err)
+	}
 	want := &dataplanev1.DataBatch{Header: &dataplanev1.BatchHeader{
-		BatchId: "batch-a", EventSeqStart: 7, TenantId: "tenant-a", AgentId: "agent-a",
+		BatchId: "batch-a", EnrollmentEpoch: "enroll-a", EventSeqStart: 7, TenantId: "tenant-a", AgentId: "agent-a",
 	}}
 	position, err := store.AppendBatch(t.Context(), want)
 	if err != nil {
@@ -23,17 +29,17 @@ func TestLocalSpoolRoundTripsStoredBatchAndCheckpoint(t *testing.T) {
 	}
 	spool := NewLocalSpool(store)
 
-	batches, err := spool.Read(t.Context(), 7, 10)
+	batches, err := spool.Read(t.Context(), "enroll-a", 0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(batches) != 1 || batches[0].Batch.ID != "batch-a" || batches[0].Batch.TenantID != "tenant-a" {
 		t.Fatalf("batches = %+v", batches)
 	}
-	if err := spool.SaveCheckpoint(t.Context(), batches[0].Position); err != nil {
+	if err := spool.SaveCheckpoint(t.Context(), "enroll-a", batches[0].Position); err != nil {
 		t.Fatal(err)
 	}
-	checkpoint, err := spool.Checkpoint(t.Context())
+	checkpoint, err := spool.Checkpoint(t.Context(), "enroll-a")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -152,7 +152,7 @@ func (s *runtimeHealthSource) Storage(ctx context.Context) (domainhealth.Storage
 	if err != nil {
 		return domainhealth.Storage{}, err
 	}
-	checkpoint, err := s.health.management.localStore.Checkpoint(ctx)
+	checkpoint, err := s.health.management.localStore.Checkpoint(ctx, enrollment.EnrollmentID)
 	if err != nil {
 		return domainhealth.Storage{}, err
 	}

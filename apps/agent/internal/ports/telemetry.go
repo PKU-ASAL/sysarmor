@@ -22,9 +22,9 @@ type TelemetryContextProvider interface {
 }
 
 type TelemetrySpool interface {
-	Checkpoint(context.Context) (domaintelemetry.Position, error)
-	Read(context.Context, uint64, int) ([]domaintelemetry.StoredBatch, error)
-	SaveCheckpoint(context.Context, domaintelemetry.Position) error
+	Checkpoint(context.Context, string) (domaintelemetry.Position, error)
+	Read(context.Context, string, uint64, int) ([]domaintelemetry.StoredBatch, error)
+	SaveCheckpoint(context.Context, string, domaintelemetry.Position) error
 }
 
 type TelemetrySender interface {

@@ -16,19 +16,19 @@ func NewLocalSpool(store *sqlite.Store) *LocalSpool {
 	return &LocalSpool{store: store}
 }
 
-func (spool *LocalSpool) Checkpoint(ctx context.Context) (domaintelemetry.Position, error) {
+func (spool *LocalSpool) Checkpoint(ctx context.Context, epoch string) (domaintelemetry.Position, error) {
 	if spool == nil || spool.store == nil {
 		return domaintelemetry.Position{}, fmt.Errorf("telemetry spool is not configured")
 	}
-	checkpoint, err := spool.store.Checkpoint(ctx)
+	checkpoint, err := spool.store.Checkpoint(ctx, epoch)
 	return domaintelemetry.Position{SegmentID: checkpoint.SegmentID, RecordOffset: checkpoint.RecordOffset, BatchID: checkpoint.LastBatchID}, err
 }
 
-func (spool *LocalSpool) Read(ctx context.Context, fromSequence uint64, limit int) ([]domaintelemetry.StoredBatch, error) {
+func (spool *LocalSpool) Read(ctx context.Context, epoch string, fromSequence uint64, limit int) ([]domaintelemetry.StoredBatch, error) {
 	if spool == nil || spool.store == nil {
 		return nil, fmt.Errorf("telemetry spool is not configured")
 	}
-	stored, err := spool.store.ReadBatches(ctx, sqlite.ReadOptions{Limit: limit, FromSequence: fromSequence})
+	stored, err := spool.store.ReadBatches(ctx, sqlite.ReadOptions{Limit: limit, FromSequence: fromSequence, EnrollmentEpoch: epoch})
 	if err != nil {
 		return nil, err
 	}
@@ -50,11 +50,11 @@ func (spool *LocalSpool) Read(ctx context.Context, fromSequence uint64, limit in
 	return out, nil
 }
 
-func (spool *LocalSpool) SaveCheckpoint(ctx context.Context, position domaintelemetry.Position) error {
+func (spool *LocalSpool) SaveCheckpoint(ctx context.Context, epoch string, position domaintelemetry.Position) error {
 	if spool == nil || spool.store == nil {
 		return fmt.Errorf("telemetry spool is not configured")
 	}
-	return spool.store.SaveCheckpoint(ctx, sqlite.Checkpoint{
+	return spool.store.SaveCheckpoint(ctx, epoch, sqlite.Checkpoint{
 		SegmentID: position.SegmentID, RecordOffset: position.RecordOffset, LastBatchID: position.BatchID,
 	})
 }

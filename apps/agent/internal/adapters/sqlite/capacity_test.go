@@ -23,7 +23,7 @@ func TestCapacityDeletesUploadedSealedSegmentsBeforeUnuploaded(t *testing.T) {
 	if _, err := store.AppendBatch(t.Context(), testBatch(4)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveCheckpoint(t.Context(), Checkpoint{SegmentID: 3}); err != nil {
+	if err := store.SaveCheckpoint(t.Context(), "enroll-a", Checkpoint{SegmentID: 3}); err != nil {
 		t.Fatal(err)
 	}
 
