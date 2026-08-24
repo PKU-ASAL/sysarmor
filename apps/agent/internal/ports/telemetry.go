@@ -7,13 +7,14 @@ import (
 )
 
 type TelemetryContext struct {
-	TenantID      string
-	AgentID       string
-	HostID        string
-	PolicyID      string
-	PolicyVersion uint64
-	PolicyMode    string
-	Labels        map[string]string
+	EnrollmentEpoch string
+	TenantID        string
+	AgentID         string
+	HostID          string
+	PolicyID        string
+	PolicyVersion   uint64
+	PolicyMode      string
+	Labels          map[string]string
 }
 
 type TelemetryContextProvider interface {

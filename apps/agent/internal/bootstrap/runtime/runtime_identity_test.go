@@ -20,7 +20,7 @@ func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	runner.telemetryState.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
 	runner.telemetryState.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
 
-	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, EnrollmentID: "enroll-a", AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
 		t.Fatal(err)
 	}
 	boundary := <-runner.telemetryState.telemetryBatcher.Batches()
@@ -30,6 +30,9 @@ func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
 	managed := builder.NewBatch(time.Now())
 	if managed.GetHeader().GetAgentId() != "agent-a" || managed.GetHeader().GetTenantId() != "tenant-a" {
 		t.Fatalf("managed batch identity = %+v", managed.GetHeader())
+	}
+	if managed.GetHeader().GetEnrollmentEpoch() != "enroll-a" {
+		t.Fatalf("managed enrollment epoch = %q", managed.GetHeader().GetEnrollmentEpoch())
 	}
 	managedContext := &controlplanev1.RequestContext{AgentId: "agent-a", TenantId: "tenant-a"}
 	if err := runner.managementState.validateControlContext(managedContext); err != nil {

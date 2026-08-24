@@ -165,6 +165,7 @@ type BatchHeader struct {
 	ParseErrorsDelta   uint64                 `protobuf:"varint,15,opt,name=parse_errors_delta,json=parseErrorsDelta,proto3" json:"parse_errors_delta,omitempty"`
 	CreatedAtUnixNano  int64                  `protobuf:"varint,16,opt,name=created_at_unix_nano,json=createdAtUnixNano,proto3" json:"created_at_unix_nano,omitempty"`
 	Labels             map[string]string      `protobuf:"bytes,17,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	EnrollmentEpoch    string                 `protobuf:"bytes,18,opt,name=enrollment_epoch,json=enrollmentEpoch,proto3" json:"enrollment_epoch,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -316,6 +317,13 @@ func (x *BatchHeader) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *BatchHeader) GetEnrollmentEpoch() string {
+	if x != nil {
+		return x.EnrollmentEpoch
+	}
+	return ""
 }
 
 type EventFrame struct {
@@ -603,7 +611,7 @@ const file_packages_contracts_proto_dataplane_v1_dataplane_proto_rawDesc = "" +
 	"\x06header\x18\x01 \x01(\v2\".sysarmor.dataplane.v1.BatchHeaderR\x06header\x129\n" +
 	"\x06events\x18\x02 \x03(\v2!.sysarmor.dataplane.v1.EventFrameR\x06events\x12<\n" +
 	"\asignals\x18\x03 \x03(\v2\".sysarmor.dataplane.v1.SignalFrameR\asignals\x12%\n" +
-	"\x0eschema_version\x18\x04 \x01(\tR\rschemaVersion\"\xd2\x05\n" +
+	"\x0eschema_version\x18\x04 \x01(\tR\rschemaVersion\"\xfd\x05\n" +
 	"\vBatchHeader\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x19\n" +
@@ -624,7 +632,8 @@ const file_packages_contracts_proto_dataplane_v1_dataplane_proto_rawDesc = "" +
 	"\x14dropped_events_delta\x18\x0e \x01(\x04R\x12droppedEventsDelta\x12,\n" +
 	"\x12parse_errors_delta\x18\x0f \x01(\x04R\x10parseErrorsDelta\x12/\n" +
 	"\x14created_at_unix_nano\x18\x10 \x01(\x03R\x11createdAtUnixNano\x12F\n" +
-	"\x06labels\x18\x11 \x03(\v2..sysarmor.dataplane.v1.BatchHeader.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x11 \x03(\v2..sysarmor.dataplane.v1.BatchHeader.LabelsEntryR\x06labels\x12)\n" +
+	"\x10enrollment_epoch\x18\x12 \x01(\tR\x0fenrollmentEpoch\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x82\x01\n" +

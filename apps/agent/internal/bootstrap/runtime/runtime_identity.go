@@ -25,9 +25,10 @@ func bindHealthToSession(health agenthealth.AgentHealth, identity runtimeIdentit
 }
 
 type runtimeIdentity struct {
-	AgentID  string
-	HostID   string
-	TenantID string
+	EnrollmentEpoch string
+	AgentID         string
+	HostID          string
+	TenantID        string
 }
 
 func (r *managementRuntime) bindControlAckIdentity(ack *controlplanev1.ControlAck) *controlplanev1.ControlAck {
@@ -53,7 +54,7 @@ func (r *managementRuntime) currentIdentity() runtimeIdentity {
 	if r.identity.AgentID != "" {
 		return r.identity
 	}
-	return runtimeIdentity{AgentID: r.config.Agent.ID, HostID: r.config.Agent.HostID, TenantID: r.config.Agent.TenantID}
+	return runtimeIdentity{EnrollmentEpoch: "standalone", AgentID: r.config.Agent.ID, HostID: r.config.Agent.HostID, TenantID: r.config.Agent.TenantID}
 }
 
 func (r *managementRuntime) standaloneRuntimeIdentity() runtimeIdentity {
@@ -62,7 +63,7 @@ func (r *managementRuntime) standaloneRuntimeIdentity() runtimeIdentity {
 	if r.standaloneIdentity.AgentID != "" {
 		return r.standaloneIdentity
 	}
-	return runtimeIdentity{AgentID: r.config.Agent.ID, HostID: r.config.Agent.HostID, TenantID: r.config.Agent.TenantID}
+	return runtimeIdentity{EnrollmentEpoch: "standalone", AgentID: r.config.Agent.ID, HostID: r.config.Agent.HostID, TenantID: r.config.Agent.TenantID}
 }
 
 func (r *managementRuntime) setNormalizer(normalizer *eventadapter.EventNormalizer) {
@@ -71,7 +72,7 @@ func (r *managementRuntime) setNormalizer(normalizer *eventadapter.EventNormaliz
 	r.normalizer = normalizer
 	identity := r.identity
 	if identity.AgentID == "" {
-		identity = runtimeIdentity{AgentID: r.config.Agent.ID, HostID: r.config.Agent.HostID, TenantID: r.config.Agent.TenantID}
+		identity = runtimeIdentity{EnrollmentEpoch: "standalone", AgentID: r.config.Agent.ID, HostID: r.config.Agent.HostID, TenantID: r.config.Agent.TenantID}
 	}
 	normalizer.SetIdentity(identity.AgentID, identity.HostID, identity.TenantID)
 }

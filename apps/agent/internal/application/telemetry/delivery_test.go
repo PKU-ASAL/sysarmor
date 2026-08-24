@@ -37,7 +37,7 @@ func TestDeliveryRecordsCandidateGatewayOutcomes(t *testing.T) {
 		domaintelemetry.DeliveryAccepted, domaintelemetry.DeliveryRejected,
 	}}
 
-	if err := NewDelivery(spool, sender, lifecycle).DeliverAvailable(t.Context(), DeliveryScope{}); err == nil {
+	if err := NewDelivery(spool, sender, lifecycle).DeliverAvailable(t.Context(), DeliveryScope{TenantID: "tenant-a", AgentID: "agent-a"}); err == nil {
 		t.Fatal("rejected Gateway batch did not fail delivery")
 	}
 
@@ -64,19 +64,21 @@ func TestDeliveryCheckpointsDuplicateBatch(t *testing.T) {
 	}
 }
 
-func TestDeliverySkipsForeignIdentityAndAdvancesCheckpoint(t *testing.T) {
+func TestDeliveryRejectsForeignEnrollmentEpochWithoutAdvancingCheckpoint(t *testing.T) {
 	spool := &spoolFake{batches: []domaintelemetry.StoredBatch{
 		batch("local", 1, "local", "device-a"), batch("managed", 2, "tenant-a", "agent-a"),
 	}}
+	spool.batches[0].Batch.EnrollmentEpoch = "standalone"
+	spool.batches[1].Batch.EnrollmentEpoch = "enroll-a"
 	sender := &senderFake{outcomes: []domaintelemetry.DeliveryOutcome{domaintelemetry.DeliveryAccepted}}
 
-	if err := NewDelivery(spool, sender).DeliverAvailable(t.Context(), DeliveryScope{TenantID: "tenant-a", AgentID: "agent-a"}); err != nil {
-		t.Fatal(err)
+	if err := NewDelivery(spool, sender).DeliverAvailable(t.Context(), DeliveryScope{TenantID: "tenant-a", AgentID: "agent-a", EnrollmentEpoch: "enroll-a"}); err == nil {
+		t.Fatal("foreign enrollment epoch was silently skipped")
 	}
-	if len(sender.sent) != 1 || sender.sent[0] != "managed" {
+	if len(sender.sent) != 0 {
 		t.Fatalf("sent = %v", sender.sent)
 	}
-	if len(spool.saved) != 2 || spool.saved[0].BatchID != "local" || spool.saved[1].BatchID != "managed" {
+	if len(spool.saved) != 0 {
 		t.Fatalf("saved checkpoints = %+v", spool.saved)
 	}
 }
@@ -85,7 +87,7 @@ func TestDeliveryDoesNotCheckpointSendError(t *testing.T) {
 	spool := &spoolFake{batches: []domaintelemetry.StoredBatch{batch("a", 1, "tenant-a", "agent-a")}}
 	sender := &senderFake{err: errors.New("offline")}
 
-	if err := NewDelivery(spool, sender).DeliverAvailable(context.Background(), DeliveryScope{}); !errors.Is(err, sender.err) {
+	if err := NewDelivery(spool, sender).DeliverAvailable(context.Background(), DeliveryScope{TenantID: "tenant-a", AgentID: "agent-a"}); !errors.Is(err, sender.err) {
 		t.Fatalf("DeliverAvailable() error = %v", err)
 	}
 	if len(spool.saved) != 0 {

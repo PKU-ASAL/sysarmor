@@ -10,9 +10,10 @@ import (
 )
 
 type DeliveryScope struct {
-	FromSequence uint64
-	TenantID     string
-	AgentID      string
+	FromSequence    uint64
+	EnrollmentEpoch string
+	TenantID        string
+	AgentID         string
 }
 
 type Delivery struct {
@@ -68,11 +69,9 @@ func (delivery *Delivery) DeliverAvailable(ctx context.Context, scope DeliverySc
 		if domaintelemetry.Before(stored.Position, checkpoint) {
 			continue
 		}
-		if foreignIdentity(stored.Batch, scope) {
-			if err := delivery.spool.SaveCheckpoint(ctx, stored.Position); err != nil {
-				return err
-			}
-			continue
+		if err := validateDeliveryIdentity(stored.Batch, scope); err != nil {
+			delivery.lifecycle.RecordDeliveryError(stored.Batch.ModelCandidates, err.Error())
+			return err
 		}
 		candidates := stored.Batch.ModelCandidates
 		delivery.lifecycle.RecordDeliveryAttempted(candidates)
@@ -107,6 +106,9 @@ func (delivery *Delivery) recordOutcome(outcome domaintelemetry.DeliveryOutcome,
 	}
 }
 
-func foreignIdentity(batch domaintelemetry.Batch, scope DeliveryScope) bool {
-	return scope.TenantID != "" && (batch.TenantID != scope.TenantID || batch.AgentID != scope.AgentID)
+func validateDeliveryIdentity(batch domaintelemetry.Batch, scope DeliveryScope) error {
+	if batch.TenantID != scope.TenantID || batch.AgentID != scope.AgentID || batch.EnrollmentEpoch != scope.EnrollmentEpoch {
+		return fmt.Errorf("telemetry batch identity or enrollment epoch mismatch")
+	}
+	return nil
 }

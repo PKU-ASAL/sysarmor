@@ -42,7 +42,7 @@ func (spool *LocalSpool) Read(ctx context.Context, fromSequence uint64, limit in
 		out = append(out, domaintelemetry.StoredBatch{
 			Position: domainPosition(item.Position),
 			Batch: domaintelemetry.Batch{
-				ID: header.GetBatchId(), TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), Payload: payload,
+				ID: header.GetBatchId(), EnrollmentEpoch: header.GetEnrollmentEpoch(), TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), Payload: payload,
 				ModelCandidates: dataplanecontract.CountModelCandidates(item.Batch),
 			},
 		})
