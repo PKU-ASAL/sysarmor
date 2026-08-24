@@ -58,6 +58,10 @@ type CandidateLifecycleHealth struct {
 	GatewayDuplicateAck uint64 `json:"gateway_duplicate_ack"`
 	ContractRejected    uint64 `json:"contract_rejected"`
 	GatewayRejected     uint64 `json:"gateway_rejected"`
+	DeliveryAttempted   uint64 `json:"delivery_attempted"`
+	GatewayRetryable    uint64 `json:"gateway_retryable"`
+	DeliveryErrors      uint64 `json:"delivery_errors"`
+	LastDeliveryError   string `json:"last_delivery_error,omitempty"`
 }
 
 type ProcessProfileHealth struct {

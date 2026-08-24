@@ -74,11 +74,14 @@ func (delivery *Delivery) DeliverAvailable(ctx context.Context, scope DeliverySc
 			}
 			continue
 		}
+		candidates := stored.Batch.ModelCandidates
+		delivery.lifecycle.RecordDeliveryAttempted(candidates)
 		outcome, err := delivery.sender.Send(ctx, stored.Batch)
 		if err != nil {
+			delivery.lifecycle.RecordDeliveryError(candidates, err.Error())
 			return err
 		}
-		delivery.recordOutcome(outcome, stored.Batch.ModelCandidates)
+		delivery.recordOutcome(outcome, candidates)
 		if outcome != domaintelemetry.DeliveryAccepted && outcome != domaintelemetry.DeliveryDuplicate {
 			return fmt.Errorf("batch %s was not committed", stored.Position.BatchID)
 		}
@@ -99,6 +102,8 @@ func (delivery *Delivery) recordOutcome(outcome domaintelemetry.DeliveryOutcome,
 		delivery.lifecycle.RecordGatewayDuplicateAck(candidates)
 	} else if outcome == domaintelemetry.DeliveryRejected {
 		delivery.lifecycle.RecordGatewayRejected(candidates)
+	} else if outcome == domaintelemetry.DeliveryRetryable {
+		delivery.lifecycle.RecordGatewayRetryable(candidates)
 	}
 }
 

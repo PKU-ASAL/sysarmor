@@ -118,6 +118,8 @@ func (s *runtimeHealthSource) Detection(ctx context.Context) (domainhealth.Detec
 				Created: candidates.Created, Spooled: candidates.Spooled, GatewayAccepted: candidates.GatewayAccepted,
 				GatewayDuplicateAck: candidates.GatewayDuplicateAck,
 				ContractRejected:    candidates.ContractRejected, GatewayRejected: candidates.GatewayRejected,
+				DeliveryAttempted: candidates.DeliveryAttempted, GatewayRetryable: candidates.GatewayRetryable,
+				DeliveryErrors: candidates.DeliveryErrors, LastDeliveryError: candidates.LastDeliveryError,
 			},
 			Profiles: domainhealth.ProcessProfileHealth{
 				Active: profileMetrics.Active, Exited: profileMetrics.Exited, Retained: profileMetrics.Retained,

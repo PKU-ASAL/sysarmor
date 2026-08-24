@@ -98,6 +98,10 @@ func detectionHealth(value domainhealth.Detection) agenthealth.DetectionHealth {
 				GatewayDuplicateAck: value.Learning.Candidates.GatewayDuplicateAck,
 				ContractRejected:    value.Learning.Candidates.ContractRejected,
 				GatewayRejected:     value.Learning.Candidates.GatewayRejected,
+				DeliveryAttempted:   value.Learning.Candidates.DeliveryAttempted,
+				GatewayRetryable:    value.Learning.Candidates.GatewayRetryable,
+				DeliveryErrors:      value.Learning.Candidates.DeliveryErrors,
+				LastDeliveryError:   value.Learning.Candidates.LastDeliveryError,
 			},
 			Profiles: agenthealth.ProcessProfileHealth{
 				Active: value.Learning.Profiles.Active, Exited: value.Learning.Profiles.Exited, Retained: value.Learning.Profiles.Retained,
