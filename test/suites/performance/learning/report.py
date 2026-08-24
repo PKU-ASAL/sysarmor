@@ -457,6 +457,9 @@ def candidate_lifecycle_health(value: dict[str, Any]) -> dict[str, int | None]:
         "gateway_duplicate_ack": ("gatewayDuplicateAck", "gateway_duplicate_ack", "GatewayDuplicateAck"),
         "contract_rejected": ("contractRejected", "contract_rejected", "ContractRejected"),
         "gateway_rejected": ("gatewayRejected", "gateway_rejected", "GatewayRejected"),
+        "delivery_attempted": ("deliveryAttempted", "delivery_attempted", "DeliveryAttempted"),
+        "gateway_retryable": ("gatewayRetryable", "gateway_retryable", "GatewayRetryable"),
+        "delivery_errors": ("deliveryErrors", "delivery_errors", "DeliveryErrors"),
     }
     return {name: explicit_health_number(value, *aliases) for name, aliases in fields.items()}
 

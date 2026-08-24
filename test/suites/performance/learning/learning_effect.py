@@ -171,7 +171,8 @@ def model_gate(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str,
     if candidate.get("health", {}).get("learning") != "loaded":
         return gate("failed", candidate.get("health", {}).get("learning"), "loaded", "Learning model is not loaded")
     if not candidate.get("model_candidates"):
-        return gate("failed", 0, ">=1", "Learning mode emitted no Model Candidate")
+        local = candidate.get("candidate_lifecycle", {}).get("created")
+        return gate("failed", 0, ">=1", f"no cloud-accepted Model Candidate; Agent created={local}")
 
     event_ids = candidate.get("events", set())
     profile_ids = candidate.get("profile_ids", set())

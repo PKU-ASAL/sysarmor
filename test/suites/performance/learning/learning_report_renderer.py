@@ -149,15 +149,15 @@ def learning_scheduling_section(variants: dict[str, Any]) -> list[str]:
 def candidate_section(variants: dict[str, Any]) -> list[str]:
     lines = [
         "## Profile 检测效果", "",
-        "| Mode | Events | Profiles | Model Candidates | Candidate profiles | Score min / p50 / max |",
-        "|---|---:|---:|---:|---:|---|",
+        "| Mode | Events | Profiles | Agent-created Candidates | Cloud-cohort Candidates | Candidate profiles | Score min / p50 / max |",
+        "|---|---:|---:|---:|---:|---:|---|",
     ]
     for name in PROTECTION_MODES:
         item, scores = variants.get(name, {}), variants.get(name, {}).get("candidate_scores", {})
         score_text = " / ".join(display(scores.get(key)) for key in ("min", "p50", "max"))
         lines.append(
             f"| {name} | {display(item.get('event_count'))} | {display(item.get('profile_count'))} | "
-            f"{display(item.get('model_candidate_count'))} | {display(item.get('candidate_profile_count'))} | {score_text} |"
+            f"{display(item.get('candidate_lifecycle', {}).get('created'))} | {display(item.get('model_candidate_count'))} | {display(item.get('candidate_profile_count'))} | {score_text} |"
         )
     lines.extend(["", "| Mode | 效果指标 | 总数 | 命中 | 比率 |", "|---|---|---:|---:|---:|"])
     for name in ("learning-only", "hybrid"):
@@ -173,7 +173,9 @@ def candidate_section(variants: dict[str, Any]) -> list[str]:
 def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
     stages = (
         ("Created", "created"), ("Spooled", "spooled"),
+        ("Delivery attempted", "delivery_attempted"),
         ("Gateway accepted unique", "gateway_accepted"), ("Gateway duplicate ACK", "gateway_duplicate_ack"),
+        ("Gateway retryable ACK", "gateway_retryable"), ("Delivery errors", "delivery_errors"),
         ("Stream correlated", "stream_correlated"), ("Stream projected", "stream_projected"),
         ("Stream projection artifacts", "stream_projection_artifacts"),
         ("Stream pending backlog", "stream_pending_backlog"),
