@@ -2,9 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 )
 
 func TestNewGatewayRejectsMissingRuntimeDependencies(t *testing.T) {
@@ -19,6 +23,21 @@ func TestGatewayRuntimeConfigRequiresKafkaBrokers(t *testing.T) {
 	config.KafkaBrokers = nil
 	if err := config.validate(); err == nil || !strings.Contains(err.Error(), "kafka brokers") {
 		t.Fatalf("validate() error = %v, want missing kafka brokers", err)
+	}
+}
+
+func TestGatewayMetricsExposeBatchPublishBoundary(t *testing.T) {
+	metrics := &gatewayapp.BatchMetrics{}
+	server := newGatewayHealthServer("127.0.0.1:0", true, metrics)
+	request := httptest.NewRequest("GET", "/metrics", nil)
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, request)
+	var got map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["batches_received"]; !ok {
+		t.Fatalf("metrics=%v", got)
 	}
 }
 

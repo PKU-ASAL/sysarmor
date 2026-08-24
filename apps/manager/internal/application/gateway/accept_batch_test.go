@@ -47,9 +47,22 @@ func TestAcceptDuplicateSkipsPublishAndRecordsCursor(t *testing.T) {
 	}
 }
 func TestAcceptPublishFailureDoesNotAdvanceSession(t *testing.T) {
-	publisher, sessions := &fakePublisher{err: errors.New("down")}, &fakeSessions{}
-	if _, err := NewBatchAcceptor(publisher, sessions, nil).Accept(context.Background(), validBatch()); err == nil || sessions.recorded != 0 {
+	publisher, sessions, metrics := &fakePublisher{err: errors.New("down")}, &fakeSessions{}, &BatchMetrics{}
+	if _, err := NewBatchAcceptor(publisher, sessions, nil, metrics).Accept(context.Background(), validBatch()); err == nil || sessions.recorded != 0 {
 		t.Fatalf("record=%d err=%v", sessions.recorded, err)
+	}
+	if got := metrics.Snapshot(); got.BatchesReceived != 1 || got.BatchesPublished != 0 || got.BatchesPublishFailed != 1 {
+		t.Fatalf("metrics=%+v", got)
+	}
+}
+
+func TestAcceptRecordsPublishedBatchMetrics(t *testing.T) {
+	metrics := &BatchMetrics{}
+	if _, err := NewBatchAcceptor(&fakePublisher{}, &fakeSessions{}, nil, metrics).Accept(context.Background(), validBatch()); err != nil {
+		t.Fatal(err)
+	}
+	if got := metrics.Snapshot(); got.BatchesReceived != 1 || got.BatchesPublished != 1 || got.BatchesPublishFailed != 0 {
+		t.Fatalf("metrics=%+v", got)
 	}
 }
 func validBatch() ports.BatchEnvelope {

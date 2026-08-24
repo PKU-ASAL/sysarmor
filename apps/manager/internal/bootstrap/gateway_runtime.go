@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
 	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
 	"google.golang.org/grpc"
@@ -103,7 +104,7 @@ func newGatewaySecurity(config GatewayRuntimeConfig) (Gateway, error) {
 }
 
 func buildGatewayRuntime(config GatewayRuntimeConfig, security Gateway, db *sql.DB, resources *gatewayResources) (*GatewayRuntime, error) {
-	data, closeData, err := NewGatewayDataPlane(DataPlaneConfig{
+	data, metrics, closeData, err := NewGatewayDataPlane(DataPlaneConfig{
 		DB: db, KafkaBrokers: config.KafkaBrokers, RedisAddress: config.RedisAddress, AgentToken: config.AgentToken,
 	})
 	if err != nil {
@@ -117,10 +118,10 @@ func buildGatewayRuntime(config GatewayRuntimeConfig, security Gateway, db *sql.
 	server := grpc.NewServer(security.ServerOptions()...)
 	dataplanev1.RegisterAgentDataPlaneServiceServer(server, data)
 	controlplanev1.RegisterAgentControlPlaneServiceServer(server, control)
-	return openGatewayListeners(config, security.MTLSEnabled(), server, resources)
+	return openGatewayListeners(config, security.MTLSEnabled(), server, metrics, resources)
 }
 
-func openGatewayListeners(config GatewayRuntimeConfig, mtls bool, server *grpc.Server, resources *gatewayResources) (*GatewayRuntime, error) {
+func openGatewayListeners(config GatewayRuntimeConfig, mtls bool, server *grpc.Server, metrics *gatewayapp.BatchMetrics, resources *gatewayResources) (*GatewayRuntime, error) {
 	grpcListener, err := net.Listen("tcp", config.Listen)
 	if err != nil {
 		return nil, fmt.Errorf("listen for gateway gRPC: %w", err)
@@ -136,7 +137,7 @@ func openGatewayListeners(config GatewayRuntimeConfig, mtls bool, server *grpc.S
 	}
 	resources.healthListener = healthListener
 	runtime.healthListen = healthListener
-	runtime.healthServer = newGatewayHealthServer(config.HealthListen, mtls)
+	runtime.healthServer = newGatewayHealthServer(config.HealthListen, mtls, metrics)
 	return runtime, nil
 }
 
@@ -201,13 +202,13 @@ func (runtime *GatewayRuntime) stop() {
 	})
 }
 
-func newGatewayHealthServer(address string, mtls bool) *http.Server {
+func newGatewayHealthServer(address string, mtls bool, metrics *gatewayapp.BatchMetrics) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(writer http.ResponseWriter, _ *http.Request) {
 		writeGatewayJSON(writer, map[string]any{"ok": true, "service": "sysarmor-gateway", "mtls": mtls})
 	})
 	mux.HandleFunc("/metrics", func(writer http.ResponseWriter, _ *http.Request) {
-		writeGatewayJSON(writer, map[string]any{"ok": true, "service": "sysarmor-gateway"})
+		writeGatewayJSON(writer, metrics.Snapshot())
 	})
 	return &http.Server{Addr: address, Handler: mux}
 }
