@@ -185,6 +185,7 @@ def _artifacts(context, observed_ns, result, direct_signal=None) -> list:
                 tenant_id=context.tenant_id,
                 analysis_scope_key=context.analysis_scope_key,
                 observed_at_unix_nano=observed_ns,
+                context=context,
                 signal=direct_signal,
             )
         )
@@ -195,6 +196,7 @@ def _artifacts(context, observed_ns, result, direct_signal=None) -> list:
                 tenant_id=context.tenant_id,
                 analysis_scope_key=context.analysis_scope_key,
                 observed_at_unix_nano=observed_ns,
+                context=context,
                 signal=signal,
             )
         )
@@ -205,6 +207,7 @@ def _artifacts(context, observed_ns, result, direct_signal=None) -> list:
                 tenant_id=context.tenant_id,
                 analysis_scope_key=context.analysis_scope_key,
                 observed_at_unix_nano=observed_ns,
+                context=context,
                 incident=incident,
             )
         )

@@ -20,6 +20,7 @@ message RecordContext {
   int64 observed_at_unix_nano = 8;
   string analysis_scope_key = 9;
   map<string, string> labels = 10;
+  uint64 record_sequence = 11;
 }
 
 message NormalizedTelemetry {
@@ -44,6 +45,7 @@ message AnalysisArtifact {
   string tenant_id = 2;
   string analysis_scope_key = 3;
   int64 observed_at_unix_nano = 4;
+  RecordContext context = 7;
   oneof payload {
     sysarmor.signal.v1.Signal signal = 5;
     sysarmor.incident.v1.Incident incident = 6;

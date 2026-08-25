@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
 from packages.contracts.proto.incident.v1 import incident_pb2
+from packages.contracts.proto.signal.v1 import signal_pb2
 from packages.contracts.proto.streaming.v1 import streaming_pb2
 from sysarmor_streaming.operators.projection import project_artifact
 from sysarmor_streaming.runtime.opensearch import OpenSearchProjector
@@ -68,6 +69,24 @@ class ProjectionTest(unittest.TestCase):
         self.assertIn('"id":"incident-a"', document)
         self.assertIn('"tenant_id":"tenant-a"', document)
         self.assertIn('"projection_kind":"incident"', document)
+
+    def test_signal_projection_keeps_stream_correlation_identity(self):
+        artifact = streaming_pb2.AnalysisArtifact(
+            schema_version="sysarmor.analysis.artifact/v1",
+            tenant_id="tenant-a",
+            context=streaming_pb2.RecordContext(
+                agent_id="agent-a", batch_id="batch-a", record_sequence=17,
+            ),
+            signal=signal_pb2.Signal(
+                id="candidate-a", event_refs=["event-a"],
+                entities=[signal_pb2.EntityRef(kind="process", key="process-a", role="subject")],
+            ),
+        )
+
+        document = project_artifact(artifact.SerializeToString()).decode()
+
+        for expected in ('"agent_id":"agent-a"', '"batch_id":"batch-a"', '"subject_id":"process-a"', '"trigger_event_id":"event-a"', '"event_sequence":17'):
+            self.assertIn(expected, document)
 
 
 if __name__ == "__main__":

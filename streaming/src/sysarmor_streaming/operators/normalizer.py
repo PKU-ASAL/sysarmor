@@ -108,17 +108,17 @@ def _normalized_records(batch: dataplane_pb2.DataBatch):
         if event.tenant_id and event.tenant_id != batch.header.tenant_id:
             raise NormalizationError("invalid_data_batch", "event tenant does not match batch")
         event.tenant_id = batch.header.tenant_id
-        record = _record(batch, event.labels, _observed_ns(frame.observed_at, fallback))
+        record = _record(batch, event.labels, _observed_ns(frame.observed_at, fallback), frame.sequence)
         record.event.CopyFrom(event)
         result.append(record)
     for frame in batch.signals:
-        record = _record(batch, frame.signal.labels, _observed_ns(frame.observed_at, fallback))
+        record = _record(batch, frame.signal.labels, _observed_ns(frame.observed_at, fallback), frame.sequence)
         record.signal.CopyFrom(frame.signal)
         result.append(record)
     return result
 
 
-def _record(batch, labels, observed_ns: int) -> streaming_pb2.NormalizedTelemetry:
+def _record(batch, labels, observed_ns: int, sequence: int) -> streaming_pb2.NormalizedTelemetry:
     policy_id, policy_version = _policy_reference(labels)
     context = streaming_pb2.RecordContext(
         tenant_id=batch.header.tenant_id,
@@ -131,6 +131,7 @@ def _record(batch, labels, observed_ns: int) -> streaming_pb2.NormalizedTelemetr
         observed_at_unix_nano=observed_ns,
         analysis_scope_key=_scope_key(labels),
         labels=labels,
+        record_sequence=sequence,
     )
     return streaming_pb2.NormalizedTelemetry(
         schema_version=NORMALIZED_SCHEMA,

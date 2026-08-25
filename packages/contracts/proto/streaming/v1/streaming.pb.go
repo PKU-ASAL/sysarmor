@@ -37,6 +37,7 @@ type RecordContext struct {
 	ObservedAtUnixNano int64                  `protobuf:"varint,8,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3" json:"observed_at_unix_nano,omitempty"`
 	AnalysisScopeKey   string                 `protobuf:"bytes,9,opt,name=analysis_scope_key,json=analysisScopeKey,proto3" json:"analysis_scope_key,omitempty"`
 	Labels             map[string]string      `protobuf:"bytes,10,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RecordSequence     uint64                 `protobuf:"varint,11,opt,name=record_sequence,json=recordSequence,proto3" json:"record_sequence,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -139,6 +140,13 @@ func (x *RecordContext) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *RecordContext) GetRecordSequence() uint64 {
+	if x != nil {
+		return x.RecordSequence
+	}
+	return 0
 }
 
 type NormalizedTelemetry struct {
@@ -321,6 +329,7 @@ type AnalysisArtifact struct {
 	TenantId           string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	AnalysisScopeKey   string                 `protobuf:"bytes,3,opt,name=analysis_scope_key,json=analysisScopeKey,proto3" json:"analysis_scope_key,omitempty"`
 	ObservedAtUnixNano int64                  `protobuf:"varint,4,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3" json:"observed_at_unix_nano,omitempty"`
+	Context            *RecordContext         `protobuf:"bytes,7,opt,name=context,proto3" json:"context,omitempty"`
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*AnalysisArtifact_Signal
@@ -386,6 +395,13 @@ func (x *AnalysisArtifact) GetObservedAtUnixNano() int64 {
 		return x.ObservedAtUnixNano
 	}
 	return 0
+}
+
+func (x *AnalysisArtifact) GetContext() *RecordContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
 }
 
 func (x *AnalysisArtifact) GetPayload() isAnalysisArtifact_Payload {
@@ -705,7 +721,7 @@ var File_packages_contracts_proto_streaming_v1_streaming_proto protoreflect.File
 
 const file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc = "" +
 	"\n" +
-	"5packages/contracts/proto/streaming/v1/streaming.proto\x12\x15sysarmor.streaming.v1\x1a-packages/contracts/proto/event/v1/event.proto\x1a3packages/contracts/proto/incident/v1/incident.proto\x1a/packages/contracts/proto/policy/v1/policy.proto\x1a/packages/contracts/proto/signal/v1/signal.proto\"\xc6\x03\n" +
+	"5packages/contracts/proto/streaming/v1/streaming.proto\x12\x15sysarmor.streaming.v1\x1a-packages/contracts/proto/event/v1/event.proto\x1a3packages/contracts/proto/incident/v1/incident.proto\x1a/packages/contracts/proto/policy/v1/policy.proto\x1a/packages/contracts/proto/signal/v1/signal.proto\"\xef\x03\n" +
 	"\rRecordContext\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x17\n" +
@@ -718,7 +734,8 @@ const file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc = "" +
 	"\x15observed_at_unix_nano\x18\b \x01(\x03R\x12observedAtUnixNano\x12,\n" +
 	"\x12analysis_scope_key\x18\t \x01(\tR\x10analysisScopeKey\x12H\n" +
 	"\x06labels\x18\n" +
-	" \x03(\v20.sysarmor.streaming.v1.RecordContext.LabelsEntryR\x06labels\x1a9\n" +
+	" \x03(\v20.sysarmor.streaming.v1.RecordContext.LabelsEntryR\x06labels\x12'\n" +
+	"\x0frecord_sequence\x18\v \x01(\x04R\x0erecordSequence\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf8\x01\n" +
@@ -733,12 +750,13 @@ const file_packages_contracts_proto_streaming_v1_streaming_proto_rawDesc = "" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tpolicy_id\x18\x03 \x01(\tR\bpolicyId\x12%\n" +
 	"\x0epolicy_version\x18\x04 \x01(\x04R\rpolicyVersion\x12A\n" +
-	"\tdetection\x18\x05 \x01(\v2#.sysarmor.policy.v1.DetectionPolicyR\tdetection\"\xb6\x02\n" +
+	"\tdetection\x18\x05 \x01(\v2#.sysarmor.policy.v1.DetectionPolicyR\tdetection\"\xf6\x02\n" +
 	"\x10AnalysisArtifact\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12,\n" +
 	"\x12analysis_scope_key\x18\x03 \x01(\tR\x10analysisScopeKey\x121\n" +
-	"\x15observed_at_unix_nano\x18\x04 \x01(\x03R\x12observedAtUnixNano\x124\n" +
+	"\x15observed_at_unix_nano\x18\x04 \x01(\x03R\x12observedAtUnixNano\x12>\n" +
+	"\acontext\x18\a \x01(\v2$.sysarmor.streaming.v1.RecordContextR\acontext\x124\n" +
 	"\x06signal\x18\x05 \x01(\v2\x1a.sysarmor.signal.v1.SignalH\x00R\x06signal\x12<\n" +
 	"\bincident\x18\x06 \x01(\v2\x1e.sysarmor.incident.v1.IncidentH\x00R\bincidentB\t\n" +
 	"\apayload\"\xc8\x01\n" +
@@ -800,16 +818,17 @@ var file_packages_contracts_proto_streaming_v1_streaming_proto_depIdxs = []int32
 	9,  // 2: sysarmor.streaming.v1.NormalizedTelemetry.event:type_name -> sysarmor.event.v1.CanonicalEvent
 	10, // 3: sysarmor.streaming.v1.NormalizedTelemetry.signal:type_name -> sysarmor.signal.v1.Signal
 	11, // 4: sysarmor.streaming.v1.DetectionPolicySnapshot.detection:type_name -> sysarmor.policy.v1.DetectionPolicy
-	10, // 5: sysarmor.streaming.v1.AnalysisArtifact.signal:type_name -> sysarmor.signal.v1.Signal
-	12, // 6: sysarmor.streaming.v1.AnalysisArtifact.incident:type_name -> sysarmor.incident.v1.Incident
-	1,  // 7: sysarmor.streaming.v1.LateTelemetry.telemetry:type_name -> sysarmor.streaming.v1.NormalizedTelemetry
-	1,  // 8: sysarmor.streaming.v1.DetectionFailure.telemetry:type_name -> sysarmor.streaming.v1.NormalizedTelemetry
-	3,  // 9: sysarmor.streaming.v1.ProjectionFailure.artifact:type_name -> sysarmor.streaming.v1.AnalysisArtifact
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	0,  // 5: sysarmor.streaming.v1.AnalysisArtifact.context:type_name -> sysarmor.streaming.v1.RecordContext
+	10, // 6: sysarmor.streaming.v1.AnalysisArtifact.signal:type_name -> sysarmor.signal.v1.Signal
+	12, // 7: sysarmor.streaming.v1.AnalysisArtifact.incident:type_name -> sysarmor.incident.v1.Incident
+	1,  // 8: sysarmor.streaming.v1.LateTelemetry.telemetry:type_name -> sysarmor.streaming.v1.NormalizedTelemetry
+	1,  // 9: sysarmor.streaming.v1.DetectionFailure.telemetry:type_name -> sysarmor.streaming.v1.NormalizedTelemetry
+	3,  // 10: sysarmor.streaming.v1.ProjectionFailure.artifact:type_name -> sysarmor.streaming.v1.AnalysisArtifact
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_packages_contracts_proto_streaming_v1_streaming_proto_init() }
