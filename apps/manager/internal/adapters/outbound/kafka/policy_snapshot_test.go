@@ -20,7 +20,7 @@ func TestEncodePolicySnapshotUsesPublishedIdentityAndDetection(t *testing.T) {
 	if err := proto.Unmarshal(payload, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.GetPolicyId() != "policy-a" || snapshot.GetPolicyVersion() != 7 || len(snapshot.GetDetection().GetCloudRules()) != 1 || snapshot.GetDetection().GetConverge().GetTopK() != 8 || snapshot.GetDetection().GetRarity().GetCmsWidth() != 1024 {
+	if snapshot.GetSchemaVersion() != "sysarmor.detection.policy/v1" || snapshot.GetPolicyId() != "policy-a" || snapshot.GetPolicyVersion() != 7 || len(snapshot.GetDetection().GetCloudRules()) != 1 || snapshot.GetDetection().GetConverge().GetTopK() != 8 || snapshot.GetDetection().GetRarity().GetCmsWidth() != 1024 {
 		t.Fatalf("snapshot=%+v", snapshot)
 	}
 }

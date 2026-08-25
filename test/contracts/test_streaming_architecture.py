@@ -94,6 +94,10 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertIn("message NormalizedTelemetry", contract)
         self.assertIn("message DetectionPolicySnapshot", contract)
         self.assertIn("message AnalysisArtifact", contract)
+        publisher = (REPO / "apps/manager/internal/adapters/outbound/kafka/policy_snapshot.go").read_text()
+        detection = (STREAMING / "src/sysarmor_streaming/jobs/detection.py").read_text()
+        self.assertIn('"sysarmor.detection.policy/v1"', publisher)
+        self.assertIn('"sysarmor.detection.policy/v1"', detection)
 
     def test_streaming_runtime_has_no_postgres_dependency(self):
         banned = re.compile(r"postgres|lib/pq|SYSARMOR_POSTGRES", re.IGNORECASE)

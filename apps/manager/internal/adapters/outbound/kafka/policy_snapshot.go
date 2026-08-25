@@ -70,7 +70,7 @@ func encodePolicySnapshot(item ports.PolicySnapshot) ([]byte, error) {
 		},
 	}
 	snapshot := &streamingv1.DetectionPolicySnapshot{
-		SchemaVersion: "sysarmor.streaming.detection-policy-snapshot/v1",
+		SchemaVersion: "sysarmor.detection.policy/v1",
 		TenantId:      item.TenantID.String(), PolicyId: item.PolicyID.String(), PolicyVersion: uint64(item.Version), Detection: detection,
 	}
 	return proto.Marshal(snapshot)
