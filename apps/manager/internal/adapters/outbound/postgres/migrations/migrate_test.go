@@ -15,8 +15,8 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyMigrations() error = %v", err)
 	}
-	if got.Version != 10 {
-		t.Fatalf("migration version = %d, want 10", got.Version)
+	if got.Version != PostgresVersion {
+		t.Fatalf("migration version = %d, want %d", got.Version, PostgresVersion)
 	}
 	query := FakeAllQueries()
 	for _, want := range []string{
@@ -36,6 +36,8 @@ func TestApplyMigrationsExecutesPostgresSchema(t *testing.T) {
 		"DROP TABLE IF EXISTS worker_candidate_rejections",
 		"DROP TABLE IF EXISTS telemetry_batches",
 		"INSERT INTO schema_migrations (version) VALUES (10)",
+		"CREATE TABLE IF NOT EXISTS policy_snapshot_outbox",
+		"INSERT INTO schema_migrations (version) VALUES (11)",
 		"SELECT pg_advisory_unlock",
 	} {
 		if !strings.Contains(query, want) {
@@ -57,8 +59,8 @@ func TestApplyMigrationsUpgradesExistingV3Schema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 10 {
-		t.Fatalf("version=%d, want 10", got.Version)
+	if got.Version != PostgresVersion {
+		t.Fatalf("version=%d, want %d", got.Version, PostgresVersion)
 	}
 	queries := FakeAllQueries()
 	if !strings.Contains(queries, "CREATE TABLE IF NOT EXISTS control_audit") ||
@@ -67,7 +69,8 @@ func TestApplyMigrationsUpgradesExistingV3Schema(t *testing.T) {
 		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") ||
 		!strings.Contains(queries, "DELETE FROM policy_assignments") ||
 		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") ||
-		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (10)") {
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (10)") ||
+		!strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (11)") {
 		t.Fatalf("existing schema upgrade did not apply current migrations:\n%s", queries)
 	}
 	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (3)") {
@@ -85,11 +88,11 @@ func TestApplyMigrationsUpgradesExistingV6SchemaWithPolicyResetOnly(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != 10 {
-		t.Fatalf("version=%d, want 10", got.Version)
+	if got.Version != PostgresVersion {
+		t.Fatalf("version=%d, want %d", got.Version, PostgresVersion)
 	}
 	queries := FakeAllQueries()
-	if !strings.Contains(queries, "DELETE FROM policy_assignments") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (10)") {
+	if !strings.Contains(queries, "DELETE FROM policy_assignments") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (7)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (10)") || !strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (11)") {
 		t.Fatalf("existing schema upgrade did not apply current migrations:\n%s", queries)
 	}
 	if strings.Contains(queries, "INSERT INTO schema_migrations (version) VALUES (6)") {

@@ -78,6 +78,19 @@ func TestPolicyRepositoryCanonicalizesDocumentIdentity(t *testing.T) {
 	}
 }
 
+func TestPublishedPolicyEnqueuesSnapshotInSameTransaction(t *testing.T) {
+	db := newPolicyTestDB(t)
+	tenantID := mustAdapterTenantID(t, "tenant-a")
+	value := domainpolicy.Policy{TenantID: tenantID, ID: "policy-a", Version: 2, Published: true, Document: []byte(ruleOnlyPolicyDocument("tenant-a", "policy-a", 2))}
+	err := NewUnitOfWork(db).Execute(t.Context(), func(ctx context.Context, tx ports.PolicyTransaction) error {
+		return tx.Policies().Put(ctx, value)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, db, "policy_snapshot_outbox", 1)
+}
+
 func TestPolicyRepositoryBuildsEndpointDownlinkDocument(t *testing.T) {
 	db := newPolicyTestDB(t)
 	insertPolicyDocument(t, db, "tenant-a", "policy-a", 2, `{
@@ -231,6 +244,7 @@ func newPolicyTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE policy_assignments (tenant_id TEXT, assignment_id TEXT, agent_id TEXT, scope_type TEXT, scope_selector TEXT, policy_id TEXT, policy_version INTEGER, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, assignment_id))`,
 		`CREATE TABLE policy_audit (tenant_id TEXT, audit_id TEXT, action TEXT, policy_id TEXT, policy_version INTEGER, assignment_id TEXT, actor TEXT, status TEXT, reason TEXT, created_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, audit_id))`,
 		`CREATE TABLE control_commands (tenant_id TEXT, command_id TEXT, agent_id TEXT, command_type TEXT, status TEXT, policy_id TEXT, policy_version INTEGER, actor TEXT, reason TEXT, created_at TIMESTAMP, updated_at TIMESTAMP, data BLOB, PRIMARY KEY (tenant_id, command_id))`,
+		`CREATE TABLE policy_snapshot_outbox (tenant_id TEXT, policy_id TEXT, policy_version INTEGER, policy_document BLOB, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, published_at TIMESTAMP, attempt_count INTEGER DEFAULT 0, last_error TEXT DEFAULT '', PRIMARY KEY (tenant_id, policy_id, policy_version))`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)

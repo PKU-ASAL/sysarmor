@@ -159,6 +159,19 @@ ON CONFLICT (tenant_id, policy_id, version) DO UPDATE SET
 	if err != nil {
 		return fmt.Errorf("put policy: %w", err)
 	}
+	if value.Published {
+		_, err = repo.db.ExecContext(ctx, `
+INSERT INTO policy_snapshot_outbox (tenant_id, policy_id, policy_version, policy_document)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (tenant_id, policy_id, policy_version) DO UPDATE SET
+  policy_document = EXCLUDED.policy_document,
+  published_at = NULL,
+  last_error = ''
+`, value.TenantID.String(), value.ID.String(), uint64(value.Version), document)
+		if err != nil {
+			return fmt.Errorf("enqueue policy snapshot: %w", err)
+		}
+	}
 	return nil
 }
 

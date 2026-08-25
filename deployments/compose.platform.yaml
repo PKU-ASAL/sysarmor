@@ -189,6 +189,8 @@ services:
         condition: service_started
       opensearch-init:
         condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
     env_file:
       - ./streaming/streaming.env.example
     environment:
@@ -260,6 +262,7 @@ services:
       - ./manager/manager.env.example
     environment:
       SYSARMOR_POSTGRES_DSN: postgres://sysarmor:sysarmor@postgres:5432/sysarmor?sslmode=disable
+      SYSARMOR_KAFKA_BROKERS: kafka:9092
       SYSARMOR_ARTIFACT_DIR: /var/lib/sysarmor/manager/artifacts
       SYSARMOR_AGENT_PACKAGE_INDEX_URL: http://packages/index.json
       SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL: ${SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL:-http://127.0.0.1:18080}

@@ -21,6 +21,7 @@ type ManagerConfig struct {
 	ListenAddress      string
 	PostgresDriver     string
 	PostgresDSN        string
+	KafkaBrokers       []string
 	OpenSearchURL      string
 	OpenSearchUsername string
 	OpenSearchPassword string
@@ -42,6 +43,12 @@ func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Clo
 	if strings.TrimSpace(config.PostgresDriver) == "" {
 		return nil, nil, fmt.Errorf("postgres driver is required")
 	}
+	if strings.TrimSpace(config.PostgresDriver) != "postgres" {
+		return nil, nil, fmt.Errorf("postgres driver must be postgres")
+	}
+	if len(cleanKafkaBrokers(config.KafkaBrokers)) == 0 {
+		return nil, nil, fmt.Errorf("kafka brokers are required")
+	}
 	db, migration, err := openManagerDatabase(ctx, config)
 	if err != nil {
 		return nil, nil, err
@@ -51,7 +58,12 @@ func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Clo
 		_ = db.Close()
 		return nil, nil, err
 	}
-	return server, db, nil
+	snapshots, err := startPolicySnapshotRuntime(db, config.KafkaBrokers)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("start policy snapshot dispatcher: %w", err)
+	}
+	return server, &managerResources{db: db, snapshot: snapshots}, nil
 }
 
 func openManagerDatabase(ctx context.Context, config ManagerConfig) (*sql.DB, postgresmigrations.MigrationResult, error) {

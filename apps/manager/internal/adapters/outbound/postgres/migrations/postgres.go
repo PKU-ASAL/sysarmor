@@ -1,12 +1,28 @@
 package migrations
 
-const PostgresVersion = 10
+const PostgresVersion = 11
 
 type Migration struct {
 	Version int
 	Name    string
 	SQL     string
 }
+
+const PolicySnapshotOutboxSchema = `
+CREATE TABLE IF NOT EXISTS policy_snapshot_outbox (
+  tenant_id TEXT NOT NULL,
+  policy_id TEXT NOT NULL,
+  policy_version BIGINT NOT NULL,
+  policy_document JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  attempt_count BIGINT NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (tenant_id, policy_id, policy_version)
+);
+CREATE INDEX IF NOT EXISTS idx_policy_snapshot_outbox_pending
+ON policy_snapshot_outbox (created_at) WHERE published_at IS NULL;
+`
 
 const AgentUnenrollmentsSchema = `
 CREATE TABLE IF NOT EXISTS agent_unenrollments (
@@ -362,5 +378,6 @@ func Ordered() []Migration {
 		{Version: 6, Name: "response_decisions", SQL: ResponseDecisionsSchema},
 		{Version: 7, Name: "endpoint_protection_modes", SQL: EndpointProtectionModesSchema},
 		{Version: 10, Name: "retire_worker_tables", SQL: RetireWorkerTablesSchema},
+		{Version: 11, Name: "policy_snapshot_outbox", SQL: PolicySnapshotOutboxSchema},
 	}
 }

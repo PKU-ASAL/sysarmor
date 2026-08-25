@@ -62,7 +62,7 @@ func TestPostgresSchemaCoversV3StoreTables(t *testing.T) {
 			t.Fatalf("postgres schema still creates incident report table %s", removed)
 		}
 	}
-	if len(ordered) != 6 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 5 || ordered[3].Version != 6 || ordered[4].Version != 7 || ordered[5].Version != 10 {
+	if len(ordered) != 7 || ordered[0].Version != 1 || ordered[1].Version != 2 || ordered[2].Version != 5 || ordered[3].Version != 6 || ordered[4].Version != 7 || ordered[5].Version != 10 || ordered[6].Version != 11 {
 		t.Fatalf("ordered migrations = %+v", ordered)
 	}
 }

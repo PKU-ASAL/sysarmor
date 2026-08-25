@@ -59,3 +59,20 @@ type PolicyTransaction interface {
 type PolicyUnitOfWork interface {
 	Execute(context.Context, func(context.Context, PolicyTransaction) error) error
 }
+
+type PolicySnapshot struct {
+	TenantID tenant.ID
+	PolicyID domainpolicy.ID
+	Version  domainpolicy.Version
+	Document []byte
+}
+
+type PolicySnapshotOutbox interface {
+	Pending(context.Context, int) ([]PolicySnapshot, error)
+	MarkPublished(context.Context, PolicySnapshot) error
+	RecordFailure(context.Context, PolicySnapshot, string) error
+}
+
+type PolicySnapshotPublisher interface {
+	PublishPolicySnapshot(context.Context, PolicySnapshot) error
+}
