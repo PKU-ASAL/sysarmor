@@ -76,6 +76,8 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertIn("- ../streaming/src:/opt/sysarmor/streaming/src:ro", topology)
         dockerfile = (REPO / "deployments/streaming/Dockerfile").read_text()
         self.assertIn("ln -s /usr/bin/python3 /usr/local/bin/python", dockerfile)
+        self.assertIn("flink-s3-fs-presto-1.20.2.jar", dockerfile)
+        self.assertNotIn("flink-s3-fs-hadoop", dockerfile)
         kafka_runtime = (STREAMING / "src/sysarmor_streaming/runtime/kafka.py").read_text()
         self.assertIn("FileSystemCheckpointStorage(config.checkpoint_uri)", kafka_runtime)
         self.assertIn("io.sysarmor.streaming.ByteArraySchema", kafka_runtime)

@@ -53,7 +53,7 @@ class StreamingConfig:
             ),
             checkpoint_uri=_env(
                 "SYSARMOR_FLINK_CHECKPOINT_URI",
-                "s3://sysarmor-flink/checkpoints",
+                "s3p://sysarmor-flink/checkpoints",
             ),
             checkpoint_interval_ms=_positive_int(
                 "SYSARMOR_FLINK_CHECKPOINT_INTERVAL_MS", 30_000

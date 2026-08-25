@@ -12,7 +12,7 @@ class StreamingConfigTest(unittest.TestCase):
 
         self.assertEqual("sysarmor.data.telemetry.endpoint.batch.ingress.v1", config.raw_topic)
         self.assertEqual("sysarmor.control.policy.endpoint.published.v1", config.policy_topic)
-        self.assertEqual("s3://sysarmor-flink/checkpoints", config.checkpoint_uri)
+        self.assertEqual("s3p://sysarmor-flink/checkpoints", config.checkpoint_uri)
 
     def test_invalid_runtime_values_fail_explicitly(self):
         with patch.dict(
