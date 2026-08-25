@@ -45,6 +45,8 @@ class StreamingArchitectureContractTest(unittest.TestCase):
 
         self.assertIn('KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"', compose)
         self.assertIn("kafka-init:", compose)
+        self.assertIn('KAFKA_TRANSACTION_MAX_TIMEOUT_MS: "3600000"', compose)
+        self.assertIn('TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "8"', compose)
         self.assertIn("condition: service_completed_successfully", compose)
         for topic in required:
             self.assertIn(topic, manifest)

@@ -177,6 +177,19 @@ sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-to
     vagrant ssh mgr -c "sudo docker logs sysarmor-gateway --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
     exit 1
   fi
+  flink_ready=0
+  for _ in $(seq 1 120); do
+    if vagrant ssh mgr -c "curl -sf http://127.0.0.1:18081/jobs/overview | python3 -c 'import json,sys; jobs=json.load(sys.stdin).get(\"jobs\", []); required={\"sysarmor-normalize-v1\",\"sysarmor-detection-v1\",\"sysarmor-projection-v1\"}; running={item.get(\"name\") for item in jobs if item.get(\"state\")==\"RUNNING\"}; raise SystemExit(0 if required <= running else 1)'" >/dev/null 2>&1; then
+      flink_ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$flink_ready" != "1" ]]; then
+    echo "[start-vm][ERROR] Flink jobs did not become RUNNING" >&2
+    vagrant ssh mgr -c "curl -s http://127.0.0.1:18081/jobs/overview || true; sudo docker logs sysarmor-flink-jobmanager --tail 160 2>/dev/null || true" >&2 2>/dev/null || true
+    exit 1
+  fi
 fi
 
 echo "[start-vm] done ENV=$ENV_NAME"

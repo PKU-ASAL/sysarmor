@@ -35,6 +35,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_TRANSACTION_MAX_TIMEOUT_MS: "3600000"
     ports:
       - "${SYSARMOR_KAFKA_PORT:-19092}:9092"
     healthcheck:
@@ -134,7 +135,7 @@ services:
       - ./streaming/streaming.env.example
     environment:
       JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
-      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "2"
+      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "8"
       AWS_ENDPOINT: http://rustfs:9000
       FLINK_PROPERTIES: |
         s3.endpoint: http://rustfs:9000

@@ -68,6 +68,7 @@ def sink(stream, topic: str, config: StreamingConfig, transaction_prefix: str):
         .set_record_serializer(serializer)
         .set_delivery_guarantee(DeliveryGuarantee.EXACTLY_ONCE)
         .set_transactional_id_prefix(transaction_prefix)
+        .set_property("transaction.timeout.ms", "900000")
         .build()
     )
     stream.sink_to(kafka_sink).uid(f"sink-{topic}").name(f"kafka-{topic}")
