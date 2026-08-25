@@ -161,7 +161,8 @@ class DetectionFunctionTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual([], output)
+        artifacts = [streaming_pb2.AnalysisArtifact.FromString(bytes(item)) for item in output]
+        self.assertEqual(["signal"], [item.WhichOneof("payload") for item in artifacts])
 
     def test_event_completing_provenance_path_triggers_analysis(self):
         function, _ = opened_function()

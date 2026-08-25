@@ -47,6 +47,21 @@ class DetectionStateTest(unittest.TestCase):
         self.assertEqual(1, state.signal_count("scope-a"))
         self.assertTrue(any(item.WhichOneof("payload") == "incident" for item in second.artifacts))
 
+    def test_endpoint_candidate_is_projected_as_analysis_artifact(self):
+        state = load_state().DetectionState()
+        policy = detection_policy("tenant-a", "policy-a", 7)
+        candidate = signal_record(
+            "scope-a", "policy-a", 7, 110, "model_anomaly",
+            stage=signal_pb2.SIGNAL_STAGE_CANDIDATE,
+        )
+        candidate.signal.detector_kind = signal_pb2.DETECTOR_KIND_MODEL
+        candidate.signal.where = signal_pb2.SIGNAL_WHERE_ENDPOINT
+
+        result = state.process(candidate, watermark_ns=0, policies={policy_key(policy): policy})
+
+        projected = [item.signal for item in result.artifacts if item.WhichOneof("payload") == "signal"]
+        self.assertTrue(any(item.id == candidate.signal.id for item in projected))
+
     def test_late_record_is_side_output_and_does_not_mutate_detection_state(self):
         state = load_state().DetectionState()
         policy = detection_policy("tenant-a", "policy-a", 7)
@@ -116,9 +131,9 @@ class DetectionStateTest(unittest.TestCase):
             event_record("scope-a", "policy-a", 7, 110, "unrelated"), 0, values
         )
 
-        self.assertEqual(1, len(first.artifacts))
+        self.assertEqual(2, len(first.artifacts))
         self.assertEqual((), second.artifacts)
-        self.assertEqual(1, len(state.emissions("scope-a")))
+        self.assertEqual(2, len(state.emissions("scope-a")))
 
 
 def detection_policy(tenant, policy_id, version, state_retention_ns=1000):

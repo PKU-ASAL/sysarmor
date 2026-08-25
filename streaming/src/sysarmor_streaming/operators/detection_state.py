@@ -58,7 +58,8 @@ class DetectionState:
             policy.detection,
         )
         artifacts = []
-        for artifact in _artifacts(context, observed_ns, result):
+        direct = record.signal if record.WhichOneof("payload") == "signal" else None
+        for artifact in _artifacts(context, observed_ns, result, direct):
             identity = _artifact_id(artifact)
             if identity and identity not in scope.emitted:
                 scope.emitted[identity] = observed_ns
@@ -175,8 +176,18 @@ def _retention_ns(policy) -> int:
     return policy.detection.converge.state_retention_ns or DEFAULT_STATE_RETENTION_NS
 
 
-def _artifacts(context, observed_ns, result) -> list:
+def _artifacts(context, observed_ns, result, direct_signal=None) -> list:
     artifacts = []
+    if direct_signal is not None:
+        artifacts.append(
+            streaming_pb2.AnalysisArtifact(
+                schema_version="sysarmor.analysis.artifact/v1",
+                tenant_id=context.tenant_id,
+                analysis_scope_key=context.analysis_scope_key,
+                observed_at_unix_nano=observed_ns,
+                signal=direct_signal,
+            )
+        )
     for signal in result.cloud_signals:
         artifacts.append(
             streaming_pb2.AnalysisArtifact(
