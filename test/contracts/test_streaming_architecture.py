@@ -85,6 +85,13 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         schema = REPO / "deployments/streaming/java/io/sysarmor/streaming/ByteArraySchema.java"
         self.assertTrue(schema.is_file())
 
+    def test_vm_harness_builds_project_images_without_registry_cache(self):
+        harness = (REPO / "test/shared/harness/start-vm.sh").read_text()
+        upstream = harness.split("required_images=(", 1)[1].split(")", 1)[0]
+
+        self.assertNotIn("sysarmor-", upstream)
+        self.assertIn("postgres kafka redis opensearch manager manager-ui gateway", harness)
+
     def test_streaming_contract_is_versioned_protobuf(self):
         path = REPO / "packages/contracts/proto/streaming/v1/streaming.proto"
         self.assertTrue(path.is_file(), "missing versioned streaming contract")
