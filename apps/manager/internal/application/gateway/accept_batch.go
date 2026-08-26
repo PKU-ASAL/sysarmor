@@ -29,7 +29,7 @@ func NewBatchAcceptor(publisher ports.BatchPublisher, sessions ports.GatewaySess
 
 func (service *BatchAcceptor) Accept(ctx context.Context, batch ports.BatchEnvelope) (BatchAcceptance, error) {
 	if service.metrics != nil {
-		service.metrics.received.Add(1)
+		service.metrics.recordReceived()
 	}
 	if err := validateBatch(batch); err != nil {
 		return BatchAcceptance{}, err
@@ -41,12 +41,12 @@ func (service *BatchAcceptor) Accept(ctx context.Context, batch ports.BatchEnvel
 	if !duplicate {
 		if err := service.publisher.Publish(ctx, batch); err != nil {
 			if service.metrics != nil {
-				service.metrics.publishFailed.Add(1)
+				service.metrics.recordPublishFailed()
 			}
 			return BatchAcceptance{}, fmt.Errorf("publish batch: %w", err)
 		}
 		if service.metrics != nil {
-			service.metrics.published.Add(1)
+			service.metrics.recordPublished()
 		}
 	}
 	session, err := service.sessions.RecordBatch(ctx, batch)

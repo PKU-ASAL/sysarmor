@@ -52,7 +52,7 @@ func NewGateway(ctx context.Context, config GatewayRuntimeConfig) (*GatewayRunti
 	if err != nil {
 		return nil, nil, err
 	}
-	db, _, err := OpenPostgres(ctx, config.PostgresDriver, config.PostgresDSN)
+	db, err := OpenPostgresConnection(config.PostgresDriver, config.PostgresDSN)
 	if err != nil {
 		return nil, nil, err
 	}

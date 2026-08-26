@@ -1,6 +1,6 @@
 package gateway
 
-import "sync/atomic"
+import "sync"
 
 type BatchMetricsSnapshot struct {
 	BatchesReceived      uint64 `json:"batches_received"`
@@ -9,16 +9,37 @@ type BatchMetricsSnapshot struct {
 }
 
 type BatchMetrics struct {
-	received, published, publishFailed atomic.Uint64
+	mu                                 sync.RWMutex
+	received, published, publishFailed uint64
 }
 
 func (metrics *BatchMetrics) Snapshot() BatchMetricsSnapshot {
 	if metrics == nil {
 		return BatchMetricsSnapshot{}
 	}
+	metrics.mu.RLock()
+	defer metrics.mu.RUnlock()
 	return BatchMetricsSnapshot{
-		BatchesReceived:      metrics.received.Load(),
-		BatchesPublished:     metrics.published.Load(),
-		BatchesPublishFailed: metrics.publishFailed.Load(),
+		BatchesReceived:      metrics.received,
+		BatchesPublished:     metrics.published,
+		BatchesPublishFailed: metrics.publishFailed,
 	}
+}
+
+func (metrics *BatchMetrics) recordReceived() {
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	metrics.received++
+}
+
+func (metrics *BatchMetrics) recordPublished() {
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	metrics.published++
+}
+
+func (metrics *BatchMetrics) recordPublishFailed() {
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	metrics.publishFailed++
 }

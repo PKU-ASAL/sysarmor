@@ -57,6 +57,20 @@ func TestGatewayRunCoordinatesListenerFailures(t *testing.T) {
 	}
 }
 
+func TestGatewayConnectsToControlDatabaseWithoutOwningMigrations(t *testing.T) {
+	source, err := os.ReadFile("gateway_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "OpenPostgresConnection") {
+		t.Fatal("gateway must connect through the non-migrating postgres path")
+	}
+	if strings.Contains(text, "OpenPostgres(ctx, config.PostgresDriver") {
+		t.Fatal("gateway must not run control-plane migrations")
+	}
+}
+
 func TestGatewayStopHasGracefulShutdownDeadline(t *testing.T) {
 	source, err := os.ReadFile("gateway_runtime.go")
 	if err != nil {
