@@ -1,4 +1,5 @@
 import json
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
@@ -12,6 +13,43 @@ from sysarmor_streaming.jobs.projection import ProjectionFunction
 
 
 class ProjectionTest(unittest.TestCase):
+    def test_opensearch_projector_flushes_partial_batch_after_interval(self):
+        requests = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                requests.append(self.rfile.read(int(self.headers["Content-Length"])))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *_):
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        projector = OpenSearchProjector(
+            f"http://127.0.0.1:{server.server_port}",
+            batch_size=100,
+            flush_interval_seconds=0.01,
+        )
+        try:
+            artifact = streaming_pb2.AnalysisArtifact(
+                schema_version="sysarmor.analysis.artifact/v1",
+                tenant_id="tenant-a",
+                signal=signal_pb2.Signal(id="signal-partial"),
+            )
+            projector.put(project_artifact(artifact.SerializeToString()))
+            deadline = time.monotonic() + 1
+            while not requests and time.monotonic() < deadline:
+                time.sleep(0.01)
+        finally:
+            projector.close()
+            server.shutdown()
+            server.server_close()
+
+        self.assertEqual(1, len(requests))
+
     def test_opensearch_projector_batches_documents_until_flush(self):
         requests = []
 
