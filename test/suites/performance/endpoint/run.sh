@@ -105,6 +105,7 @@ WORKLOAD_REPEAT="${SYSARMOR_BENCH_WORKLOAD_REPEAT:-0}"
 SCENARIO_OBSERVE_SECONDS="${SYSARMOR_BENCH_SCENARIO_OBSERVE_SECONDS:-5}"
 COOLDOWN_SECONDS="${SYSARMOR_BENCH_COOLDOWN_SECONDS:-5}"
 MANAGER_ANALYSIS_WAIT_SECONDS="${SYSARMOR_BENCH_MANAGER_ANALYSIS_WAIT_SECONDS:-30}"
+CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-300}"
 WORKLOAD_C2="${SYSARMOR_DIAG_WORKLOAD_C2:-10.66.0.99}"
 PROFILE_ENABLED="${SYSARMOR_BENCH_PROFILE_AGENT:-${SYSARMOR_BENCH_PROFILE_AGENT_CPU:-0}}"
 PROFILE_TYPES="${SYSARMOR_BENCH_PROFILE_TYPES:-cpu heap allocs goroutine runtime}"
@@ -222,7 +223,7 @@ capture_managed_incidents() {
 
 capture_managed_stream_artifacts() {
   local policy_out="$1" policy_name="$2"
-  local manager_jwt labels
+  local manager_jwt labels expected_candidates
   [[ "$AGENT_MODE" == "managed" ]] || return 0
   manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
     "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
@@ -232,11 +233,34 @@ capture_managed_stream_artifacts() {
     echo "[performance-endpoint][WARN] manager metrics snapshot unavailable" >&2
   fi
   labels="--label benchmark_run=$RUN_ID --label policy_profile=$policy_name --layer endpoint --stage candidate"
-  if ! wait_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" \
-      "$policy_out/managed-signals.json" 1 "$MANAGER_ANALYSIS_WAIT_SECONDS"; then
+  expected_candidates="$(jq -er \
+    '.detection.learning.candidates.gatewayAccepted | tonumber' \
+    "$policy_out/candidate-lifecycle-final.json")"
+  if ! wait_manager_candidate_cohort "$labels" \
+      "$policy_out/managed-signals.json" "$expected_candidates" "$CANDIDATE_COHORT_WAIT_SECONDS"; then
     [[ -s "$policy_out/managed-signals.json" ]] || printf '[]\n' >"$policy_out/managed-signals.json"
   fi
   build_stream_processing_artifact "$policy_out/managed-signals.json" "$policy_out/stream-processing.json"
+}
+
+wait_manager_candidate_cohort() {
+  local labels="$1" output="$2" expected="$3" wait_seconds="$4"
+  local deadline=$((SECONDS + wait_seconds)) temporary="$output.tmp" actual=0 manager_jwt
+  while (( SECONDS < deadline )); do
+    manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
+      "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
+    if capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" >"$temporary"; then
+      actual="$(jq '[.[] | select(.detector_kind == "DETECTOR_KIND_MODEL") | .id] | unique | length' "$temporary")"
+      mv "$temporary" "$output"
+      if (( actual >= expected )); then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  rm -f "$temporary"
+  echo "[performance-endpoint][WARN] Stream Candidate cohort incomplete: expected=$expected actual=$actual" >&2
+  return 1
 }
 
 capture_final_candidate_lifecycle() {
@@ -299,7 +323,7 @@ if isinstance(values, dict):
     values = values.get("items", values.get("signals", []))
 rows = []
 for value in values if isinstance(values, list) else []:
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or value.get("detector_kind") != "DETECTOR_KIND_MODEL":
         continue
     rows.append({
         "signal_id": value.get("id", value.get("signal_id", "")),

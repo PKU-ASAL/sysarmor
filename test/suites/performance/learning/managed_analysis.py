@@ -25,8 +25,8 @@ def managed_candidate_artifacts(
         return missing_stream_processing(str(error))
     projected_ids = {row["signal_id"] for row in cohort if row["status"] == "projected"}
     candidates = [
-        signal for signal in signals
-        if signal.get("detectorKind") == "DETECTOR_KIND_MODEL" and signal.get("id") in projected_ids
+        projected_signal(signal) for signal in signals
+        if signal.get("detector_kind") == "DETECTOR_KIND_MODEL" and signal.get("id") in projected_ids
     ]
     candidate_ids = [signal.get("id") for signal in candidates]
     if any(not isinstance(signal_id, str) or not signal_id for signal_id in candidate_ids):
@@ -48,6 +48,23 @@ def managed_candidate_artifacts(
             "reference_rejected": reference_rejected,
         },
     }
+
+
+def projected_signal(document: dict[str, Any]) -> dict[str, Any]:
+    fields = {
+        "detector_kind": "detectorKind",
+        "model_ref": "modelRef",
+        "model_version": "modelVersion",
+        "model_digest": "modelDigest",
+        "feature_schema": "featureSchema",
+        "local_rarity": "localRarity",
+        "event_refs": "eventRefs",
+    }
+    signal = dict(document)
+    for source, target in fields.items():
+        if source in document:
+            signal[target] = document[source]
+    return signal
 
 
 def missing_stream_processing(detail: str) -> dict[str, Any]:

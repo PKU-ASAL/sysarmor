@@ -134,6 +134,25 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertNotIn('stream_processing FROM', script)
         self.assertNotIn('docker exec -i sysarmor-postgres psql', script)
 
+    def test_managed_candidate_capture_waits_for_frozen_gateway_cohort(self):
+        script = ENDPOINT_RUNNER.read_text()
+        function = script.split("capture_managed_stream_artifacts() {", 1)[1].split("\n}", 1)[0]
+        wait_function = script.split("wait_manager_candidate_cohort() {", 1)[1].split("\n}", 1)[0]
+
+        self.assertIn("gatewayAccepted", function)
+        self.assertIn("wait_manager_candidate_cohort", function)
+        self.assertIn("CANDIDATE_COHORT_WAIT_SECONDS", function)
+        self.assertIn('CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-300}"', script)
+        self.assertIn("issue-manager-jwt.sh", wait_function)
+        self.assertIn("while ((", wait_function)
+
+    def test_stream_processing_artifact_contains_only_model_candidates(self):
+        script = ENDPOINT_RUNNER.read_text()
+        function = script.split("build_stream_processing_artifact() {", 1)[1].split("\n}", 1)[0]
+
+        self.assertIn('detector_kind', function)
+        self.assertIn('DETECTOR_KIND_MODEL', function)
+
     def test_managed_benchmark_freezes_agent_candidate_cohort_with_one_health_read(self):
         script = ENDPOINT_RUNNER.read_text()
         function = script.split("capture_final_candidate_lifecycle() {", 1)[1].split("\n}", 1)[0]

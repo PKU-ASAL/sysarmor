@@ -104,7 +104,9 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
     def test_managed_candidate_artifacts_use_stream_projection_and_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "managed-signals.json").write_text(REPORT.json.dumps([model_candidate("agent-a-00000000000000000007")]))
+            (path / "managed-signals.json").write_text(REPORT.json.dumps([
+                projected_model_candidate("agent-a-00000000000000000007")
+            ]))
             (path / "stream-processing.json").write_text(REPORT.json.dumps([{
                 "signal_id": "candidate-a", "agent_id": "agent-a", "batch_id": "batch-a",
                 "subject_id": "p-attack", "trigger_event_id": "agent-a-00000000000000000007",
@@ -119,6 +121,8 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             result = managed_candidate_artifacts(path, "managed", "agent-a", 7)
 
             self.assertEqual(len(result["model_candidates"]), 1)
+            self.assertEqual(result["model_candidates"][0]["detectorKind"], "DETECTOR_KIND_MODEL")
+            self.assertEqual(result["model_candidates"][0]["modelRef"], "model:test")
             self.assertEqual(result["candidate_reference_integrity"]["source"], "stream_projection")
             self.assertEqual(result["candidate_reference_integrity"]["correlated"], 1)
             self.assertEqual(result["candidate_reference_integrity"]["projected"], 1)
@@ -127,7 +131,7 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
     def test_managed_candidate_artifacts_reject_duplicate_projection_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            candidate = model_candidate("agent-a-00000000000000000007") | {"id": "candidate-a"}
+            candidate = projected_model_candidate("agent-a-00000000000000000007")
             (path / "managed-signals.json").write_text(REPORT.json.dumps([candidate, candidate]))
             (path / "stream-processing.json").write_text(REPORT.json.dumps([{
                 "signal_id": "candidate-a", "agent_id": "agent-a", "batch_id": "batch-a",
@@ -143,8 +147,8 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             candidates = [
-                model_candidate("agent-a-00000000000000000007"),
-                model_candidate("agent-a-00000000000000000010") | {"id": "probe"},
+                projected_model_candidate("agent-a-00000000000000000007"),
+                projected_model_candidate("agent-a-00000000000000000010") | {"id": "probe"},
             ]
             (path / "managed-signals.json").write_text(REPORT.json.dumps(candidates))
             (path / "stream-processing.json").write_text(REPORT.json.dumps([
@@ -233,6 +237,22 @@ def model_candidate(event_ref="e1"):
         "featureSchema": "FeatureSchemaV2",
         "localRarity": 12.5,
         "eventRefs": [event_ref],
+        "entities": [{"kind": "process", "role": "subject", "key": "p-attack"}],
+    }
+
+
+def projected_model_candidate(event_ref="e1"):
+    return {
+        "id": "candidate-a",
+        "stage": "SIGNAL_STAGE_CANDIDATE",
+        "detector_kind": "DETECTOR_KIND_MODEL",
+        "where": "SIGNAL_WHERE_ENDPOINT",
+        "model_ref": "model:test",
+        "model_version": "1",
+        "model_digest": "sha256:digest",
+        "feature_schema": "FeatureSchemaV2",
+        "local_rarity": 12.5,
+        "event_refs": [event_ref],
         "entities": [{"kind": "process", "role": "subject", "key": "p-attack"}],
     }
 
