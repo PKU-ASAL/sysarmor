@@ -1,4 +1,5 @@
 import json
+import pickle
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -13,6 +14,15 @@ from sysarmor_streaming.jobs.projection import ProjectionFunction
 
 
 class ProjectionTest(unittest.TestCase):
+    def test_opensearch_projector_can_be_serialized_for_flink_workers(self):
+        projector = OpenSearchProjector("http://127.0.0.1:9200")
+        restored = pickle.loads(pickle.dumps(projector))
+        try:
+            self.assertEqual("http://127.0.0.1:9200", restored._base_url)
+        finally:
+            projector.close()
+            restored.close()
+
     def test_opensearch_projector_flushes_partial_batch_after_interval(self):
         requests = []
 

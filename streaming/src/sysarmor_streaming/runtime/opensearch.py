@@ -24,6 +24,28 @@ class OpenSearchProjector:
         self._thread = threading.Thread(target=self._flush_loop, daemon=True)
         self._thread.start()
 
+    def __getstate__(self):
+        return {
+            "_base_url": self._base_url,
+            "_timeout": self._timeout,
+            "_batch_size": self._batch_size,
+            "_batch": self._batch,
+            "_flush_interval": self._flush_interval,
+        }
+
+    def __setstate__(self, state):
+        self._base_url = state["_base_url"]
+        self._timeout = state["_timeout"]
+        self._batch_size = state["_batch_size"]
+        self._batch = state["_batch"]
+        self._flush_interval = state["_flush_interval"]
+        self._lock = threading.Lock()
+        self._closed = False
+        self._error = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._flush_loop, daemon=True)
+        self._thread.start()
+
     def put(self, document: bytes) -> None:
         payload = json.loads(document)
         kind = payload.get("projection_kind")
