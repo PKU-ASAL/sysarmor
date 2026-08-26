@@ -246,21 +246,21 @@ capture_managed_stream_artifacts() {
 wait_manager_candidate_cohort() {
   local labels="$1" output="$2" expected="$3" wait_seconds="$4"
   local deadline=$((SECONDS + wait_seconds)) temporary="$output.tmp" actual=0 manager_jwt
-  local page offset all page_count
+  local page_file="$output.page" merged="$output.merged" offset page_count
   while (( SECONDS < deadline )); do
     manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
       "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
-    all='[]'
+    printf '[]\n' >"$temporary"
     offset=0
     while :; do
-      page="$(capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels --offset $offset" 2>/dev/null)" || break
-      page_count="$(jq 'length' <<<"$page")"
-      all="$(jq -cn --argjson left "$all" --argjson right "$page" '$left + $right')"
+      capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels --offset $offset" >"$page_file" 2>/dev/null || break
+      page_count="$(jq 'length' "$page_file")"
+      jq -s '.[0] + .[1]' "$temporary" "$page_file" >"$merged"
+      mv "$merged" "$temporary"
       (( page_count < 1000 )) && break
       offset=$((offset + page_count))
     done
-    if jq -e 'type == "array"' <<<"$all" >/dev/null; then
-      printf '%s\n' "$all" >"$temporary"
+    if jq -e 'type == "array"' "$temporary" >/dev/null; then
       actual="$(jq '[.[] | select(.detector_kind == "DETECTOR_KIND_MODEL") | .id] | unique | length' "$temporary")"
       mv "$temporary" "$output"
       if (( actual >= expected )); then
@@ -269,7 +269,7 @@ wait_manager_candidate_cohort() {
     fi
     sleep 1
   done
-  rm -f "$temporary"
+  rm -f "$temporary" "$page_file" "$merged"
   echo "[performance-endpoint][WARN] Stream Candidate cohort incomplete: expected=$expected actual=$actual" >&2
   return 1
 }
