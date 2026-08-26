@@ -221,6 +221,55 @@ class AnalysisTest(unittest.TestCase):
             3, len(polluted.incidents[0].contributing_signals)
         )
 
+    def test_payload_chain_preserves_related_download_evidence(self):
+        events = [
+            event(
+                "connect-download",
+                "network.connect",
+                "p-curl",
+                socket_addr="10.66.0.99:8080",
+            ),
+            *causal_events(),
+        ]
+        signals = [
+            endpoint_signal(
+                "download_by_lolbin",
+                "lin-a",
+                process("p-curl"),
+                socket("10.66.0.99:8080"),
+                signal_id="download-a",
+            ),
+            endpoint_signal(
+                "payload_dropped",
+                "lin-a",
+                process("p-curl"),
+                file("/dev/shm/x.sh"),
+                signal_id="drop-a",
+            ),
+            endpoint_signal(
+                "reverse_shell_pattern",
+                "lin-a",
+                process("p-bash"),
+                socket("10.66.0.99:443"),
+                signal_id="shell-a",
+                stage=signal_pb2.SIGNAL_STAGE_CONCLUSION,
+            ),
+        ]
+
+        result = load_analysis().analyze(
+            events, signals, policy_pb2.DetectionPolicy()
+        )
+
+        incident = result.incidents[0]
+        self.assertIn(
+            "download_by_lolbin",
+            {signal.name for signal in incident.contributing_signals},
+        )
+        self.assertIn(
+            "connect-download",
+            {ref for edge in incident.evidence.edges for ref in edge.event_refs},
+        )
+
     def test_additive_threshold_preserves_identical_observations(self):
         policy = policy_pb2.DetectionPolicy(
             converge=policy_pb2.ConvergeParams(

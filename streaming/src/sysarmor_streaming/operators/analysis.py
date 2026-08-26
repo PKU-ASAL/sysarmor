@@ -58,9 +58,22 @@ def _cloud_matches(view, policy, graph) -> list:
 
 def _match_payload_chain(view, policy, graph):
     match = _match_pair(view, "payload_dropped", "reverse_shell_pattern", policy, graph, True)
-    if match:
-        return match
-    return _match_pair(view, "payload_dropped", "suspicious_exec_connect", policy, graph, False)
+    if not match:
+        match = _match_pair(view, "payload_dropped", "suspicious_exec_connect", policy, graph, False)
+    return _with_related_downloads(view, match, policy, graph) if match else None
+
+
+def _with_related_downloads(view, match, policy, graph):
+    contributors, crossed = match
+    downloads = (
+        candidate
+        for candidate in view.by_name.get("download_by_lolbin", ())
+        if any(
+            related(candidate, contributor, graph, cross_lineage_enabled(policy))[0]
+            for contributor in contributors
+        )
+    )
+    return (_unique_signals((*contributors, *downloads)), crossed)
 
 
 def _match_pair(view, left_name, right_name, policy, graph, require_conclusion):
