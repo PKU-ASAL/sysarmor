@@ -50,7 +50,7 @@ def run_projection():
     projected = artifacts.process(
         ProjectionFunction(OpenSearchProjector(config.opensearch_url)),
         output_type=BYTE_ARRAY,
-    ).uid("projection").name("projection")
+    ).set_parallelism(config.projection_parallelism).uid("projection").name("projection")
     sink(projected, config.projected_topic, config, "sysarmor-projection-v1")
     sink(
         projected.get_side_output(FAILURE_TAG),

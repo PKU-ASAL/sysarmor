@@ -16,6 +16,7 @@ class StreamingConfig:
     checkpoint_uri: str
     checkpoint_interval_ms: int
     parallelism: int
+    projection_parallelism: int
     kafka_connector_jar: str
 
     @classmethod
@@ -59,6 +60,9 @@ class StreamingConfig:
                 "SYSARMOR_FLINK_CHECKPOINT_INTERVAL_MS", 30_000
             ),
             parallelism=_positive_int("SYSARMOR_FLINK_PARALLELISM", 1),
+            projection_parallelism=_positive_int(
+                "SYSARMOR_FLINK_PROJECTION_PARALLELISM", 4
+            ),
             kafka_connector_jar=os.getenv("SYSARMOR_FLINK_KAFKA_CONNECTOR_JAR", ""),
         )
 

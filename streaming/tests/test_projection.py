@@ -1,3 +1,4 @@
+import json
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
@@ -11,11 +12,59 @@ from sysarmor_streaming.jobs.projection import ProjectionFunction
 
 
 class ProjectionTest(unittest.TestCase):
+    def test_opensearch_projector_batches_documents_until_flush(self):
+        requests = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                requests.append(self.rfile.read(int(self.headers["Content-Length"])))
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *_):
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            projector = OpenSearchProjector(base, batch_size=2)
+            for identity in ("signal-a", "signal-b"):
+                artifact = streaming_pb2.AnalysisArtifact(
+                    schema_version="sysarmor.analysis.artifact/v1",
+                    tenant_id="tenant-a",
+                    signal=signal_pb2.Signal(id=identity),
+                )
+                projector.put(project_artifact(artifact.SerializeToString()))
+            projector.flush()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        self.assertEqual(1, len(requests))
+        lines = requests[0].decode().splitlines()
+        self.assertEqual(4, len(lines))
+        self.assertEqual({"signal-a", "signal-b"}, {json.loads(lines[index])["id"] for index in (1, 3)})
+
+    def test_projection_function_flushes_projector_on_close(self):
+        class Projector:
+            def __init__(self):
+                self.flushed = False
+
+            def close(self):
+                self.flushed = True
+
+        projector = Projector()
+        function = ProjectionFunction(projector)
+        function.close()
+        self.assertTrue(projector.flushed)
+
     def test_opensearch_projector_puts_idempotent_document_to_kind_index(self):
         received = []
 
         class Handler(BaseHTTPRequestHandler):
-            def do_PUT(self):
+            def do_POST(self):
                 received.append((self.path, self.rfile.read(int(self.headers["Content-Length"]))))
                 self.send_response(200)
                 self.end_headers()
@@ -33,13 +82,16 @@ class ProjectionTest(unittest.TestCase):
                 analysis_scope_key="scope-a",
                 incident=incident_pb2.Incident(id="incident-a"),
             )
-            OpenSearchProjector(server.url if hasattr(server, "url") else f"http://127.0.0.1:{server.server_port}").put(
-                project_artifact(artifact.SerializeToString())
+            projector = OpenSearchProjector(
+                server.url if hasattr(server, "url") else f"http://127.0.0.1:{server.server_port}"
             )
+            projector.put(project_artifact(artifact.SerializeToString()))
+            projector.flush()
         finally:
             server.shutdown()
             server.server_close()
-        self.assertEqual("/sysarmor-incidents-write/_doc/incident-a", received[0][0])
+        self.assertEqual("/_bulk", received[0][0])
+        self.assertIn('"incident-a"', received[0][1].decode())
 
     def test_invalid_artifact_goes_to_projection_failure_side_output(self):
         output = list(ProjectionFunction().process_element(

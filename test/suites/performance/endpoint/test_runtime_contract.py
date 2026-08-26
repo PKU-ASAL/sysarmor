@@ -149,9 +149,11 @@ class RuntimeContractTest(unittest.TestCase):
     def test_stream_processing_artifact_contains_only_model_candidates(self):
         script = ENDPOINT_RUNNER.read_text()
         function = script.split("build_stream_processing_artifact() {", 1)[1].split("\n}", 1)[0]
+        wait_function = script.split("wait_manager_candidate_cohort() {", 1)[1].split("\n}", 1)[0]
 
         self.assertIn('detector_kind', function)
         self.assertIn('DETECTOR_KIND_MODEL', function)
+        self.assertIn("--offset", wait_function)
 
     def test_managed_benchmark_freezes_agent_candidate_cohort_with_one_health_read(self):
         script = ENDPOINT_RUNNER.read_text()

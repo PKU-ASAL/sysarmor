@@ -246,10 +246,21 @@ capture_managed_stream_artifacts() {
 wait_manager_candidate_cohort() {
   local labels="$1" output="$2" expected="$3" wait_seconds="$4"
   local deadline=$((SECONDS + wait_seconds)) temporary="$output.tmp" actual=0 manager_jwt
+  local page offset all page_count
   while (( SECONDS < deadline )); do
     manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
       "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
-    if capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" >"$temporary"; then
+    all='[]'
+    offset=0
+    while :; do
+      page="$(capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels --offset $offset" 2>/dev/null)" || break
+      page_count="$(jq 'length' <<<"$page")"
+      all="$(jq -cn --argjson left "$all" --argjson right "$page" '$left + $right')"
+      (( page_count < 1000 )) && break
+      offset=$((offset + page_count))
+    done
+    if jq -e 'type == "array"' <<<"$all" >/dev/null; then
+      printf '%s\n' "$all" >"$temporary"
       actual="$(jq '[.[] | select(.detector_kind == "DETECTOR_KIND_MODEL") | .id] | unique | length' "$temporary")"
       mv "$temporary" "$output"
       if (( actual >= expected )); then
