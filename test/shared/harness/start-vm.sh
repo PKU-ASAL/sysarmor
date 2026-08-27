@@ -93,8 +93,10 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   docker build --network=host -t sysarmor-flink:1.20.2 -f "$REPO/deployments/streaming/Dockerfile" "$REPO"
   required_images+=(
     sysarmor-flink:1.20.2
+    sysarmor-postgres:latest
     sysarmor-kafka:latest
     sysarmor-redis:latest
+    sysarmor-opensearch:latest
     sysarmor-manager:latest
     sysarmor-manager-ui:latest
     sysarmor-gateway:latest
