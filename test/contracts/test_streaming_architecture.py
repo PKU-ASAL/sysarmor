@@ -88,8 +88,11 @@ class StreamingArchitectureContractTest(unittest.TestCase):
     def test_vm_harness_builds_project_images_without_registry_cache(self):
         harness = (REPO / "test/shared/harness/start-vm.sh").read_text()
         upstream = harness.split("required_images=(", 1)[1].split(")", 1)[0]
+        opensearch = (REPO / "deployments/infra/opensearch/Dockerfile").read_text()
 
         self.assertNotIn("sysarmor-", upstream)
+        self.assertIn("opensearchproject/opensearch:2.14.0", upstream)
+        self.assertIn("FROM opensearchproject/opensearch:2.14.0", opensearch)
         self.assertIn("postgres kafka redis opensearch manager manager-ui gateway", harness)
 
     def test_streaming_contract_is_versioned_protobuf(self):

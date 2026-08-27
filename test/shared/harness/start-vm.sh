@@ -84,7 +84,7 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   mkdir -p "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime"
   rsync -a --delete "$PKI_DIR/" "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime/"
   tar -C "$PLATFORM_UPLOAD_DIR" -cf "$PLATFORM_SOURCE_BUNDLE" .
-  required_images=(ubuntu:24.04 redis:7-alpine apache/kafka:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine)
+  required_images=(ubuntu:24.04 redis:7-alpine apache/kafka:latest opensearchproject/opensearch:2.14.0 nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine)
   for image in "${required_images[@]}"; do
     ensure_image "$image"
   done
