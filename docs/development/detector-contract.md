@@ -30,6 +30,7 @@ class DetectorInputs:
     signals: tuple[Signal, ...]     # 所有 Signal，统一存储，见 2.3
     graph: ProvenanceGraph | None   # 便捷视图：基础层预构建，可选（None = 框架不构建）
     context: AnalysisContext
+    policy: DetectionPolicy | None  # 平台经 Broadcast State 分发的策略上下文（cloud_rules/endpoint_rules/converge），不在 required_inputs 里
 ```
 
 ### 2.2 三级抽象与成本分级

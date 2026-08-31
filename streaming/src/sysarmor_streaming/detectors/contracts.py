@@ -90,6 +90,7 @@ class DetectorInputs:
     signals: tuple[signal_pb2.Signal, ...] = ()
     graph: object | None = None
     context: AnalysisContext | None = None
+    policy: object | None = None
 
     @property
     def candidates(self) -> tuple[signal_pb2.Signal, ...]:
