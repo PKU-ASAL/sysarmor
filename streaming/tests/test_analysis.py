@@ -172,6 +172,28 @@ class AnalysisTest(unittest.TestCase):
             "exec-bash", {ref for edge in evidence.edges for ref in edge.event_refs}
         )
 
+    def test_analyze_is_deterministic_across_repeated_calls(self):
+        signals = [
+            endpoint_signal("payload_dropped", "lin-a", file("/tmp/payload"), signal_id="drop-a"),
+            endpoint_signal(
+                "reverse_shell_pattern",
+                "lin-a",
+                process("p-bash"),
+                stage=signal_pb2.SIGNAL_STAGE_CONCLUSION,
+                signal_id="shell-a",
+            ),
+        ]
+        policy = policy_pb2.DetectionPolicy()
+
+        first = load_analysis().analyze(causal_events(), signals, policy)
+        second = load_analysis().analyze(causal_events(), signals, policy)
+
+        self.assertEqual(
+            [signal.id for signal in first.cloud_signals],
+            [signal.id for signal in second.cloud_signals],
+        )
+        self.assertEqual(first.incidents[0].id, second.incidents[0].id)
+
     def test_additive_threshold_requires_a_conclusion(self):
         policy = policy_pb2.DetectionPolicy(
             converge=policy_pb2.ConvergeParams(
