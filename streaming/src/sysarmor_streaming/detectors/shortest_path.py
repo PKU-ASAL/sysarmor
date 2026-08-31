@@ -29,10 +29,14 @@ class ShortestPathDetector:
 
     def analyze(self, inputs: DetectorInputs) -> DetectionResult:
         evidence = connecting_evidence(inputs.graph, inputs.signals)
+        edge_refs = tuple(edge.id for edge in evidence.edges)
+        event_refs = tuple(ref for edge in evidence.edges for ref in edge.event_refs)
         return DetectionResult(
             algorithm_name=self.name,
             algorithm_version=self.version,
             evidence=evidence,
+            edge_refs=edge_refs,
+            event_refs=event_refs,
         )
 
     def diagnostics(self) -> dict:

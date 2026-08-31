@@ -41,6 +41,8 @@ class ShortestPathDetectorTest(unittest.TestCase):
         self.assertEqual("provenance-shortest-path-v1", result.algorithm_name)
         self.assertIn("process:p-curl", {node.id for node in result.evidence.nodes})
         self.assertTrue(result.evidence.edges)
+        self.assertTrue(result.edge_refs)
+        self.assertTrue(result.event_refs)
 
 
 if __name__ == "__main__":

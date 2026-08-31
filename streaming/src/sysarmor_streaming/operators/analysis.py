@@ -14,11 +14,15 @@ class AnalysisResult:
     incidents: tuple
 
 
-def analyze(events, signals, policy, scorer=None) -> AnalysisResult:
+def analyze(events, signals, policy, scorer=None, context=None) -> AnalysisResult:
     view = build(events, signals, policy)
     graph = ProvenanceGraph.from_events(events)
     inputs = DetectorInputs(
-        events=tuple(events), signals=tuple(signals), graph=graph, policy=policy
+        events=tuple(events),
+        signals=tuple(signals),
+        graph=graph,
+        policy=policy,
+        context=context,
     )
     results = [detector.analyze(inputs) for detector in DetectorFactory.build_all()]
     cloud_signals = tuple(signal for result in results for signal in result.derived_signals)
