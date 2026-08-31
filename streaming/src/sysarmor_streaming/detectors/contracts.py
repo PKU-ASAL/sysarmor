@@ -8,7 +8,7 @@ OpenSearch, or Flink types -- a Detector is a pure function of facts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Protocol
 
 from packages.contracts.proto.event.v1 import event_pb2
@@ -16,7 +16,7 @@ from packages.contracts.proto.incident.v1 import incident_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 
 
-class RequiredInput(StrEnum):
+class RequiredInput(str, Enum):
     """Open set of standardized inputs a Detector may declare.
 
     `SIGNAL` covers every Signal regardless of detector_kind/stage; Detectors
