@@ -10,7 +10,7 @@ from packages.contracts.proto.streaming.v1 import streaming_pb2
 DATA_PLANE_SCHEMA = "sysarmor.dataplane/v1"
 NORMALIZED_SCHEMA = "sysarmor.telemetry.normalized/v1"
 REJECTED_SCHEMA = "sysarmor.telemetry.rejected/v1"
-SCOPE_LABELS = ("case_type", "scenario", "workload")
+SCOPE_LABELS = ("scenario", "workload")
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,7 @@ def _record(batch, labels, observed_ns: int, sequence: int) -> streaming_pb2.Nor
         policy_version=policy_version,
         policy_mode=batch.header.policy_mode,
         observed_at_unix_nano=observed_ns,
-        analysis_scope_key=_scope_key(labels),
+        analysis_scope_key=_scope_key(batch.header.agent_id, labels),
         labels=labels,
         record_sequence=sequence,
     )
@@ -151,9 +151,13 @@ def _policy_reference(labels) -> tuple[str, int]:
     return policy_id, policy_version
 
 
-def _scope_key(labels) -> str:
-    selected = {key: labels[key].strip() for key in SCOPE_LABELS if labels.get(key, "").strip()}
-    return ",".join(f"{key}={selected[key]}" for key in sorted(selected))
+def _scope_key(agent_id: str, labels) -> str:
+    parts = [agent_id.strip()]
+    for key in SCOPE_LABELS:
+        value = labels.get(key, "").strip()
+        if value:
+            parts.append(f"{key}={value}")
+    return ",".join(parts)
 
 
 def _batch_time_ns(batch: dataplane_pb2.DataBatch) -> int:

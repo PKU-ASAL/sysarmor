@@ -97,10 +97,9 @@ func mapBatch(batch *dataplanev1.DataBatch) (ports.BatchEnvelope, error) {
 		return ports.BatchEnvelope{}, err
 	}
 	key := header.GetAgentId()
-	for _, label := range []string{"case_type", "scenario", "workload"} {
+	for _, label := range []string{"scenario", "workload"} {
 		if value := strings.TrimSpace(header.GetLabels()[label]); value != "" {
-			key = label + "=" + value
-			break
+			key += "," + label + "=" + value
 		}
 	}
 	if strings.TrimSpace(header.GetEnrollmentEpoch()) == "" {

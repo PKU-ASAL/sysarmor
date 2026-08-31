@@ -25,8 +25,32 @@ class NormalizerTest(unittest.TestCase):
         records = module.normalize_batch(protojson(changed)).records
 
         self.assertEqual(
+            "agent-a,scenario=normalizer", records[0].context.analysis_scope_key
+        )
+        self.assertEqual(
             records[0].context.analysis_scope_key,
             records[1].context.analysis_scope_key,
+        )
+
+    def test_scope_key_anchors_on_agent_without_scope_labels(self):
+        module = load_normalizer()
+        batch = candidate_batch("process-a", ["event-current"])
+        batch.events[0].event.labels.pop("scenario", None)
+        batch.signals[0].signal.labels.pop("scenario", None)
+        records = module.normalize_batch(protojson(batch)).records
+
+        self.assertEqual("agent-a", records[0].context.analysis_scope_key)
+        self.assertEqual("agent-a", records[1].context.analysis_scope_key)
+
+    def test_scope_key_ignores_case_type(self):
+        module = load_normalizer()
+        batch = candidate_batch("process-a", ["event-current"])
+        batch.events[0].event.labels["case_type"] = "benchmark"
+        batch.signals[0].signal.labels["case_type"] = "benchmark"
+        records = module.normalize_batch(protojson(batch)).records
+
+        self.assertEqual(
+            "agent-a,scenario=normalizer", records[0].context.analysis_scope_key
         )
 
     def test_valid_batch_emits_versioned_event_and_candidate_records(self):
@@ -47,7 +71,7 @@ class NormalizerTest(unittest.TestCase):
         self.assertEqual("policy-a", event_record.context.policy_id)
         self.assertEqual(7, event_record.context.policy_version)
         self.assertEqual(
-            "scenario=normalizer",
+            "agent-a,scenario=normalizer",
             event_record.context.analysis_scope_key,
         )
 
