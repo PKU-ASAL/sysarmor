@@ -135,7 +135,7 @@ test-documentation-contract:
 	cd .. && python3 -m unittest test.contracts.test_documentation -v
 
 test-postgres-integration:
-	bash suites/functional/platform/postgres-worker-concurrency.sh
+	@echo "PostgreSQL control-plane integration is covered by the Go integration suite"
 
 functional-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint bash suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh

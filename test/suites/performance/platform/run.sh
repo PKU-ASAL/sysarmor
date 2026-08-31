@@ -46,7 +46,7 @@ capture_manager_metrics() {
 validate_compose_status() {
   local status_path="$1"
   local service
-  for service in sysarmor-manager sysarmor-gateway sysarmor-worker sysarmor-postgres sysarmor-kafka; do
+  for service in sysarmor-manager sysarmor-gateway sysarmor-postgres sysarmor-kafka sysarmor-flink-jobmanager sysarmor-flink-taskmanager; do
     if ! awk -v service="$service" '$1 == service && index($0, " Up") { found = 1 } END { exit !found }' "$status_path"; then
       echo "[performance-platform][ERROR] $service is not running" >&2
       return 1
@@ -111,7 +111,7 @@ with open(csv_path, newline="") as f:
         item["mem_pct_max"] = max(item["mem_pct_max"], mem_pct)
 
 summary = []
-required = {"sysarmor-manager", "sysarmor-gateway", "sysarmor-worker", "sysarmor-postgres", "sysarmor-kafka"}
+required = {"sysarmor-manager", "sysarmor-gateway", "sysarmor-postgres", "sysarmor-kafka", "sysarmor-flink-jobmanager", "sysarmor-flink-taskmanager"}
 missing = sorted(name for name in required if by_name[name]["samples"] == 0)
 if missing:
     raise SystemExit(f"missing required platform samples: {','.join(missing)}")

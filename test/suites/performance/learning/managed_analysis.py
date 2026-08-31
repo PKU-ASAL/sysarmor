@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Managed Worker analysis artifact parsing for Learning experiments."""
+"""Managed Stream analysis artifact parsing for Learning experiments."""
 
 from __future__ import annotations
 
@@ -14,34 +14,34 @@ def managed_candidate_artifacts(
     if agent_mode != "managed":
         return {"candidate_reference_integrity": {"source": "observation_stream"}}
     signals = incident_documents(load_json_value(path / "managed-signals.json"))
-    rows = load_json_value(path / "worker-signal-processing.json")
+    rows = load_json_value(path / "stream-processing.json")
     if not isinstance(agent_id, str) or not agent_id or not isinstance(event_sequence_cutoff, int) or event_sequence_cutoff < 0:
-        return missing_worker_processing("invalid Worker cohort identity")
+        return missing_stream_processing("invalid Stream cohort identity")
     if not isinstance(rows, list):
-        return missing_worker_processing("worker Signal processing artifact is missing")
+        return missing_stream_processing("stream Signal processing artifact is missing")
     try:
-        cohort = worker_signal_cohort(rows, agent_id, event_sequence_cutoff)
+        cohort = stream_signal_cohort(rows, agent_id, event_sequence_cutoff)
     except (TypeError, ValueError) as error:
-        return missing_worker_processing(str(error))
+        return missing_stream_processing(str(error))
     projected_ids = {row["signal_id"] for row in cohort if row["status"] == "projected"}
     candidates = [
-        signal for signal in signals
-        if signal.get("detectorKind") == "DETECTOR_KIND_MODEL" and signal.get("id") in projected_ids
+        projected_signal(signal) for signal in signals
+        if signal.get("detector_kind") == "DETECTOR_KIND_MODEL" and signal.get("id") in projected_ids
     ]
     candidate_ids = [signal.get("id") for signal in candidates]
     if any(not isinstance(signal_id, str) or not signal_id for signal_id in candidate_ids):
-        return missing_worker_processing("projected Model Signal ID is missing")
+        return missing_stream_processing("projected Model Candidate ID is missing")
     if len(candidate_ids) != len(set(candidate_ids)):
-        return missing_worker_processing("projected Model Signal ID is duplicated")
+        return missing_stream_processing("projected Model Candidate ID is duplicated")
     if set(candidate_ids) != projected_ids:
-        return missing_worker_processing("Worker projected Signal IDs do not match OpenSearch artifacts")
+        return missing_stream_processing("Stream projected Candidate IDs do not match OpenSearch artifacts")
     correlated = sum(row["status"] in ("correlated", "projected") for row in cohort)
     projected = sum(row["status"] == "projected" for row in cohort)
     reference_rejected = sum(row["status"] == "reference_rejected" for row in cohort)
     return {
         "model_candidates": candidates,
         "candidate_reference_integrity": {
-            "source": "worker_projection",
+            "source": "stream_projection",
             "projected": projected,
             "projection_artifacts": len(candidates),
             "correlated": correlated,
@@ -50,11 +50,28 @@ def managed_candidate_artifacts(
     }
 
 
-def missing_worker_processing(detail: str) -> dict[str, Any]:
+def projected_signal(document: dict[str, Any]) -> dict[str, Any]:
+    fields = {
+        "detector_kind": "detectorKind",
+        "model_ref": "modelRef",
+        "model_version": "modelVersion",
+        "model_digest": "modelDigest",
+        "feature_schema": "featureSchema",
+        "local_rarity": "localRarity",
+        "event_refs": "eventRefs",
+    }
+    signal = dict(document)
+    for source, target in fields.items():
+        if source in document:
+            signal[target] = document[source]
+    return signal
+
+
+def missing_stream_processing(detail: str) -> dict[str, Any]:
     return {
         "model_candidates": [],
         "candidate_reference_integrity": {
-            "source": "missing_worker_processing",
+            "source": "missing_stream_processing",
             "detail": detail,
             "projected": None,
             "projection_artifacts": None,
@@ -64,7 +81,7 @@ def missing_worker_processing(detail: str) -> dict[str, Any]:
     }
 
 
-def worker_signal_cohort(rows: list[Any], agent_id: str, cutoff: int) -> list[dict[str, Any]]:
+def stream_signal_cohort(rows: list[Any], agent_id: str, cutoff: int) -> list[dict[str, Any]]:
     required = (
         "signal_id", "agent_id", "batch_id", "subject_id", "trigger_event_id",
         "event_sequence", "status", "failure_class",
@@ -73,16 +90,16 @@ def worker_signal_cohort(rows: list[Any], agent_id: str, cutoff: int) -> list[di
     seen: set[str] = set()
     for row in rows:
         if not isinstance(row, dict) or any(field not in row for field in required):
-            raise ValueError("worker Signal processing artifact has an incomplete row")
+            raise ValueError("stream Signal processing artifact has an incomplete row")
         if row["agent_id"] != agent_id or row["event_sequence"] > cutoff:
             continue
         if not isinstance(row["event_sequence"], int) or row["event_sequence"] < 0:
-            raise ValueError("worker Signal processing event_sequence is invalid")
+            raise ValueError("stream Signal processing event_sequence is invalid")
         signal_id = row["signal_id"]
         if not isinstance(signal_id, str) or not signal_id or signal_id in seen:
-            raise ValueError("worker Signal processing Signal ID is invalid or duplicated")
+            raise ValueError("stream Signal processing Signal ID is invalid or duplicated")
         if row["status"] not in ("correlated", "projected", "reference_rejected"):
-            raise ValueError("worker Signal processing status is invalid")
+            raise ValueError("stream Signal processing status is invalid")
         seen.add(signal_id)
         result.append(row)
     return result

@@ -237,8 +237,8 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
             "agent_contract_reject": candidate_lifecycle.get("contract_rejected"),
             "agent_spool_backlog": None,
             "agent_delivery_backlog": None,
-            "worker_pending_backlog": None,
-            "worker_reference_rejected": None,
+            "stream_pending_backlog": None,
+            "stream_reference_rejected": None,
         },
         "model_candidates": model_candidates,
         "truth_baseline_ok": truth["ok"],
@@ -266,18 +266,18 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
     pending_backlog = None
     pending_backlog = lifecycle_delta(accepted, correlated, reference_rejected)
     result["candidate_reference_integrity"]["pending_backlog"] = pending_backlog
-    result["reference_gaps"]["worker_pending_backlog"] = pending_backlog
-    result["reference_gaps"]["worker_reference_rejected"] = reference_rejected
+    result["reference_gaps"]["stream_pending_backlog"] = pending_backlog
+    result["reference_gaps"]["stream_reference_rejected"] = reference_rejected
     spooled = candidate_lifecycle.get("spooled")
     created = candidate_lifecycle.get("created")
     contract_rejected = candidate_lifecycle.get("contract_rejected")
     gateway_rejected = candidate_lifecycle.get("gateway_rejected")
     result["reference_gaps"]["agent_spool_backlog"] = lifecycle_delta(created, spooled, contract_rejected)
     result["reference_gaps"]["agent_delivery_backlog"] = lifecycle_delta(spooled, accepted, gateway_rejected)
-    result["candidate_lifecycle"]["worker_correlated"] = correlated
-    result["candidate_lifecycle"]["worker_projected"] = managed_candidates["candidate_reference_integrity"].get("projected")
-    result["candidate_lifecycle"]["worker_projection_artifacts"] = managed_candidates["candidate_reference_integrity"].get("projection_artifacts")
-    result["candidate_lifecycle"]["worker_pending_backlog"] = pending_backlog
+    result["candidate_lifecycle"]["stream_correlated"] = correlated
+    result["candidate_lifecycle"]["stream_projected"] = managed_candidates["candidate_reference_integrity"].get("projected")
+    result["candidate_lifecycle"]["stream_projection_artifacts"] = managed_candidates["candidate_reference_integrity"].get("projection_artifacts")
+    result["candidate_lifecycle"]["stream_pending_backlog"] = pending_backlog
     result.update(managed_analysis_metrics(path, manifest.get("agent_mode"), truth["event_ids"]))
     return result
 
@@ -457,6 +457,9 @@ def candidate_lifecycle_health(value: dict[str, Any]) -> dict[str, int | None]:
         "gateway_duplicate_ack": ("gatewayDuplicateAck", "gateway_duplicate_ack", "GatewayDuplicateAck"),
         "contract_rejected": ("contractRejected", "contract_rejected", "ContractRejected"),
         "gateway_rejected": ("gatewayRejected", "gateway_rejected", "GatewayRejected"),
+        "delivery_attempted": ("deliveryAttempted", "delivery_attempted", "DeliveryAttempted"),
+        "gateway_retryable": ("gatewayRetryable", "gateway_retryable", "GatewayRetryable"),
+        "delivery_errors": ("deliveryErrors", "delivery_errors", "DeliveryErrors"),
     }
     return {name: explicit_health_number(value, *aliases) for name, aliases in fields.items()}
 
@@ -499,6 +502,11 @@ def aggregate_runs(run_dir: Path) -> dict[str, Any]:
     missing = [mode for mode, path in paths.items() if not path.exists()]
     if missing:
         summary = {"verdict": "failed", "status": "partial", "gates": {}, "observations": {}, "missing": missing}
+        summary["failure_evidence"] = {
+            mode: str(paths[mode] / "failure.txt")
+            for mode in missing
+            if (paths[mode] / "failure.txt").is_file()
+        }
     else:
         try:
             experiment = require_json(run_dir / "manifest.json")

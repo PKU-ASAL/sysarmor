@@ -101,11 +101,13 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             self.assertEqual(REPORT.latest_health(path)["detection"]["learning"]["status"], "loaded")
             self.assertEqual(REPORT.candidate_lifecycle_snapshot(path)["localStore"]["eventSequenceCutoff"], 12)
 
-    def test_managed_candidate_artifacts_use_worker_projection_and_metrics(self):
+    def test_managed_candidate_artifacts_use_stream_projection_and_metrics(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "managed-signals.json").write_text(REPORT.json.dumps([model_candidate("agent-a-00000000000000000007")]))
-            (path / "worker-signal-processing.json").write_text(REPORT.json.dumps([{
+            (path / "managed-signals.json").write_text(REPORT.json.dumps([
+                projected_model_candidate("agent-a-00000000000000000007")
+            ]))
+            (path / "stream-processing.json").write_text(REPORT.json.dumps([{
                 "signal_id": "candidate-a", "agent_id": "agent-a", "batch_id": "batch-a",
                 "subject_id": "p-attack", "trigger_event_id": "agent-a-00000000000000000007",
                 "event_sequence": 7, "status": "projected", "failure_class": "",
@@ -119,7 +121,9 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             result = managed_candidate_artifacts(path, "managed", "agent-a", 7)
 
             self.assertEqual(len(result["model_candidates"]), 1)
-            self.assertEqual(result["candidate_reference_integrity"]["source"], "worker_projection")
+            self.assertEqual(result["model_candidates"][0]["detectorKind"], "DETECTOR_KIND_MODEL")
+            self.assertEqual(result["model_candidates"][0]["modelRef"], "model:test")
+            self.assertEqual(result["candidate_reference_integrity"]["source"], "stream_projection")
             self.assertEqual(result["candidate_reference_integrity"]["correlated"], 1)
             self.assertEqual(result["candidate_reference_integrity"]["projected"], 1)
             self.assertEqual(result["candidate_reference_integrity"]["reference_rejected"], 0)
@@ -127,9 +131,9 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
     def test_managed_candidate_artifacts_reject_duplicate_projection_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            candidate = model_candidate("agent-a-00000000000000000007") | {"id": "candidate-a"}
+            candidate = projected_model_candidate("agent-a-00000000000000000007")
             (path / "managed-signals.json").write_text(REPORT.json.dumps([candidate, candidate]))
-            (path / "worker-signal-processing.json").write_text(REPORT.json.dumps([{
+            (path / "stream-processing.json").write_text(REPORT.json.dumps([{
                 "signal_id": "candidate-a", "agent_id": "agent-a", "batch_id": "batch-a",
                 "subject_id": "p-attack", "trigger_event_id": "agent-a-00000000000000000007",
                 "event_sequence": 7, "status": "projected", "failure_class": "",
@@ -137,17 +141,17 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
 
             result = managed_candidate_artifacts(path, "managed", "agent-a", 7)
 
-            self.assertEqual(result["candidate_reference_integrity"]["source"], "missing_worker_processing")
+            self.assertEqual(result["candidate_reference_integrity"]["source"], "missing_stream_processing")
 
-    def test_worker_candidates_after_cutoff_do_not_fill_cohort(self):
+    def test_stream_candidates_after_cutoff_do_not_fill_cohort(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             candidates = [
-                model_candidate("agent-a-00000000000000000007"),
-                model_candidate("agent-a-00000000000000000010") | {"id": "probe"},
+                projected_model_candidate("agent-a-00000000000000000007"),
+                projected_model_candidate("agent-a-00000000000000000010") | {"id": "probe"},
             ]
             (path / "managed-signals.json").write_text(REPORT.json.dumps(candidates))
-            (path / "worker-signal-processing.json").write_text(REPORT.json.dumps([
+            (path / "stream-processing.json").write_text(REPORT.json.dumps([
                 {"signal_id": "candidate-a", "agent_id": "agent-a", "batch_id": "batch-a", "subject_id": "p-attack", "trigger_event_id": "agent-a-00000000000000000007", "event_sequence": 7, "status": "projected", "failure_class": ""},
                 {"signal_id": "probe", "agent_id": "agent-a", "batch_id": "batch-b", "subject_id": "probe", "trigger_event_id": "agent-a-00000000000000000010", "event_sequence": 10, "status": "projected", "failure_class": ""},
             ]))
@@ -157,7 +161,7 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             self.assertEqual([item["id"] for item in result["model_candidates"]], ["candidate-a"])
             self.assertEqual(result["candidate_reference_integrity"]["projected"], 1)
 
-    def test_missing_worker_signal_processing_is_unavailable_not_zero(self):
+    def test_missing_stream_processing_is_unavailable_not_zero(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "managed-signals.json").write_text("[]")
@@ -165,7 +169,7 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             result = managed_candidate_artifacts(path, "managed", "agent-a", 7)
 
             integrity = result["candidate_reference_integrity"]
-            self.assertEqual(integrity["source"], "missing_worker_processing")
+            self.assertEqual(integrity["source"], "missing_stream_processing")
             self.assertIsNone(integrity["correlated"])
             self.assertIsNone(integrity["projected"])
             self.assertIsNone(integrity["reference_rejected"])
@@ -197,7 +201,7 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             self.assertEqual(result["incident_campaign_ids"], set())
             self.assertEqual(result["managed_analysis"], {"required": True, "incident_artifact_present": False})
 
-    def test_standalone_analysis_does_not_claim_worker_coverage(self):
+    def test_standalone_analysis_does_not_claim_stream_coverage(self):
         self.assertEqual(
             managed_analysis_metrics(Path("/missing"), "standalone", {"event-a"}),
             {"managed_analysis": {"required": False, "incident_artifact_present": False}},
@@ -233,6 +237,22 @@ def model_candidate(event_ref="e1"):
         "featureSchema": "FeatureSchemaV2",
         "localRarity": 12.5,
         "eventRefs": [event_ref],
+        "entities": [{"kind": "process", "role": "subject", "key": "p-attack"}],
+    }
+
+
+def projected_model_candidate(event_ref="e1"):
+    return {
+        "id": "candidate-a",
+        "stage": "SIGNAL_STAGE_CANDIDATE",
+        "detector_kind": "DETECTOR_KIND_MODEL",
+        "where": "SIGNAL_WHERE_ENDPOINT",
+        "model_ref": "model:test",
+        "model_version": "1",
+        "model_digest": "sha256:digest",
+        "feature_schema": "FeatureSchemaV2",
+        "local_rarity": 12.5,
+        "event_refs": [event_ref],
         "entities": [{"kind": "process", "role": "subject", "key": "p-attack"}],
     }
 
@@ -346,11 +366,11 @@ class LearningReportTest(unittest.TestCase):
         value = metrics(evictions=10)
         value["candidate_lifecycle"] = {
             "created": 4, "spooled": 4, "gateway_accepted": 3,
-            "gateway_duplicate_ack": 1, "worker_pending_backlog": 0,
+            "gateway_duplicate_ack": 1, "stream_pending_backlog": 0,
         }
         value["reference_gaps"] = {
             "observation_gap": 10, "endpoint_storage_drop": 0,
-            "gateway_reject": 1, "worker_reference_rejected": 0,
+            "gateway_reject": 1, "stream_reference_rejected": 0,
         }
 
         summary = REPORT.variant_summary(value)
@@ -398,13 +418,13 @@ class LearningReportTest(unittest.TestCase):
         result = evaluate_mode(rule_only, hybrid, "hybrid", DEFAULT_GATES)
         self.assertEqual(result["gates"]["model"]["status"], "failed")
 
-    def test_worker_projection_does_not_depend_on_observation_ring_event(self):
+    def test_stream_projection_does_not_depend_on_observation_ring_event(self):
         rule_only = metrics()
         hybrid = metrics(evictions=100)
         rule_only["health"]["learning"] = "disabled"
         hybrid["model_candidates"] = [model_candidate("event-not-in-observation-ring")]
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "pending_backlog": 0,
+            "source": "stream_projection", "pending_backlog": 0,
             "reference_rejected": 0, "correlated": 1, "projected": 1,
         }
 
@@ -412,7 +432,7 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["model"]["status"], "passed")
 
-    def test_worker_reference_rejection_and_backlog_are_independent_failures(self):
+    def test_stream_reference_rejection_and_backlog_are_independent_failures(self):
         for field in ("reference_rejected", "pending_backlog"):
             with self.subTest(field=field):
                 rule_only = metrics()
@@ -420,7 +440,7 @@ class LearningReportTest(unittest.TestCase):
                 rule_only["health"]["learning"] = "disabled"
                 hybrid["model_candidates"] = [model_candidate()]
                 hybrid["candidate_reference_integrity"] = {
-                    "source": "worker_projection", "reference_rejected": 0,
+                    "source": "stream_projection", "reference_rejected": 0,
                     "pending_backlog": 0, "correlated": 1, "projected": 1,
                 }
                 hybrid["candidate_lifecycle"] = {"contract_rejected": 0, "gateway_rejected": 0}
@@ -431,7 +451,7 @@ class LearningReportTest(unittest.TestCase):
 
                 self.assertEqual(result["gates"]["candidate_lifecycle"]["status"], "failed")
 
-    def test_worker_count_exceeding_gateway_accepted_fails_exact_cohort_contract(self):
+    def test_stream_count_exceeding_gateway_accepted_fails_exact_cohort_contract(self):
         rule_only = metrics()
         hybrid = metrics()
         rule_only["health"]["learning"] = "disabled"
@@ -441,7 +461,7 @@ class LearningReportTest(unittest.TestCase):
             "contract_rejected": 0, "gateway_rejected": 0,
         }
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "reference_rejected": 0,
+            "source": "stream_projection", "reference_rejected": 0,
             "pending_backlog": 0, "correlated": 6, "projected": 6,
             "projection_artifacts": 6,
         }
@@ -463,7 +483,7 @@ class LearningReportTest(unittest.TestCase):
         rule_only["health"]["learning"] = "disabled"
         hybrid["model_candidates"] = [model_candidate()]
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "reference_rejected": 0,
+            "source": "stream_projection", "reference_rejected": 0,
             "pending_backlog": 0, "correlated": 1, "projected": 1,
         }
         hybrid["candidate_lifecycle"] = {
@@ -482,7 +502,7 @@ class LearningReportTest(unittest.TestCase):
         rule_only["health"]["learning"] = "disabled"
         hybrid["model_candidates"] = [model_candidate()]
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "reference_rejected": 0,
+            "source": "stream_projection", "reference_rejected": 0,
             "pending_backlog": 0, "correlated": 1, "projected": 1,
             "projection_artifacts": 1,
         }
@@ -505,7 +525,7 @@ class LearningReportTest(unittest.TestCase):
         rule_only["health"]["learning"] = "disabled"
         hybrid["model_candidates"] = [model_candidate()]
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "reference_rejected": 0,
+            "source": "stream_projection", "reference_rejected": 0,
             "pending_backlog": 0, "correlated": 1, "projected": 1,
             "projection_artifacts": 1,
         }
@@ -528,7 +548,7 @@ class LearningReportTest(unittest.TestCase):
         rule_only["health"]["learning"] = "disabled"
         hybrid["model_candidates"] = [model_candidate()]
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "reference_rejected": 0,
+            "source": "stream_projection", "reference_rejected": 0,
             "pending_backlog": 0, "correlated": 1, "projected": 1,
             "projection_artifacts": 0,
         }
@@ -621,7 +641,7 @@ class LearningReportTest(unittest.TestCase):
             for index in range(9)
         ]
         hybrid["candidate_reference_integrity"] = {
-            "source": "worker_projection", "reference_rejected": 0,
+            "source": "stream_projection", "reference_rejected": 0,
             "pending_backlog": 0, "correlated": 9, "projected": 9,
             "projection_artifacts": 9,
         }
@@ -659,7 +679,7 @@ class LearningReportTest(unittest.TestCase):
 
         self.assertEqual(result["gates"]["attack_campaign_seed_recall"]["status"], "failed")
 
-    def test_worker_graph_recall_at_ninety_percent_is_blocking_and_passes(self):
+    def test_stream_graph_recall_at_ninety_percent_is_blocking_and_passes(self):
         rule_only = metrics()
         hybrid = metrics()
         rule_only["health"]["learning"] = "disabled"
@@ -670,10 +690,10 @@ class LearningReportTest(unittest.TestCase):
 
         result = evaluate_mode(rule_only, hybrid, "hybrid", DEFAULT_GATES)
 
-        self.assertEqual(result["gates"]["worker_graph_recall"]["status"], "passed")
-        self.assertTrue(result["gates"]["worker_graph_recall"]["blocking"])
+        self.assertEqual(result["gates"]["stream_graph_recall"]["status"], "passed")
+        self.assertTrue(result["gates"]["stream_graph_recall"]["blocking"])
 
-    def test_worker_graph_recall_below_ninety_percent_fails(self):
+    def test_stream_graph_recall_below_ninety_percent_fails(self):
         rule_only = metrics()
         hybrid = metrics()
         rule_only["health"]["learning"] = "disabled"
@@ -684,7 +704,7 @@ class LearningReportTest(unittest.TestCase):
 
         result = evaluate_mode(rule_only, hybrid, "hybrid", DEFAULT_GATES)
 
-        self.assertEqual(result["gates"]["worker_graph_recall"]["status"], "failed")
+        self.assertEqual(result["gates"]["stream_graph_recall"]["status"], "failed")
         self.assertEqual(result["verdict"], "failed")
 
     def test_missing_managed_conclusion_fails_hybrid_measurement(self):
@@ -711,11 +731,11 @@ class LearningReportTest(unittest.TestCase):
 
         result = evaluate_mode(rule_only, hybrid, "hybrid", DEFAULT_GATES)
 
-        for name in ("worker_graph_recall", "conclusion_recall"):
+        for name in ("stream_graph_recall", "conclusion_recall"):
             self.assertEqual(result["gates"][name]["status"], "failed")
             self.assertTrue(result["gates"][name]["blocking"])
 
-    def test_learning_only_does_not_claim_incident_backed_worker_measurements(self):
+    def test_learning_only_does_not_claim_incident_backed_stream_measurements(self):
         rule_only = metrics()
         learning_only = metrics()
         rule_only["health"]["learning"] = "disabled"
@@ -727,7 +747,7 @@ class LearningReportTest(unittest.TestCase):
 
         result = evaluate_mode(rule_only, learning_only, "learning-only", DEFAULT_GATES)
 
-        for name in ("worker_graph_recall", "conclusion_recall"):
+        for name in ("stream_graph_recall", "conclusion_recall"):
             self.assertEqual(result["gates"][name]["status"], "unavailable")
             self.assertFalse(result["gates"][name]["blocking"])
 

@@ -10,6 +10,7 @@ message ConvergeParams {
   uint32 max_path_hops = 3;
   uint32 additive_risk_threshold = 4;
   bool cross_lineage = 5;
+  uint64 state_retention_ns = 6;
 }
 
 message RarityParams {
@@ -31,4 +32,3 @@ message PolicyEnvelope {
   uint64 version = 3;
   DetectionPolicy detection = 4;
 }
-

@@ -29,7 +29,7 @@ func TestRejectedAckExposesCandidateReferenceReasonCode(t *testing.T) {
 
 func gatewayCandidateBatch() *dataplanev1.DataBatch {
 	return &dataplanev1.DataBatch{
-		Header: &dataplanev1.BatchHeader{TenantId: "tenant-a", AgentId: "agent-a", HostId: "host-a", BatchId: "batch-a"},
+		Header: &dataplanev1.BatchHeader{EnrollmentEpoch: "enroll-a", TenantId: "tenant-a", AgentId: "agent-a", HostId: "host-a", BatchId: "batch-a"},
 		Events: []*dataplanev1.EventFrame{{Event: &eventv1.CanonicalEvent{
 			Id: "event-a", SubjectProc: &eventv1.ProcessRef{StableId: "process-a"},
 		}}},

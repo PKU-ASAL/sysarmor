@@ -30,7 +30,8 @@ func (builder *BatchBuilder) NewBatch(now time.Time) *dataplanev1.DataBatch {
 
 func newBatch(now time.Time, context ports.TelemetryContext) *dataplanev1.DataBatch {
 	return &dataplanev1.DataBatch{Header: &dataplanev1.BatchHeader{
-		TenantId: context.TenantID, AgentId: context.AgentID, HostId: context.HostID,
+		EnrollmentEpoch: context.EnrollmentEpoch,
+		TenantId:        context.TenantID, AgentId: context.AgentID, HostId: context.HostID,
 		PolicyId: context.PolicyID, PolicyVersion: context.PolicyVersion, PolicyMode: context.PolicyMode,
 		CreatedAtUnixNano: now.UnixNano(), Labels: contextLabels(context),
 	}}

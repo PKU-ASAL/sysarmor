@@ -157,7 +157,7 @@ func TestRuntimeMarksHealthDegradedWhenParseThresholdExceeded(t *testing.T) {
 	}
 	runner.wireComponents()
 	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
-	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, AgentID: "managed-agent", TenantID: "managed-tenant"}); err != nil {
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, EnrollmentID: "enroll-a", AgentID: "managed-agent", TenantID: "managed-tenant"}); err != nil {
 		t.Fatal(err)
 	}
 	rt := sensorruntime.New(runner.Sensor)

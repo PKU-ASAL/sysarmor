@@ -133,6 +133,8 @@ type Learning struct {
 type CandidateLifecycleHealth struct {
 	Created, Spooled, GatewayAccepted, GatewayDuplicateAck uint64
 	ContractRejected, GatewayRejected                      uint64
+	DeliveryAttempted, GatewayRetryable, DeliveryErrors    uint64
+	LastDeliveryError                                      string
 }
 
 type ProcessProfileHealth struct {

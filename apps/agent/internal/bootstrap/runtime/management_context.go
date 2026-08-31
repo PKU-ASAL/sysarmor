@@ -30,11 +30,11 @@ func (r *managementRuntime) identityForManagementContext(enrollment sqlite.Enrol
 	if mode.IdentitySource == management.IdentityStandalone {
 		return r.standaloneRuntimeIdentity(), nil
 	}
-	if strings.TrimSpace(enrollment.AgentID) == "" || strings.TrimSpace(enrollment.TenantID) == "" {
+	if strings.TrimSpace(enrollment.AgentID) == "" || strings.TrimSpace(enrollment.TenantID) == "" || strings.TrimSpace(enrollment.EnrollmentID) == "" {
 		return runtimeIdentity{}, fmt.Errorf("enrollment identity is incomplete")
 	}
 	standalone := r.standaloneRuntimeIdentity()
-	return runtimeIdentity{AgentID: enrollment.AgentID, HostID: standalone.HostID, TenantID: enrollment.TenantID}, nil
+	return runtimeIdentity{EnrollmentEpoch: enrollment.EnrollmentID, AgentID: enrollment.AgentID, HostID: standalone.HostID, TenantID: enrollment.TenantID}, nil
 }
 
 func (r *managementRuntime) applyProjectedIdentity(identity runtimeIdentity) {

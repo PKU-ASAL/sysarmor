@@ -91,7 +91,7 @@ def attack_campaign_seed_recall(metrics: dict[str, Any]) -> float | None:
     return set_recall(candidate_campaign_ids(metrics), set(metrics.get("truth_campaign_ids") or set()))
 
 
-def worker_graph_recall(metrics: dict[str, Any]) -> float | None:
+def stream_graph_recall(metrics: dict[str, Any]) -> float | None:
     if "truth_graph_event_ids" not in metrics or "evidence_event_ids" not in metrics:
         return None
     return set_recall(set(metrics.get("evidence_event_ids") or set()), set(metrics.get("truth_graph_event_ids") or set()))
@@ -137,7 +137,7 @@ def managed_recall_gate(
 def effect_gates(metrics: dict[str, Any], mode: str, limits: dict[str, float]) -> dict[str, dict[str, Any]]:
     rate = normal_candidate_rate(metrics)
     seed_recall = attack_campaign_seed_recall(metrics)
-    graph_recall = worker_graph_recall(metrics)
+    graph_recall = stream_graph_recall(metrics)
     incident_recall = conclusion_recall(metrics)
     return {
         "normal_candidate_rate": gate(
@@ -152,9 +152,9 @@ def effect_gates(metrics: dict[str, Any], mode: str, limits: dict[str, float]) -
             limits["attack_campaign_seed_recall"],
             "Agent attack campaign seed recall",
         ),
-        "worker_graph_recall": managed_recall_gate(
-            metrics, mode, graph_recall, limits["worker_graph_recall"],
-            "managed Worker Evidence Event recall",
+        "stream_graph_recall": managed_recall_gate(
+            metrics, mode, graph_recall, limits["stream_graph_recall"],
+            "managed Stream Evidence Event recall",
         ),
         "conclusion_recall": managed_recall_gate(
             metrics, mode, incident_recall, limits["conclusion_recall"],
@@ -171,12 +171,13 @@ def model_gate(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str,
     if candidate.get("health", {}).get("learning") != "loaded":
         return gate("failed", candidate.get("health", {}).get("learning"), "loaded", "Learning model is not loaded")
     if not candidate.get("model_candidates"):
-        return gate("failed", 0, ">=1", "Learning mode emitted no Model Candidate")
+        local = candidate.get("candidate_lifecycle", {}).get("created")
+        return gate("failed", 0, ">=1", f"no cloud-accepted Model Candidate; Agent created={local}")
 
     event_ids = candidate.get("events", set())
     profile_ids = candidate.get("profile_ids", set())
     reference_integrity = candidate.get("candidate_reference_integrity", {})
-    worker_projection = reference_integrity.get("source") == "worker_projection"
+    stream_projection = reference_integrity.get("source") == "stream_projection"
     expected = candidate.get("expected_model", {})
     provenance = ("modelRef", "modelVersion", "modelDigest", "featureSchema")
     if any(not expected.get(field) for field in provenance):
@@ -190,18 +191,18 @@ def model_gate(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str,
         subject = subject_process_id(signal)
         if any(signal.get(field) != expected[field] for field in provenance) or score is None:
             return gate("failed", signal, "complete provenance and score", "invalid Model Candidate provenance")
-        if subject is None or not worker_projection and subject not in profile_ids:
+        if subject is None or not stream_projection and subject not in profile_ids:
             return gate("failed", signal, "resolved subject process", "invalid Model Candidate subject process")
         refs = signal.get("eventRefs", [])
-        if not refs or not worker_projection and not set(refs).intersection(event_ids):
+        if not refs or not stream_projection and not set(refs).intersection(event_ids):
             return gate("failed", signal, "resolved refs", "unresolved Model Candidate event ref")
     return gate("passed", len(candidate.get("model_candidates", [])), None, "model provenance, subject, and refs")
 
 
 def candidate_lifecycle_gate(candidate: dict[str, Any]) -> dict[str, Any]:
     integrity = candidate.get("candidate_reference_integrity", {})
-    if integrity.get("source") != "worker_projection":
-        return gate("unavailable", None, "managed lifecycle", "Worker lifecycle artifacts are required")
+    if integrity.get("source") != "stream_projection":
+        return gate("unavailable", None, "managed lifecycle", "Stream lifecycle artifacts are required")
     lifecycle = candidate.get("candidate_lifecycle", {})
     gaps = candidate.get("reference_gaps", {})
     counters = {
@@ -210,8 +211,8 @@ def candidate_lifecycle_gate(candidate: dict[str, Any]) -> dict[str, Any]:
         "agent_spool_backlog": gaps.get("agent_spool_backlog"),
         "gateway_rejected": lifecycle.get("gateway_rejected"),
         "agent_delivery_backlog": gaps.get("agent_delivery_backlog"),
-        "worker_reference_rejected": integrity.get("reference_rejected"),
-        "worker_pending_backlog": integrity.get("pending_backlog"),
+        "stream_reference_rejected": integrity.get("reference_rejected"),
+        "stream_pending_backlog": integrity.get("pending_backlog"),
     }
     failed = {name: value for name, value in counters.items() if value is not None and value != 0}
     if failed:
@@ -224,10 +225,10 @@ def candidate_lifecycle_gate(candidate: dict[str, Any]) -> dict[str, Any]:
         "agent_contract_rejected": lifecycle.get("contract_rejected"),
         "gateway_accepted_unique": lifecycle.get("gateway_accepted"),
         "gateway_rejected": lifecycle.get("gateway_rejected"),
-        "worker_correlated": integrity.get("correlated"),
-        "worker_reference_rejected": integrity.get("reference_rejected"),
-        "worker_projected": integrity.get("projected"),
-        "worker_projection_artifacts": integrity.get("projection_artifacts"),
+        "stream_correlated": integrity.get("correlated"),
+        "stream_reference_rejected": integrity.get("reference_rejected"),
+        "stream_projected": integrity.get("projected"),
+        "stream_projection_artifacts": integrity.get("projection_artifacts"),
     }
     if any(value is None for value in stages.values()):
         return gate("unavailable", stages, "complete exact cohort", "Candidate lifecycle metric is missing")
@@ -235,10 +236,10 @@ def candidate_lifecycle_gate(candidate: dict[str, Any]) -> dict[str, Any]:
         stages["created"] == stages["spooled"] + stages["agent_contract_rejected"]
         and stages["spooled"] == stages["gateway_accepted_unique"] + stages["gateway_rejected"]
         and stages["gateway_accepted_unique"]
-        == stages["worker_correlated"] + stages["worker_reference_rejected"]
-        and stages["worker_correlated"]
-        == stages["worker_projected"]
-        == stages["worker_projection_artifacts"]
+        == stages["stream_correlated"] + stages["stream_reference_rejected"]
+        and stages["stream_correlated"]
+        == stages["stream_projected"]
+        == stages["stream_projection_artifacts"]
     )
     if not exact:
         return gate("failed", stages, "exact Signal.id cohort", "Candidate lifecycle counts do not identify one cohort")

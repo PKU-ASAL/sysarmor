@@ -454,6 +454,7 @@ class LayeredArchitectureContractTest(unittest.TestCase):
 
     def test_signal_schema_migration_sets_canonical_dimensions(self):
         migration = (self.repo / "deployments/opensearch/init.sh").read_text()
+        self.assertIn("--retry-all-errors", migration)
         for assignment in (
             "ctx._source.stage =",
             "ctx._source.detectorKind =",
@@ -563,7 +564,7 @@ import (
 
     def test_manager_commands_depend_on_bootstrap_only(self):
         violations = []
-        for command in ("sysarmor-manager", "sysarmor-gateway", "sysarmor-worker"):
+        for command in ("sysarmor-manager", "sysarmor-gateway"):
             source = self.repo / "apps" / "manager" / "cmd" / command / "main.go"
             for imported in IMPORT_PATTERN.findall(source.read_text()):
                 if imported == f"{MODULE}apps/manager/internal/bootstrap":

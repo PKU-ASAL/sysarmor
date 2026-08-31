@@ -167,7 +167,7 @@ func (r *TransportRuntime) serveControlChannel(ctx context.Context, session *grp
 func (r *TransportRuntime) runControlFlowForEnrollment(ctx context.Context, enrollment sqlite.Enrollment, tlsCfg tlsconfig.ClientConfig) {
 	backoff := time.Second
 	for ctx.Err() == nil {
-		identity := runtimeIdentity{TenantID: enrollment.TenantID, AgentID: enrollment.AgentID, HostID: r.dependencies.management.currentIdentity().HostID}
+		identity := runtimeIdentity{EnrollmentEpoch: enrollment.EnrollmentID, TenantID: enrollment.TenantID, AgentID: enrollment.AgentID, HostID: r.dependencies.management.currentIdentity().HostID}
 		if err := r.runControlChannel(ctx, enrollment.GatewayAddress, "", tlsCfg, identity); err != nil && ctx.Err() == nil && r.dependencies.out != nil {
 			fmt.Fprintf(r.dependencies.out, "agent managed control channel disconnected: %v\n", err)
 		}

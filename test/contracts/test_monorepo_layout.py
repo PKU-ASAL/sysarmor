@@ -13,7 +13,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "apps/agent/cmd/sysarmor-content-sign",
             "apps/manager/cmd/sysarmor-manager",
             "apps/manager/cmd/sysarmor-gateway",
-            "apps/manager/cmd/sysarmor-worker",
             "apps/cli/cmd/sysarmorctl",
         )
 
@@ -27,7 +26,6 @@ class MonorepoLayoutContractTest(unittest.TestCase):
             "cmd/sysarmor-content-sign",
             "cmd/sysarmor-manager",
             "cmd/sysarmor-gateway",
-            "cmd/sysarmor-worker",
             "cmd/sysarmorctl",
         )
 
@@ -401,11 +399,10 @@ class MonorepoLayoutContractTest(unittest.TestCase):
         self.assertNotIn("./apps/manager/integration", content)
         for package in (
             "./apps/manager/internal/application/gateway/...",
-            "./apps/manager/internal/adapters/inbound/kafka",
-            "./apps/manager/internal/application/worker/...",
-            "./apps/manager/internal/adapters/outbound/opensearch/worker",
+            "./apps/manager/internal/adapters/inbound/grpc/dataplane",
         ):
             self.assertIn(package, content)
+        self.assertIn("test.contracts.test_streaming_architecture", content)
 
         platform = self.repo / "test/suites/functional/platform"
         for functional_script in platform.glob("*.sh"):

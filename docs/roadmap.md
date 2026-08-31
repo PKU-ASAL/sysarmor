@@ -99,6 +99,10 @@ Agent 已具备有界 Event/Signal 保存、端侧规则与 ProcessProfile 模�
 
 本阶段不把最短路径直接称为攻击路径，不把 Incident 变成人工工单，也不让自然语言解释替代 Evidence。
 
+### 下一阶段专项计划
+
+端云调查闭环的下一阶段专项工作是将云侧溯源检测改造为可插拔 Detector 平台，并逐步从当前最短路径 Evidence 演进到 Terminal 选择、近似 Steiner Tree、路径排序和攻击阶段推理。具体交付顺序、模块合同和验收指标见[溯源图检测平台开发计划](development/provenance-detection-plan.md)。
+
 ## 阶段 4：受控响应与动态博弈
 
 自动化必须提高响应速度，但不能绕过权限、证据和生产安全边界。本阶段使 collection、detection、telemetry、response 能够在统一约束下随风险调整。

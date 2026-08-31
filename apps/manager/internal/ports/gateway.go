@@ -6,6 +6,7 @@ import (
 )
 
 type BatchEnvelope struct {
+	EnrollmentEpoch                    string
 	TenantID, AgentID, HostID, BatchID string
 	Transport, Topic, Key              string
 	Payload                            []byte

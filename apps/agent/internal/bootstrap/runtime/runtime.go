@@ -146,9 +146,10 @@ func NewCoordinator(dependencies Dependencies) (*Coordinator, error) {
 	runtime.policyState.detectionStatus.Learning = learningHealth(dependencies.LearningDetector, dependencies.LearningError)
 	runtime.wireComponents()
 	runtime.managementState.setRuntimeIdentity(runtimeIdentity{
-		AgentID:  dependencies.Config.Agent.ID,
-		HostID:   dependencies.Config.Agent.HostID,
-		TenantID: dependencies.Config.Agent.TenantID,
+		EnrollmentEpoch: "standalone",
+		AgentID:         dependencies.Config.Agent.ID,
+		HostID:          dependencies.Config.Agent.HostID,
+		TenantID:        dependencies.Config.Agent.TenantID,
 	})
 	return runtime, nil
 }

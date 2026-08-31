@@ -1,2 +1,1 @@
-ARG OPENSEARCH_IMAGE=sysarmor-opensearch:latest
-FROM ${OPENSEARCH_IMAGE}
+FROM opensearchproject/opensearch:2.14.0

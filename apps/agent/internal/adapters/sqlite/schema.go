@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 const baselineSchema = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -112,8 +112,8 @@ CREATE TABLE IF NOT EXISTS segments (
   created_at_ns INTEGER NOT NULL,
   sealed_at_ns INTEGER
 );
-CREATE TABLE IF NOT EXISTS upload_checkpoint (
-  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+CREATE TABLE IF NOT EXISTS delivery_checkpoint (
+  enrollment_epoch TEXT PRIMARY KEY,
   segment_id INTEGER,
   record_offset INTEGER NOT NULL,
   last_batch_id TEXT,
@@ -188,11 +188,27 @@ func (s *Store) applyBaseline(ctx context.Context) error {
 		if err := migrateUnenrollmentProtocol(tx, true); err != nil {
 			return err
 		}
-		version = currentSchemaVersion
+		version = 5
 	}
 	if version == 4 {
 		if err := migrateUnenrollmentProtocol(tx, false); err != nil {
 			return err
+		}
+		version = 5
+	}
+	if version == 5 {
+		if _, err := tx.Exec(`DROP TABLE IF EXISTS upload_checkpoint;
+CREATE TABLE IF NOT EXISTS delivery_checkpoint (
+  enrollment_epoch TEXT PRIMARY KEY,
+  segment_id INTEGER,
+  record_offset INTEGER NOT NULL,
+  last_batch_id TEXT,
+  updated_at_ns INTEGER NOT NULL
+);`); err != nil {
+			return fmt.Errorf("migrate delivery checkpoints: %w", err)
+		}
+		if _, err := tx.Exec(`DELETE FROM schema_meta; INSERT INTO schema_meta(version) VALUES (6);`); err != nil {
+			return fmt.Errorf("record delivery checkpoint migration: %w", err)
 		}
 		version = currentSchemaVersion
 	}
