@@ -142,7 +142,7 @@ Learning health 公开 Candidate 的 `created`、`spooled`、`gateway_accepted_u
 
 ## 云侧分析
 
-Worker 当前按 `tenant_id` 和分析标签限定作用域。分析标签从 `case_type`、`scenario`、`workload` 中选择；每个受影响作用域合并当前批次与 OpenSearch 中 15 分钟历史窗口内的 Event 和 Endpoint Signal，再根据有效检测策略重新计算 Cloud Signal 和 Incident。
+Worker 当前按 `tenant_id` 和分析作用域限定。分析作用域以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分；每个受影响作用域合并当前批次与 OpenSearch 中 15 分钟历史窗口内的 Event 和 Endpoint Signal，再根据有效检测策略重新计算 Cloud Signal 和 Incident。
 
 ```mermaid
 flowchart LR

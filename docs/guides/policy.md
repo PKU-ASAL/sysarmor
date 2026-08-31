@@ -108,7 +108,7 @@ Response Policy 定义允许的动作和模式。Signal 可以携带 response in
 
 策略不得只靠文件位置表达作用域。Manager 分配记录绑定 tenant、Agent 或选择器、策略 ID 和版本；Agent 实际应用的版本必须可查询。Collection 内部还可以限定运行目标，例如 namespace 等 sensor 支持的作用域。
 
-平台云侧关联另有分析作用域：当前使用 `case_type`、`scenario`、`workload` 标签中的有效值限定历史关联。它与策略分配作用域用途不同：前者防止无关数据被拼接，后者决定谁接收策略。两者都不能跨 tenant。
+平台云侧关联另有分析作用域：以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分。它与策略分配作用域用途不同：前者防止无关数据被拼接，后者决定谁接收策略。两者都不能跨 tenant。
 
 ## 推荐调优流程
 
