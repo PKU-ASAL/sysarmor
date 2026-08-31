@@ -15,6 +15,20 @@ def load_normalizer():
 
 
 class NormalizerTest(unittest.TestCase):
+    def test_analysis_scope_is_stable_when_policy_changes(self):
+        module = load_normalizer()
+        changed = candidate_batch("process-a", ["event-current"])
+        changed.events[0].event.labels["policy_id"] = "standalone-default"
+        changed.events[0].event.labels["policy_version"] = "1"
+        changed.signals[0].signal.labels["policy_id"] = "benchmark-policy"
+        changed.signals[0].signal.labels["policy_version"] = "2"
+        records = module.normalize_batch(protojson(changed)).records
+
+        self.assertEqual(
+            records[0].context.analysis_scope_key,
+            records[1].context.analysis_scope_key,
+        )
+
     def test_valid_batch_emits_versioned_event_and_candidate_records(self):
         normalizer = load_normalizer()
         batch = candidate_batch("process-a", ["event-current"])
@@ -33,7 +47,7 @@ class NormalizerTest(unittest.TestCase):
         self.assertEqual("policy-a", event_record.context.policy_id)
         self.assertEqual(7, event_record.context.policy_version)
         self.assertEqual(
-            "policy_id=policy-a,policy_version=7,scenario=normalizer",
+            "scenario=normalizer",
             event_record.context.analysis_scope_key,
         )
 

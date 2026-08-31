@@ -10,7 +10,7 @@ from packages.contracts.proto.streaming.v1 import streaming_pb2
 DATA_PLANE_SCHEMA = "sysarmor.dataplane/v1"
 NORMALIZED_SCHEMA = "sysarmor.telemetry.normalized/v1"
 REJECTED_SCHEMA = "sysarmor.telemetry.rejected/v1"
-SCOPE_LABELS = ("case_type", "scenario", "workload", "policy_id", "policy_version")
+SCOPE_LABELS = ("case_type", "scenario", "workload")
 
 
 @dataclass(frozen=True)
