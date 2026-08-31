@@ -15,8 +15,9 @@ import (
 )
 
 type ReadOptions struct {
-	Limit        int
-	FromSequence uint64
+	Limit           int
+	FromSequence    uint64
+	EnrollmentEpoch string
 }
 type StoredBatch struct {
 	Position Position
@@ -52,6 +53,9 @@ func (s *Store) ReadBatches(_ context.Context, opts ReadOptions) ([]StoredBatch,
 		}
 		for _, batch := range batches {
 			if batch.Position.BatchSequence < opts.FromSequence {
+				continue
+			}
+			if opts.EnrollmentEpoch != "" && batch.Batch.GetHeader().GetEnrollmentEpoch() != opts.EnrollmentEpoch {
 				continue
 			}
 			out = append(out, batch)

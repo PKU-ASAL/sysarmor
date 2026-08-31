@@ -2,9 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	gatewayapp "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/application/gateway"
 )
 
 func TestNewGatewayRejectsMissingRuntimeDependencies(t *testing.T) {
@@ -22,6 +26,21 @@ func TestGatewayRuntimeConfigRequiresKafkaBrokers(t *testing.T) {
 	}
 }
 
+func TestGatewayMetricsExposeBatchPublishBoundary(t *testing.T) {
+	metrics := &gatewayapp.BatchMetrics{}
+	server := newGatewayHealthServer("127.0.0.1:0", true, metrics)
+	request := httptest.NewRequest("GET", "/metrics", nil)
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, request)
+	var got map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["batches_received"]; !ok {
+		t.Fatalf("metrics=%v", got)
+	}
+}
+
 func TestGatewayRunCoordinatesListenerFailures(t *testing.T) {
 	source, err := os.ReadFile("gateway_runtime.go")
 	if err != nil {
@@ -35,6 +54,20 @@ func TestGatewayRunCoordinatesListenerFailures(t *testing.T) {
 	}
 	if !strings.Contains(text, "select {") {
 		t.Fatal("Gateway Run must coordinate gRPC and health listener errors")
+	}
+}
+
+func TestGatewayConnectsToControlDatabaseWithoutOwningMigrations(t *testing.T) {
+	source, err := os.ReadFile("gateway_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "OpenPostgresConnection") {
+		t.Fatal("gateway must connect through the non-migrating postgres path")
+	}
+	if strings.Contains(text, "OpenPostgres(ctx, config.PostgresDriver") {
+		t.Fatal("gateway must not run control-plane migrations")
 	}
 }
 

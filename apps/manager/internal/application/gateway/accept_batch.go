@@ -16,13 +16,21 @@ type BatchAcceptor struct {
 	publisher ports.BatchPublisher
 	sessions  ports.GatewaySessionStore
 	hot       ports.HotSessionWriter
+	metrics   *BatchMetrics
 }
 
-func NewBatchAcceptor(publisher ports.BatchPublisher, sessions ports.GatewaySessionStore, hot ports.HotSessionWriter) *BatchAcceptor {
-	return &BatchAcceptor{publisher: publisher, sessions: sessions, hot: hot}
+func NewBatchAcceptor(publisher ports.BatchPublisher, sessions ports.GatewaySessionStore, hot ports.HotSessionWriter, metrics ...*BatchMetrics) *BatchAcceptor {
+	service := &BatchAcceptor{publisher: publisher, sessions: sessions, hot: hot}
+	if len(metrics) > 0 {
+		service.metrics = metrics[0]
+	}
+	return service
 }
 
 func (service *BatchAcceptor) Accept(ctx context.Context, batch ports.BatchEnvelope) (BatchAcceptance, error) {
+	if service.metrics != nil {
+		service.metrics.recordReceived()
+	}
 	if err := validateBatch(batch); err != nil {
 		return BatchAcceptance{}, err
 	}
@@ -32,7 +40,13 @@ func (service *BatchAcceptor) Accept(ctx context.Context, batch ports.BatchEnvel
 	}
 	if !duplicate {
 		if err := service.publisher.Publish(ctx, batch); err != nil {
+			if service.metrics != nil {
+				service.metrics.recordPublishFailed()
+			}
 			return BatchAcceptance{}, fmt.Errorf("publish batch: %w", err)
+		}
+		if service.metrics != nil {
+			service.metrics.recordPublished()
 		}
 	}
 	session, err := service.sessions.RecordBatch(ctx, batch)

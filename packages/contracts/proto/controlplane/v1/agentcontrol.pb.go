@@ -1519,6 +1519,10 @@ type CandidateLifecycleRuntimeHealth struct {
 	ContractRejected    uint64                 `protobuf:"varint,4,opt,name=contract_rejected,json=contractRejected,proto3" json:"contract_rejected,omitempty"`
 	GatewayRejected     uint64                 `protobuf:"varint,5,opt,name=gateway_rejected,json=gatewayRejected,proto3" json:"gateway_rejected,omitempty"`
 	GatewayDuplicateAck uint64                 `protobuf:"varint,6,opt,name=gateway_duplicate_ack,json=gatewayDuplicateAck,proto3" json:"gateway_duplicate_ack,omitempty"`
+	DeliveryAttempted   uint64                 `protobuf:"varint,7,opt,name=delivery_attempted,json=deliveryAttempted,proto3" json:"delivery_attempted,omitempty"`
+	GatewayRetryable    uint64                 `protobuf:"varint,8,opt,name=gateway_retryable,json=gatewayRetryable,proto3" json:"gateway_retryable,omitempty"`
+	DeliveryErrors      uint64                 `protobuf:"varint,9,opt,name=delivery_errors,json=deliveryErrors,proto3" json:"delivery_errors,omitempty"`
+	LastDeliveryError   string                 `protobuf:"bytes,10,opt,name=last_delivery_error,json=lastDeliveryError,proto3" json:"last_delivery_error,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1593,6 +1597,34 @@ func (x *CandidateLifecycleRuntimeHealth) GetGatewayDuplicateAck() uint64 {
 		return x.GatewayDuplicateAck
 	}
 	return 0
+}
+
+func (x *CandidateLifecycleRuntimeHealth) GetDeliveryAttempted() uint64 {
+	if x != nil {
+		return x.DeliveryAttempted
+	}
+	return 0
+}
+
+func (x *CandidateLifecycleRuntimeHealth) GetGatewayRetryable() uint64 {
+	if x != nil {
+		return x.GatewayRetryable
+	}
+	return 0
+}
+
+func (x *CandidateLifecycleRuntimeHealth) GetDeliveryErrors() uint64 {
+	if x != nil {
+		return x.DeliveryErrors
+	}
+	return 0
+}
+
+func (x *CandidateLifecycleRuntimeHealth) GetLastDeliveryError() string {
+	if x != nil {
+		return x.LastDeliveryError
+	}
+	return ""
 }
 
 type ProcessProfileRuntimeHealth struct {
@@ -5076,14 +5108,19 @@ const file_packages_contracts_proto_controlplane_v1_agentcontrol_proto_rawDesc =
 	"\bprofiles\x18\x03 \x01(\v25.sysarmor.controlplane.v1.ProcessProfileRuntimeHealthR\bprofiles\x12Y\n" +
 	"\n" +
 	"candidates\x18\x04 \x01(\v29.sysarmor.controlplane.v1.CandidateLifecycleRuntimeHealthR\n" +
-	"candidates\"\x8c\x02\n" +
+	"candidates\"\xc1\x03\n" +
 	"\x1fCandidateLifecycleRuntimeHealth\x12\x18\n" +
 	"\acreated\x18\x01 \x01(\x04R\acreated\x12\x18\n" +
 	"\aspooled\x18\x02 \x01(\x04R\aspooled\x12)\n" +
 	"\x10gateway_accepted\x18\x03 \x01(\x04R\x0fgatewayAccepted\x12+\n" +
 	"\x11contract_rejected\x18\x04 \x01(\x04R\x10contractRejected\x12)\n" +
 	"\x10gateway_rejected\x18\x05 \x01(\x04R\x0fgatewayRejected\x122\n" +
-	"\x15gateway_duplicate_ack\x18\x06 \x01(\x04R\x13gatewayDuplicateAck\"\x89\x06\n" +
+	"\x15gateway_duplicate_ack\x18\x06 \x01(\x04R\x13gatewayDuplicateAck\x12-\n" +
+	"\x12delivery_attempted\x18\a \x01(\x04R\x11deliveryAttempted\x12+\n" +
+	"\x11gateway_retryable\x18\b \x01(\x04R\x10gatewayRetryable\x12'\n" +
+	"\x0fdelivery_errors\x18\t \x01(\x04R\x0edeliveryErrors\x12.\n" +
+	"\x13last_delivery_error\x18\n" +
+	" \x01(\tR\x11lastDeliveryError\"\x89\x06\n" +
 	"\x1bProcessProfileRuntimeHealth\x12\x16\n" +
 	"\x06active\x18\x01 \x01(\x04R\x06active\x12\x16\n" +
 	"\x06exited\x18\x02 \x01(\x04R\x06exited\x12\x1a\n" +

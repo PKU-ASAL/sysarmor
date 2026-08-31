@@ -12,7 +12,8 @@ import (
 
 func TestBatchBuilderUsesCurrentContextForEveryBatch(t *testing.T) {
 	provider := &contextProviderFake{context: ports.TelemetryContext{
-		TenantID: "local", AgentID: "device-a", HostID: "host-a",
+		EnrollmentEpoch: "enroll-a",
+		TenantID:        "local", AgentID: "device-a", HostID: "host-a",
 		PolicyID: "standalone", PolicyVersion: 1, PolicyMode: "enforcing",
 		Labels: map[string]string{"site": "lab"},
 	}}
@@ -27,6 +28,9 @@ func TestBatchBuilderUsesCurrentContextForEveryBatch(t *testing.T) {
 
 	assertHeader(t, first.GetHeader(), "local", "device-a", "standalone", 1)
 	assertHeader(t, second.GetHeader(), "tenant-a", "agent-a", "managed-policy", 7)
+	if second.GetHeader().GetEnrollmentEpoch() != "enroll-a" {
+		t.Fatalf("enrollment epoch = %q", second.GetHeader().GetEnrollmentEpoch())
+	}
 	if got := second.GetHeader().GetLabels()["site"]; got != "lab" {
 		t.Fatalf("site label = %q, want lab", got)
 	}

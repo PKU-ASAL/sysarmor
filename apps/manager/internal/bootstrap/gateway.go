@@ -41,10 +41,10 @@ type ControlPlaneConfig struct {
 	AgentToken string
 }
 
-func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, func() error, error) {
+func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, *gatewayapp.BatchMetrics, func() error, error) {
 	publisher, err := kafkaadapter.NewBatchPublisher(cfg.KafkaBrokers)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var hot gatewayHotSession
 	closers := []func() error{publisher.Close}
@@ -52,15 +52,16 @@ func NewGatewayDataPlane(cfg DataPlaneConfig) (*datagrpc.Server, func() error, e
 		writer, err := redisadapter.NewHotSessionWriter(cfg.RedisAddress, 2*time.Minute)
 		if err != nil {
 			_ = publisher.Close()
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		hot = writer
 		closers = append(closers, writer.Close)
 	}
 	sessions := identitypostgres.NewGatewaySessionStore(cfg.DB)
-	acceptor := gatewayapp.NewBatchAcceptor(publisher, sessions, hot)
+	metrics := &gatewayapp.BatchMetrics{}
+	acceptor := gatewayapp.NewBatchAcceptor(publisher, sessions, hot, metrics)
 	server := datagrpc.NewServer(acceptor, identitypostgres.NewCertificateAuthorizer(cfg.DB), cfg.AgentToken)
-	return server, func() error {
+	return server, metrics, func() error {
 		var errs []error
 		for index := len(closers) - 1; index >= 0; index-- {
 			if err := closers[index](); err != nil {

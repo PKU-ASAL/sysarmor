@@ -27,11 +27,11 @@ Signal 是检测发现，可以处于 Candidate 或 Conclusion 阶段，不天�
 
 - `tenant_id`：任何查询和关联都不能跨租户；
 - Agent 与主机身份：Endpoint Signal 的平台文档身份按 tenant、Agent 和 Signal 隔离；
-- 分析作用域：当前平台使用 `case_type`、`scenario`、`workload` 标签限定相关数据；
+- 分析作用域：以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分；
 - 时间范围：当前 Worker 使用以批次上界为终点的 15 分钟历史窗口；
 - 策略与分析版本：相同数据在不同规则、内容或分析版本下可能产生不同派生结果。
 
-分析作用域不是模糊的“相似数据”集合。缺少有效作用域标签的数据不会自动被拼接进另一个场景；lineage 和实体用于解释上下文，但不是绕过 tenant 与作用域边界的通用关联许可。
+分析作用域不是模糊的“相似数据”集合。缺少细分标签的数据按 Agent 身份隔离，不会自动被拼接进另一个场景；lineage 和实体用于解释上下文，但不是绕过 tenant 与作用域边界的通用关联许可。
 
 ## 第一步：阅读 Incident
 

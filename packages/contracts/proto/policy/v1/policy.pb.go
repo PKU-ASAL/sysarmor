@@ -28,6 +28,7 @@ type ConvergeParams struct {
 	MaxPathHops           uint32                 `protobuf:"varint,3,opt,name=max_path_hops,json=maxPathHops,proto3" json:"max_path_hops,omitempty"`
 	AdditiveRiskThreshold uint32                 `protobuf:"varint,4,opt,name=additive_risk_threshold,json=additiveRiskThreshold,proto3" json:"additive_risk_threshold,omitempty"`
 	CrossLineage          bool                   `protobuf:"varint,5,opt,name=cross_lineage,json=crossLineage,proto3" json:"cross_lineage,omitempty"`
+	StateRetentionNs      uint64                 `protobuf:"varint,6,opt,name=state_retention_ns,json=stateRetentionNs,proto3" json:"state_retention_ns,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -95,6 +96,13 @@ func (x *ConvergeParams) GetCrossLineage() bool {
 		return x.CrossLineage
 	}
 	return false
+}
+
+func (x *ConvergeParams) GetStateRetentionNs() uint64 {
+	if x != nil {
+		return x.StateRetentionNs
+	}
+	return 0
 }
 
 type RarityParams struct {
@@ -297,13 +305,14 @@ var File_packages_contracts_proto_policy_v1_policy_proto protoreflect.FileDescri
 
 const file_packages_contracts_proto_policy_v1_policy_proto_rawDesc = "" +
 	"\n" +
-	"/packages/contracts/proto/policy/v1/policy.proto\x12\x12sysarmor.policy.v1\"\xba\x01\n" +
+	"/packages/contracts/proto/policy/v1/policy.proto\x12\x12sysarmor.policy.v1\"\xe8\x01\n" +
 	"\x0eConvergeParams\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x13\n" +
 	"\x05top_k\x18\x02 \x01(\rR\x04topK\x12\"\n" +
 	"\rmax_path_hops\x18\x03 \x01(\rR\vmaxPathHops\x126\n" +
 	"\x17additive_risk_threshold\x18\x04 \x01(\rR\x15additiveRiskThreshold\x12#\n" +
-	"\rcross_lineage\x18\x05 \x01(\bR\fcrossLineage\"v\n" +
+	"\rcross_lineage\x18\x05 \x01(\bR\fcrossLineage\x12,\n" +
+	"\x12state_retention_ns\x18\x06 \x01(\x04R\x10stateRetentionNs\"v\n" +
 	"\fRarityParams\x12\x1b\n" +
 	"\tcms_width\x18\x01 \x01(\rR\bcmsWidth\x12\x1b\n" +
 	"\tcms_depth\x18\x02 \x01(\rR\bcmsDepth\x12,\n" +

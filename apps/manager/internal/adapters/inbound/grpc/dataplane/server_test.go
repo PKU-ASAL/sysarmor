@@ -27,9 +27,34 @@ func TestRejectedAckExposesCandidateReferenceReasonCode(t *testing.T) {
 	}
 }
 
+func TestMapBatchKeyAnchorsOnAgentAndAppendsScopeLabels(t *testing.T) {
+	batch := gatewayCandidateBatch()
+	batch.Header.Labels = map[string]string{"scenario": "apt", "workload": "web", "case_type": "benchmark"}
+
+	envelope, err := mapBatch(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "tenant-a:agent-a,scenario=apt,workload=web"; envelope.Key != want {
+		t.Fatalf("key = %q, want %q", envelope.Key, want)
+	}
+}
+
+func TestMapBatchKeyFallsBackToAgentWithoutScopeLabels(t *testing.T) {
+	batch := gatewayCandidateBatch()
+
+	envelope, err := mapBatch(batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "tenant-a:agent-a"; envelope.Key != want {
+		t.Fatalf("key = %q, want %q", envelope.Key, want)
+	}
+}
+
 func gatewayCandidateBatch() *dataplanev1.DataBatch {
 	return &dataplanev1.DataBatch{
-		Header: &dataplanev1.BatchHeader{TenantId: "tenant-a", AgentId: "agent-a", HostId: "host-a", BatchId: "batch-a"},
+		Header: &dataplanev1.BatchHeader{EnrollmentEpoch: "enroll-a", TenantId: "tenant-a", AgentId: "agent-a", HostId: "host-a", BatchId: "batch-a"},
 		Events: []*dataplanev1.EventFrame{{Event: &eventv1.CanonicalEvent{
 			Id: "event-a", SubjectProc: &eventv1.ProcessRef{StableId: "process-a"},
 		}}},

@@ -28,10 +28,17 @@ class LearningRunContractTest(unittest.TestCase):
     def test_uses_fixed_policy_fresh_vm_and_serial_activity(self):
         self.assertIn("collection-learning.json", self.script)
         self.assertIn("SYSARMOR_BENCH_PROTECTION_MODE", self.script)
-        self.assertIn("SYSARMOR_BENCH_VM_FRESH=1", self.script)
+        self.assertIn('SYSARMOR_BENCH_VM_FRESH="${SYSARMOR_LEARNING_VM_FRESH:-1}"', self.script)
+        self.assertIn('endpoint-run.log', self.script)
+        self.assertIn('failure.txt', self.script)
+        self.assertIn('$ROOT/environments/$VM_ENV', self.script)
+        self.assertLess(
+            self.script.index('mkdir -p "$child_dir"'),
+            self.script.index('>"$child_dir/endpoint-run.log"'),
+        )
         self.assertIn("SYSARMOR_BENCH_ACTIVITY_MODE=serial", self.script)
 
-    def test_defaults_to_managed_topology_for_worker_graph_recall(self):
+    def test_defaults_to_managed_topology_for_stream_graph_recall(self):
         self.assertIn('AGENT_MODE="${SYSARMOR_LEARNING_AGENT_MODE:-managed}"', self.script)
         self.assertIn('VM_ENV="vm-topology"', self.script)
         self.assertIn('SYSARMOR_BENCH_AGENT_MODE="$AGENT_MODE"', self.script)
@@ -75,7 +82,7 @@ class LearningRunContractTest(unittest.TestCase):
             '"eps_relative": 0.90',
             '"normal_candidate_rate": 0.01',
             '"attack_campaign_seed_recall": 0.90',
-            '"worker_graph_recall": 0.90',
+            '"stream_graph_recall": 0.90',
             '"conclusion_recall": 0.90',
         ):
             self.assertIn(contract, self.script)

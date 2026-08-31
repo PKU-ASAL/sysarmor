@@ -97,7 +97,7 @@ cat > "$OUT_DIR/manifest.json" <<EOF
     "eps_relative": 0.90,
     "normal_candidate_rate": 0.01,
     "attack_campaign_seed_recall": 0.90,
-    "worker_graph_recall": 0.90,
+    "stream_graph_recall": 0.90,
     "conclusion_recall": 0.90
   }
 }
@@ -125,6 +125,7 @@ run_mode() {
       SYSARMOR_BENCH_LEARNING_TRUST_KEYS="learning-experiment=$PUBLIC_KEY"
     )
   fi
+  mkdir -p "$child_dir"
   if ! env \
     SYSARMOR_VM_ENV="$VM_ENV" \
     SYSARMOR_BENCH_AGENT_MODE="$AGENT_MODE" \
@@ -136,10 +137,18 @@ run_mode() {
     SYSARMOR_BENCH_WORKLOAD="business-normal" \
     SYSARMOR_BENCH_SCENARIO="apt-fileless-c2-local" \
     SYSARMOR_BENCH_ACTIVITY_MODE=serial \
-    SYSARMOR_BENCH_VM_FRESH=1 \
+    SYSARMOR_BENCH_VM_FRESH="${SYSARMOR_LEARNING_VM_FRESH:-1}" \
     "${model_args[@]}" \
-    bash "$ENDPOINT_RUNNER"; then
+    bash "$ENDPOINT_RUNNER" >"$child_dir/endpoint-run.log" 2>&1; then
     status=1
+    {
+      echo "mode=$protection_mode"
+      echo "endpoint_log=$child_dir/endpoint-run.log"
+      echo "vm_env=$VM_ENV"
+      echo "vm_status:"
+      (cd "$ROOT/environments/$VM_ENV" && vagrant status) || true
+    } >"$child_dir/failure.txt"
+    ln -sfn "$child_dir" "$OUT_DIR/$protection_mode"
   fi
   if [[ -d "$child_dir/$collection_name" ]]; then
     ln -sfn "$child_dir" "$OUT_DIR/$protection_mode"

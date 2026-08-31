@@ -18,12 +18,12 @@ flowchart LR
   subgraph Platform["管理平台"]
     direction LR
     Gateway["Gateway<br/>mTLS 身份校验"] --> Kafka["Kafka<br/>可靠交接"]
-    Kafka --> Worker["Worker<br/>关联与投影"]
-    Worker --> Search["OpenSearch<br/>Event / Signal / Evidence / Incident"]
+    Kafka --> Flink["Flink<br/>Normalize / Detection / Projection"]
+    Flink --> Search["OpenSearch<br/>Event / Signal / Evidence / Incident"]
     Console["Web Console"] --> Manager["Manager API"]
     Manager -->|"策略、身份、审计"| ControlDB["PostgreSQL<br/>控制面状态"]
     Manager -->|"查询"| Search
-    ControlDB -->|"有效策略"| Worker
+    ControlDB -->|"发布策略 outbox"| Kafka
     Gateway --> Session["Redis<br/>短期连接状态"]
   end
 
@@ -35,13 +35,13 @@ flowchart LR
   Gateway -->|"会话、健康、确认"| ControlDB
 ```
 
-这条链路由三个边界组成：Agent 负责端点自治；Gateway、Kafka 和 Worker 负责可靠接入与分析；Manager 负责身份、策略、查询和操作流程。云侧增强 Agent，但不替代本地运行时。
+这条链路由四个边界组成：Agent 负责端点自治；Gateway 和 Kafka 负责可靠接入；Flink 负责流式分析；Manager 负责身份、策略、查询和操作流程。云侧增强 Agent，但不替代本地运行时。
 
 ## 安全数据模型
 
 SysArmor 的生产数据对象及 Signal 的 Stage、DetectorKind、Where 三个正交维度统一定义在[安全数据模型](concepts/security-data-model.md)。本页只说明这些对象如何经过系统组件。
 
-Agent 产生 Event 和 Endpoint Signal；Worker 在 tenant、分析作用域和时间窗口内读取当前与历史数据，产生 Cloud Signal、Evidence 子图和 Incident。Incident 是可重复计算的安全分析报告，不是人工工单。调查方法见[调查指南](guides/investigation.md)。
+Agent 产生 Event 和 Endpoint Signal；Flink 在 tenant、分析作用域和时间窗口内读取规范化流数据，产生 Cloud Signal、Evidence 子图和 Incident。Incident 是可重复计算的安全分析报告，不是人工工单。调查方法见[调查指南](guides/investigation.md)。
 
 ## Agent 端点自治
 
@@ -142,7 +142,7 @@ Learning health 公开 Candidate 的 `created`、`spooled`、`gateway_accepted_u
 
 ## 云侧分析
 
-Worker 当前按 `tenant_id` 和分析标签限定作用域。分析标签从 `case_type`、`scenario`、`workload` 中选择；每个受影响作用域合并当前批次与 OpenSearch 中 15 分钟历史窗口内的 Event 和 Endpoint Signal，再根据有效检测策略重新计算 Cloud Signal 和 Incident。
+Worker 当前按 `tenant_id` 和分析作用域限定。分析作用域以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分；每个受影响作用域合并当前批次与 OpenSearch 中 15 分钟历史窗口内的 Event 和 Endpoint Signal，再根据有效检测策略重新计算 Cloud Signal 和 Incident。
 
 ```mermaid
 flowchart LR
@@ -167,9 +167,9 @@ flowchart LR
 
 Worker 先把 Event 规范化为有方向的 `ProvenanceEdge`，再构建进程、文件和 socket provenance 图：进程创建从父进程指向子进程，读操作从对象指向进程，写和发送操作从进程指向对象，每条边聚合对应的 `event_refs`；`process.exit` 只结束生命周期，不生成图边。合法 root process 即使没有父边也必须保留为图节点。Signal 只提供 Evidence 种子，不产生或补造 ProvenanceEdge。父身份缺失时图中保留明确的 gap 节点，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；Model Candidate 不会单独晋升为 Incident，因此真实 managed 图与结论 recall 由 `hybrid` 路径验收。候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
 
-### 目标：Flink 流式检测平面
+### Flink 流式检测平面
 
-云侧分析将一次性迁移到真实 Apache Flink 集群。迁移验收完成前，本节描述已批准但尚未成为当前生产事实的目标边界；验收完成后删除上面的旧 Worker 路径和本段过渡说明，不保留双跑、fallback 或兼容 facade。
+云侧分析运行在 Apache Flink 集群中，不保留 Go Worker 双跑、fallback 或兼容 facade。
 
 目标架构划分四个互不越界的平面：
 
@@ -228,7 +228,7 @@ checkpoint 和 savepoint 只依赖 S3-compatible 接口，路径按稳定 Job ID
 |---|---|
 | Gateway | 验证 Agent 身份，接收数据，维护控制连接 |
 | Kafka | 保存等待处理的 telemetry，提供可靠交接 |
-| Worker | 读取历史、执行关联、生成并投影派生数据 |
+| Flink | 标准化 telemetry、执行有状态关联、生成并投影派生数据 |
 | Manager | 提供注册、策略、响应、查询和审计接口 |
 | PostgreSQL | Agent、注册、制品、通道、策略、响应和审计等控制面状态 |
 | OpenSearch | Event、Signal、Evidence 和可重复 Incident 报告 |
@@ -261,7 +261,7 @@ YAML、Protobuf、SQLite schema、文件系统、操作系统和 sensor 类型�
 
 ### 平台分层与启动路径
 
-Manager、Gateway 和 Worker 的生产入口统一采用以下依赖方向：
+Manager、Gateway 和 Flink Job 的生产入口统一采用以下依赖方向：
 
 ```text
 cmd -> bootstrap -> application + ports <- adapters
@@ -275,13 +275,13 @@ PostgreSQL、Kafka、OpenSearch 等技术资源并注入端口；Application 编
 Domain 只包含确定性模型和算法。Protobuf、SQL、Kafka 和 OpenSearch 类型不得进入 Domain，
 Application 也不直接导入技术 Adapter。
 
-Worker 的 Kafka inbound Adapter 将 wire batch 校验并映射为 Domain Event/Signal；
-`ProcessBatch` Application Service 负责 claim、history、rarity、policy、分析、projection 和
-commit/abandon；OpenSearch outbound Adapter 负责历史文档解码、稳定文档 ID 和批量投影。
-重复批次视为成功，busy 或依赖失败保持可重试；永久错误仅在 DLQ 发布成功后提交 offset。
+Normalize Job 将 wire batch 校验并映射为版本化 telemetry；Detection Job 负责 policy
+Broadcast State、watermark、Provenance、rarity、分析和 artifact；Projection Job 负责稳定
+文档 ID 的 OpenSearch 幂等投影。重复输入通过 Kafka checkpoint 和稳定 ID 重放安全处理；永久
+错误进入对应 DLQ，临时错误保持可重试。
 
-Manager 与 Worker 的生产持久化仅支持 PostgreSQL。缺失 DSN、迁移失败或数据库不可用时启动
-失败，不回退到 memory/file Store。
+Manager 的控制面持久化仅支持 PostgreSQL。Flink Job 不访问 PostgreSQL；缺失 Policy 版本
+会明确失败，不回退到内存默认策略。
 
 ## 失败边界
 
@@ -290,7 +290,7 @@ Manager 与 Worker 的生产持久化仅支持 PostgreSQL。缺失 DSN、迁移�
 - 云侧不可用不能使本地采集和检测停止；
 - 未持久化的本地写入不能报告成功；
 - 未获可靠确认的上传不能推进 checkpoint；
-- 未完成必需投影的 Worker 不能提交来源消息；
+- 未完成必需投影的 Flink Job 不能确认对应输入进度；
 - 数据丢弃、解析错误、队列溢出和策略失败必须进入健康状态或审计；
 - 关联不能跨 tenant 或既定分析作用域；
 - Agentic 建议不能绕过策略校验、作用域、资源预算、审批和审计。

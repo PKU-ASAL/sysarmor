@@ -1,12 +1,28 @@
 package migrations
 
-const PostgresVersion = 9
+const PostgresVersion = 11
 
 type Migration struct {
 	Version int
 	Name    string
 	SQL     string
 }
+
+const PolicySnapshotOutboxSchema = `
+CREATE TABLE IF NOT EXISTS policy_snapshot_outbox (
+  tenant_id TEXT NOT NULL,
+  policy_id TEXT NOT NULL,
+  policy_version BIGINT NOT NULL,
+  policy_document JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  attempt_count BIGINT NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (tenant_id, policy_id, policy_version)
+);
+CREATE INDEX IF NOT EXISTS idx_policy_snapshot_outbox_pending
+ON policy_snapshot_outbox (created_at) WHERE published_at IS NULL;
+`
 
 const AgentUnenrollmentsSchema = `
 CREATE TABLE IF NOT EXISTS agent_unenrollments (
@@ -26,61 +42,10 @@ CREATE INDEX IF NOT EXISTS idx_agent_unenrollments_agent ON agent_unenrollments 
 CREATE INDEX IF NOT EXISTS idx_agent_unenrollments_status ON agent_unenrollments (tenant_id, status);
 `
 
-const TenantTelemetryBatchesSchema = `
-CREATE TABLE IF NOT EXISTS telemetry_batches (
-  tenant_id TEXT NOT NULL,
-  batch_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  lease_until TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  completed_at TIMESTAMPTZ,
-  PRIMARY KEY (tenant_id, batch_id),
-  CHECK (status IN ('processing', 'completed'))
-);
-CREATE INDEX IF NOT EXISTS idx_telemetry_batches_lease
-  ON telemetry_batches (status, lease_until);
-`
-
-const TelemetryBatchClaimFencingSchema = `
-ALTER TABLE telemetry_batches
-  ADD COLUMN IF NOT EXISTS claim_token TEXT;
-UPDATE telemetry_batches
-  SET claim_token = ''
-  WHERE claim_token IS NULL;
-ALTER TABLE telemetry_batches
-  ALTER COLUMN claim_token SET NOT NULL;
-`
-
-const WorkerCandidateRejectionsSchema = `
-CREATE TABLE IF NOT EXISTS worker_candidate_rejections (
-  tenant_id TEXT NOT NULL,
-  batch_id TEXT NOT NULL,
-  failure_class TEXT NOT NULL,
-  candidate_count BIGINT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (tenant_id, batch_id)
-);
-`
-
-const WorkerSignalProcessingSchema = `
-CREATE TABLE IF NOT EXISTS worker_signal_processing (
-  tenant_id TEXT NOT NULL,
-  signal_id TEXT NOT NULL,
-  agent_id TEXT NOT NULL,
-  batch_id TEXT NOT NULL,
-  subject_id TEXT NOT NULL DEFAULT '',
-  trigger_event_id TEXT NOT NULL DEFAULT '',
-  event_sequence BIGINT CHECK (event_sequence >= 0),
-  status TEXT NOT NULL CHECK (status IN ('correlated', 'projected', 'reference_rejected')),
-  failure_class TEXT NOT NULL DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (tenant_id, signal_id),
-  CHECK (status = 'reference_rejected' OR (subject_id <> '' AND trigger_event_id <> ''))
-);
-CREATE INDEX IF NOT EXISTS idx_worker_signal_processing_batch
-  ON worker_signal_processing (tenant_id, batch_id);
-DROP TABLE worker_candidate_rejections;
+const RetireWorkerTablesSchema = `
+DROP TABLE IF EXISTS worker_signal_processing;
+DROP TABLE IF EXISTS worker_candidate_rejections;
+DROP TABLE IF EXISTS telemetry_batches;
 `
 
 const ControlAuditSchema = `
@@ -409,12 +374,10 @@ func Ordered() []Migration {
 	return []Migration{
 		{Version: 1, Name: "current_control_plane_baseline", SQL: PostgresSchema},
 		{Version: 2, Name: "agent_unenrollment_lifecycle", SQL: AgentUnenrollmentsSchema},
-		{Version: 3, Name: "tenant_telemetry_batches", SQL: TenantTelemetryBatchesSchema},
-		{Version: 4, Name: "telemetry_batch_claim_fencing", SQL: TelemetryBatchClaimFencingSchema},
 		{Version: 5, Name: "control_audit", SQL: ControlAuditSchema},
 		{Version: 6, Name: "response_decisions", SQL: ResponseDecisionsSchema},
 		{Version: 7, Name: "endpoint_protection_modes", SQL: EndpointProtectionModesSchema},
-		{Version: 8, Name: "worker_candidate_rejections", SQL: WorkerCandidateRejectionsSchema},
-		{Version: 9, Name: "worker_signal_processing", SQL: WorkerSignalProcessingSchema},
+		{Version: 10, Name: "retire_worker_tables", SQL: RetireWorkerTablesSchema},
+		{Version: 11, Name: "policy_snapshot_outbox", SQL: PolicySnapshotOutboxSchema},
 	}
 }

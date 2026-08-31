@@ -198,6 +198,10 @@ message CandidateLifecycleRuntimeHealth {
   uint64 contract_rejected = 4;
   uint64 gateway_rejected = 5;
   uint64 gateway_duplicate_ack = 6;
+  uint64 delivery_attempted = 7;
+  uint64 gateway_retryable = 8;
+  uint64 delivery_errors = 9;
+  string last_delivery_error = 10;
 }
 
 message ProcessProfileRuntimeHealth {

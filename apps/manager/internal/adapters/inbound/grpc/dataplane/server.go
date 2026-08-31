@@ -97,13 +97,15 @@ func mapBatch(batch *dataplanev1.DataBatch) (ports.BatchEnvelope, error) {
 		return ports.BatchEnvelope{}, err
 	}
 	key := header.GetAgentId()
-	for _, label := range []string{"case_type", "scenario", "workload"} {
+	for _, label := range []string{"scenario", "workload"} {
 		if value := strings.TrimSpace(header.GetLabels()[label]); value != "" {
-			key = label + "=" + value
-			break
+			key += "," + label + "=" + value
 		}
 	}
-	return ports.BatchEnvelope{TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), HostID: header.GetHostId(), BatchID: header.GetBatchId(), Transport: "grpc_stream", Topic: "sysarmor.agent.databatch.raw", Key: header.GetTenantId() + ":" + key, Payload: raw}, nil
+	if strings.TrimSpace(header.GetEnrollmentEpoch()) == "" {
+		return ports.BatchEnvelope{}, fmt.Errorf("batch enrollment_epoch is required")
+	}
+	return ports.BatchEnvelope{EnrollmentEpoch: header.GetEnrollmentEpoch(), TenantID: header.GetTenantId(), AgentID: header.GetAgentId(), HostID: header.GetHostId(), BatchID: header.GetBatchId(), Transport: "grpc_stream", Topic: "sysarmor.data.telemetry.endpoint.batch.ingress.v1", Key: header.GetTenantId() + ":" + key, Payload: raw}, nil
 }
 func acceptedAck(batch *dataplanev1.DataBatch, value dataplanev1.DataAck_Status, message string) *dataplanev1.DataAck {
 	return &dataplanev1.DataAck{BatchId: batch.GetHeader().GetBatchId(), Accepted: true, Status: value, Message: message, ReasonCode: message, CommittedCursor: batch.GetHeader().GetBatchId(), ServerTime: time.Now().UTC().Format(time.RFC3339Nano), ContractVersion: "dataplane.v1"}

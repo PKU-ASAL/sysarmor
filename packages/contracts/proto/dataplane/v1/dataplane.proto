@@ -37,6 +37,7 @@ message BatchHeader {
 
   int64 created_at_unix_nano = 16;
   map<string, string> labels = 17;
+  string enrollment_epoch = 18;
 }
 
 message EventFrame {

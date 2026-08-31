@@ -24,6 +24,7 @@ func main() {
 	opensearchURL := flag.String("opensearch-url", envDefault("SYSARMOR_OPENSEARCH_URL", ""), "OpenSearch URL")
 	opensearchUsername := flag.String("opensearch-username", envDefault("SYSARMOR_OPENSEARCH_USERNAME", ""), "OpenSearch basic auth username")
 	opensearchPassword := flag.String("opensearch-password", envDefault("SYSARMOR_OPENSEARCH_PASSWORD", ""), "OpenSearch basic auth password")
+	kafkaBrokers := flag.String("kafka-brokers", envDefault("SYSARMOR_KAFKA_BROKERS", ""), "comma-separated Kafka brokers")
 	jwtPublicKey := flag.String("jwt-public-key", envDefault("SYSARMOR_JWT_PUBLIC_KEY_FILE", ""), "trusted BFF RS256 JWT public key PEM")
 	jwtIssuer := flag.String("jwt-issuer", envDefault("SYSARMOR_JWT_ISSUER", ""), "required JWT issuer")
 	jwtAudience := flag.String("jwt-audience", envDefault("SYSARMOR_JWT_AUDIENCE", ""), "required JWT audience")
@@ -38,6 +39,7 @@ func main() {
 	defer cancel()
 	server, closer, err := bootstrap.NewManager(openCtx, bootstrap.ManagerConfig{
 		ListenAddress: *listen, PostgresDriver: *postgresDriver, PostgresDSN: *postgresDSN,
+		KafkaBrokers:  splitCSV(*kafkaBrokers),
 		OpenSearchURL: *opensearchURL, OpenSearchUsername: *opensearchUsername, OpenSearchPassword: *opensearchPassword,
 		JWT:        bootstrap.JWTConfig{PublicKeyFile: *jwtPublicKey, Issuer: *jwtIssuer, Audience: *jwtAudience},
 		Enrollment: bootstrap.EnrollmentHTTPConfig{CACertFile: os.Getenv("SYSARMOR_AGENT_CA_CERT"), CAKeyFile: os.Getenv("SYSARMOR_AGENT_CA_KEY"), TrustDomain: os.Getenv("SYSARMOR_TRUST_DOMAIN"), PublicURL: os.Getenv("SYSARMOR_PUBLIC_URL"), ArtifactPublicKeyFile: os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"), ArtifactDir: envDefault("SYSARMOR_ARTIFACT_DIR", "/var/lib/sysarmor/manager/artifacts"), DeployGatewayAddress: os.Getenv("SYSARMOR_DEPLOY_GATEWAY_ADDR"), DeployGatewayServerName: os.Getenv("SYSARMOR_DEPLOY_GATEWAY_SNI"), PackageDownloadBaseURL: os.Getenv("SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL")},
@@ -78,4 +80,14 @@ func envDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func splitCSV(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }

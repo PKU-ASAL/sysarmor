@@ -74,7 +74,7 @@ func TestReconcileManagementContextUsesEnrollmentIdentityWhileEnrolling(t *testi
 	runner := managementContextTestRuntime()
 
 	err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{
-		State: sqlite.StateEnrolling, AgentID: "agent-a", TenantID: "tenant-a",
+		State: sqlite.StateEnrolling, EnrollmentID: "enroll-a", AgentID: "agent-a", TenantID: "tenant-a",
 	})
 
 	identity := runner.managementState.currentIdentity()

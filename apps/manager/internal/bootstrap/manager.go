@@ -21,6 +21,7 @@ type ManagerConfig struct {
 	ListenAddress      string
 	PostgresDriver     string
 	PostgresDSN        string
+	KafkaBrokers       []string
 	OpenSearchURL      string
 	OpenSearchUsername string
 	OpenSearchPassword string
@@ -42,6 +43,12 @@ func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Clo
 	if strings.TrimSpace(config.PostgresDriver) == "" {
 		return nil, nil, fmt.Errorf("postgres driver is required")
 	}
+	if strings.TrimSpace(config.PostgresDriver) != "postgres" {
+		return nil, nil, fmt.Errorf("postgres driver must be postgres")
+	}
+	if len(cleanKafkaBrokers(config.KafkaBrokers)) == 0 {
+		return nil, nil, fmt.Errorf("kafka brokers are required")
+	}
 	db, migration, err := openManagerDatabase(ctx, config)
 	if err != nil {
 		return nil, nil, err
@@ -51,7 +58,12 @@ func NewManager(ctx context.Context, config ManagerConfig) (*http.Server, io.Clo
 		_ = db.Close()
 		return nil, nil, err
 	}
-	return server, db, nil
+	snapshots, err := startPolicySnapshotRuntime(db, config.KafkaBrokers)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("start policy snapshot dispatcher: %w", err)
+	}
+	return server, &managerResources{db: db, snapshot: snapshots}, nil
 }
 
 func openManagerDatabase(ctx context.Context, config ManagerConfig) (*sql.DB, postgresmigrations.MigrationResult, error) {
@@ -59,19 +71,9 @@ func openManagerDatabase(ctx context.Context, config ManagerConfig) (*sql.DB, po
 }
 
 func OpenPostgres(ctx context.Context, driver, dsn string) (*sql.DB, postgresmigrations.MigrationResult, error) {
-	if strings.TrimSpace(dsn) == "" {
-		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres dsn is required")
-	}
-	if strings.TrimSpace(driver) == "" {
-		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres driver is required")
-	}
-	driver = strings.TrimSpace(driver)
-	if driver != "postgres" {
-		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("postgres driver must be postgres")
-	}
-	db, err := sql.Open(driver, dsn)
+	db, err := OpenPostgresConnection(driver, dsn)
 	if err != nil {
-		return nil, postgresmigrations.MigrationResult{}, fmt.Errorf("open postgres: %w", err)
+		return nil, postgresmigrations.MigrationResult{}, err
 	}
 	migration, err := postgresmigrations.ApplyMigrations(ctx, db)
 	if err != nil {
@@ -79,6 +81,24 @@ func OpenPostgres(ctx context.Context, driver, dsn string) (*sql.DB, postgresmig
 		return nil, postgresmigrations.MigrationResult{}, err
 	}
 	return db, migration, nil
+}
+
+func OpenPostgresConnection(driver, dsn string) (*sql.DB, error) {
+	if strings.TrimSpace(dsn) == "" {
+		return nil, fmt.Errorf("postgres dsn is required")
+	}
+	if strings.TrimSpace(driver) == "" {
+		return nil, fmt.Errorf("postgres driver is required")
+	}
+	driver = strings.TrimSpace(driver)
+	if driver != "postgres" {
+		return nil, fmt.Errorf("postgres driver must be postgres")
+	}
+	db, err := sql.Open(driver, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres: %w", err)
+	}
+	return db, nil
 }
 
 func buildManagerServer(ctx context.Context, db *sql.DB, migration postgresmigrations.MigrationResult, config ManagerConfig) (*http.Server, error) {

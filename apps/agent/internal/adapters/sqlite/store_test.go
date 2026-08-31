@@ -100,8 +100,8 @@ INSERT INTO enrollment VALUES (1,'managed','tenant-a','agent-a','enroll-a','42',
 	if err := store.db.QueryRow(`SELECT unenrollment_protocol FROM enrollment WHERE singleton=1`).Scan(&protocol); err != nil {
 		t.Fatal(err)
 	}
-	if got := schemaVersion(t, store); got != 5 || protocol != "legacy_mtls" {
-		t.Fatalf("schema version=%d protocol=%q, want 5/legacy_mtls", got, protocol)
+	if got := schemaVersion(t, store); got != currentSchemaVersion || protocol != "legacy_mtls" {
+		t.Fatalf("schema version=%d protocol=%q, want %d/legacy_mtls", got, protocol, currentSchemaVersion)
 	}
 	if _, ok, err := store.UnenrollmentCompletion(t.Context()); err != nil || ok {
 		t.Fatalf("completion ok=%t err=%v", ok, err)

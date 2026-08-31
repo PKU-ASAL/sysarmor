@@ -60,7 +60,7 @@ func (s *Store) EnforceCapacity(ctx context.Context) (CapacityResult, error) {
 }
 
 func (s *Store) capacityCandidates(ctx context.Context) ([]segmentCandidate, error) {
-	checkpoint, err := s.Checkpoint(ctx)
+	checkpoint, err := s.LatestCheckpoint(ctx)
 	if err != nil {
 		return nil, err
 	}

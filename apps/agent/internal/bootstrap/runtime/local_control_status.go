@@ -173,6 +173,8 @@ func candidateLifecycleHealthMessage(value agenthealth.CandidateLifecycleHealth)
 		Created: value.Created, Spooled: value.Spooled, GatewayAccepted: value.GatewayAccepted,
 		GatewayDuplicateAck: value.GatewayDuplicateAck,
 		ContractRejected:    value.ContractRejected, GatewayRejected: value.GatewayRejected,
+		DeliveryAttempted: value.DeliveryAttempted, GatewayRetryable: value.GatewayRetryable,
+		DeliveryErrors: value.DeliveryErrors, LastDeliveryError: value.LastDeliveryError,
 	}
 }
 

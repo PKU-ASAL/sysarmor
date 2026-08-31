@@ -101,7 +101,8 @@ func (r *telemetryRuntime) TelemetryContext() ports.TelemetryContext {
 	identity := r.management.currentIdentity()
 	policy := r.policy.activePolicy()
 	return ports.TelemetryContext{
-		TenantID: identity.TenantID, AgentID: identity.AgentID, HostID: identity.HostID,
+		EnrollmentEpoch: identity.EnrollmentEpoch,
+		TenantID:        identity.TenantID, AgentID: identity.AgentID, HostID: identity.HostID,
 		PolicyID: policy.PolicyID, PolicyVersion: policy.Version, PolicyMode: policy.Mode,
 		Labels: cloneStringMap(r.config.Agent.Labels),
 	}

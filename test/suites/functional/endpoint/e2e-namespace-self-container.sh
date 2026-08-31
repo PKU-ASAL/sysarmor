@@ -31,7 +31,7 @@ require_platform() {
   local missing=0
   local signing_created=0
   signing_created="$(ensure_artifact_signing_material)"
-  for name in sysarmor-manager sysarmor-gateway sysarmor-worker sysarmor-postgres sysarmor-kafka sysarmor-redis sysarmor-opensearch sysarmor-packages; do
+  for name in sysarmor-manager sysarmor-gateway sysarmor-postgres sysarmor-kafka sysarmor-redis sysarmor-opensearch sysarmor-packages sysarmor-flink-jobmanager sysarmor-flink-taskmanager; do
     if ! container_running "$name"; then
       missing=1
       break

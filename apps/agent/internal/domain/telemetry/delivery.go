@@ -19,6 +19,7 @@ type SendResult struct {
 
 type Batch struct {
 	ID              string
+	EnrollmentEpoch string
 	TenantID        string
 	AgentID         string
 	Payload         []byte

@@ -201,7 +201,7 @@ class LearningReportArtifactTest(unittest.TestCase):
         self.assertIn("Attack campaigns seeded by Agent", report)
         self.assertIn("Capacity evictions", report)
         self.assertIn("EventRef evictions", report)
-        self.assertIn("Worker projection artifacts", report)
+        self.assertIn("Stream projection artifacts", report)
 
     def test_human_report_renders_learning_semantic_scheduling(self):
         rule_only = metrics()

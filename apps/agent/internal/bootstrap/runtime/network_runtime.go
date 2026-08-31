@@ -38,7 +38,7 @@ func (r *managementRuntime) runManagedNetwork(ctx context.Context, enrollment sq
 		defer close(exportDone)
 		defer cloud.Close()
 		applicationtelemetry.NewDelivery(telemetryadapter.NewLocalSpool(r.localStore), cloud, &r.telemetry.candidateLifecycle).Run(ctx, applicationtelemetry.DeliveryScope{
-			FromSequence: enrollment.ManagedFromSequence, TenantID: enrollment.TenantID, AgentID: enrollment.AgentID,
+			FromSequence: enrollment.ManagedFromSequence, EnrollmentEpoch: enrollment.EnrollmentID, TenantID: enrollment.TenantID, AgentID: enrollment.AgentID,
 		})
 	}()
 	if r.managedControl != nil {
