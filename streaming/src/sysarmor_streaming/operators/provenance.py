@@ -5,7 +5,6 @@ from packages.contracts.proto.incident.v1 import incident_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 
 
-MAX_EVIDENCE_SEEDS = 128
 MAX_GRAPH_EVENTS = 100_000
 KNOWN_ENTITY_KINDS = {"file", "socket", "process", "container", "user", "token"}
 
@@ -64,6 +63,13 @@ def entity_id(kind: str, key: str) -> str:
 
 
 class ProvenanceGraph:
+    """Event -> ProvenanceEdge graph with shared query primitives.
+
+    Builds and stores the provenance graph, and exposes graph queries
+    (shortest path, adjacency, subgraph) that Detectors compose. The
+    evidence-organization logic lives in provenance-shortest-path-v1, not here.
+    """
+
     def __init__(self):
         self._nodes = {}
         self._node_order = []
@@ -82,37 +88,66 @@ class ProvenanceGraph:
     def add_event(self, event) -> None:
         stable_id = event.subject_proc.stable_id.strip()
         if stable_id:
-            self._add_node(entity_id("process", stable_id), "process", "subject")
+            self.add_node(entity_id("process", stable_id), "process", "subject")
         edge = edge_from_event(event)
         if edge is not None:
             self._add_provenance_edge(edge)
 
-    def evidence_subgraph(self):
-        return self._subgraph(set(self._node_order), set(self._edge_order))
+    def add_node(self, node_id: str, kind: str, role: str) -> None:
+        if not node_id or node_id in self._nodes:
+            return
+        node = incident_pb2.GraphNode(id=node_id, kind=kind, label=node_id)
+        if role:
+            node.entities.append(signal_pb2.EntityRef(kind=kind, key=node_id, role=role))
+        self._nodes[node_id] = node
+        self._node_order.append(node_id)
 
-    def connecting_evidence(self, signals):
-        seeds = self._signal_seeds(signals)
-        if not seeds:
-            return incident_pb2.EvidenceSubgraph()
-        nodes, edges = set(seeds), set()
-        if len(seeds) == 1:
-            adjacent_nodes, adjacent_edges = self._k_hop(seeds[0], 1)
-            nodes.update(adjacent_nodes)
-            edges.update(adjacent_edges)
-        for left in range(len(seeds)):
-            for right in range(left + 1, len(seeds)):
-                path_nodes, path_edges = self._shortest_path(seeds[left], seeds[right])
-                nodes.update(path_nodes)
-                edges.update(path_edges)
-        self._include_adjacent_gaps(nodes, edges)
-        return self._subgraph(nodes, edges)
+    def has_node(self, node_id: str) -> bool:
+        return node_id in self._nodes
+
+    def neighbors(self, node_id: str) -> tuple[str, ...]:
+        return tuple(self._adjacency.get(node_id, ()))
+
+    def adjacent(self, edge_id: str, node: str) -> str:
+        edge = self._edges[edge_id]
+        from_id = getattr(edge, "from")
+        return edge.to if from_id == node else from_id
+
+    def shortest_path(self, start: str, target: str):
+        if start not in self._nodes or target not in self._nodes:
+            return set(), set()
+        parents, seen, queue = {}, {start}, deque([start])
+        while queue:
+            node = queue.popleft()
+            for edge_id in self._adjacency.get(node, ()):
+                other = self.adjacent(edge_id, node)
+                if other in seen:
+                    continue
+                parents[other] = (node, edge_id)
+                if other == target:
+                    return self._path(start, target, parents)
+                seen.add(other)
+                queue.append(other)
+        return set(), set()
+
+    def subgraph(self, nodes, edges):
+        result = incident_pb2.EvidenceSubgraph()
+        result.nodes.extend(self._nodes[node_id] for node_id in self._node_order if node_id in nodes)
+        result.edges.extend(self._edges[edge_id] for edge_id in self._edge_order if edge_id in edges)
+        return result
+
+    def edges(self):
+        return tuple((edge_id, self._edges[edge_id]) for edge_id in self._edge_order)
+
+    def evidence_subgraph(self):
+        return self.subgraph(set(self._node_order), set(self._edge_order))
 
     def connects(self, left, right) -> bool:
         left_nodes = self._existing_signal_nodes(left)
         right_nodes = self._existing_signal_nodes(right)
         for start in left_nodes:
             for target in right_nodes:
-                if start == target or self._shortest_path(start, target)[1]:
+                if start == target or self.shortest_path(start, target)[1]:
                     return True
         return False
 
@@ -138,78 +173,22 @@ class ProvenanceGraph:
 
     def _add_edge_node(self, node_id: str, operation: str, source: bool) -> None:
         if node_id.startswith("gap:"):
-            self._add_node(node_id, "gap", "")
+            self.add_node(node_id, "gap", "")
             return
         kind = node_id.split(":", 1)[0]
         role = "object"
         if kind == "process":
             role = "parent" if source and operation in {"exec", "fork", "clone"} else "subject"
-        self._add_node(node_id, kind, role)
-
-    def _add_node(self, node_id: str, kind: str, role: str) -> None:
-        if not node_id or node_id in self._nodes:
-            return
-        node = incident_pb2.GraphNode(id=node_id, kind=kind, label=node_id)
-        if role:
-            node.entities.append(signal_pb2.EntityRef(kind=kind, key=node_id, role=role))
-        self._nodes[node_id] = node
-        self._node_order.append(node_id)
-
-    def _signal_seeds(self, signals):
-        entities = {}
-        for signal in signals:
-            for entity in signal.entities:
-                key = entity_id(entity.kind, entity.key)
-                if key:
-                    entities[key] = entity
-        seeds = []
-        for key in sorted(entities)[:MAX_EVIDENCE_SEEDS]:
-            if key in self._nodes:
-                seeds.append(key)
-            else:
-                gap = f"gap:seed:{key}"
-                self._add_node(gap, "gap", "")
-                seeds.append(gap)
-        return seeds
+        self.add_node(node_id, kind, role)
 
     def _existing_signal_nodes(self, signal):
-        nodes = {
-            entity_id(entity.kind, entity.key)
-            for entity in signal.entities
-            if entity_id(entity.kind, entity.key) in self._nodes
-        }
-        return sorted(nodes)[:MAX_EVIDENCE_SEEDS]
-
-    def _k_hop(self, seed: str, hops: int):
-        nodes, edges, frontier = {seed}, set(), [seed]
-        for _ in range(hops):
-            following = []
-            for node in frontier:
-                for edge_id in self._adjacency.get(node, ()):
-                    other = self._adjacent(edge_id, node)
-                    edges.add(edge_id)
-                    if other not in nodes:
-                        nodes.add(other)
-                        following.append(other)
-            frontier = following
-        return nodes, edges
-
-    def _shortest_path(self, start: str, target: str):
-        if start not in self._nodes or target not in self._nodes:
-            return set(), set()
-        parents, seen, queue = {}, {start}, deque([start])
-        while queue:
-            node = queue.popleft()
-            for edge_id in self._adjacency.get(node, ()):
-                other = self._adjacent(edge_id, node)
-                if other in seen:
-                    continue
-                parents[other] = (node, edge_id)
-                if other == target:
-                    return self._path(start, target, parents)
-                seen.add(other)
-                queue.append(other)
-        return set(), set()
+        return sorted(
+            {
+                entity_id(entity.kind, entity.key)
+                for entity in signal.entities
+                if entity_id(entity.kind, entity.key) in self._nodes
+            }
+        )
 
     def _path(self, start: str, target: str, parents):
         nodes, edges, current = {target}, set(), target
@@ -219,22 +198,3 @@ class ProvenanceGraph:
             edges.add(edge_id)
             current = parent
         return nodes, edges
-
-    def _adjacent(self, edge_id: str, node: str) -> str:
-        edge = self._edges[edge_id]
-        from_id = getattr(edge, "from")
-        return edge.to if from_id == node else from_id
-
-    def _include_adjacent_gaps(self, nodes, edges) -> None:
-        for edge_id in self._edge_order:
-            edge = self._edges[edge_id]
-            from_id = getattr(edge, "from")
-            if edge.incomplete and (from_id in nodes or edge.to in nodes):
-                nodes.update((from_id, edge.to))
-                edges.add(edge_id)
-
-    def _subgraph(self, nodes, edges):
-        result = incident_pb2.EvidenceSubgraph()
-        result.nodes.extend(self._nodes[node_id] for node_id in self._node_order if node_id in nodes)
-        result.edges.extend(self._edges[edge_id] for edge_id in self._edge_order if edge_id in edges)
-        return result

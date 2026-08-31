@@ -1,6 +1,7 @@
 from packages.contracts.proto.incident.v1 import incident_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 
+from sysarmor_streaming.detectors.shortest_path import connecting_evidence
 from sysarmor_streaming.operators.identity import signal_digest
 from sysarmor_streaming.operators.provenance import ProvenanceGraph
 from sysarmor_streaming.operators.rarity import count_score
@@ -14,7 +15,7 @@ def build_incident(events, signals, decision, scorer=None):
         summary="SysArmor detected a causal attack chain",
         severity=80,
         lineage_ids=sorted({signal.lineage_id for signal in contributing if signal.lineage_id}),
-        evidence=ProvenanceGraph.from_events(events).connecting_evidence(contributing),
+        evidence=connecting_evidence(ProvenanceGraph.from_events(events), contributing),
         converge=incident_pb2.ConvergeTrace(
             method=decision.method,
             score=(scorer or count_score)(contributing),

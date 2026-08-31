@@ -12,6 +12,13 @@ def load_graph():
         raise AssertionError("provenance operator is not implemented") from error
 
 
+def load_shortest_path():
+    try:
+        return importlib.import_module("sysarmor_streaming.detectors.shortest_path")
+    except ModuleNotFoundError as error:
+        raise AssertionError("shortest-path detector is not implemented") from error
+
+
 class ProvenanceGraphTest(unittest.TestCase):
     def test_connecting_evidence_recovers_causal_path_and_event_refs(self):
         graph = load_graph().ProvenanceGraph.from_events(causal_events())
@@ -21,7 +28,7 @@ class ProvenanceGraphTest(unittest.TestCase):
             signal("socket", "10.66.0.99:443"),
         ]
 
-        evidence = graph.connecting_evidence(signals)
+        evidence = load_shortest_path().connecting_evidence(graph, signals)
 
         self.assertEqual(
             {
@@ -69,8 +76,9 @@ class ProvenanceGraphTest(unittest.TestCase):
             identity_status="unavailable",
         )
 
-        evidence = load_graph().ProvenanceGraph.from_events([orphan]).connecting_evidence(
-            [signal("process", "p-orphan")]
+        evidence = load_shortest_path().connecting_evidence(
+            load_graph().ProvenanceGraph.from_events([orphan]),
+            [signal("process", "p-orphan")],
         )
 
         self.assertIn("gap:parent:exec-orphan", {node.id for node in evidence.nodes})
