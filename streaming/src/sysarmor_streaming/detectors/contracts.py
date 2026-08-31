@@ -72,6 +72,7 @@ class DetectionResult:
     event_refs: tuple[str, ...] = ()
     edge_refs: tuple[str, ...] = ()
     signal_refs: tuple[str, ...] = ()
+    contributors: tuple[signal_pb2.Signal, ...] = ()
     node_scores: dict[str, float] = field(default_factory=dict)
     diagnostics: dict = field(default_factory=dict)
 

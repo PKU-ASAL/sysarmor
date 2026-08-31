@@ -43,6 +43,9 @@ class RuleCorrelationDetector:
         view = build(inputs.events, inputs.signals, inputs.policy)
         matches = _cloud_matches(view, inputs.policy, inputs.graph)
         signals = tuple(match.signal for match in matches)
+        contributors = _unique_signals(
+            signal for match in matches for signal in match.contributors
+        )
         return DetectionResult(
             algorithm_name=self.name,
             algorithm_version=self.version,
@@ -50,6 +53,7 @@ class RuleCorrelationDetector:
             signal_refs=tuple(
                 sorted({item.id for match in matches for item in match.contributors if item.id})
             ),
+            contributors=contributors,
         )
 
     def diagnostics(self) -> dict:

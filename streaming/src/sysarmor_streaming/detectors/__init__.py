@@ -1,4 +1,4 @@
-"""Pluggable cloud-side Detector contract and factory."""
+"""Pluggable cloud-side Detector contract, factory, and built-in detectors."""
 
 from .contracts import (
     AnalysisContext,
@@ -9,6 +9,15 @@ from .contracts import (
     StateRequirements,
 )
 from .factory import DetectorFactory
+from .rule_correlation import RuleCorrelationDetector
+from .shortest_path import ShortestPathDetector
+
+DetectorFactory.register(
+    {
+        RuleCorrelationDetector.name: RuleCorrelationDetector,
+        ShortestPathDetector.name: ShortestPathDetector,
+    }
+)
 
 __all__ = [
     "AnalysisContext",
@@ -17,5 +26,7 @@ __all__ = [
     "DetectorInputs",
     "DetectionResult",
     "RequiredInput",
+    "RuleCorrelationDetector",
+    "ShortestPathDetector",
     "StateRequirements",
 ]

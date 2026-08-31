@@ -143,6 +143,7 @@ class DetectionResult:
     event_refs: tuple[str, ...]
     edge_refs: tuple[str, ...]
     signal_refs: tuple[str, ...]
+    contributors: tuple[Signal, ...]         # 上游信号对象（Investigation 组装 Incident 用，与 signal_refs 的 id 配对）
     node_scores: dict[str, float]            # 逐节点异常分数（ML Detector 填，rule 留空）
     diagnostics: dict                        # 状态诊断
 ```

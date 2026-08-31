@@ -35,5 +35,9 @@ class DetectorFactory:
         return detectors
 
     @classmethod
+    def build_all(cls) -> list[Detector]:
+        return [constructor() for constructor in cls._registry.values()]
+
+    @classmethod
     def known(cls) -> frozenset[str]:
         return frozenset(cls._registry)
