@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from packages.contracts.proto.streaming.v1 import streaming_pb2
 
+from sysarmor_streaming.detectors.contracts import AnalysisContext
 from sysarmor_streaming.operators.analysis import analyze
 
 
@@ -56,6 +57,14 @@ class DetectionState:
             [item.event for _, item in scope.events],
             [item.signal for _, item in scope.signals],
             policy.detection,
+            context=AnalysisContext(
+                tenant_id=context.tenant_id,
+                analysis_scope_key=context.analysis_scope_key,
+                policy_id=context.policy_id,
+                policy_version=context.policy_version,
+                agent_id=context.agent_id,
+                watermark_ns=watermark_ns,
+            ),
         )
         artifacts = []
         direct = record.signal if record.WhichOneof("payload") == "signal" else None

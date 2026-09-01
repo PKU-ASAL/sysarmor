@@ -19,7 +19,6 @@ SysArmor 是面向 Linux 的端点安全与关联分析系统。Agent 可以独�
 | 查询精确配置和接口 | [配置参考](reference/configuration.md)、[API 参考](reference/api.md)、[CLI 参考](reference/cli.md) |
 | 构建和验证项目 | [贡献指南](../CONTRIBUTING.md)、[测试指南](development/testing.md) |
 | 开发下一阶段溯源检测能力 | [溯源图检测平台开发计划](development/provenance-detection-plan.md) |
-
 推荐阅读顺序：
 
 ```text
@@ -56,7 +55,7 @@ SysArmor 是面向 Linux 的端点安全与关联分析系统。Agent 可以独�
 | CLI | [CLI 参考](reference/cli.md)与 `sysarmorctl --help` |
 | 构建和代码边界 | [贡献指南](../CONTRIBUTING.md)与代码 |
 | 测试方法 | [测试指南](development/testing.md)与 `test/Makefile help` |
-| 下一阶段溯源检测模块化计划 | [溯源图检测平台开发计划](development/provenance-detection-plan.md) |
+| 下一阶段溯源检测模块化计划 | [溯源图检测平台开发计划](development/provenance-detection-plan.md)、[Detector 合同](development/detector-contract.md) |
 
 ## 维护规则
 
