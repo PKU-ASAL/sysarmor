@@ -225,6 +225,7 @@ normalized topic ────┤
 - **算法失败隔离**：编排器逐个 try/catch，单 Detector 抛错只记 diagnostics，不阻塞其他 Detector 与 Normalize。
 - **状态版本语义**：`StateRequirements.version` 决定 checkpoint 恢复与升级迁移；缺版本时明确失败，不回退默认。
 - **版本化合同**：`name` 唯一，`version` 标识算法版本；评测框架按 `(name, version)` 对齐结果。
+- **Python 版本约束**：Flink 部署镜像（`flink:1.20.2`，Ubuntu 22.04）实际运行 Python 3.10，而本地 `uv` 用 3.11 开发。Detector/streaming 代码必须兼容 Python 3.10，不得依赖 3.11+ 运行时特性（如 `StrEnum`、`tomllib`、`except*`、`typing.Self`）——本地单测用 3.11 无法暴露这类问题，只有端到端（VM）才会炸。
 
 ## 10. 落地顺序（阶段一任务映射）
 
