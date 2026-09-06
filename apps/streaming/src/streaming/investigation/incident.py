@@ -5,9 +5,11 @@ from streaming.engine.identity import signal_digest
 from streaming.preprocessing.rarity import count_score
 
 
-def build_incident(signals, decision, evidence=None, scorer=None):
+def build_incident(signals, decision, evidence=None, scorer=None, correlation_key=""):
     contributing = tuple(signals)
     context = [f"method:{decision.method}", *(f"control:{item}" for item in decision.controls)]
+    if correlation_key:
+        context = ["correlation:" + correlation_key]
     return incident_pb2.Incident(
         id="inc-" + signal_digest(contributing, context),
         summary="SysArmor detected a causal attack chain",
@@ -21,6 +23,8 @@ def build_incident(signals, decision, evidence=None, scorer=None):
         ),
         contributing_signals=contributing,
         labels=_common_labels(contributing),
+        correlation_key=correlation_key,
+        analysis_version="1",
         conclusion_entities=_conclusion_entities(contributing),
     )
 

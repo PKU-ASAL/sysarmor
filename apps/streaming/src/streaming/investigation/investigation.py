@@ -15,8 +15,13 @@ from streaming.investigation.incident import build_incident
 def investigate(view, results, decision, scorer=None):
     findings = tuple(finding for result in results for finding in result.findings)
     if findings:
-        contributors = _finding_contributors(findings)
-        evidence = _merge_finding_evidence(findings)
+        return tuple(
+            build_incident(
+                finding.contributors + (finding.conclusion,), decision,
+                finding.evidence, scorer, finding.correlation_key,
+            )
+            for finding in findings
+        )
     else:
         contributors = _incident_contributors(view, results, decision)
         evidence = _select_evidence(results)

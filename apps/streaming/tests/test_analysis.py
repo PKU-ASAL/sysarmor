@@ -297,8 +297,11 @@ class AnalysisTest(unittest.TestCase):
             self.assertEqual(signal_pb2.SIGNAL_WHERE_CLOUD, signal.where)
             self.assertEqual(signal_pb2.SIGNAL_STAGE_CONCLUSION, signal.stage)
             self.assertEqual(signal_pb2.DETECTOR_KIND_RULE, signal.detector_kind)
-        self.assertEqual(1, len(result.incidents))
-        self.assertEqual("rarity+causal-topk", result.incidents[0].converge.method)
+        self.assertEqual(2, len(result.incidents))
+        self.assertEqual(
+            {"rule-correlation-v1:dropped_payload_executed_and_connects", "rule-correlation-v1:web_shell_chain"},
+            {item.correlation_key for item in result.incidents},
+        )
 
     def test_model_candidate_alone_does_not_create_incident(self):
         candidate = endpoint_signal(

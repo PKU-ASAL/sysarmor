@@ -36,6 +36,39 @@ class InvestigationTest(unittest.TestCase):
 
         self.assertEqual({"relevant"}, {item.id for item in incident.evidence.nodes})
 
+    def test_each_finding_gets_a_stable_correlated_incident(self):
+        findings = tuple(
+            DetectionResult(
+                "nodlink", "1",
+                findings=(
+                    __import__("streaming.detectors.contracts", fromlist=["DetectionFinding"]).DetectionFinding(
+                        correlation_key=key,
+                        conclusion=signal_pb2.Signal(
+                            id=key, name="nodlink_campaign",
+                            stage=signal_pb2.SIGNAL_STAGE_CONCLUSION,
+                            detector_kind=signal_pb2.DETECTOR_KIND_GRAPH,
+                        ),
+                        evidence=evidence(key),
+                    ),
+                ),
+            )
+            for key in ("nodlink:campaign-a", "nodlink:campaign-b")
+        )
+        view = build([], [], policy_pb2.DetectionPolicy())
+        decision = Decision(True, "detector-conclusion", ())
+
+        first = investigate(view, findings, decision)
+        second = investigate(view, findings, decision)
+
+        self.assertEqual(2, len(first))
+        self.assertEqual(
+            [item.id for item in first], [item.id for item in second]
+        )
+        self.assertEqual(
+            {"nodlink:campaign-a", "nodlink:campaign-b"},
+            {item.correlation_key for item in first},
+        )
+
 
 def evidence(node_id):
     return incident_pb2.EvidenceSubgraph(nodes=[node(node_id)])
