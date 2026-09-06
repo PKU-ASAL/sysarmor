@@ -5,7 +5,7 @@
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
 GOBIN_PATH := $(shell go env GOPATH)/bin
-PYTHON_PROTO_OUT := streaming/src
+PYTHON_PROTO_OUT := apps/streaming/src
 BIN_DIR ?= dist/bin
 RELEASE_DIR ?= dist/release
 PACKAGE_BASE_URL ?= http://packages
@@ -63,7 +63,7 @@ api-go:
 
 api-python:
 	mkdir -p $(PYTHON_PROTO_OUT)
-	PYTHONWARNINGS=ignore::DeprecationWarning uv run --project streaming --group dev python -m grpc_tools.protoc -I . --python_out=$(PYTHON_PROTO_OUT) $(PROTO_FILES)
+	PYTHONWARNINGS=ignore::DeprecationWarning uv run --project apps/streaming --group dev python -m grpc_tools.protoc -I . --python_out=$(PYTHON_PROTO_OUT) $(PROTO_FILES)
 
 build:
 	@if [ -z "$(SERVICE)" ]; then \

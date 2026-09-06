@@ -79,6 +79,21 @@ def metrics(cpu=2.0, rss=64.0, eps=20.0, evictions=0, rss_peak=None):
 
 
 class ManagedAnalysisArtifactTest(unittest.TestCase):
+    def test_variant_summary_preserves_attack_profile_diagnostics(self):
+        value = metrics()
+        value["attack_profile_diagnostics"] = {
+            "status_counts": {"candidate_not_projected": 2},
+            "unmapped_truth_event_ids": [],
+            "profiles": [],
+        }
+
+        result = REPORT.variant_summary(value)
+
+        self.assertEqual(
+            result["attack_profile_diagnostics"]["status_counts"],
+            {"candidate_not_projected": 2},
+        )
+
     def test_experiment_health_and_final_lifecycle_have_separate_evidence_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
@@ -843,6 +858,15 @@ class LearningReportTest(unittest.TestCase):
             with self.subTest(rss=rss):
                 hybrid = metrics(rss=rss)
                 result = evaluate_mode(rule_only, hybrid, "hybrid", DEFAULT_GATES)
+                self.assertEqual(result["gates"]["performance_rss"]["status"], expected)
+
+    def test_learning_only_rss_uses_absolute_one_hundred_mib_limit(self):
+        rule_only = metrics(rss=64.0)
+        for rss, expected in ((100.0, "passed"), (100.01, "failed")):
+            with self.subTest(rss=rss):
+                result = evaluate_mode(
+                    rule_only, metrics(rss=rss), "learning-only", DEFAULT_GATES
+                )
                 self.assertEqual(result["gates"]["performance_rss"]["status"], expected)
 
     def test_steady_rss_peak_is_observed_but_does_not_replace_resident_gate(self):

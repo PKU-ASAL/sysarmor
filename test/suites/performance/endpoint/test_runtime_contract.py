@@ -14,6 +14,7 @@ ENDPOINT_RUNNER = ROOT / "suites/performance/endpoint/run.sh"
 MANAGED_ENROLLMENT = ROOT / "shared/agent/managed_enrollment.sh"
 MANAGED_POLICY = ROOT / "shared/agent/managed_policy.sh"
 SYNC_AGENT = ROOT / "shared/vm/sync-agent.sh"
+VM_TOPOLOGY = ROOT / "environments/vm-topology/Vagrantfile"
 
 
 class RuntimeContractTest(unittest.TestCase):
@@ -23,6 +24,12 @@ class RuntimeContractTest(unittest.TestCase):
         self.temp = Path(self.temporary_directory.name)
         self.bin = self.temp / "bin"
         self.bin.mkdir()
+
+    def test_managed_topology_manager_has_medium_profile_capacity(self):
+        self.assertRegex(
+            VM_TOPOLOGY.read_text(),
+            r'name: "mgr"[^\n]+mem: (?:[6-9]\d{3}|\d{5,})',
+        )
 
     def test_benchmark_receives_fresh_vm_environment(self):
         calls = self.temp / "bash.calls"
@@ -107,6 +114,12 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn("manager policies assign", managed)
         self.assertIn('remote_policy\\"\' EXIT', managed)
 
+    def test_learning_model_path_is_resolved_before_changing_directory(self):
+        script = ENDPOINT_RUNNER.read_text()
+        resolve = 'LEARNING_MODEL="$(cd "$(dirname "$LEARNING_MODEL")" && pwd)/$(basename "$LEARNING_MODEL")"'
+        self.assertIn(resolve, script)
+        self.assertLess(script.index(resolve), script.index('cd "$ENVDIR"'))
+
     def test_managed_benchmark_captures_stream_incidents_per_policy(self):
         script = ENDPOINT_RUNNER.read_text()
 
@@ -123,6 +136,14 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn('"managed_signals": "managed-signals.json"', script)
         self.assertIn('"manager_metrics": "manager-metrics.json"', script)
         self.assertIn('"stream_processing": "stream-processing.json"', script)
+
+    def test_managed_candidate_timeout_captures_flink_and_kafka_diagnostics(self):
+        script = ENDPOINT_RUNNER.read_text()
+
+        self.assertIn("capture_stream_diagnostics", script)
+        self.assertIn('stream-jobs.json', script)
+        self.assertIn('stream-lag.txt', script)
+        self.assertIn("kafka-consumer-groups.sh", script)
 
     def test_managed_benchmark_builds_stream_projection_artifact(self):
         script = ENDPOINT_RUNNER.read_text()

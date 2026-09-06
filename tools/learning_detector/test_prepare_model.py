@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from prepare_model import prepare, validate_dataset, validate_pair
+from prepare_model import minimum_calibration_profiles, prepare, validate_dataset, validate_pair
 from training import TrainingConfig, calibrated_threshold
 
 
@@ -30,6 +30,18 @@ def write_agent_profile(path: Path, agent_id: str) -> Path:
 
 
 class PrepareModelTest(unittest.TestCase):
+    def test_default_target_rate_requires_two_hundred_calibration_profiles(self):
+        self.assertEqual(minimum_calibration_profiles(0.005), 200)
+
+    def test_rejects_calibration_too_small_for_target_rate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            training = write_profiles(root / "training.ndjson", "train")
+            calibration = write_profiles(root / "calibration.ndjson", "cal")
+
+            with self.assertRaisesRegex(ValueError, "at least 5 profiles"):
+                prepare(training, calibration, root / "model.json", target_rate=0.2)
+
     def test_rejects_duplicate_and_empty_event_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "events.ndjson"

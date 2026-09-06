@@ -203,6 +203,37 @@ class LearningReportArtifactTest(unittest.TestCase):
         self.assertIn("EventRef evictions", report)
         self.assertIn("Stream projection artifacts", report)
 
+    def test_human_report_explains_attack_profile_candidate_boundary(self):
+        rule_only = metrics()
+        learning_only = metrics()
+        learning_only["attack_profile_diagnostics"] = {
+            "status_counts": {"candidate_not_projected": 3, "profile_not_candidate": 2},
+            "unmapped_truth_event_ids": [],
+            "profiles": [{
+                "pending_truth_candidate_ids": ["candidate-a"],
+                "projected_truth_candidate_ids": [],
+            }],
+        }
+
+        report = render_report(evaluate_mode(rule_only, learning_only, "learning-only", DEFAULT_GATES))
+
+        self.assertIn("## Attack Profile 归因", report)
+        self.assertIn("candidate_not_projected", report)
+        self.assertIn("| learning-only | 3 | 0 | 2 |", report)
+        self.assertIn("pending_truth_candidates (candidates)", report)
+
+    def test_human_report_marks_attack_diagnostics_unavailable_without_projection_artifact(self):
+        rule_only = metrics()
+        learning_only = metrics()
+        learning_only["attack_profile_diagnostics"] = {
+            "status": "unavailable",
+            "detail": "stream Signal processing artifact is missing",
+        }
+
+        report = render_report(evaluate_mode(rule_only, learning_only, "learning-only", DEFAULT_GATES))
+
+        self.assertIn("| learning-only | unavailable | unavailable |", report)
+
     def test_human_report_renders_learning_semantic_scheduling(self):
         rule_only = metrics()
         hybrid = metrics()

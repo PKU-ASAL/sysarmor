@@ -4,22 +4,47 @@ import unittest
 
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-STREAMING = REPO / "streaming"
+STREAMING = REPO / "apps" / "streaming"
 
 
 class StreamingArchitectureContractTest(unittest.TestCase):
+    def test_streaming_uses_focused_package_layout(self):
+        package = STREAMING / "src/streaming"
+        self.assertTrue(package.is_dir())
+        self.assertFalse((STREAMING / "src/sysarmor_streaming").exists())
+        for name in ("jobs", "preprocessing", "engine", "detectors", "investigation", "runtime"):
+            self.assertTrue((package / name).is_dir(), name)
+        self.assertFalse((package / "operators").exists())
+        self.assertTrue((package / "detectors/registry.py").is_file())
+        self.assertFalse((package / "detectors/factory.py").exists())
+
+    def test_detectors_only_depend_on_contract_and_data_views(self):
+        detector_root = STREAMING / "src/streaming/detectors"
+        forbidden = re.compile(r"streaming\.(jobs|runtime|investigation)")
+        violations = [
+            str(path.relative_to(REPO))
+            for path in detector_root.rglob("*.py")
+            if forbidden.search(path.read_text(errors="ignore"))
+        ]
+        self.assertEqual([], violations)
+
+    def test_investigation_does_not_import_concrete_detectors(self):
+        source = (STREAMING / "src/streaming/investigation/investigation.py").read_text()
+        self.assertNotIn("streaming.detectors.rule_correlation", source)
+        self.assertNotIn("streaming.detectors.shortest_path", source)
+
     def test_streaming_package_has_three_independent_job_entries(self):
         required = (
             "pyproject.toml",
-            "src/sysarmor_streaming/jobs/normalize.py",
-            "src/sysarmor_streaming/jobs/detection.py",
-            "src/sysarmor_streaming/jobs/projection.py",
+            "src/streaming/jobs/normalize.py",
+            "src/streaming/jobs/detection.py",
+            "src/streaming/jobs/projection.py",
         )
 
         missing = [path for path in required if not (STREAMING / path).is_file()]
 
         self.assertEqual([], missing)
-        self.assertTrue((STREAMING / "src/sysarmor_streaming/entrypoints.py").is_file())
+        self.assertTrue((STREAMING / "src/streaming/entrypoints.py").is_file())
 
     def test_streaming_deployment_has_flink_managers_and_checkpoint_store(self):
         compose = (REPO / "deployments/compose.platform.yaml").read_text()
@@ -71,14 +96,14 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         ):
             self.assertIn(f"image: {image}", platform)
             self.assertIn(image, harness)
-        self.assertEqual(platform.count("- ../streaming/src:/opt/sysarmor/streaming/src:ro"), 1)
+        self.assertEqual(platform.count("- ../apps/streaming/src:/opt/sysarmor/streaming/src:ro"), 1)
         topology = (REPO / "deployments/compose.vm-topology.yaml").read_text()
-        self.assertIn("- ../streaming/src:/opt/sysarmor/streaming/src:ro", topology)
+        self.assertIn("- ../apps/streaming/src:/opt/sysarmor/streaming/src:ro", topology)
         dockerfile = (REPO / "deployments/streaming/Dockerfile").read_text()
         self.assertIn("ln -s /usr/bin/python3 /usr/local/bin/python", dockerfile)
         self.assertIn("flink-s3-fs-presto-1.20.2.jar", dockerfile)
         self.assertNotIn("flink-s3-fs-hadoop", dockerfile)
-        kafka_runtime = (STREAMING / "src/sysarmor_streaming/runtime/kafka.py").read_text()
+        kafka_runtime = (STREAMING / "src/streaming/runtime/kafka.py").read_text()
         self.assertIn("FileSystemCheckpointStorage(config.checkpoint_uri)", kafka_runtime)
         self.assertIn("io.sysarmor.streaming.ByteArraySchema", kafka_runtime)
         self.assertIn('f"kafka-{topic}"', kafka_runtime)
@@ -105,17 +130,18 @@ class StreamingArchitectureContractTest(unittest.TestCase):
 
         self.assertIn("package sysarmor.streaming.v1;", contract)
         self.assertIn("message NormalizedTelemetry", contract)
+        self.assertIn("message NormalizedTelemetryBatch", contract)
         self.assertIn("message DetectionPolicySnapshot", contract)
         self.assertIn("message AnalysisArtifact", contract)
         publisher = (REPO / "apps/manager/internal/adapters/outbound/kafka/policy_snapshot.go").read_text()
-        detection = (STREAMING / "src/sysarmor_streaming/jobs/detection.py").read_text()
+        detection = (STREAMING / "src/streaming/jobs/detection.py").read_text()
         self.assertIn('"sysarmor.detection.policy/v1"', publisher)
         self.assertIn('"sysarmor.detection.policy/v1"', detection)
 
     def test_streaming_runtime_has_no_postgres_dependency(self):
         banned = re.compile(r"postgres|lib/pq|SYSARMOR_POSTGRES", re.IGNORECASE)
         violations = []
-        sources = (STREAMING / "src/sysarmor_streaming").rglob("*.py")
+        sources = (STREAMING / "src/streaming").rglob("*.py")
         sources = [*sources, STREAMING / "pyproject.toml"]
         for source in sources:
             if source.is_file() and banned.search(source.read_text(errors="ignore")):

@@ -55,6 +55,7 @@ if [[ -n "$LEARNING_MODEL" || -n "$LEARNING_TRUST_KEYS" ]]; then
     echo "[performance-endpoint][ERROR] Learning model not found: $LEARNING_MODEL" >&2
     exit 1
   }
+  LEARNING_MODEL="$(cd "$(dirname "$LEARNING_MODEL")" && pwd)/$(basename "$LEARNING_MODEL")"
 fi
 case "$PROTECTION_MODE" in
   rule-only)
@@ -239,8 +240,17 @@ capture_managed_stream_artifacts() {
   if ! wait_manager_candidate_cohort "$labels" \
       "$policy_out/managed-signals.json" "$expected_candidates" "$CANDIDATE_COHORT_WAIT_SECONDS"; then
     [[ -s "$policy_out/managed-signals.json" ]] || printf '[]\n' >"$policy_out/managed-signals.json"
+    capture_stream_diagnostics "$policy_out"
   fi
   build_stream_processing_artifact "$policy_out/managed-signals.json" "$policy_out/stream-processing.json"
+}
+
+capture_stream_diagnostics() {
+  local policy_out="$1"
+  vagrant ssh mgr -c "curl -sf http://127.0.0.1:18081/jobs/overview" \
+    >"$policy_out/stream-jobs.json" 2>/dev/null || printf '{}\n' >"$policy_out/stream-jobs.json"
+  vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups" \
+    >"$policy_out/stream-lag.txt" 2>/dev/null || printf 'unavailable\n' >"$policy_out/stream-lag.txt"
 }
 
 wait_manager_candidate_cohort() {
@@ -960,6 +970,8 @@ for policy in $POLICIES_RAW; do
     "managed_signals": "managed-signals.json",
     "manager_metrics": "manager-metrics.json",
     "stream_processing": "stream-processing.json",
+    "stream_jobs": "stream-jobs.json",
+    "stream_lag": "stream-lag.txt",
     "candidate_lifecycle_final": "candidate-lifecycle-final.json",
     "raw_snapshots": "raw/",
     "raw_archive": "raw.tar",
@@ -983,6 +995,8 @@ EOF
   "managed-signals.json": "Stream-projected Signals used as the authoritative managed Candidate reference source",
   "manager-metrics.json": "tenant-level Stream lifecycle counters retained for diagnostics only",
   "stream-processing.json": "Flink Projection lifecycle rows for the frozen experiment cohort",
+  "stream-jobs.json": "Flink JobManager job states captured when Candidate cohort drain timed out",
+  "stream-lag.txt": "Kafka consumer group lag captured when Candidate cohort drain timed out",
   "candidate-lifecycle-final.json": "one-shot Agent Candidate lifecycle snapshot with frozen experiment count and Event sequence cutoff",
   "raw/": "raw low-frequency health semantic snapshots",
   "raw.tar": "archive of raw semantic snapshots pulled from the VM",

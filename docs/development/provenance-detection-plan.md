@@ -1,5 +1,9 @@
 # 溯源图检测平台下一阶段开发计划
 
+术语统一见 [Streaming Detection Concepts](streaming-concepts-glossary.md)。本文中的
+Detector 是算法组件，Signal 是统一消息，Campaign 是 Nodlink 私有状态，Incident 是
+案件对象；Detector 的完整单次发现使用 `DetectionFinding` 表示。
+
 本文定义 SysArmor 下一阶段的工程目标、模块边界、交付顺序和验收标准。计划对标 NodLink 等溯源图检测方法，但以真实端点效果、资源约束和可运维性为最终判断依据。
 
 ## 目标
@@ -30,7 +34,7 @@ Agent 负责：
 - Event 采集策略和 ProcessProfile 生命周期；
 - 进程、文件、Socket 的身份连续性；
 - 因果骨架 Event；
-- Endpoint Rule Signal 和 Learning Model Candidate；
+- Endpoint Rule Signal 和 `MODEL+CANDIDATE Signal`；
 - 本地有界存储、spool 和可靠上传；
 - 端侧 CPU、RSS、EPS 和丢失指标。
 
@@ -50,15 +54,18 @@ Normalize、Provenance 和 Flink Runtime 负责：
 
 ### Detector：图上的异常发现
 
-Detector 负责从统一 Event、ProvenanceEdge、Endpoint Signal 和 Model Candidate 中发现异常，输出统一的 DetectionResult。Detector 不直接读写 Kafka、OpenSearch 或 PostgreSQL。
+Detector 负责从统一 Event、ProvenanceEdge 和 Signal 中发现异常，输出统一的
+DetectionResult/DetectionFinding。Candidate 只是 `Signal.stage`，Model 只是 `Signal.detector_kind`，
+不存在独立的 ModelCandidate 消息类型。Detector 不直接读写 Kafka、OpenSearch 或
+PostgreSQL。
 
 首批 Detector：
 
 | Detector | 用途 |
 |---|---|
 | rule-correlation-v1 | 当前规则关联基线 |
-| provenance-shortest-path-v1 | 当前最短路径 Evidence 基线 |
-| nodlink-inspired-v1 | Terminal、路径和稀有度组合检测 |
+| shortest-path provider | 当前最短路径 Evidence 基线，由结论型 Detector 复用 |
+| nodlink | 将端侧模型 Signal 映射为 Terminal，执行 ISG/Hopset/Campaign 检测 |
 | steiner-approx-v1 | 近似 Steiner Tree |
 | risk-propagation-v1 | 风险沿 ProvenanceEdge 传播 |
 | graph-ml-v1 | 后续图特征或图模型实验 |
@@ -68,11 +75,12 @@ Detector 负责从统一 Event、ProvenanceEdge、Endpoint Signal 和 Model Cand
 Investigation 负责：
 
 - Evidence 子图和 ProvenanceEdge 引用；
-- Terminal 选择结果；
-- 路径排序和攻击阶段；
-- Conclusion、Incident 和调查解释。
+- Detector 结论的聚合、去重和引用校验；
+- Incident 和调查解释。
 
-Detector 决定发现什么，Investigation 决定如何组织证据和案件，Projection 只负责确定性写入外部查询系统。
+Nodlink Detector 自己负责 Terminal 映射、ISG、Hopset、路径和 Campaign 判断；
+Investigation 不理解算法私有状态，只负责把标准 DetectionResult 组织为案件。
+Projection 只负责确定性写入外部查询系统。
 
 ### 评测与运维：证明效果和成本
 
@@ -85,7 +93,7 @@ Detector 决定发现什么，Investigation 决定如何组织证据和案件，
 - CPU、RSS、EPS；
 - state size、checkpoint 和恢复时间；
 - Evidence 节点、边和引用数量；
-- Candidate 生命周期和数据缺口。
+- `MODEL+CANDIDATE Signal` 生命周期和数据缺口。
 
 ## 统一模块合同
 
@@ -95,11 +103,13 @@ Detector 决定发现什么，Investigation 决定如何组织证据和案件，
 
     NormalizedEvent
     ProvenanceEdge
-    EndpointSignal
-    ModelCandidate
+    Signal
     AnalysisContext
 
 AnalysisContext 至少包含 tenant、analysis scope、时间窗口、策略版本和输入 watermark。
+端侧模型发现使用统一 `Signal` 表示，其分类为
+`where=ENDPOINT + detector_kind=MODEL + stage=CANDIDATE`。Nodlink 根据该 Signal 的
+process entity 和 `event_refs` 映射内部 Terminal；Terminal 不是公共消息字段。
 
 ### Detector 合同
 
@@ -169,7 +179,7 @@ AnalysisContext 至少包含 tenant、analysis scope、时间窗口、策略版�
 1. 定义 NormalizedEvent、ProvenanceEdge、AnalysisContext。
 2. 定义 Detector 和 DetectionResult。
 3. 将现有规则关联迁移为 rule-correlation-v1。
-4. 将现有最短路径逻辑迁移为 provenance-shortest-path-v1。
+4. 将现有最短路径逻辑收敛为可复用 Evidence provider，不单独发布没有结论的 Detector。
 5. 建立 Detector Registry。
 6. 为结果补充算法版本、输入窗口和引用。
 7. 建立单元测试、回放测试和状态测试。
@@ -181,18 +191,18 @@ AnalysisContext 至少包含 tenant、analysis scope、时间窗口、策略版�
 - 每个 Detector 可以单独启用、禁用和比较；
 - 现有 managed quick/medium 链路保持通过。
 
-### 阶段二：NodLink-inspired 能力增强
+### 阶段二：内置 Nodlink Detector
 
 交付：
 
-1. 完善 Terminal 候选选择；
-2. 区分 Signal seed、Candidate seed 和算法 Terminal；
-3. 引入基于时间、风险和结构的 Terminal 排序；
-4. 增加路径共享、边复用和路径索引；
-5. 实现近似 Steiner Tree；
-6. 引入 Hopset 或等价的高效路径索引；
-7. 完善跨窗口、late Event、身份 gap 和缺失父进程处理；
-8. 增加攻击阶段和路径置信度。
+1. 复用 Agent 的 FastText、VAE 和 SV 输出，不在云端运行第二套异常模型；
+2. 校验 `MODEL+CANDIDATE Signal` 的模型身份、process entity 和 `event_refs`；
+3. 将端侧模型 Signal 映射为算法内部 Terminal；
+4. 构建有界 ISG，并实现 Hopset 或等价路径索引；
+5. 连接跨窗口 Terminal，形成候选攻击链；
+6. 基于 Terminal 异常度、时间和图结构计算 Campaign 分数；
+7. 输出带完整节点、边和 Signal 引用的 Evidence 与 `GRAPH+CONCLUSION Signal`；
+8. 显式处理 late Event、身份 gap、缺失父进程、TTL 和状态恢复。
 
 退出标准：
 
@@ -220,7 +230,7 @@ AnalysisContext 至少包含 tenant、analysis scope、时间窗口、策略版�
 
 ## 部署策略
 
-第一阶段在同一 Detection Job 内通过 Registry 运行多个 Detector，共享标准化 Event 和 Provenance 状态，避免重复消费 Kafka 和重复维护图状态。
+首版内置 Nodlink 在同一 Detection Job 内通过 Registry 运行，共享标准化 Event 和 Provenance 状态，避免重复消费 Kafka 和重复维护基础图状态。
 
 当算法出现明显不同的 CPU、内存、状态、checkpoint、GPU 或发布周期要求时，再拆成独立 Flink Job。独立 Job 只消费版本化标准化 Topic，输出统一分析结果，不创建算法私有的安全数据存储。
 
@@ -231,14 +241,14 @@ AnalysisContext 至少包含 tenant、analysis scope、时间窗口、策略版�
 3. 将 ProvenanceGraph 与具体算法解耦。
 4. 增加算法版本、输入窗口和状态诊断。
 5. 建立统一 Detector 对比实验和报告。
-6. 实现 Terminal 候选选择。
-7. 实现近似 Steiner Tree。
+6. 实现端侧模型 Signal 到 Terminal 的映射。
+7. 实现 ISG、Hopset 和跨窗口 Campaign 检测。
 8. 增加真实攻击、正常业务和故障恢复回放。
 9. 决定高成本算法是否拆分独立 Flink Job。
 
 ## 责任闭环
 
-    Agent         负责事实完整、候选及时、上传可靠
+    Agent         负责事实完整、端侧 Signal 及时、上传可靠
     Streaming     负责 Event 标准化、图状态和流处理正确
     Detector      负责算法发现有效
     Investigation 负责证据和案件可信

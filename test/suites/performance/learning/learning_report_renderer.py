@@ -24,6 +24,7 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(learning_scheduling_section(summary.get("variants", {})))
     lines.extend(candidate_lifecycle_section(summary.get("variants", {})))
     lines.extend(candidate_section(summary.get("variants", {})))
+    lines.extend(attack_profile_diagnostics_section(summary.get("variants", {})))
     lines.extend(truth_section(summary.get("truth_steps", {}), summary.get("observations", {})))
     lines.extend(sample_section(summary.get("samples", {})))
     lines.extend(reproduction_section(summary.get("experiment", {})))
@@ -168,6 +169,35 @@ def candidate_section(variants: dict[str, Any]) -> list[str]:
         ])
     lines.append("")
     return lines
+
+
+def attack_profile_diagnostics_section(variants: dict[str, Any]) -> list[str]:
+    statuses = (
+        "candidate_not_projected",
+        "candidate_observation_incomplete",
+        "profile_not_candidate",
+        "candidate_observation_unavailable",
+        "candidate_missing_truth_ref",
+        "detected",
+        "truth_event_unmapped",
+    )
+    lines = [
+        "## Attack Profile 归因", "",
+        "| Mode | candidate_not_projected (profiles) | candidate_observation_incomplete (profiles) | profile_not_candidate (profiles) | candidate_observation_unavailable (profiles) | candidate_missing_truth_ref (profiles) | detected (profiles) | truth_event_unmapped (events) | projected_truth_candidates (candidates) | pending_truth_candidates (candidates) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for mode in ("learning-only", "hybrid"):
+        diagnostics = variants.get(mode, {}).get("attack_profile_diagnostics", {})
+        counts = diagnostics.get("status_counts") if diagnostics else None
+        values = [display(counts.get(status, 0) if counts is not None else None) for status in statuses]
+        profiles = diagnostics.get("profiles", []) if counts is not None else []
+        truth_counts = [
+            sum(len(profile.get(key, [])) for profile in profiles)
+            for key in ("projected_truth_candidate_ids", "pending_truth_candidate_ids")
+        ] if counts is not None else [None, None]
+        values.extend(display(value) for value in truth_counts)
+        lines.append(f"| {mode} | {' | '.join(values)} |")
+    return lines + [""]
 
 
 def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
