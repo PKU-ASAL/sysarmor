@@ -89,8 +89,7 @@ EvidenceSubgraph
 ```
 
 每条 `GraphEdge` 带 `event_refs`，因此可以从图边追溯回原始 Event。Nodlink 对外输出
-的精简攻击图当前存放在 `DetectionResult.evidence`，目标是移动到每个
-`DetectionFinding.evidence`。
+的精简攻击图位于每个 `DetectionFinding.evidence`。
 
 EvidenceSubgraph 不是独立案件，也不是另一条 Kafka 消息；它是 Finding 或 Incident
 携带的证据字段。最短路径逻辑是可复用的 Evidence Provider，不是独立 Detector，

@@ -193,11 +193,10 @@ ListState 逐条恢复 protobuf。只有 cache miss 才从 Flink 权威状态恢
 
 ## 4. 输出合同：DetectionResult 与 DetectionFinding
 
-所有算法统一输出。当前 `DetectionResult` 同时提供阶段一平铺字段和阶段二
-`findings`；Nodlink 和 `rule-correlation-v1` 已使用 `findings`，Shortest Path 仍作为
-Evidence 提供器迁移中。最终将收口为
-多个自洽的 `DetectionFinding`，每个 Finding 绑定一个结论、一张 EvidenceSubgraph 和
-它的 contributors。术语和对象层次见 [streaming-concepts-glossary](streaming-concepts-glossary.md)。
+所有算法统一输出。`DetectionResult.findings` 是 Detector 的唯一语义结果；每个 Finding
+绑定一个结论、一张 EvidenceSubgraph 和它的 contributors。Nodlink 与
+`rule-correlation-v1` 已按此输出，最短路径只作为 Evidence provider 被复用。术语和
+对象层次见 [streaming-concepts-glossary](streaming-concepts-glossary.md)。
 
 ```python
 @dataclass
@@ -205,14 +204,7 @@ class DetectionResult:
     algorithm_name: str
     algorithm_version: str
     derived_signals: tuple[Signal, ...]      # 新 Cloud Signal
-    evidence: EvidenceSubgraph               # GraphNode/GraphEdge 子图
-    conclusions: tuple[Signal, ...]
-    incidents: tuple[Incident, ...]
-    event_refs: tuple[str, ...]
-    edge_refs: tuple[str, ...]
-    signal_refs: tuple[str, ...]
-    contributors: tuple[Signal, ...]         # 上游信号对象（Investigation 组装 Incident 用，与 signal_refs 的 id 配对）
-    node_scores: dict[str, float]            # 可选逐节点分数；不要求云端重新运行模型
+    findings: tuple[DetectionFinding, ...]
     diagnostics: dict                        # 状态诊断
 ```
 
