@@ -4,8 +4,147 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
+
+
+def candidate_subject(signal: dict[str, Any]) -> str | None:
+    subjects = {
+        entity.get("key")
+        for entity in signal.get("entities", [])
+        if isinstance(entity, dict)
+        and entity.get("kind") == "process"
+        and entity.get("role") == "subject"
+        and isinstance(entity.get("key"), str)
+        and entity["key"]
+    }
+    return next(iter(subjects)) if len(subjects) == 1 else None
+
+
+def candidate_refs(signal: dict[str, Any]) -> set[str]:
+    refs = signal.get("eventRefs", signal.get("event_refs", []))
+    return {str(ref) for ref in refs} if isinstance(refs, list) else set()
+
+
+def attack_profile_diagnostics(
+    events: list[dict[str, Any]],
+    truth_event_ids: set[str],
+    endpoint_candidates: list[dict[str, Any]],
+    projected_candidates: list[dict[str, Any]],
+    expected_endpoint_candidates: int | None = None,
+    profile_campaign_ids: dict[str, str] | None = None,
+    truth_campaign_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    truth_by_profile: dict[str, set[str]] = {}
+    mapped_events: set[str] = set()
+    for event in events:
+        event_id = str(event.get("id") or "")
+        profile_id = event.get("subjectProc", {}).get("stableId")
+        if event_id in truth_event_ids and isinstance(profile_id, str) and profile_id:
+            truth_by_profile.setdefault(profile_id, set()).add(event_id)
+            mapped_events.add(event_id)
+    campaign_profiles = {
+        profile_id
+        for profile_id, campaign_id in (profile_campaign_ids or {}).items()
+        if campaign_id in (truth_campaign_ids or set())
+    }
+    for profile_id in campaign_profiles:
+        truth_by_profile.setdefault(profile_id, set())
+    endpoint_by_profile = group_candidates(endpoint_candidates)
+    projected_by_profile = group_candidates(projected_candidates)
+    observed_ids = {str(signal.get("id") or "") for signal in endpoint_candidates}
+    observed_ids.discard("")
+    observation_complete = (
+        None
+        if expected_endpoint_candidates is None
+        else len(observed_ids) >= expected_endpoint_candidates
+    )
+    profiles = [
+        diagnose_profile(
+            profile_id,
+            refs,
+            endpoint_by_profile.get(profile_id, []),
+            projected_by_profile.get(profile_id, []),
+            observation_complete,
+            profile_id in campaign_profiles,
+        )
+        for profile_id, refs in sorted(truth_by_profile.items())
+    ]
+    unmapped = sorted(truth_event_ids - mapped_events)
+    counts: dict[str, int] = {"truth_event_unmapped": len(unmapped)} if unmapped else {}
+    for profile in profiles:
+        counts[profile["status"]] = counts.get(profile["status"], 0) + 1
+    return {
+        "status_counts": counts,
+        "endpoint_candidate_observation_complete": observation_complete,
+        "unmapped_truth_event_ids": unmapped,
+        "profiles": profiles,
+    }
+
+
+def group_candidates(candidates: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for signal in candidates:
+        if profile_id := candidate_subject(signal):
+            grouped.setdefault(profile_id, []).append(signal)
+    return grouped
+
+
+def diagnose_profile(
+    profile_id: str,
+    truth_refs: set[str],
+    endpoint: list[dict[str, Any]],
+    projected: list[dict[str, Any]],
+    observation_complete: bool | None,
+    campaign_member: bool,
+) -> dict[str, Any]:
+    projected_ids = {str(signal.get("id") or "") for signal in projected}
+    projected_truth = [
+        signal for signal in projected if candidate_refs(signal).intersection(truth_refs)
+    ]
+    pending_truth = [
+        signal
+        for signal in endpoint
+        if (
+        str(signal.get("id") or "") not in projected_ids
+        and candidate_refs(signal).intersection(truth_refs)
+        )
+    ]
+    if projected and (campaign_member or projected_truth):
+        status = "detected"
+    elif pending_truth:
+        status = "candidate_not_projected"
+    elif projected:
+        status = "candidate_missing_truth_ref"
+    elif endpoint:
+        status = "candidate_not_projected"
+    elif observation_complete is None:
+        status = "candidate_observation_unavailable"
+    elif observation_complete:
+        status = "profile_not_candidate"
+    else:
+        status = "candidate_observation_incomplete"
+    observed = endpoint or projected
+    return {
+        "profile_id": profile_id,
+        "status": status,
+        "truth_event_ids": sorted(truth_refs),
+        "candidate_ids": sorted(str(signal.get("id") or "") for signal in observed),
+        "candidate_scores": candidate_scores(observed),
+        "projected_candidate_ids": sorted(str(signal.get("id") or "") for signal in projected),
+        "projected_truth_candidate_ids": sorted(str(signal.get("id") or "") for signal in projected_truth),
+        "pending_truth_candidate_ids": sorted(str(signal.get("id") or "") for signal in pending_truth),
+    }
+
+
+def candidate_scores(signals: list[dict[str, Any]]) -> list[float]:
+    values = []
+    for signal in signals:
+        value = signal.get("localRarity", signal.get("local_rarity"))
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            values.append(float(value))
+    return sorted(values)
 
 
 def managed_candidate_artifacts(

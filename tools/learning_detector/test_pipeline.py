@@ -6,11 +6,58 @@ from pathlib import Path
 
 from inference import natural_tokens, profile_vector, score_profile, sentence_vector
 from model_bundle import validate_bundle
+from pipeline import collect, marker_window
 from profile_dataset import append_bounded_unique, read_profiles
 from training import TrainingConfig, idf_weights, stability_scores, train_bundle
 
 
 class LearningPipelineTest(unittest.TestCase):
+    def test_collect_filters_events_by_benchmark_marker_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "events.ndjson"
+            markers = root / "markers.ndjson"
+            output = root / "normal.ndjson"
+            source.write_text("".join([
+                json.dumps({"event": {"id": "before", "occurredAtNs": "1000000000"}}) + "\n",
+                json.dumps({"event": {"id": "inside", "occurredAtNs": "2000000000"}}) + "\n",
+                json.dumps({"event": {"id": "after", "occurredAtNs": "3000000000"}}) + "\n",
+            ]))
+            markers.write_text("".join([
+                json.dumps({"phase": "normal_activity_start", "ts": "1970-01-01T00:00:02Z"}) + "\n",
+                json.dumps({"phase": "normal_activity_done", "ts": "1970-01-01T00:00:03Z"}) + "\n",
+            ]))
+
+            count = collect(
+                source, output, None, markers, "normal_activity_start", "normal_activity_done"
+            )
+
+            self.assertEqual(count, 1)
+            self.assertEqual(json.loads(output.read_text())["id"], "inside")
+
+    def test_marker_window_rejects_duplicate_phase(self):
+        with tempfile.TemporaryDirectory() as directory:
+            markers = Path(directory) / "markers.ndjson"
+            markers.write_text("".join([
+                json.dumps({"phase": "start", "ts": "1970-01-01T00:00:01Z"}) + "\n",
+                json.dumps({"phase": "start", "ts": "1970-01-01T00:00:02Z"}) + "\n",
+                json.dumps({"phase": "end", "ts": "1970-01-01T00:00:03Z"}) + "\n",
+            ]))
+
+            with self.assertRaisesRegex(ValueError, "exactly once"):
+                marker_window(markers, "start", "end")
+
+    def test_marker_window_rejects_timestamp_without_timezone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            markers = Path(directory) / "markers.ndjson"
+            markers.write_text("".join([
+                json.dumps({"phase": "start", "ts": "1970-01-01T00:00:01"}) + "\n",
+                json.dumps({"phase": "end", "ts": "1970-01-01T00:00:03Z"}) + "\n",
+            ]))
+
+            with self.assertRaisesRegex(ValueError, "timezone"):
+                marker_window(markers, "start", "end")
+
     def test_reconstructs_process_profile_lifecycle(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "events.ndjson"

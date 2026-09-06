@@ -59,13 +59,20 @@ def validate_pair(training: Path, calibration: Path) -> dict[str, Any]:
 def prepare(training: Path, calibration: Path, output: Path, target_rate: float = 0.005,
             config: TrainingConfig | None = None) -> dict[str, Any]:
     metadata = validate_pair(training, calibration)
+    minimum_profiles = minimum_calibration_profiles(target_rate)
+    calibration_profiles = metadata["calibration"]["profiles"]
+    if calibration_profiles < minimum_profiles:
+        raise ValueError(
+            f"calibration requires at least {minimum_profiles} profiles for target rate {target_rate}"
+        )
     config = config or TrainingConfig(target_rate=target_rate)
     if config.target_rate != target_rate:
         config = TrainingConfig(**{**config.__dict__, "target_rate": target_rate})
-    training_profiles, calibration_profiles = read_profiles(training), read_profiles(calibration)
-    bundle = train_bundle(training_profiles, calibration_profiles, config)
+    training_profiles = read_profiles(training)
+    calibration_values = read_profiles(calibration)
+    bundle = train_bundle(training_profiles, calibration_values, config)
     validate_bundle(bundle)
-    scores = [score_profile(profile, bundle) for profile in calibration_profiles]
+    scores = [score_profile(profile, bundle) for profile in calibration_values]
     allowed = math.floor(len(scores) * target_rate)
     candidates = sum(score >= bundle["threshold"] for score in scores)
     if candidates > allowed:
@@ -79,6 +86,12 @@ def prepare(training: Path, calibration: Path, output: Path, target_rate: float 
         "calibration_candidate_rate": candidates / len(scores),
         "calibration_score_quantiles": quantiles(scores),
     }
+
+
+def minimum_calibration_profiles(target_rate: float) -> int:
+    if not 0 < target_rate < 1:
+        raise ValueError("target rate must be between zero and one")
+    return math.ceil(1 / target_rate)
 
 
 def public_metadata(value: dict[str, Any]) -> dict[str, Any]:

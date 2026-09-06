@@ -21,7 +21,11 @@ from learning_artifacts import (
 )
 from learning_report_renderer import render_report
 from learning_performance import load_matrix_phase
-from managed_analysis import managed_analysis_metrics, managed_candidate_artifacts
+from managed_analysis import (
+    attack_profile_diagnostics,
+    managed_analysis_metrics,
+    managed_candidate_artifacts,
+)
 from protection_mode_contract import PROTECTION_MODES, validate_mode_matrix
 from learning_effect import (
     attack_campaign_seed_recall,
@@ -66,11 +70,19 @@ def evaluate_mode(
     baseline_eps = numeric(baseline_performance.get("eps"))
     candidate_eps = numeric(candidate_performance.get("eps"))
     cpu_limit = gates["learning_only_cpu_pct"] if mode == "learning-only" else gates["hybrid_cpu_pct"]
-    rss_limit = baseline_rss + gates["rss_delta_mb"] if baseline_rss is not None else None
+    if mode == "learning-only":
+        rss_limit = gates["learning_only_rss_mb"]
+    else:
+        rss_limit = baseline_rss + gates["rss_delta_mb"] if baseline_rss is not None else None
     eps_limit = baseline_eps * gates["eps_relative"] if baseline_eps is not None else None
     gate_results = {
         "performance_cpu": gate("passed" if candidate_cpu is not None and candidate_cpu <= cpu_limit else "failed" if candidate_cpu is not None else "unavailable", candidate_cpu, cpu_limit, f"absolute {mode} Agent CPU"),
-        "performance_rss": compare_upper(baseline_rss, candidate_rss, rss_limit) if rss_limit is not None else gate("unavailable", candidate_rss, None, "missing rule-only RSS"),
+        "performance_rss": gate(
+            "passed" if candidate_rss is not None and candidate_rss <= rss_limit else "failed" if candidate_rss is not None else "unavailable",
+            candidate_rss,
+            rss_limit,
+            "absolute learning-only RSS" if mode == "learning-only" else f"rule-only={baseline_rss}",
+        ) if rss_limit is not None else gate("unavailable", candidate_rss, None, "missing rule-only RSS"),
         "performance_eps": gate("unavailable", candidate_eps, None, "missing rule-only EPS") if eps_limit is None else gate("passed" if candidate_eps is not None and candidate_eps >= eps_limit else "failed" if candidate_eps is not None else "unavailable", candidate_eps, eps_limit, f"rule-only={baseline_eps}"),
         "reliability": reliability_gate(baseline, candidate),
         "model": model_gate(baseline, candidate),
@@ -155,6 +167,7 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         "candidate_scores": score_summary(metrics.get("model_candidates", [])),
         "candidate_lifecycle": metrics.get("candidate_lifecycle", {}),
         "reference_gaps": metrics.get("reference_gaps", {}),
+        "attack_profile_diagnostics": metrics.get("attack_profile_diagnostics", {}),
     }
 
 
@@ -198,6 +211,7 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
     signals = [unwrap(row, "signal") for row in require_records(path / "signals.scope.ndjson", "signal")]
     events = [unwrap(row, "event") for row in require_records(path / "events.scope.ndjson", "event")]
     model_candidates = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_MODEL"]
+    endpoint_model_candidates = list(model_candidates)
     rule_signals = [signal for signal in signals if signal.get("detectorKind") == "DETECTOR_KIND_RULE"]
     truth = evaluate_truth(path, events, rule_signals)
     event_ids = {str(event.get("id")) for event in events if event.get("id")}
@@ -278,6 +292,23 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
     result["candidate_lifecycle"]["stream_projected"] = managed_candidates["candidate_reference_integrity"].get("projected")
     result["candidate_lifecycle"]["stream_projection_artifacts"] = managed_candidates["candidate_reference_integrity"].get("projection_artifacts")
     result["candidate_lifecycle"]["stream_pending_backlog"] = pending_backlog
+    if manifest.get("protection_mode") != "rule-only":
+        integrity = managed_candidates["candidate_reference_integrity"]
+        if integrity.get("source") != "stream_projection":
+            result["attack_profile_diagnostics"] = {
+                "status": "unavailable",
+                "detail": integrity.get("detail", "Stream projection artifact is unavailable"),
+            }
+        else:
+            result["attack_profile_diagnostics"] = attack_profile_diagnostics(
+                events,
+                truth["event_ids"],
+                endpoint_model_candidates,
+                result["model_candidates"],
+                expected_endpoint_candidates=candidate_lifecycle.get("created"),
+                profile_campaign_ids=profile_campaigns,
+                truth_campaign_ids=result["truth_campaign_ids"],
+            )
     result.update(managed_analysis_metrics(path, manifest.get("agent_mode"), truth["event_ids"]))
     return result
 

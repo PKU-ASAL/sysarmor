@@ -10,6 +10,7 @@ from typing import Any
 DEFAULT_GATES = {
     "learning_only_cpu_pct": 30.0,
     "hybrid_cpu_pct": 15.0,
+    "learning_only_rss_mb": 100.0,
     "rss_delta_mb": 16.0,
     "eps_relative": 0.90,
     "normal_candidate_rate": 0.01,

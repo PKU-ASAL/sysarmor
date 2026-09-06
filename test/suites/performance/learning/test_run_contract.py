@@ -76,6 +76,7 @@ class LearningRunContractTest(unittest.TestCase):
 
     def test_persists_exact_l3_hard_gate_contract(self):
         for contract in (
+            '"learning_only_rss_mb": 100.0',
             '"learning_only_cpu_pct": 30.0',
             '"hybrid_cpu_pct": 15.0',
             '"rss_delta_mb": 16.0',
