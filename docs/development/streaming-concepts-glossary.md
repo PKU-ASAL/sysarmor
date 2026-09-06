@@ -93,7 +93,8 @@ EvidenceSubgraph
 `DetectionFinding.evidence`。
 
 EvidenceSubgraph 不是独立案件，也不是另一条 Kafka 消息；它是 Finding 或 Incident
-携带的证据字段。
+携带的证据字段。最短路径逻辑是可复用的 Evidence Provider，不是独立 Detector，
+因此不会单独产生没有结论的 Finding。
 
 ## 四、Detector SDK 对象
 
@@ -104,20 +105,19 @@ Detector 不直接读 Kafka、OpenSearch、PostgreSQL 或 Agent 私有状态。
 
 ### DetectionResult
 
-DetectionResult 是一次 Detector 调用的运行时返回信封，当前包含：
+DetectionResult 是一次 Detector 调用的运行时返回信封，包含：
 
 ```text
 algorithm_name/version
 derived_signals
-evidence
-contributors
-node_scores
+findings[]
 diagnostics
 state_update
 ```
 
-当前 Result 同时保留阶段一平铺字段和阶段二 `findings` 字段。Nodlink 和
-`rule-correlation-v1` 已使用 `findings`；Shortest Path 仍作为 Evidence 提供器迁移中。
+每个 `DetectionFinding` 必须同时携带一个结论 Signal、一个 EvidenceSubgraph、
+contributors 和可审计引用。Nodlink 和 `rule-correlation-v1` 都按此输出；最短路径
+只提供图连接能力，由这两个结论型 Detector 组合进自己的 Finding。
 最终目标是收口为：
 
 ```text

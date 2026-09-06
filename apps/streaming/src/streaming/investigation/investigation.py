@@ -48,13 +48,9 @@ def _incident_contributors(view, results, decision):
                 key=lambda signal: signal.SerializeToString(deterministic=True),
             )
         )
-    endpoint = [signal for result in results for signal in result.contributors]
-    endpoint.extend(
-        signal
-        for values in view.by_name.values()
-        for signal in values
-        if signal.stage == signal_pb2.SIGNAL_STAGE_CONCLUSION
-    )
+    endpoint = [signal for finding in _all_findings(results) for signal in finding.contributors]
+    endpoint.extend(signal for values in view.by_name.values() for signal in values
+                    if signal.stage == signal_pb2.SIGNAL_STAGE_CONCLUSION)
     return _unique_sorted((*endpoint, *derived))
 
 
@@ -64,21 +60,18 @@ def _unique_sorted(signals):
 
 
 def _select_evidence(results):
-    relevant = [
-        result.evidence for result in results
-        if result.evidence is not None and _has_derived_conclusion(result)
-    ]
-    candidates = relevant or [
-        result.evidence for result in results if result.evidence is not None
-    ]
+    findings = _all_findings(results)
+    relevant = [finding.evidence for finding in findings if _is_conclusion(finding.conclusion)]
+    candidates = relevant or [finding.evidence for finding in findings]
     return _merge_evidence(candidates) if candidates else None
 
 
-def _has_derived_conclusion(result):
-    return any(
-        signal.stage == signal_pb2.SIGNAL_STAGE_CONCLUSION
-        for signal in result.derived_signals
-    )
+def _all_findings(results):
+    return tuple(finding for result in results for finding in result.findings)
+
+
+def _is_conclusion(signal):
+    return signal.stage == signal_pb2.SIGNAL_STAGE_CONCLUSION
 
 
 def _merge_evidence(values):

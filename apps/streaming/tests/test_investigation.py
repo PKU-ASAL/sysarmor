@@ -5,6 +5,7 @@ from packages.contracts.proto.policy.v1 import policy_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 
 from streaming.detectors.contracts import DetectionResult
+from streaming.detectors.contracts import DetectionFinding
 from streaming.engine.correlation import build
 from streaming.investigation.convergence import Decision
 from streaming.investigation.investigation import investigate
@@ -19,14 +20,12 @@ class InvestigationTest(unittest.TestCase):
         )
         relevant = DetectionResult(
             "trigger", "1", derived_signals=(conclusion,),
-            evidence=evidence("relevant"),
+            findings=(DetectionFinding(
+                correlation_key="trigger:relevant", conclusion=conclusion,
+                evidence=evidence("relevant"),
+            ),),
         )
-        unrelated = DetectionResult(
-            "unrelated", "1",
-            evidence=incident_pb2.EvidenceSubgraph(
-                nodes=[node("wrong-a"), node("wrong-b")]
-            ),
-        )
+        unrelated = DetectionResult("unrelated", "1")
 
         incident = investigate(
             build([], [], policy_pb2.DetectionPolicy()),

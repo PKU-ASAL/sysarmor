@@ -16,9 +16,8 @@ import (
 const PolicySnapshotTopic = "sysarmor.control.policy.endpoint.published.v1"
 
 var knownDetectors = map[string]struct{}{
-	"rule-correlation-v1":         {},
-	"provenance-shortest-path-v1": {},
-	"nodlink":                     {},
+    "rule-correlation-v1": {},
+    "nodlink":             {},
 }
 
 type PolicySnapshotPublisher struct{ writer *kafkago.Writer }

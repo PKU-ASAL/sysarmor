@@ -127,11 +127,11 @@ class Detector(Protocol):
 policy.cloud_rules = ["dropped_payload_executed_and_connects"]
 
 # 目标（detector 级，声明式）
-policy.detectors = ["rule-correlation-v1", "provenance-shortest-path-v1"]
+policy.detectors = ["rule-correlation-v1", "nodlink"]
 
 registry = DetectorRegistry.register({
     "rule-correlation-v1": RuleCorrelationDetector,
-    "provenance-shortest-path-v1": ShortestPathDetector,
+    "nodlink": NodlinkDetector,
     "nodlink": NodLinkDetector,
 })
 detectors = registry.build(policy.detectors)   # 未知 name 当场报错（白名单）
@@ -269,7 +269,7 @@ Detector 只写「声明 + analyze」，不读 PostgreSQL/OpenSearch/Agent 私�
 | Detector | 迁移来源 | required_inputs | 输出重点 |
 |---|---|---|---|
 | `rule-correlation-v1` | `analysis.py` 的 `_cloud_matches` | EDGE + SIGNAL | derived_signals |
-| `provenance-shortest-path-v1` | `provenance.py` 的 `connecting_evidence` | EDGE + SIGNAL | evidence |
+| Evidence provider | `provenance.py` 的 `connecting_evidence` | EDGE + SIGNAL | 被结论型 Detector 组合进 Finding |
 | `nodlink` | 原始 NodLink 的 Terminal/ISG/Hopset/Campaign 阶段 | SIGNAL + EDGE | derived_signals + evidence + node_scores |
 
 前两个内置 Detector 的 `signal_kinds={RULE}`；`nodlink` 目标值为 `{MODEL}`。
@@ -352,7 +352,7 @@ normalized topic ────┤
 ```
 M1 本合同的 contracts.py + DetectorRegistry + 白名单校验
 M2 rule-correlation-v1（纯提取）
-M3 provenance-shortest-path-v1（纯提取 + ProvenanceGraph 瘦身）
+M3 最短路径 Evidence provider（纯提取 + ProvenanceGraph 瘦身）
 M4 analyze() 编排化 + investigation.py（动态 Registry 才引入）
 M5 DetectionResult 补算法版本/窗口/引用/node_scores
 M6 回放/状态/端到端验收

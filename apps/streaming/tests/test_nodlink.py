@@ -29,9 +29,12 @@ class NodlinkDetectorTest(unittest.TestCase):
 
         result = NodlinkDetector().analyze(inputs)
 
-        self.assertEqual({"process:p-curl", "process:p-bash"}, set(result.node_scores))
-        self.assertTrue(result.evidence.nodes)
-        self.assertTrue(result.evidence.edges)
+        self.assertEqual(
+            {"process:p-curl", "process:p-bash"},
+            set(result.findings[0].node_scores),
+        )
+        self.assertTrue(result.findings[0].evidence.nodes)
+        self.assertTrue(result.findings[0].evidence.edges)
         self.assertEqual("nodlink", result.algorithm_name)
 
     def test_emits_graph_conclusion_for_connected_terminals(self):
@@ -250,8 +253,14 @@ class NodlinkDetectorTest(unittest.TestCase):
             signals=signals, graph=ProvenanceGraph.from_events(events),
         ))
 
-        self.assertEqual({"signal-p-curl", "signal-p-bash"}, set(result.signal_refs))
-        self.assertEqual({"signal-p-curl", "signal-p-bash"}, {item.id for item in result.contributors})
+        self.assertEqual(
+            {"signal-p-curl", "signal-p-bash"},
+            set(result.findings[0].signal_refs),
+        )
+        self.assertEqual(
+            {"signal-p-curl", "signal-p-bash"},
+            {item.id for item in result.findings[0].contributors},
+        )
 
     def test_campaign_limit_evicts_least_recently_updated(self):
         campaigns = tuple(

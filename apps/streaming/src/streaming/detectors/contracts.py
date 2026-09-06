@@ -106,26 +106,16 @@ class DetectionFinding:
 class DetectionResult:
     """Unified output every Detector produces.
 
-    ``node_scores`` carries per-node anomaly scores for ML detectors
-    (e.g. nodlink); rule detectors leave it empty. All results must carry
-    algorithm identity plus the input window and references so they are
-    auditable, reproducible, and comparable.
+    ``findings`` is the only detector-owned semantic output. Each finding is
+    self-contained so multiple campaigns cannot be accidentally flattened.
     """
 
     algorithm_name: str
     algorithm_version: str
     derived_signals: tuple[signal_pb2.Signal, ...] = ()
-    evidence: incident_pb2.EvidenceSubgraph | None = None
-    conclusions: tuple[signal_pb2.Signal, ...] = ()
-    incidents: tuple[incident_pb2.Incident, ...] = ()
-    event_refs: tuple[str, ...] = ()
-    edge_refs: tuple[str, ...] = ()
-    signal_refs: tuple[str, ...] = ()
-    contributors: tuple[signal_pb2.Signal, ...] = ()
-    node_scores: dict[str, float] = field(default_factory=dict)
+    findings: tuple[DetectionFinding, ...] = ()
     diagnostics: dict = field(default_factory=dict)
     state_update: bytes | None = None
-    findings: tuple[DetectionFinding, ...] = ()
 
 
 @dataclass(frozen=True)

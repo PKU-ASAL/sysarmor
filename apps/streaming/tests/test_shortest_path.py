@@ -12,19 +12,8 @@ def load_module(name):
 
 
 class ShortestPathDetectorTest(unittest.TestCase):
-    def test_detector_metadata(self):
-        detector = load_module("streaming.detectors.shortest_path").ShortestPathDetector()
-        contracts = load_module("streaming.detectors.contracts")
-
-        self.assertEqual("provenance-shortest-path-v1", detector.name)
-        self.assertEqual("1", detector.version)
-        self.assertEqual(
-            (contracts.RequiredInput.SIGNAL, contracts.RequiredInput.PROVENANCE_EDGE),
-            detector.required_inputs,
-        )
-
-    def test_analyze_returns_evidence_subgraph(self):
-        detector = load_module("streaming.detectors.shortest_path").ShortestPathDetector()
+    def test_connecting_evidence_returns_evidence_subgraph(self):
+        shortest_path = load_module("streaming.detectors.shortest_path")
         contracts = load_module("streaming.detectors.contracts")
         provenance = load_module("streaming.engine.provenance")
         graph = provenance.ProvenanceGraph.from_events(causal_events())
@@ -36,13 +25,10 @@ class ShortestPathDetectorTest(unittest.TestCase):
             graph=graph,
         )
 
-        result = detector.analyze(inputs)
+        evidence = shortest_path.connecting_evidence(inputs.graph, inputs.signals)
 
-        self.assertEqual("provenance-shortest-path-v1", result.algorithm_name)
-        self.assertIn("process:p-curl", {node.id for node in result.evidence.nodes})
-        self.assertTrue(result.evidence.edges)
-        self.assertTrue(result.edge_refs)
-        self.assertTrue(result.event_refs)
+        self.assertIn("process:p-curl", {node.id for node in evidence.nodes})
+        self.assertTrue(evidence.edges)
 
 
 if __name__ == "__main__":

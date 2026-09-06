@@ -72,8 +72,9 @@ class ProvenanceGraph:
     """Event -> ProvenanceEdge graph with shared query primitives.
 
     Builds and stores the provenance graph, and exposes graph queries
-    (shortest path, adjacency, subgraph) that Detectors compose. The
-    evidence-organization logic lives in provenance-shortest-path-v1, not here.
+    (shortest path, adjacency, subgraph) that conclusion-producing Detectors
+    compose. Evidence organization lives in the detector helper module, not
+    in the graph itself.
     """
 
     def __init__(self):

@@ -12,13 +12,11 @@ from .contracts import (
 )
 from .registry import DetectorRegistry
 from .rule_correlation import RuleCorrelationDetector
-from .shortest_path import ShortestPathDetector
 from .nodlink.detector import NodlinkDetector
 
 DetectorRegistry.register(
     {
         RuleCorrelationDetector.name: RuleCorrelationDetector,
-        ShortestPathDetector.name: ShortestPathDetector,
         NodlinkDetector.name: NodlinkDetector,
     }
 )
@@ -32,7 +30,6 @@ __all__ = [
     "DetectionResult",
     "RequiredInput",
     "RuleCorrelationDetector",
-    "ShortestPathDetector",
     "NodlinkDetector",
     "StateRequirements",
 ]

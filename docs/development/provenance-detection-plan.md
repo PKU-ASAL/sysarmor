@@ -64,7 +64,7 @@ PostgreSQL。
 | Detector | 用途 |
 |---|---|
 | rule-correlation-v1 | 当前规则关联基线 |
-| provenance-shortest-path-v1 | 当前最短路径 Evidence 基线 |
+| shortest-path provider | 当前最短路径 Evidence 基线，由结论型 Detector 复用 |
 | nodlink | 将端侧模型 Signal 映射为 Terminal，执行 ISG/Hopset/Campaign 检测 |
 | steiner-approx-v1 | 近似 Steiner Tree |
 | risk-propagation-v1 | 风险沿 ProvenanceEdge 传播 |
@@ -179,7 +179,7 @@ process entity 和 `event_refs` 映射内部 Terminal；Terminal 不是公共消
 1. 定义 NormalizedEvent、ProvenanceEdge、AnalysisContext。
 2. 定义 Detector 和 DetectionResult。
 3. 将现有规则关联迁移为 rule-correlation-v1。
-4. 将现有最短路径逻辑迁移为 provenance-shortest-path-v1。
+4. 将现有最短路径逻辑收敛为可复用 Evidence provider，不单独发布没有结论的 Detector。
 5. 建立 Detector Registry。
 6. 为结果补充算法版本、输入窗口和引用。
 7. 建立单元测试、回放测试和状态测试。

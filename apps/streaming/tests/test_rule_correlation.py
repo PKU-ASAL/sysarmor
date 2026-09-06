@@ -53,6 +53,7 @@ class RuleCorrelationDetectorTest(unittest.TestCase):
         for signal in result.derived_signals:
             self.assertEqual(signal_pb2.SIGNAL_STAGE_CONCLUSION, signal.stage)
             self.assertEqual(signal_pb2.DETECTOR_KIND_RULE, signal.detector_kind)
+        self.assertEqual(2, len(result.findings))
 
     def test_analyze_returns_empty_without_match(self):
         detector = load_module("streaming.detectors.rule_correlation").RuleCorrelationDetector()
@@ -65,7 +66,7 @@ class RuleCorrelationDetectorTest(unittest.TestCase):
         result = detector.analyze(inputs)
 
         self.assertEqual((), result.derived_signals)
-        self.assertEqual((), result.signal_refs)
+        self.assertEqual((), result.findings)
 
     def test_unrelated_lineages_do_not_merge_into_one_attack_family(self):
         detector = load_module("streaming.detectors.rule_correlation").RuleCorrelationDetector()

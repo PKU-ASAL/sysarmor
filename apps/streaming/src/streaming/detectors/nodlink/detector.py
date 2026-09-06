@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 
-from packages.contracts.proto.incident.v1 import incident_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 
 from streaming.detectors.contracts import (
@@ -44,20 +43,13 @@ class NodlinkDetector:
             _campaign_signal(campaign, score, inputs.candidates)
             for campaign, score, _ in detected
         )
-        evidence = _merge_evidence(item[2] for item in detected)
-        connected = _connected_terminals(campaigns)
-        contributors = _connected_terminals(item[0] for item in detected)
         detection_findings = tuple(
             _detection_finding(campaign, score, evidence, signal, inputs.candidates)
             for (campaign, score, evidence), signal in zip(detected, signals)
         )
         return DetectionResult(
             algorithm_name=self.name, algorithm_version=self.version,
-            derived_signals=signals, conclusions=signals, evidence=evidence,
-            event_refs=_event_refs(evidence), edge_refs=tuple(edge.id for edge in evidence.edges),
-            signal_refs=tuple(item.signal_id for item in contributors),
-            contributors=_contributors(inputs.candidates, contributors),
-            node_scores={item.node_id: item.score for item in connected},
+            derived_signals=signals,
             diagnostics=_diagnostics(findings, rejected),
             state_update=NodlinkState(campaigns).encode(),
             findings=detection_findings,
@@ -133,24 +125,6 @@ def _common_labels(signals):
             if signal.labels.get(key) == value
         }
     return common
-
-
-def _merge_evidence(values):
-    nodes, edges = {}, {}
-    for value in values:
-        nodes.update({item.id: item for item in value.nodes})
-        edges.update({item.id: item for item in value.edges})
-    result = incident_pb2.EvidenceSubgraph()
-    result.nodes.extend(nodes[key] for key in sorted(nodes))
-    result.edges.extend(edges[key] for key in sorted(edges))
-    return result
-
-
-def _connected_terminals(campaigns):
-    return tuple(
-        terminal for campaign in campaigns for terminal in campaign.terminals
-        if terminal.node_id in campaign.node_ids
-    )
 
 
 def _contributors(signals, terminals):

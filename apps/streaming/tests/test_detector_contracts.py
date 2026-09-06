@@ -22,16 +22,15 @@ class RequiredInputTest(unittest.TestCase):
 
 
 class DetectionResultTest(unittest.TestCase):
-    def test_result_carries_algorithm_identity_and_empty_scores(self):
+    def test_result_carries_algorithm_identity_and_findings(self):
         contracts = load_contracts()
         result = contracts.DetectionResult(
             algorithm_name="nodlink", algorithm_version="1"
         )
         self.assertEqual("nodlink", result.algorithm_name)
         self.assertEqual("1", result.algorithm_version)
-        self.assertEqual({}, result.node_scores)
         self.assertEqual((), result.derived_signals)
-        self.assertIsNone(result.evidence)
+        self.assertEqual((), result.findings)
 
     def test_result_supports_self_contained_findings(self):
         contracts = load_contracts()

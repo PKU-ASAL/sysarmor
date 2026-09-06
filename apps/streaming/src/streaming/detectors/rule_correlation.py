@@ -46,18 +46,11 @@ class RuleCorrelationDetector:
         view = build(inputs.events, inputs.signals, inputs.policy)
         matches = _cloud_matches(view, inputs.policy, inputs.graph)
         signals = tuple(match.signal for match in matches)
-        contributors = _unique_signals(
-            signal for match in matches for signal in match.contributors
-        )
         findings = tuple(_finding(self.name, inputs.graph, match) for match in matches)
         return DetectionResult(
             algorithm_name=self.name,
             algorithm_version=self.version,
             derived_signals=signals,
-            signal_refs=tuple(
-                sorted({item.id for match in matches for item in match.contributors if item.id})
-            ),
-            contributors=contributors,
             findings=findings,
         )
 

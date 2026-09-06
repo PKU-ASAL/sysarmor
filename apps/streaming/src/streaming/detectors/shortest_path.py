@@ -1,4 +1,4 @@
-"""provenance-shortest-path-v1: shortest-path evidence as a Detector.
+"""Shortest-path evidence provider used by conclusion-producing Detectors.
 
 Extracted from ``operators.provenance.ProvenanceGraph.connecting_evidence``
 unchanged in behavior. Given endpoint signals as seeds, unions the
@@ -9,40 +9,9 @@ incomplete gaps) into an EvidenceSubgraph.
 from __future__ import annotations
 
 from packages.contracts.proto.incident.v1 import incident_pb2
-from packages.contracts.proto.signal.v1 import signal_pb2
-
-from streaming.detectors.contracts import (
-    DetectorInputs,
-    DetectionResult,
-    RequiredInput,
-    StateRequirements,
-)
 from streaming.engine.provenance import entity_id
 
 MAX_EVIDENCE_SEEDS = 128
-
-
-class ShortestPathDetector:
-    name = "provenance-shortest-path-v1"
-    version = "1"
-    required_inputs = (RequiredInput.SIGNAL, RequiredInput.PROVENANCE_EDGE)
-    signal_kinds = frozenset({signal_pb2.DETECTOR_KIND_RULE})
-    state_requirements = StateRequirements()
-
-    def analyze(self, inputs: DetectorInputs) -> DetectionResult:
-        evidence = connecting_evidence(inputs.graph, inputs.signals)
-        edge_refs = tuple(edge.id for edge in evidence.edges)
-        event_refs = tuple(ref for edge in evidence.edges for ref in edge.event_refs)
-        return DetectionResult(
-            algorithm_name=self.name,
-            algorithm_version=self.version,
-            evidence=evidence,
-            edge_refs=edge_refs,
-            event_refs=event_refs,
-        )
-
-    def diagnostics(self) -> dict:
-        return {}
 
 
 def connecting_evidence(graph, signals):

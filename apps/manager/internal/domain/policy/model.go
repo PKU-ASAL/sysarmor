@@ -16,7 +16,7 @@ const defaultEndpointPolicySections = `"collection":{"behaviors":["process.exec"
 
 const defaultResponsePolicy = `{"allowed_actions":["collect","noop"],"allowed_modes":["observe"]}`
 
-const defaultManagerPolicy = `"cloud_rules":["dropped_payload_executed_and_connects","web_shell_chain"],"detectors":["rule-correlation-v1","provenance-shortest-path-v1","nodlink"],"converge":{"mode":"rarity_structural","cross_lineage":true,"top_k":8,"max_path_hops":6}`
+const defaultManagerPolicy = `"cloud_rules":["dropped_payload_executed_and_connects","web_shell_chain"],"detectors":["rule-correlation-v1","nodlink"],"converge":{"mode":"rarity_structural","cross_lineage":true,"top_k":8,"max_path_hops":6}`
 
 type Policy struct {
 	TenantID         tenant.ID
