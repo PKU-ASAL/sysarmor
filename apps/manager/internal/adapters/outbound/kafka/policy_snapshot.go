@@ -16,9 +16,11 @@ import (
 const PolicySnapshotTopic = "sysarmor.control.policy.endpoint.published.v1"
 
 var knownDetectors = map[string]struct{}{
-    "rule-correlation-v1": {},
-    "nodlink":             {},
+	"rule-correlation-v1": {},
+	"nodlink":             {},
 }
+
+const retiredEvidenceProvider = "provenance-shortest-path-v1"
 
 type PolicySnapshotPublisher struct{ writer *kafkago.Writer }
 
@@ -62,12 +64,13 @@ func encodePolicySnapshot(item ports.PolicySnapshot) ([]byte, error) {
 	if err := json.Unmarshal(item.Document, &document); err != nil {
 		return nil, fmt.Errorf("decode policy document: %w", err)
 	}
-	if err := validateDetectors(document.Detectors); err != nil {
+	detectors, err := normalizeDetectors(document.Detectors)
+	if err != nil {
 		return nil, err
 	}
 	detection := &policyv1.DetectionPolicy{
 		CloudRules: document.CloudRules,
-		Detectors:  document.Detectors,
+		Detectors:  detectors,
 		Converge: &policyv1.ConvergeParams{
 			Mode: document.Converge.Mode, TopK: document.Converge.TopK,
 			MaxPathHops:           document.Converge.MaxPathHops,
@@ -88,20 +91,30 @@ func encodePolicySnapshot(item ports.PolicySnapshot) ([]byte, error) {
 }
 
 func validateDetectors(detectors []string) error {
+	_, err := normalizeDetectors(detectors)
+	return err
+}
+
+func normalizeDetectors(detectors []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(detectors))
+	normalized := make([]string, 0, len(detectors))
 	for _, name := range detectors {
 		if name == "" {
-			return fmt.Errorf("detector name must not be empty")
+			return nil, fmt.Errorf("detector name must not be empty")
+		}
+		if name == retiredEvidenceProvider {
+			continue
 		}
 		if _, ok := knownDetectors[name]; !ok {
-			return fmt.Errorf("unknown detector %q; known detectors: %v", name, sortedDetectorNames())
+			return nil, fmt.Errorf("unknown detector %q; known detectors: %v", name, sortedDetectorNames())
 		}
 		if _, duplicate := seen[name]; duplicate {
-			return fmt.Errorf("duplicate detector %q", name)
+			return nil, fmt.Errorf("duplicate detector %q", name)
 		}
 		seen[name] = struct{}{}
+		normalized = append(normalized, name)
 	}
-	return nil
+	return normalized, nil
 }
 
 func sortedDetectorNames() []string {

@@ -132,7 +132,6 @@ policy.detectors = ["rule-correlation-v1", "nodlink"]
 registry = DetectorRegistry.register({
     "rule-correlation-v1": RuleCorrelationDetector,
     "nodlink": NodlinkDetector,
-    "nodlink": NodLinkDetector,
 })
 detectors = registry.build(policy.detectors)   # 未知 name 当场报错（白名单）
 ```
@@ -140,10 +139,10 @@ detectors = registry.build(policy.detectors)   # 未知 name 当场报错（白�
 `name → constructor` 用 dict 映射（而非 PIDSMaker 的 if/elif），因为 Detector 数量会持续增长。灰度、A/B、按 tenant/scope 选择都退化为「改 policy 名单」。运行时由 `DetectorRegistry.build(policy.detectors)` 实例化；空名单才使用平台内置默认名单，未知名称立即失败。
 
 `signal_kinds` 是 Detector 自己声明的轻量激活条件，不是 Flink 的算法分支，也不会
-过滤传入的统一 Signal 快照。当前 rule-correlation 与 shortest-path 声明 RULE，避免
-learning-only 的 `MODEL+CANDIDATE Signal` 会让规则算法在每个 Event 上空转；Nodlink
-可声明 MODEL。输入 Signal 本身的 AnalysisArtifact 投影与云端 Detector 调度相互
-独立，因此没有可运行云端算法时，端侧模型 Signal 仍会正常投影。
+过滤传入的统一 Signal 快照。当前 rule-correlation 声明 RULE，Nodlink 声明 MODEL；
+最短路径是 Evidence provider，不是 Detector。输入 Signal 本身的 AnalysisArtifact
+投影与云端 Detector 调度相互独立，因此没有可运行云端算法时，端侧模型 Signal 仍会
+正常投影。
 
 ### 状态需求
 

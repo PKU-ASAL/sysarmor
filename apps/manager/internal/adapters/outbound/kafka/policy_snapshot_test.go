@@ -35,3 +35,21 @@ func TestEncodePolicySnapshotRejectsUnknownDetector(t *testing.T) {
 		t.Fatal("expected unknown detector error")
 	}
 }
+
+func TestEncodePolicySnapshotDropsRetiredEvidenceProvider(t *testing.T) {
+	tenantID, _ := tenant.NewID("tenant-a")
+	payload, err := encodePolicySnapshot(ports.PolicySnapshot{
+		TenantID: tenantID, PolicyID: policy.ID("policy-a"), Version: 7,
+		Document: []byte(`{"detectors":["rule-correlation-v1","provenance-shortest-path-v1","nodlink"]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot streamingv1.DetectionPolicySnapshot
+	if err := proto.Unmarshal(payload, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot.GetDetection().GetDetectors(); len(got) != 2 || got[0] != "rule-correlation-v1" || got[1] != "nodlink" {
+		t.Fatalf("detectors=%v", got)
+	}
+}
