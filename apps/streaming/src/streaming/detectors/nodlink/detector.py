@@ -8,6 +8,7 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 from streaming.detectors.contracts import (
     cross_lineage_enabled,
     DetectorInputs,
+    DetectionFinding,
     DetectionResult,
     RequiredInput,
     StateRequirements,
@@ -46,6 +47,10 @@ class NodlinkDetector:
         evidence = _merge_evidence(item[2] for item in detected)
         connected = _connected_terminals(campaigns)
         contributors = _connected_terminals(item[0] for item in detected)
+        detection_findings = tuple(
+            _detection_finding(campaign, score, evidence, signal, inputs.candidates)
+            for (campaign, score, evidence), signal in zip(detected, signals)
+        )
         return DetectionResult(
             algorithm_name=self.name, algorithm_version=self.version,
             derived_signals=signals, conclusions=signals, evidence=evidence,
@@ -55,6 +60,7 @@ class NodlinkDetector:
             node_scores={item.node_id: item.score for item in connected},
             diagnostics=_diagnostics(findings, rejected),
             state_update=NodlinkState(campaigns).encode(),
+            findings=detection_findings,
         )
 
     def diagnostics(self) -> dict:
@@ -93,6 +99,22 @@ def _campaign_signal(campaign, score, candidates):
         for item in terminals
     )
     return signal
+
+
+def _detection_finding(campaign, score, evidence, conclusion, candidates):
+    terminals = tuple(
+        item for item in campaign.terminals if item.node_id in campaign.node_ids
+    )
+    return DetectionFinding(
+        correlation_key=f"nodlink:{campaign.id}",
+        conclusion=conclusion,
+        evidence=evidence,
+        contributors=_contributors(candidates, terminals),
+        event_refs=_event_refs(evidence),
+        edge_refs=tuple(edge.id for edge in evidence.edges),
+        signal_refs=tuple(item.signal_id for item in terminals),
+        node_scores={item.node_id: item.score for item in terminals},
+    )
 
 
 def _finding_digest(campaign):

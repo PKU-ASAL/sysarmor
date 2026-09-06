@@ -13,9 +13,24 @@ from streaming.investigation.incident import build_incident
 
 
 def investigate(view, results, decision, scorer=None):
-    contributors = _incident_contributors(view, results, decision)
-    evidence = _select_evidence(results)
+    findings = tuple(finding for result in results for finding in result.findings)
+    if findings:
+        contributors = _finding_contributors(findings)
+        evidence = _merge_finding_evidence(findings)
+    else:
+        contributors = _incident_contributors(view, results, decision)
+        evidence = _select_evidence(results)
     return (build_incident(contributors, decision, evidence, scorer),)
+
+
+def _finding_contributors(findings):
+    signals = [signal for finding in findings for signal in finding.contributors]
+    signals.extend(finding.conclusion for finding in findings)
+    return _unique_sorted(signals)
+
+
+def _merge_finding_evidence(findings):
+    return _merge_evidence(tuple(finding.evidence for finding in findings))
 
 
 def _incident_contributors(view, results, decision):

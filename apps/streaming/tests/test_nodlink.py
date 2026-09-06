@@ -51,6 +51,13 @@ class NodlinkDetectorTest(unittest.TestCase):
         self.assertEqual({"signal-p-curl", "signal-p-bash"}, set(result.derived_signals[0].signal_refs))
         self.assertEqual({"exec-curl", "exec-bash"}, set(result.derived_signals[0].event_refs))
         self.assertEqual("run-a", result.derived_signals[0].labels["benchmark_run"])
+        self.assertEqual(1, len(result.findings))
+        self.assertEqual("nodlink:", result.findings[0].correlation_key[:8])
+        self.assertEqual(result.derived_signals[0].id, result.findings[0].conclusion.id)
+        self.assertEqual(
+            {"signal-p-curl", "signal-p-bash"},
+            {item.id for item in result.findings[0].contributors},
+        )
 
     def test_terminal_mapping_requires_model_identity_and_event_reference(self):
         signal = endpoint_signal(

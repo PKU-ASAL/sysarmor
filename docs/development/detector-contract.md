@@ -191,9 +191,12 @@ Timer 回调先按 Flink current key 查询 LRU；命中时直接清理内存上
 ListState 逐条恢复 protobuf。只有 cache miss 才从 Flink 权威状态恢复，避免活跃
 单 Agent 在 Beam state channel 上重复搬运整个窗口。
 
-## 4. 输出合同：DetectionResult
+## 4. 输出合同：DetectionResult 与 DetectionFinding
 
-所有算法统一输出；`node_scores` 是需要逐节点解释的 Detector 可选填充的扩展字段：
+所有算法统一输出。当前 `DetectionResult` 同时提供阶段一平铺字段和阶段二
+`findings`；Nodlink 已使用 `findings`，规则 Detector 仍在迁移。最终将收口为
+多个自洽的 `DetectionFinding`，每个 Finding 绑定一个结论、一张 EvidenceSubgraph 和
+它的 contributors。术语和对象层次见 [streaming-concepts-glossary](streaming-concepts-glossary.md)。
 
 ```python
 @dataclass
@@ -212,14 +215,38 @@ class DetectionResult:
     diagnostics: dict                        # 状态诊断
 ```
 
+目标阶段二合同：
+
+```python
+@dataclass
+class DetectionFinding:
+    correlation_key: str
+    conclusion: Signal
+    evidence: EvidenceSubgraph
+    contributors: tuple[Signal, ...]
+    event_refs: tuple[str, ...]
+    edge_refs: tuple[str, ...]
+    signal_refs: tuple[str, ...]
+    node_scores: dict[str, float]
+
+@dataclass
+class DetectionResult:
+    algorithm_name: str
+    algorithm_version: str
+    findings: tuple[DetectionFinding, ...]
+    diagnostics: dict
+    state_update: bytes | None
+```
+
 Nodlink 可将端侧 `local_rarity` 按 Terminal 节点记录到 `node_scores`，供 Investigation
 解释结果；rule 类 Detector 可以留空。`node_scores` 不是第二套云端模型的接口，也不
 改变统一 Signal/Evidence 输出。每个结果必须携带 policy ID/version、输入窗口、
 watermark，保证可审计、可重算、可比较。
 
 跨进程传输仍走 `AnalysisArtifact`（只载 signal/incident），Detector 不直接写 OpenSearch。
-Investigation 只消费通用 `DetectionResult`：contributors 决定贡献 Signal，evidence 决定
-Incident 证据。Investigation 不导入具体 Detector，也不重新执行某个 Detector 的算法。
+Investigation 只消费通用 `DetectionResult`：每个 Finding 自带 contributors 和 evidence，
+Investigation 不扫描整个 Agent 窗口，也不把无关 Conclusion 拼进同一个 Incident。Investigation
+不导入具体 Detector，也不重新执行某个 Detector 的算法。
 
 ## 5. 平台能力（Detector 不碰的八件事）
 

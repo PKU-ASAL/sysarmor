@@ -33,6 +33,20 @@ class DetectionResultTest(unittest.TestCase):
         self.assertEqual((), result.derived_signals)
         self.assertIsNone(result.evidence)
 
+    def test_result_supports_self_contained_findings(self):
+        contracts = load_contracts()
+        signal = signal_pb2.Signal(id="conclusion-a")
+        evidence = __import__(
+            "packages.contracts.proto.incident.v1", fromlist=["incident_pb2"]
+        ).incident_pb2.EvidenceSubgraph()
+        finding = contracts.DetectionFinding(
+            correlation_key="nodlink:campaign-a",
+            conclusion=signal,
+            evidence=evidence,
+        )
+        result = contracts.DetectionResult("nodlink", "1", findings=(finding,))
+        self.assertEqual("nodlink:campaign-a", result.findings[0].correlation_key)
+
 
 class DetectorInputsTest(unittest.TestCase):
     def test_delta_carries_only_current_changes(self):

@@ -89,6 +89,20 @@ class DetectorDelta:
 
 
 @dataclass(frozen=True)
+class DetectionFinding:
+    """Self-contained detector finding: conclusion, evidence, and contributors."""
+
+    correlation_key: str
+    conclusion: signal_pb2.Signal
+    evidence: incident_pb2.EvidenceSubgraph
+    contributors: tuple[signal_pb2.Signal, ...] = ()
+    event_refs: tuple[str, ...] = ()
+    edge_refs: tuple[str, ...] = ()
+    signal_refs: tuple[str, ...] = ()
+    node_scores: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class DetectionResult:
     """Unified output every Detector produces.
 
@@ -111,6 +125,7 @@ class DetectionResult:
     node_scores: dict[str, float] = field(default_factory=dict)
     diagnostics: dict = field(default_factory=dict)
     state_update: bytes | None = None
+    findings: tuple[DetectionFinding, ...] = ()
 
 
 @dataclass(frozen=True)

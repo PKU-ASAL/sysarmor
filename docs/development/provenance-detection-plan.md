@@ -1,5 +1,9 @@
 # 溯源图检测平台下一阶段开发计划
 
+术语统一见 [Streaming Detection Concepts](streaming-concepts-glossary.md)。本文中的
+Detector 是算法组件，Signal 是统一消息，Campaign 是 Nodlink 私有状态，Incident 是
+案件对象；Detector 的完整单次发现使用 `DetectionFinding` 表示。
+
 本文定义 SysArmor 下一阶段的工程目标、模块边界、交付顺序和验收标准。计划对标 NodLink 等溯源图检测方法，但以真实端点效果、资源约束和可运维性为最终判断依据。
 
 ## 目标
@@ -51,7 +55,7 @@ Normalize、Provenance 和 Flink Runtime 负责：
 ### Detector：图上的异常发现
 
 Detector 负责从统一 Event、ProvenanceEdge 和 Signal 中发现异常，输出统一的
-DetectionResult。Candidate 只是 `Signal.stage`，Model 只是 `Signal.detector_kind`，
+DetectionResult/DetectionFinding。Candidate 只是 `Signal.stage`，Model 只是 `Signal.detector_kind`，
 不存在独立的 ModelCandidate 消息类型。Detector 不直接读写 Kafka、OpenSearch 或
 PostgreSQL。
 
