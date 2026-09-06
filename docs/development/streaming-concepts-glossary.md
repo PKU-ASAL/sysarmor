@@ -116,8 +116,9 @@ diagnostics
 state_update
 ```
 
-当前 Result 同时保留阶段一平铺字段和阶段二 `findings` 字段。Nodlink 已使用
-`findings`；规则 Detector 仍在迁移中。最终目标是收口为：
+当前 Result 同时保留阶段一平铺字段和阶段二 `findings` 字段。Nodlink 和
+`rule-correlation-v1` 已使用 `findings`；Shortest Path 仍作为 Evidence 提供器迁移中。
+最终目标是收口为：
 
 ```text
 DetectionResult

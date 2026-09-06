@@ -14,6 +14,7 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 from streaming.detectors.contracts import (
     cross_lineage_enabled,
     DetectorInputs,
+    DetectionFinding,
     DetectionResult,
     RequiredInput,
     StateRequirements,
@@ -25,6 +26,7 @@ from streaming.engine.correlation import (
     related,
 )
 from streaming.engine.identity import signal_digest
+from streaming.detectors.shortest_path import connecting_evidence
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class RuleCorrelationDetector:
         contributors = _unique_signals(
             signal for match in matches for signal in match.contributors
         )
+        findings = tuple(_finding(self.name, inputs.graph, match) for match in matches)
         return DetectionResult(
             algorithm_name=self.name,
             algorithm_version=self.version,
@@ -55,10 +58,24 @@ class RuleCorrelationDetector:
                 sorted({item.id for match in matches for item in match.contributors if item.id})
             ),
             contributors=contributors,
+            findings=findings,
         )
 
     def diagnostics(self) -> dict:
         return {}
+
+
+def _finding(name, graph, match):
+    evidence = connecting_evidence(graph, match.contributors)
+    return DetectionFinding(
+        correlation_key=f"{name}:{match.signal.name}",
+        conclusion=match.signal,
+        evidence=evidence,
+        contributors=match.contributors,
+        event_refs=tuple(ref for edge in evidence.edges for ref in edge.event_refs),
+        edge_refs=tuple(edge.id for edge in evidence.edges),
+        signal_refs=tuple(item.id for item in match.contributors if item.id),
+    )
 
 
 def _cloud_matches(view, policy, graph) -> list:

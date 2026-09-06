@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	kafkago "github.com/segmentio/kafka-go"
 	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/ports"
@@ -13,6 +14,12 @@ import (
 )
 
 const PolicySnapshotTopic = "sysarmor.control.policy.endpoint.published.v1"
+
+var knownDetectors = map[string]struct{}{
+	"rule-correlation-v1":         {},
+	"provenance-shortest-path-v1": {},
+	"nodlink":                     {},
+}
 
 type PolicySnapshotPublisher struct{ writer *kafkago.Writer }
 
@@ -38,6 +45,7 @@ func (publisher *PolicySnapshotPublisher) Close() error { return publisher.write
 func encodePolicySnapshot(item ports.PolicySnapshot) ([]byte, error) {
 	var document struct {
 		CloudRules []string `json:"cloud_rules"`
+		Detectors  []string `json:"detectors"`
 		Converge   struct {
 			Mode                  string `json:"mode"`
 			TopK                  uint32 `json:"top_k"`
@@ -55,8 +63,12 @@ func encodePolicySnapshot(item ports.PolicySnapshot) ([]byte, error) {
 	if err := json.Unmarshal(item.Document, &document); err != nil {
 		return nil, fmt.Errorf("decode policy document: %w", err)
 	}
+	if err := validateDetectors(document.Detectors); err != nil {
+		return nil, err
+	}
 	detection := &policyv1.DetectionPolicy{
 		CloudRules: document.CloudRules,
+		Detectors:  document.Detectors,
 		Converge: &policyv1.ConvergeParams{
 			Mode: document.Converge.Mode, TopK: document.Converge.TopK,
 			MaxPathHops:           document.Converge.MaxPathHops,
@@ -74,4 +86,30 @@ func encodePolicySnapshot(item ports.PolicySnapshot) ([]byte, error) {
 		TenantId:      item.TenantID.String(), PolicyId: item.PolicyID.String(), PolicyVersion: uint64(item.Version), Detection: detection,
 	}
 	return proto.Marshal(snapshot)
+}
+
+func validateDetectors(detectors []string) error {
+	seen := make(map[string]struct{}, len(detectors))
+	for _, name := range detectors {
+		if name == "" {
+			return fmt.Errorf("detector name must not be empty")
+		}
+		if _, ok := knownDetectors[name]; !ok {
+			return fmt.Errorf("unknown detector %q; known detectors: %v", name, sortedDetectorNames())
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return fmt.Errorf("duplicate detector %q", name)
+		}
+		seen[name] = struct{}{}
+	}
+	return nil
+}
+
+func sortedDetectorNames() []string {
+	names := make([]string, 0, len(knownDetectors))
+	for name := range knownDetectors {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

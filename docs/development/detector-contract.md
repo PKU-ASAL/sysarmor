@@ -194,7 +194,8 @@ ListState 逐条恢复 protobuf。只有 cache miss 才从 Flink 权威状态恢
 ## 4. 输出合同：DetectionResult 与 DetectionFinding
 
 所有算法统一输出。当前 `DetectionResult` 同时提供阶段一平铺字段和阶段二
-`findings`；Nodlink 已使用 `findings`，规则 Detector 仍在迁移。最终将收口为
+`findings`；Nodlink 和 `rule-correlation-v1` 已使用 `findings`，Shortest Path 仍作为
+Evidence 提供器迁移中。最终将收口为
 多个自洽的 `DetectionFinding`，每个 Finding 绑定一个结论、一张 EvidenceSubgraph 和
 它的 contributors。术语和对象层次见 [streaming-concepts-glossary](streaming-concepts-glossary.md)。
 
