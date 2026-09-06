@@ -21,7 +21,7 @@ RUN apt-get update \
     && curl -fsSL -o /opt/flink/lib/flink-s3-fs-presto-1.20.2.jar \
       https://repo1.maven.org/maven2/org/apache/flink/flink-s3-fs-presto/1.20.2/flink-s3-fs-presto-1.20.2.jar
 
-COPY streaming /opt/sysarmor/streaming
+COPY apps/streaming /opt/sysarmor/streaming
 ENV PYTHONPATH=/opt/sysarmor/streaming/src
 WORKDIR /opt/sysarmor/streaming
 USER flink

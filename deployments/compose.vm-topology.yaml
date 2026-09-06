@@ -42,10 +42,10 @@ services:
 
   rustfs-init:
     image: python:3.12-alpine
-    command: ["python3", "-m", "sysarmor_streaming.s3_init"]
+    command: ["python3", "-m", "streaming.runtime.s3_init"]
     working_dir: /opt/sysarmor
     volumes:
-      - ../streaming/src:/opt/sysarmor/streaming/src:ro
+      - ../apps/streaming/src:/opt/sysarmor/streaming/src:ro
     depends_on:
       rustfs:
         condition: service_healthy
@@ -101,7 +101,7 @@ services:
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
-    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/sysarmor_streaming/entrypoints.py"]
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
     depends_on:
       flink-jobmanager:
         condition: service_started
@@ -117,7 +117,7 @@ services:
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
-    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/sysarmor_streaming/entrypoints.py"]
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
     depends_on:
       flink-jobmanager:
         condition: service_started
@@ -133,7 +133,7 @@ services:
     build:
       context: ..
       dockerfile: deployments/streaming/Dockerfile
-    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/sysarmor_streaming/entrypoints.py"]
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
     depends_on:
       flink-jobmanager:
         condition: service_started

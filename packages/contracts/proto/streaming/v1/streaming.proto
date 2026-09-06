@@ -32,6 +32,19 @@ message NormalizedTelemetry {
   }
 }
 
+message NormalizedTelemetryBatch {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string agent_id = 3;
+  string host_id = 4;
+  string batch_id = 5;
+  string policy_id = 6;
+  uint64 policy_version = 7;
+  string policy_mode = 8;
+  repeated NormalizedTelemetry records = 9;
+  int64 created_at_unix_nano = 10;
+}
+
 message DetectionPolicySnapshot {
   string schema_version = 1;
   string tenant_id = 2;

@@ -24,6 +24,8 @@ message DetectionPolicy {
   repeated string cloud_rules = 2;
   ConvergeParams converge = 3;
   RarityParams rarity = 4;
+  // Explicit allow-list of cloud Detectors. Empty means the platform default.
+  repeated string detectors = 5;
 }
 
 message PolicyEnvelope {
