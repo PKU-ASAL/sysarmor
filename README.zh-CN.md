@@ -68,6 +68,7 @@ make build-binary
 make test-unit
 make test-streaming
 make test-nodlink-replay
+make nodlink-replay EVENTS=test/.results/<run>/events.scope.ndjson SIGNALS=test/.results/<run>/signals.scope.ndjson OUTPUT=/tmp/nodlink-replay
 make test-doctor
 make test-performance DOMAIN=endpoint PROFILE=medium
 make test-help

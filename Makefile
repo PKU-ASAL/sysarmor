@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api api-go api-python build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-streaming test-nodlink-replay test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api api-go api-python build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-streaming test-nodlink-replay nodlink-replay test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
@@ -118,6 +118,16 @@ test-streaming:
 
 test-nodlink-replay:
 	PYTHONPATH=apps/streaming/src:apps/streaming python3 -m pytest -q tools/nodlink/test_replay.py
+
+nodlink-replay:
+	@if [ -z "$(EVENTS)" ] || [ -z "$(SIGNALS)" ] || [ -z "$(OUTPUT)" ]; then \
+		echo "usage: make nodlink-replay EVENTS=events.scope.ndjson SIGNALS=signals.scope.ndjson OUTPUT=/tmp/nodlink-replay [BATCH_SIZE=256] [ALLOW_CROSS_LINEAGE=1]" >&2; \
+		exit 2; \
+	fi
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 tools/nodlink/replay.py \
+		--events "$(EVENTS)" --signals "$(SIGNALS)" --output "$(OUTPUT)" \
+		--batch-size "$(or $(BATCH_SIZE),256)" \
+		$(if $(ALLOW_CROSS_LINEAGE),--allow-cross-lineage,)
 
 test-functional:
 ifeq ($(FUNCTIONAL_TARGET),)
@@ -307,6 +317,7 @@ help:
 	@echo "  make test-unit         run local Go tests"
 	@echo "  make test-streaming         run Flink streaming Python tests"
 	@echo "  make test-nodlink-replay   run Nodlink replay tests"
+	@echo "  make nodlink-replay EVENTS=... SIGNALS=... OUTPUT=...  replay real telemetry"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection    run truth-labeled detection tests"
 	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"

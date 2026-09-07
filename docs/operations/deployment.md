@@ -123,6 +123,14 @@ Agent -> Gateway -> Kafka -> Flink Normalize/Detection/Projection -> OpenSearch
 Browser -> Manager Console BFF -> Manager
 ```
 
+完整 Compose 平台包含 Kafka、Kafka topic 初始化、RustFS checkpoint 存储、Flink
+JobManager、TaskManager、Normalize Job、Detection Job、Projection Job、PostgreSQL、Redis、
+OpenSearch、Manager、Gateway 和 Manager UI。查看服务状态：
+
+```bash
+make status
+```
+
 默认宿主机入口：
 
 | 服务 | 地址 | 用途 |
