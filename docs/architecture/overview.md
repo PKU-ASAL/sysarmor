@@ -1,6 +1,6 @@
 # SysArmor 系统架构
 
-本文解释 SysArmor 的 Agent、控制平面、数据平面和云侧分析如何协作。核心对象见[安全数据模型](concepts/security-data-model.md)，设计动机见[设计原则](design-principles.md)，具体字段和接口分别以[配置参考](reference/configuration.md)与 [API 参考](reference/api.md)为准。
+本文解释 SysArmor 的 Agent、控制平面、数据平面和云侧分析如何协作。核心对象见[安全数据模型](../concepts/security-data-model.md)，设计动机见[设计原则](../design/principles.md)，具体字段和接口分别以[配置参考](../reference/configuration.md)与 [API 参考](../reference/api.md)为准。
 
 ## 架构目标
 
@@ -39,9 +39,9 @@ flowchart LR
 
 ## 安全数据模型
 
-SysArmor 的生产数据对象及 Signal 的 Stage、DetectorKind、Where 三个正交维度统一定义在[安全数据模型](concepts/security-data-model.md)。本页只说明这些对象如何经过系统组件。
+SysArmor 的生产数据对象及 Signal 的 Stage、DetectorKind、Where 三个正交维度统一定义在[安全数据模型](../concepts/security-data-model.md)。本页只说明这些对象如何经过系统组件。
 
-Agent 产生 Event 和 Endpoint Signal；Flink 在 tenant、分析作用域和时间窗口内读取规范化流数据，产生 Cloud Signal、Evidence 子图和 Incident。Incident 是可重复计算的安全分析报告，不是人工工单。调查方法见[调查指南](guides/investigation.md)。
+Agent 产生 Event 和 Endpoint Signal；Flink 在 tenant、分析作用域和时间窗口内读取规范化流数据，产生 Cloud Signal、Evidence 子图和 Incident。Incident 是可重复计算的安全分析报告，不是人工工单。调查方法见[调查指南](../guides/investigation.md)。
 
 ## Agent 端点自治
 
@@ -63,7 +63,7 @@ Agent 负责：
 - 通过本地 Unix socket 提供健康、策略、查询、内容和注册操作；
 - 在授权范围内执行响应并返回确认。
 
-`sysarmorctl` 只通过 `/run/sysarmor/agent/control.sock` 操作 Agent，不直接读取 SQLite 或事件段文件。运行路径的完整契约见 [Configuration Reference](reference/configuration.md)。
+`sysarmorctl` 只通过 `/run/sysarmor/agent/control.sock` 操作 Agent，不直接读取 SQLite 或事件段文件。运行路径的完整契约见 [Configuration Reference](../reference/configuration.md)。
 
 ### ProcessProfile 与端侧 Learning
 
@@ -118,7 +118,7 @@ flowchart TB
 
 Manager 保存的 Bundle 必须明确选择 `rule-only`、`learning-only` 或 `hybrid`，并完整包含四层。Resolver 校验检测能力与 Mode 一致，为 Learning 补齐因果采集需求，再生成下发文档。Mode 只用于来源、审计和解析，不会下发给 Agent。Agent 只解析四层 Endpoint Policy，并依据 Detection 中的版本化模型引用启用 Learning。
 
-策略更新必须先解析、校验和编译，成功后才能替换有效版本；有效策略会持久化，重启不会静默退回安装包默认值。Manager 负责策略分配和下发，Agent 报告能力、健康状态与实际有效版本。具体操作与安全约束见[策略指南](guides/policy.md)。
+策略更新必须先解析、校验和编译，成功后才能替换有效版本；有效策略会持久化，重启不会静默退回安装包默认值。Manager 负责策略分配和下发，Agent 报告能力、健康状态与实际有效版本。具体操作与安全约束见[策略指南](../guides/policy.md)。
 
 本地 Unix API 还支持内容查询与应用、Event 查询、debug profile 和策略操作。远程 `Connect` 控制通道负责策略与内容下发、response、Evidence pullback，以及 health/capability 状态交互；当前不提供远程 Event 查询或 debug profile。端点私钥在本机生成，注册时提交 CSR；签发证书使用以下 URI 身份：
 
@@ -307,9 +307,9 @@ Manager 的控制面持久化仅支持 PostgreSQL。Flink Job 不访问 PostgreS
 
 ## 继续阅读
 
-- [安全数据模型](concepts/security-data-model.md)：Event、Signal、Evidence 和 Incident 的精确定义。
-- [设计原则](design-principles.md)：为什么采用动态博弈、效能平衡和端云协同。
-- [策略指南](guides/policy.md)：如何理解和调整四层统一策略。
-- [调查指南](guides/investigation.md)：如何解释 Event、Signal、Evidence 和 Incident。
-- [部署指南](operations/deployment.md)：如何部署 Agent 和平台。
-- [API Reference](reference/api.md)：控制面、数据面和查询接口的精确契约。
+- [安全数据模型](../concepts/security-data-model.md)：Event、Signal、Evidence 和 Incident 的精确定义。
+- [设计原则](../design/principles.md)：为什么采用动态博弈、效能平衡和端云协同。
+- [策略指南](../guides/policy.md)：如何理解和调整四层统一策略。
+- [调查指南](../guides/investigation.md)：如何解释 Event、Signal、Evidence 和 Incident。
+- [部署指南](../operations/deployment.md)：如何部署 Agent 和平台。
+- [API Reference](../reference/api.md)：控制面、数据面和查询接口的精确契约。

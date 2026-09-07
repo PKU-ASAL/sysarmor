@@ -1,6 +1,6 @@
 # 调查指南
 
-本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。概念定义见[安全数据模型](../concepts/security-data-model.md)，生产流见[系统架构](../architecture.md)，接口字段和查询参数以 [API 参考](../reference/api.md)为准。
+本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。概念定义见[安全数据模型](../concepts/security-data-model.md)，生产流见[系统架构](../architecture/overview.md)，接口字段和查询参数以 [API 参考](../reference/api.md)为准。
 
 ## 调查目标
 

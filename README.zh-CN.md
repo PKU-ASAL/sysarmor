@@ -12,7 +12,7 @@ SysArmor 是面向 Linux 的端点安全与关联分析系统。Agent 默认独�
 - **效能平衡：** Event、Signal、Evidence、Incident 分层保留安全信息，在行为粒度与 CPU、内存、磁盘、网络成本之间建立可测量边界。
 - **端云协同：** 端侧完成低延迟过滤和检测，云侧在 tenant、作用域和时间窗口约束下进行历史与实体图关联。
 
-完整设计取舍见[设计原则](docs/design-principles.md)，Event、Signal、Evidence 和 Incident 的定义见[安全数据模型](docs/concepts/security-data-model.md)。
+完整设计取舍见[设计原则](docs/design/principles.md)，Event、Signal、Evidence 和 Incident 的定义见[安全数据模型](docs/concepts/security-data-model.md)。
 
 ## 系统结构
 
@@ -37,12 +37,12 @@ flowchart LR
   Gateway -->|"控制流"| Agent
 ```
 
-Agent 未注册或断网时仍可本地采集、检测和查询。注册只增加上传与控制能力，不会创建第二条端点数据路径。详见[系统架构](docs/architecture.md)。
+Agent 未注册或断网时仍可本地采集、检测和查询。注册只增加上传与控制能力，不会创建第二条端点数据路径。详见[系统架构](docs/architecture/overview.md)。
 
 云侧流式分析位于 `apps/streaming`，由 Normalize、Detection、Projection 三个 PyFlink Job
 组成。Detection 内置 `rule-correlation-v1` 和 `nodlink`；Nodlink 消费端侧 Model Candidate
-Signal，为每个 Campaign 输出带证据子图的独立 Finding。详见[Detector 合同](docs/development/detector-contract.md)
-和[流式检测术语表](docs/development/streaming-concepts-glossary.md)。
+Signal，为每个 Campaign 输出带证据子图的独立 Finding。详见[Detector 开发指南](docs/guides/detector-development.md)
+和[检测概念](docs/concepts/detection.md)。
 
 ## 快速开始
 
@@ -71,14 +71,14 @@ make test-performance DOMAIN=endpoint PROFILE=medium
 make test-help
 ```
 
-Functional、Detection 和 Performance 测试回答不同问题，不应互相替代。详见[测试指南](docs/development/testing.md)。
+Functional、Detection 和 Performance 测试回答不同问题，不应互相替代。详见[测试指南](docs/contributing/testing.md)。
 
 ## 文档
 
 - [文档首页](docs/README.md)
 - [安全数据模型](docs/concepts/security-data-model.md)
-- [设计原则](docs/design-principles.md)
-- [系统架构](docs/architecture.md)
+- [设计原则](docs/design/principles.md)
+- [系统架构](docs/architecture/overview.md)
 - [策略指南](docs/guides/policy.md)
 - [Agent 管理](docs/guides/agent-management.md)
 - [调查指南](docs/guides/investigation.md)
@@ -87,7 +87,7 @@ Functional、Detection 和 Performance 测试回答不同问题，不应互相�
 - [API 参考](docs/reference/api.md)
 - [CLI 参考](docs/reference/cli.md)
 - [贡献指南](CONTRIBUTING.md)
-- [测试指南](docs/development/testing.md)
+- [测试指南](docs/contributing/testing.md)
 
 ## 许可证
 

@@ -1,7 +1,7 @@
 # Streaming Detection Concepts
 
-本文统一 SysArmor Streaming、Detector 和 Nodlink 的术语。公共数据结构、Detector
-运行时对象和 Nodlink 私有算法状态分开定义，避免把“算法内部节点”误解成新的消息类型。
+本文用一条完整链路介绍 SysArmor Streaming 的检测概念：事实如何变成 Signal，Detector
+如何形成 Finding，Nodlink 如何把多个异常节点组织成 Campaign，最终怎样生成 Incident。
 
 ## 一、最短链路
 
@@ -62,7 +62,7 @@ Incident 是平台面向调查和响应的案件对象。它可以由一个或�
 组成，拥有稳定 ID、状态、首次/最后观察时间、证据和响应生命周期。
 
 当前实现按 Finding 驱动：Nodlink 为每个 Campaign 输出独立 `DetectionFinding`，
-Investigation 以稳定 `correlation_key` 生成对应 Incident，而不是因为 Evidence 增加就创建新 ID。
+Investigation 以稳定 `correlation_key` 生成对应 Incident。
 
 ## 三、证据对象
 
@@ -90,9 +90,8 @@ EvidenceSubgraph
 每条 `GraphEdge` 带 `event_refs`，因此可以从图边追溯回原始 Event。Nodlink 对外输出
 的精简攻击图位于每个 `DetectionFinding.evidence`。
 
-EvidenceSubgraph 不是独立案件，也不是另一条 Kafka 消息；它是 Finding 或 Incident
-携带的证据字段。最短路径逻辑是可复用的 Evidence Provider，不是独立 Detector，
-因此不会单独产生没有结论的 Finding。
+EvidenceSubgraph 是 Finding 或 Incident 携带的证据字段。最短路径逻辑作为可复用的
+Evidence Provider，由结论型 Detector 组合进自己的 Finding。
 
 ## 四、Detector SDK 对象
 
@@ -116,7 +115,7 @@ state_update
 每个 `DetectionFinding` 必须同时携带一个结论 Signal、一个 EvidenceSubgraph、
 contributors 和可审计引用。Nodlink 和 `rule-correlation-v1` 都按此输出；最短路径
 只提供图连接能力，由这两个结论型 Detector 组合进自己的 Finding。
-最终目标是收口为：
+运行时结构为：
 
 ```text
 DetectionResult
@@ -127,7 +126,7 @@ DetectionResult
 
 ### DetectionFinding
 
-DetectionFinding 是一个完整、自洽的检测发现，目标结构为：
+DetectionFinding 是一个完整、自洽的检测发现，结构为：
 
 ```text
 DetectionFinding

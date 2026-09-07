@@ -48,7 +48,7 @@ sudo sysarmorctl agent health
 
 ### 安装 GitHub 发行包
 
-在 GitHub Releases 页面选择目标版本，使用该版本说明中的固定 URL。候选版本标记为
+在 Forgejo Releases 页面选择目标版本，使用该版本说明中的固定 URL。候选版本标记为
 Pre-release；正式版本不带该标记：
 
 ```bash

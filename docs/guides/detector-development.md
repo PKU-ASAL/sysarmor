@@ -1,21 +1,14 @@
-# Detector 合同与模块设计
+# Detector 开发指南
 
-本文定义 SysArmor 云端 Detector 的输入/输出合同、模块边界和首批实现。设计对标 [provenance-detection-plan](provenance-detection-plan.md) 的阶段一，借鉴 PIDSMaker 的可插拔工程模式；Nodlink 的算法边界以原始端云流程为准，不照搬 PIDSMaker 的统一图学习适配。目标是：**新增一个 Detector 不修改 Normalize、Provenance Builder、Investigation 和 Projection**。
+本文说明如何为 SysArmor Streaming 开发云端 Detector，包括输入/输出合同、模块边界、状态和测试方式。Detector 复用标准化事实和共享 ProvenanceGraph；新增 Detector 只需实现合同、注册组件并在 Policy 中启用。
 
 ## 1. 目标与原则
 
-两条硬约束决定所有取舍：
+Detector 开发遵循三条原则：
 
-1. **兼容性**：现有 `rule-correlation` 与 `provenance-shortest-path` 无缝迁移成 Detector，graph/conclusion recall 不下降，managed quick/medium 保持通过。
-2. **可拓展性**：后续 `nodlink`、`steiner-approx`、`risk-propagation`、`graph-ml` 只增不改基础层。
-
-从 PIDSMaker 吸收的三条机制：
-
-| PIDSMaker 机制 | 我们采纳 |
-|---|---|
-| 声明式配置（`used_methods`）+ 工厂分发（字符串→类） | Detector 由 policy 声明启用，`DetectorRegistry` 按 name 实例化 |
-| 数据准备层可插拔（construction/featurization/batching） | 输入以「最小事实原子」为底，视图分级，重量模型可自建数据视角 |
-| 算法输出统一、内部实现自由 | `DetectionResult` 统一承载 Signal、Evidence、引用及可选 `node_scores`，Incident 由 Investigation 聚合 |
+1. **输入标准化**：只消费框架提供的 Event、Signal、ProvenanceGraph 和上下文。
+2. **结果自洽**：每个 Finding 同时包含结论、证据、contributors 和稳定关联键。
+3. **边界清晰**：算法不直接访问 Kafka、OpenSearch、PostgreSQL 或 Agent 私有状态。
 
 ## 2. 输入合同：最小事实原子 + 分级视图
 
@@ -123,10 +116,6 @@ class Detector(Protocol):
 启用/禁用由 **policy bundle** 声明，`DetectorRegistry` 按 name 实例化：
 
 ```python
-# 现在（规则级）
-policy.cloud_rules = ["dropped_payload_executed_and_connects"]
-
-# 目标（detector 级，声明式）
 policy.detectors = ["rule-correlation-v1", "nodlink"]
 
 registry = DetectorRegistry.register({
@@ -195,7 +184,7 @@ ListState 逐条恢复 protobuf。只有 cache miss 才从 Flink 权威状态恢
 所有算法统一输出。`DetectionResult.findings` 是 Detector 的唯一语义结果；每个 Finding
 绑定一个结论、一张 EvidenceSubgraph 和它的 contributors。Nodlink 与
 `rule-correlation-v1` 已按此输出，最短路径只作为 Evidence provider 被复用。术语和
-对象层次见 [streaming-concepts-glossary](streaming-concepts-glossary.md)。
+对象层次见 [检测概念](../concepts/detection.md)。
 
 ```python
 @dataclass
@@ -306,47 +295,19 @@ Campaign，否则建立新 Campaign。单次搜索最多包含 10 个节点；�
 不完整边组成可解释结构分，达到 70 分才输出结论。该门槛不是论文最终检测器；完成 HAS 历史
 分布和 Grubbs 校准前，不应把当前结果标记为完整 NodLink 复现。
 
-## 8. 成本分级与独立 Job（扇出，不链式）
+## 8. 运行与成本边界
 
-首版 `nodlink` 作为 `apps/streaming` 内置 Detector，与其他 Detector 共享标准化输入和
-基础 ProvenanceGraph；它只额外维护 ISG/Hopset/Campaign 有界状态。没有性能数据前
-不拆独立 Job，也不创建算法私有 topic。
+内置 Detector 运行在同一个 Detection Job 中，共享标准化输入和 ProvenanceGraph。
+Detector 私有状态必须有明确容量、TTL 和版本；诊断必须暴露输入规模、状态规模和输出数量。
+只有性能数据证明某个算法显著影响 checkpoint、延迟或其他 Detector 时，才考虑拆分独立 Job。
 
-若后续观测到 Nodlink 的 CPU、状态大小、checkpoint 或发布周期显著影响轻量 Detector，
-再按相同合同拆成独立 Job：
+## 9. 提交检查清单
 
-```
-                    ┌─→ Detection Job（轻量：rule-correlation、shortest-path）
-                    │    共享图状态，吃 graph 视图，输出 artifact topic
-normalized topic ────┤
-                    └─→ Nodlink Job（按实测需要拆分）
-                         吃同一标准流，维护私有 ISG/Hopset，输出 artifact topic
-```
-
-三条原则：
-
-1. **扇出，不是链式**：独立 Job 消费「同一版本化 normalized topic」（不是重放原始 Kafka）。Normalize 只做一次，重量 Job 复用标准流。
-2. **端侧模型结果直接复用**：拆分后 Nodlink 仍消费 `MODEL+CANDIDATE Signal`，不在云端重复 FastText/VAE，也不创建「图特征 topic」。
-3. **链式（预处理复用）是阶段三的优化**：只有当多个重量模型共享同一套昂贵预处理时，才考虑抽前置 Job（`normalized → 图/特征 topic → 多个 Detector Job`）。阶段一/二不引入。
-
-## 9. 兼容性与可拓展性保障
-
-- **新增 Detector 不改基础层**：`required_inputs` 开放枚举 + Factory dict + Finding 合同，新算法只增类 + 注册 + policy 名单。
-- **迁移不改行为**：阶段一 M2/M3 先「纯提取」规则关联与最短路径到 Detector（行为不变），M4 才引入 Factory 动态编排，每步可独立验证 graph/conclusion recall 不下降。
-- **算法失败隔离**：Engine 逐个 try/catch，单 Detector 抛错只记 `detector_diagnostics`，不阻塞其他 Detector 与 Normalize；合同违规（例如未声明 keyed state 却返回状态）仍显式失败。
-- **状态版本语义**：精确版本正常恢复；缺失或升级时删除旧版本，并从当前有界快照明确重建，不做隐式迁移。
-- **版本化合同**：`name` 唯一，`version` 标识算法版本；评测框架按 `(name, version)` 对齐结果。
-- **Python 版本约束**：Flink 部署镜像（`flink:1.20.2`，Ubuntu 22.04）实际运行 Python 3.10，而本地 `uv` 用 3.11 开发。Detector/streaming 代码必须兼容 Python 3.10，不得依赖 3.11+ 运行时特性（如 `StrEnum`、`tomllib`、`except*`、`typing.Self`）——本地单测用 3.11 无法暴露这类问题，只有端到端（VM）才会炸。
-
-## 10. 落地顺序（阶段一任务映射）
-
-```
-M1 本合同的 contracts.py + DetectorRegistry + 白名单校验
-M2 rule-correlation-v1（纯提取）
-M3 最短路径 Evidence provider（纯提取 + ProvenanceGraph 瘦身）
-M4 analyze() 编排化 + investigation.py（动态 Registry 才引入）
-M5 DetectionResult 与 DetectionFinding 补算法版本/窗口/引用
-M6 回放/状态/端到端验收
-```
-
-每项交付同时提交代码、测试、运行指标和本文档更新。
+- Detector 名称唯一，版本与状态版本明确。
+- `required_inputs` 与实际读取字段一致。
+- 每个 Finding 可独立解释，不共享其他 Campaign 的 Evidence。
+- 状态容量、TTL、过期和恢复行为有测试。
+- 重复输入、乱序输入和 Batch 切分不改变逻辑结果。
+- Detector 异常只产生诊断，不阻断其他算法。
+- Python 代码兼容部署端 Python 3.10。
+- 单元测试、Replay 和相关 managed E2E 通过。

@@ -12,7 +12,7 @@ The project is under active development and is intended for development, evaluat
 - **Efficiency balance:** Event, Signal, Evidence, and Incident progressively retain security meaning under explicit CPU, memory, disk, and network budgets.
 - **Endpoint-cloud collaboration:** the endpoint performs low-latency filtering and detection; the platform correlates history and entity graphs within tenant, scope, and time boundaries.
 
-The canonical principles and current-versus-target boundaries are documented in [Design Principles](docs/design-principles.md). The [Security Data Model](docs/concepts/security-data-model.md) defines Event, Signal, Evidence, and Incident.
+The canonical principles and current-versus-target boundaries are documented in [Design Principles](docs/design/principles.md). The [Security Data Model](docs/concepts/security-data-model.md) defines Event, Signal, Evidence, and Incident.
 
 ## Architecture
 
@@ -37,13 +37,13 @@ flowchart LR
   Gateway -->|"Control stream"| Agent
 ```
 
-The Agent continues local collection, detection, and queries while unenrolled or disconnected. Enrollment adds upload and control without creating a second endpoint data path. See [System Architecture](docs/architecture.md).
+The Agent continues local collection, detection, and queries while unenrolled or disconnected. Enrollment adds upload and control without creating a second endpoint data path. See [System Architecture](docs/architecture/overview.md).
 
 Cloud-side streaming runs in `apps/streaming` as three PyFlink jobs: Normalize, Detection, and
 Projection. Detection includes the built-in `rule-correlation-v1` and `nodlink` Detectors;
 Nodlink consumes endpoint Model Candidate Signals and emits per-Campaign Findings with evidence
-subgraphs. See the [Detector contract](docs/development/detector-contract.md) and [streaming
-glossary](docs/development/streaming-concepts-glossary.md).
+subgraphs. See the [Detector development guide](docs/guides/detector-development.md) and [detection
+concepts](docs/concepts/detection.md).
 
 ## Quickstart
 
@@ -75,14 +75,14 @@ make test-performance DOMAIN=endpoint PROFILE=medium
 make test-help
 ```
 
-Functional, Detection, and Performance suites answer different questions and do not substitute for each other. See [Testing](docs/development/testing.md).
+Functional, Detection, and Performance suites answer different questions and do not substitute for each other. See [Testing](docs/contributing/testing.md).
 
 ## Documentation
 
 - [Documentation home](docs/README.md)
 - [Security data model](docs/concepts/security-data-model.md)
-- [Design principles](docs/design-principles.md)
-- [System architecture](docs/architecture.md)
+- [Design principles](docs/design/principles.md)
+- [System architecture](docs/architecture/overview.md)
 - [Policy guide](docs/guides/policy.md)
 - [Agent management](docs/guides/agent-management.md)
 - [Investigation guide](docs/guides/investigation.md)
@@ -91,7 +91,7 @@ Functional, Detection, and Performance suites answer different questions and do 
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
 - [Contributing](CONTRIBUTING.md)
-- [Testing](docs/development/testing.md)
+- [Testing](docs/contributing/testing.md)
 
 ## License
 
