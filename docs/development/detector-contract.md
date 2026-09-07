@@ -207,7 +207,7 @@ class DetectionResult:
     diagnostics: dict                        # 状态诊断
 ```
 
-目标阶段二合同：
+Finding 合同：
 
 ```python
 @dataclass
@@ -261,9 +261,9 @@ Detector 只写「声明 + analyze」，不读 PostgreSQL/OpenSearch/Agent 私�
 |---|---|---|---|
 | `rule-correlation-v1` | `analysis.py` 的 `_cloud_matches` | EDGE + SIGNAL | derived_signals |
 | Evidence provider | `provenance.py` 的 `connecting_evidence` | EDGE + SIGNAL | 被结论型 Detector 组合进 Finding |
-| `nodlink` | 原始 NodLink 的 Terminal/ISG/Hopset/Campaign 阶段 | SIGNAL + EDGE | derived_signals + evidence + node_scores |
+| `nodlink` | 原始 NodLink 的 Terminal/ISG/Hopset/Campaign 阶段 | SIGNAL + EDGE | derived_signals + findings |
 
-前两个内置 Detector 的 `signal_kinds={RULE}`；`nodlink` 目标值为 `{MODEL}`。
+`rule-correlation-v1` 的 `signal_kinds={RULE}`；`nodlink` 的值为 `{MODEL}`。
 
 命名统一不带 `-v1` 后缀的 `nodlink`（降低理解门槛）；版本号放在 `version` 字段，算法升级改 version 而非新名字。
 
@@ -331,7 +331,7 @@ normalized topic ────┤
 
 ## 9. 兼容性与可拓展性保障
 
-- **新增 Detector 不改基础层**：`required_inputs` 开放枚举 + Factory dict + `node_scores` 可选字段，新算法只增类 + 注册 + policy 名单。
+- **新增 Detector 不改基础层**：`required_inputs` 开放枚举 + Factory dict + Finding 合同，新算法只增类 + 注册 + policy 名单。
 - **迁移不改行为**：阶段一 M2/M3 先「纯提取」规则关联与最短路径到 Detector（行为不变），M4 才引入 Factory 动态编排，每步可独立验证 graph/conclusion recall 不下降。
 - **算法失败隔离**：Engine 逐个 try/catch，单 Detector 抛错只记 `detector_diagnostics`，不阻塞其他 Detector 与 Normalize；合同违规（例如未声明 keyed state 却返回状态）仍显式失败。
 - **状态版本语义**：精确版本正常恢复；缺失或升级时删除旧版本，并从当前有界快照明确重建，不做隐式迁移。
@@ -345,7 +345,7 @@ M1 本合同的 contracts.py + DetectorRegistry + 白名单校验
 M2 rule-correlation-v1（纯提取）
 M3 最短路径 Evidence provider（纯提取 + ProvenanceGraph 瘦身）
 M4 analyze() 编排化 + investigation.py（动态 Registry 才引入）
-M5 DetectionResult 补算法版本/窗口/引用/node_scores
+M5 DetectionResult 与 DetectionFinding 补算法版本/窗口/引用
 M6 回放/状态/端到端验收
 ```
 

@@ -25,8 +25,8 @@ flowchart LR
 
   subgraph Platform["管理平台"]
     Gateway["身份认证 Gateway"] --> Kafka
-    Kafka --> Worker
-    Worker --> Search["OpenSearch<br/>Event / Signal / Evidence / Incident"]
+    Kafka --> Flink["Flink<br/>Normalize / Detection / Projection"]
+    Flink --> Search["OpenSearch<br/>Event / Signal / Evidence / Incident"]
     Search -->|"查询"| Manager["Manager API"]
     Console["Web Console"] --> Manager
     Manager --> ControlDB["PostgreSQL<br/>控制面状态"]
@@ -39,6 +39,11 @@ flowchart LR
 
 Agent 未注册或断网时仍可本地采集、检测和查询。注册只增加上传与控制能力，不会创建第二条端点数据路径。详见[系统架构](docs/architecture.md)。
 
+云侧流式分析位于 `apps/streaming`，由 Normalize、Detection、Projection 三个 PyFlink Job
+组成。Detection 内置 `rule-correlation-v1` 和 `nodlink`；Nodlink 消费端侧 Model Candidate
+Signal，为每个 Campaign 输出带证据子图的独立 Finding。详见[Detector 合同](docs/development/detector-contract.md)
+和[流式检测术语表](docs/development/streaming-concepts-glossary.md)。
+
 ## 快速开始
 
 在使用 systemd 的 x86_64 Linux 主机上：
@@ -50,7 +55,7 @@ sudo sysarmorctl event watch --include-recent
 sudo sysarmorctl signal watch --include-recent
 ```
 
-也可以从 GitHub Releases 选择目标版本，执行其页面提供的一键安装命令。候选版本标记为
+也可以从 [Forgejo Releases](https://git.pku.edu.cn/oslab/sysarmor/releases) 选择目标版本，执行其页面提供的一键安装命令。候选版本标记为
 Pre-release，验收通过的版本发布为正式版本；公开发行包默认安装为 standalone。详细的校验、
 平台限制和离线分发边界见[部署指南](docs/operations/deployment.md)。
 

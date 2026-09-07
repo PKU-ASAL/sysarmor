@@ -175,14 +175,14 @@ sudo sysarmorctl policy apply --file /path/to/policy.json --dry-run
 |---|---|
 | Manager | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_OPENSEARCH_URL`、`SYSARMOR_ARTIFACT_DIR`、`SYSARMOR_AGENT_PACKAGE_INDEX_URL`、`SYSARMOR_ARTIFACT_PUBLIC_KEY`、`SYSARMOR_AGENT_CA_CERT`、`SYSARMOR_AGENT_CA_KEY`、`SYSARMOR_JWT_PUBLIC_KEY_FILE`、`SYSARMOR_JWT_ISSUER`、`SYSARMOR_JWT_AUDIENCE` |
 | Gateway | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_REDIS_ADDR`、`SYSARMOR_GRPC_TLS_CERT`、`SYSARMOR_GRPC_TLS_KEY`、`SYSARMOR_GRPC_CLIENT_CA` |
-| Worker | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_KAFKA_TOPIC`、`SYSARMOR_KAFKA_GROUP_ID`、`SYSARMOR_OPENSEARCH_URL` |
+| Streaming | `SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_OPENSEARCH_URL`、`SYSARMOR_S3_ENDPOINT`、`SYSARMOR_FLINK_JOB` |
 | Manager Console | `AUTH_SECRET_FILE`、`SYSARMOR_BOOTSTRAP_ADMIN_USERNAME_FILE`、`SYSARMOR_BOOTSTRAP_ADMIN_PASSWORD_FILE`、`SYSARMOR_BFF_JWT_PRIVATE_KEY_FILE`、`SYSARMOR_MANAGER_JWT_ISSUER`、`SYSARMOR_MANAGER_JWT_AUDIENCE`、`MANAGER_API_ORIGIN` |
 
-示例值位于 `deployments/{manager,gateway,worker,manager-ui}/*.env.example`。示例中的数据库密码只适用于隔离的本地 Compose；生产环境必须从环境或机密管理系统注入。
+示例值位于 `deployments/{manager,gateway,streaming,manager-ui}/*.env.example`。示例中的数据库密码只适用于隔离的本地 Compose；生产环境必须从环境或机密管理系统注入。
 
-Manager 与 Worker 的生产启动路径要求 PostgreSQL，`SYSARMOR_POSTGRES_DRIVER` 默认是
+Manager 的生产启动路径要求 PostgreSQL，`SYSARMOR_POSTGRES_DRIVER` 默认是
 `postgres`，`SYSARMOR_POSTGRES_DSN` 必须非空；不存在 memory/file backend 配置或自动回退。
-Worker 还要求非空 Kafka brokers/topic/group 与 OpenSearch URL。OpenSearch 基本认证可通过
+Streaming 还要求非空 Kafka brokers/topic/group 与 OpenSearch URL。OpenSearch 基本认证可通过
 `SYSARMOR_OPENSEARCH_USERNAME` 和 `SYSARMOR_OPENSEARCH_PASSWORD` 注入，禁止写入仓库配置。
 
 ## `configs/` 的边界

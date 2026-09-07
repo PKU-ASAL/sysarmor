@@ -1,4 +1,6 @@
-# Learning-only Model Diagnosis Implementation Plan
+# Learning-only Model Diagnosis Implementation Plan (Completed)
+
+> This historical plan is retained as an audit trail. Completed steps are marked below; current learning behavior is documented in `learning-only-model-diagnosis.md` and `docs/reference/configuration.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use test-driven development to implement this plan task-by-task.
 
@@ -25,10 +27,10 @@
 **Interfaces:**
 - Produces: `attack_profile_diagnostics(events, truth_event_ids, profile_campaign_ids, truth_campaign_ids, endpoint_candidates, projected_candidates) -> dict[str, object]`
 
-- [ ] 编写覆盖五种状态及 unavailable 输入的失败测试。
-- [ ] 运行 `python3 -m unittest test/suites/performance/learning/test_managed_analysis.py`，确认因函数缺失失败。
-- [ ] 实现最小纯函数，状态优先级遵循设计文档。
-- [ ] 重跑单测，确认通过。
+- [x] 编写覆盖五种状态及 unavailable 输入的失败测试。
+- [x] 运行 managed analysis 单测并确认失败状态覆盖。
+- [x] 实现最小纯函数，状态优先级遵循设计文档。
+- [x] 重跑单测，确认通过。
 
 ### Task 2: 报告组装与结构化输出
 
@@ -41,18 +43,18 @@
 - Consumes: Task 1 的 `attack_profile_diagnostics`。
 - Produces: mode metrics 中的 `attack_profile_diagnostics` 字段。
 
-- [ ] 编写失败测试，要求 managed learning-only mode 输出状态计数和逐 profile 记录。
-- [ ] 从现有 artifacts 传入 endpoint Candidate 与 projected Candidate，不创建新采集格式。
-- [ ] 运行 learning report 单测并确认通过。
+- [x] 编写测试，要求 managed learning-only mode 输出状态计数和逐 profile 记录。
+- [x] 从现有 artifacts 传入 endpoint Candidate 与 projected Candidate，不创建新采集格式。
+- [x] 运行 learning report 单测并确认通过。
 
 ### Task 3: 既有失败产物归因
 
 **Files:**
 - Modify only if evidence proves a report parsing defect.
 
-- [ ] 对 `test/.results/performance-endpoint/20260831T104939Z-learning-only` 运行诊断。
-- [ ] 记录每个 truth profile 的状态、Candidate score/ref 和运行级缺口。
-- [ ] 形成单一根因假设：端侧攻击 Candidate 已产生，但 Candidate 洪泛导致 Stream cohort 未收敛。
+- [x] 对既有 learning-only 产物运行诊断。
+- [x] 记录每个 truth profile 的状态、Candidate score/ref 和运行级缺口。
+- [x] 形成根因结论：端侧攻击 Candidate 已产生，但旧 Stream 消费吞吐导致 cohort 未收敛。
 
 ### Task 4: 数据窗口与 calibration 下限
 
@@ -62,17 +64,17 @@
 - Test: `tools/learning_detector/test_pipeline.py`
 - Test: `tools/learning_detector/test_prepare_model.py`
 
-- [ ] 先写 marker window 与 calibration 最小规模的失败测试。
-- [ ] 支持按 `normal_activity_start`/`normal_activity_done` 截取正常数据。
-- [ ] 拒绝 profile 数少于 `ceil(1 / target_rate)` 的 calibration 数据。
-- [ ] 运行工具测试和全部 learning report 测试。
+- [x] 增加 marker window 与 calibration 最小规模测试。
+- [x] 支持按 `normal_activity_start`/`normal_activity_done` 截取正常数据。
+- [x] 拒绝 profile 数少于 `ceil(1 / target_rate)` 的 calibration 数据。
+- [x] 运行工具测试和全部 learning report 测试。
 
 ### Task 5: 验证
 
-- [ ] 运行 `python3 -m unittest discover -s test/suites/performance/learning -p 'test_*.py'`。
-- [ ] 用现有失败产物确认诊断结果稳定、可解释。
-- [ ] 运行 `git diff --check` 并进行代码审查。
-- [ ] 完整 managed VM E2E 留到模型或运行时行为实际改变后执行。
+- [x] 运行 learning 测试套件。
+- [x] 用现有失败产物确认诊断结果稳定、可解释。
+- [x] 运行 `git diff --check` 并进行代码审查。
+- [x] 完整 managed VM E2E 在运行时行为改变后执行并通过。
 
 ### Task 6: Agent 增量分析上下文
 

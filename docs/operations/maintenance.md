@@ -35,7 +35,7 @@ curl -fsS http://127.0.0.1:19445/metrics
 
 ```bash
 journalctl -u sysarmor-agent -n 200 --no-pager
-docker compose -f deployments/compose.platform.yaml logs --tail=200 manager gateway worker
+docker compose -f deployments/compose.platform.yaml logs --tail=200 manager gateway flink-detection flink-projection
 docker compose -f deployments/compose.platform.yaml ps
 ```
 
@@ -43,7 +43,7 @@ docker compose -f deployments/compose.platform.yaml ps
 
 1. Agent 是否收到传感器事件，是否出现 parse/drop/restart。
 2. Agent batch 是否积压，Gateway mTLS 是否通过。
-3. Gateway 是否向 Kafka 写入，Worker 是否消费或写入 DLQ。
+3. Gateway 是否向 Kafka 写入，Flink Job 是否消费或写入 DLQ。
 4. PostgreSQL 控制状态与 OpenSearch 投影是否可用。
 5. BFF session、JWT issuer/audience 与 Manager 公钥是否一致。
 
@@ -62,7 +62,7 @@ docker compose -f deployments/compose.platform.yaml ps
 
 停止写入后再做一致性备份：先停止 Agent 上传或平台写入，再备份 PostgreSQL、OpenSearch 和 PKI，最后记录 release、镜像和 Schema 版本。不要把 Redis 当作权威存储。
 
-恢复顺序：PKI 和基础设施、PostgreSQL、OpenSearch、Manager/Worker/Gateway，最后恢复 Agent 连接。恢复后执行 `make doctor` 并验证一条真实 Event/Signal 链路。
+恢复顺序：PKI 和基础设施、PostgreSQL、OpenSearch、Manager/Gateway/Flink，最后恢复 Agent 连接。恢复后执行 `make doctor` 并验证一条真实 Event/Signal 链路。
 
 ## 升级原则
 
@@ -81,14 +81,14 @@ Agent 升级不得改变 tenant/Agent 身份；安装 profile 只改变生命周
 应用不直接访问带版本的物理索引，而是通过稳定 alias 间接访问：
 
 ```text
-Manager 查询、Worker 历史读取 -> read alias  -> 当前物理索引
-Worker 写入安全投影          -> write alias -> 当前物理索引
+Manager 查询、Flink 历史读取 -> read alias  -> 当前物理索引
+Flink 写入安全投影           -> write alias -> 当前物理索引
 ```
 
 三类名称承担不同职责：
 
 - **物理索引**保存真实文档和 mapping，名称中的 `v1`、`v2` 表示 Schema 版本。
-- **读 alias**是查询入口。Manager 和 Worker 无需知道当前物理版本。
+- **读 alias**是查询入口。Manager 和 Flink 无需知道当前物理版本。
 - **写 alias**是写入入口，必须且只能有一个目标标记为 `is_write_index=true`。
 
 初始关系如下：
@@ -118,11 +118,11 @@ Worker 写入安全投影          -> write alias -> 当前物理索引
 以 Incident v1 升级到 v2 为例：
 
 1. **创建 v2。** 使用已审查的 mapping 创建 `sysarmor-incidents-v2`。此时读写 alias 仍指向 v1，线上流量不受影响。
-2. **复制历史数据。** 将 v1 reindex 到 v2。第一次复制用于搬迁大部分数据，但迁移期间 Worker 仍可能向 v1 写入，因此此时不能切换。
+2. **复制历史数据。** 将 v1 reindex 到 v2。第一次复制用于搬迁大部分数据，但迁移期间 Flink Projection 仍可能向 v1 写入，因此此时不能切换。
 3. **验证 v2。** 比较文档数，并验证 tenant、时间范围、精确 Incident ID 和关键聚合。只比较总数不足以发现字段类型或查询语义错误。
-4. **收敛写入差异。** 当前最稳妥的方式是短暂停止 Worker 的 OpenSearch 投影，再执行一次最终 reindex。只有具备经过验证的变更游标或双写能力时，才能用增量同步替代停写。
+4. **收敛写入差异。** 当前最稳妥的方式是短暂停止 Flink Projection，再执行一次最终 reindex。只有具备经过验证的变更游标或双写能力时，才能用增量同步替代停写。
 5. **原子切换。** 在同一个 `POST /_aliases` 请求中移除 v1 的两个 alias，并将它们添加到 v2。OpenSearch 要么应用全部动作，要么全部不应用，不会留下“读 v2、写 v1”的中间状态。
-6. **恢复并观察。** 恢复 Worker 投影，确认 bulk 写入落到 v2，Manager 能通过 read alias 查到新数据，并持续检查 mapping、DLQ 和文档计数。
+6. **恢复并观察。** 恢复 Flink Projection，确认 bulk 写入落到 v2，Manager 能通过 read alias 查到新数据，并持续检查 mapping、DLQ 和文档计数。
 
 原子切换请求的结构是：
 
@@ -175,7 +175,7 @@ GET /sysarmor-incidents-read/_search
 ### 搜索无结果但上游正常
 
 - 确认 OpenSearch read/write alias 存在并指向同一预期版本。
-- 检查 Worker 日志、Kafka consumer group 和 DLQ。
+- 检查 Flink Job 日志、Kafka consumer group 和 DLQ。
 - 区分“合法空结果”和依赖失败；后者应返回明确错误。
 
 ### VM 测试找不到 libvirt

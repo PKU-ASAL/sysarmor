@@ -79,7 +79,7 @@ Learning Model 在离线训练、端侧推理的边界内运行：
 4. 用离线 DBSCAN 得到的进程稳定性值（SV）修正误差，计算 `score = log(MSE / SV)`；
 5. 当 `score >= threshold` 时产生 Endpoint Model Candidate，并附带模型 provenance、实体和 Event 引用。
 
-训练工具使用端点自采 Event 重建同一 ProcessProfile，并要求训练集与独立校准集不存在 Event 或 Profile 身份重叠。Python 训练侧和 Go Agent 侧对分词、子词、`float32` 累加、VAE mean 推理、SV 修正和阈值比较使用同一合同。Agent 不在本地构建完整攻击图；Worker 将 Event 规范化为 `ProvenanceEdge`，再连接 Endpoint Candidate，并负责后续 Evidence 与 Conclusion 分析。
+训练工具使用端点自采 Event 重建同一 ProcessProfile，并要求训练集与独立校准集不存在 Event 或 Profile 身份重叠。Python 训练侧和 Go Agent 侧对分词、子词、`float32` 累加、VAE mean 推理、SV 修正和阈值比较使用同一合同。Agent 不在本地构建完整攻击图；Flink Normalize/Detection 将 Event 规范化为 `ProvenanceEdge`，再连接 Endpoint Candidate，并负责后续 Evidence 与 Conclusion 分析。
 
 ### 有界持久化
 
@@ -132,17 +132,17 @@ Gateway 会将该身份与每个上报的 tenant ID 和 Agent ID 交叉校验。
 
 完成注册的 Agent 只上传有效策略产生的 Event 和 Signal。`rule-only` 只采集规则所需事实；`learning-only` 和 `hybrid` 的已解析 Bundle 包含 `process.exec`、`process.exit`、`process.fork`、`file.write` 和 `network.connect` 因果骨架。Agent 不再为所有策略偷偷扩大采集面。注册不会创建第二条采集路径，也不会自动上传注册前的历史数据；历史上传必须显式请求。
 
-Agent 以批次发送数据，Gateway 返回 accepted、duplicate、retryable 或 terminally invalid。只有 accepted 或 duplicate 确认可以推进本地 checkpoint。Gateway 完成身份和批次校验后，将数据交给 Kafka；Worker 在完成必需投影后才提交 Kafka offset。
+Agent 以批次发送数据，Gateway 返回 accepted、duplicate、retryable 或 terminally invalid。只有 accepted 或 duplicate 确认可以推进本地 checkpoint。Gateway 完成身份和批次校验后，将数据交给 Kafka；Flink 在完成必需投影后才提交 Kafka offset。
 
-Endpoint Model Candidate 与当前触发 Event 是 DataBatch 内的强引用：Candidate 必须有唯一 subject Process，至少一个 EventRef 必须在当前批次中解析，并且 Event 与 Candidate 的 subject StableID 一致。Agent、Gateway 和 Worker 共用该合同；历史上下文仍按弱引用处理，缺失时进入 gap/incomplete，而不是拒绝所有不完整历史。
+Endpoint Model Candidate 与当前触发 Event 是 DataBatch 内的强引用：Candidate 必须有唯一 subject Process，至少一个 EventRef 必须在当前批次中解析，并且 Event 与 Candidate 的 subject StableID 一致。Agent、Gateway 和 Flink 共用该合同；历史上下文仍按弱引用处理，缺失时进入 gap/incomplete，而不是拒绝所有不完整历史。
 
-永久非法输入只有在 dead-letter 记录可靠写入后才能提交。临时错误不提交并等待重试。派生文档使用确定性 ID，因此重复批次、Worker 重试和局部 Bulk 成功会重放到同一逻辑结果，而不是放大 Signal 或 Incident。
+永久非法输入只有在 dead-letter 记录可靠写入后才能提交。临时错误不提交并等待重试。派生文档使用确定性 ID，因此重复批次、Flink 重试和局部 Bulk 成功会重放到同一逻辑结果，而不是放大 Signal 或 Incident。
 
-Learning health 公开 Candidate 的 `created`、`spooled`、`gateway_accepted_unique`、`gateway_duplicate_ack`、`contract_rejected` 和 `gateway_rejected` 计数。Worker 在 PostgreSQL `worker_signal_processing` 中按同一 `Signal.id` 记录 `correlated`、`projected` 或 `reference_rejected`，OpenSearch 保存最终投影。验收要求各阶段 Signal cohort 严格守恒；duplicate ACK 只表示幂等重试，不参与守恒。这些生产指标与本地 storage drop、观察 Ring Buffer eviction 分开，允许定位缺口发生在观察、端侧持久化、Gateway、Worker 关联还是投影。
+Learning health 公开 Candidate 的 `created`、`spooled`、`gateway_accepted_unique`、`gateway_duplicate_ack`、`contract_rejected` 和 `gateway_rejected` 计数。Flink 通过 Kafka checkpoint 和确定性投影 ID 形成 `correlated`、`projected` 或 `reference_rejected` 结果，OpenSearch 保存最终投影。验收要求各阶段 Signal cohort 严格守恒；duplicate ACK 只表示幂等重试，不参与守恒。这些生产指标与本地 storage drop、观察 Ring Buffer eviction 分开，允许定位缺口发生在观察、端侧持久化、Gateway、Flink 关联还是投影。
 
 ## 云侧分析
 
-Worker 当前按 `tenant_id` 和分析作用域限定。分析作用域以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分；每个受影响作用域合并当前批次与 OpenSearch 中 15 分钟历史窗口内的 Event 和 Endpoint Signal，再根据有效检测策略重新计算 Cloud Signal 和 Incident。
+Flink Detection 当前按 `tenant_id` 和分析作用域限定。分析作用域以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分；每个受影响作用域在有界状态中合并当前批次与窗口内的 Event 和 Endpoint Signal，再根据有效检测策略重新计算 Cloud Signal 和 Incident。
 
 ```mermaid
 flowchart LR
@@ -165,11 +165,11 @@ flowchart LR
   Incident --> Projection
 ```
 
-Worker 先把 Event 规范化为有方向的 `ProvenanceEdge`，再构建进程、文件和 socket provenance 图：进程创建从父进程指向子进程，读操作从对象指向进程，写和发送操作从进程指向对象，每条边聚合对应的 `event_refs`；`process.exit` 只结束生命周期，不生成图边。合法 root process 即使没有父边也必须保留为图节点。Signal 只提供 Evidence 种子，不产生或补造 ProvenanceEdge。父身份缺失时图中保留明确的 gap 节点，并将相邻边标记为 incomplete。当前 Evidence 是最多 32 个种子在最多 100,000 条窗口 Event 上的种子间最短路径并集，不是完整 Steiner Tree，也不等于最可能攻击路径。Incident 保存贡献 Signal、Event 支撑的 Evidence、收敛轨迹和稳定分析标识；Model Candidate 不会单独晋升为 Incident，因此真实 managed 图与结论 recall 由 `hybrid` 路径验收。候选攻击路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
+Flink Detection 先把 Event 规范化为有方向的 `ProvenanceEdge`，再构建进程、文件和 socket provenance 图：进程创建从父进程指向子进程，读操作从对象指向进程，写和发送操作从进程指向对象，每条边聚合对应的 `event_refs`；`process.exit` 只结束生命周期，不生成图边。合法 root process 即使没有父边也必须保留为图节点。Signal 只提供 Evidence 种子，不产生或补造 ProvenanceEdge。父身份缺失时图中保留明确的 gap 节点，并将相邻边标记为 incomplete。Nodlink 在共享图上维护有界 Terminal/Campaign 状态，并为每个 Campaign 输出独立 Finding；完整 Steiner Tree、候选路径排序、攻击阶段推理和自然语言根因解释仍是目标能力。
 
 ### Flink 流式检测平面
 
-云侧分析运行在 Apache Flink 集群中，不保留 Go Worker 双跑、fallback 或兼容 facade。
+云侧分析运行在 Apache Flink 集群中，不保留旧 Go Worker 双跑、fallback 或兼容 facade。
 
 目标架构划分四个互不越界的平面：
 
@@ -180,7 +180,7 @@ Worker 先把 Event 规范化为有方向的 `ProvenanceEdge`，再构建进程�
 | 流式检测平面 | Flink JobManager、TaskManager、PyFlink Job | 标准化、有状态检测、Evidence 和 Incident 收敛 |
 | 查询平面 | OpenSearch | Event、Signal、Evidence 和 Incident 查询投影 |
 
-PostgreSQL 只保存 Manager 控制面状态。Flink Job 的镜像、配置、依赖和运行时均不得包含 PostgreSQL 驱动或 DSN，也不得通过 Manager API 回写逐 Event、逐 Signal、逐批次或检测窗口状态。Kafka 是可重放的流式日志；Flink checkpoint/savepoint 是有界计算状态；OpenSearch 是可重建查询投影。三者都不能被替换为 PostgreSQL Worker 账本。
+PostgreSQL 只保存 Manager 控制面状态。Flink Job 的镜像、配置、依赖和运行时均不得包含 PostgreSQL 驱动或 DSN，也不得通过 Manager API 回写逐 Event、逐 Signal、逐批次或检测窗口状态。Kafka 是可重放的流式日志；Flink checkpoint/savepoint 是有界计算状态；OpenSearch 是可重建查询投影。三者都不能被替换为 PostgreSQL 处理账本。
 
 Flink 集群是通用运行平台，SysArmor 流式任务是独立发布单元。首个生产拓扑由三个 Job 组成：
 
@@ -206,9 +206,9 @@ flowchart LR
 
 任务之间只使用版本化 Kafka 合同，不直接调用彼此，也不共享进程内状态。基线与实验 Detection Job 可以用独立 consumer group、checkpoint 路径和输出 Topic 消费同一规范化输入；实验 Job 不能写入生产 artifact Topic。首版只维护以上三类职责，不为每一种 Event、Signal 或算法创建独立 Topic。
 
-Manager 使用 transactional outbox 在同一个 PostgreSQL 事务中保存已发布策略和待发布消息，再由控制面 relay 将不可变版本投递到 compacted Policy Topic；Kafka 确认后才能完成 outbox。该 outbox 是控制面 Policy 状态，不包含 Event、Signal 或 Worker 处理明细。Topic key 包含 tenant、Policy ID 和 version，历史版本至少保留到所有引用它的 DataBatch 超出 Kafka 最大重放窗口。Detection Job 通过 Broadcast State 使用精确版本；版本缺失时明确失败并停止越过该输入，不读取 PostgreSQL，也不使用默认策略。
+Manager 使用 transactional outbox 在同一个 PostgreSQL 事务中保存已发布策略和待发布消息，再由控制面 relay 将不可变版本投递到 compacted Policy Topic；Kafka 确认后才能完成 outbox。该 outbox 是控制面 Policy 状态，不包含 Event、Signal 或 Flink 处理明细。Topic key 包含 tenant、Policy ID 和 version，历史版本至少保留到所有引用它的 DataBatch 超出 Kafka 最大重放窗口。Detection Job 通过 Broadcast State 使用精确版本；版本缺失时明确失败并停止越过该输入，不读取 PostgreSQL，也不使用默认策略。
 
-Flink JVM Runtime 负责调度、反压、checkpoint、watermark、状态后端和故障恢复；Python Worker 只承载版本化合同映射与检测领域算子。Job 使用 PyFlink DataStream API，Python 依赖由 `uv` 管理。状态按稳定 key 增量更新，禁止在 JVM 与 Python 间反复传输完整租户图；经实测确认的热点算子才允许单独下沉为 Java Operator。
+Flink JVM Runtime 负责调度、反压、checkpoint、watermark、状态后端和故障恢复；PyFlink Python 进程只承载版本化合同映射与检测领域算子。Job 使用 PyFlink DataStream API，Python 依赖由 `uv` 管理。状态按稳定 key 增量更新，禁止在 JVM 与 Python 间反复传输完整租户图；经实测确认的热点算子才允许单独下沉为 Java Operator。
 
 checkpoint 和 savepoint 只依赖 S3-compatible 接口，路径按稳定 Job ID 隔离。Compose/VM 首先使用 MinIO 作为默认实现；对象存储供应商不能进入 Job 代码。RustFS 等替代实现必须通过 checkpoint 创建、JobManager/TaskManager 重启恢复、并发 checkpoint、savepoint 升级、网络中断恢复和过期对象清理测试后，才能替换默认实现。
 

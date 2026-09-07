@@ -234,17 +234,13 @@ process entity 和 `event_refs` 映射内部 Terminal；Terminal 不是公共消
 
 当算法出现明显不同的 CPU、内存、状态、checkpoint、GPU 或发布周期要求时，再拆成独立 Flink Job。独立 Job 只消费版本化标准化 Topic，输出统一分析结果，不创建算法私有的安全数据存储。
 
-## 当前优先级
+## 后续优先级
 
-1. 完成 Detector 和 DetectionResult 合同。
-2. 将现有 Detection 逻辑迁移到正式 Detector。
-3. 将 ProvenanceGraph 与具体算法解耦。
-4. 增加算法版本、输入窗口和状态诊断。
-5. 建立统一 Detector 对比实验和报告。
-6. 实现端侧模型 Signal 到 Terminal 的映射。
-7. 实现 ISG、Hopset 和跨窗口 Campaign 检测。
-8. 增加真实攻击、正常业务和故障恢复回放。
-9. 决定高成本算法是否拆分独立 Flink Job。
+1. 完善 Incident 稳定 upsert：first_seen、last_seen、revision 和 status。
+2. 增加 Finding 级 truth evaluation 和 Campaign duplication 指标。
+3. 完善 Nodlink IV、HAS、Grubbs 与独立 HopSet 索引。
+4. 将 Detector 合同提取为可复用 SDK 和 testkit。
+5. 决定高成本算法是否按实测拆分独立 Flink Job。
 
 ## 责任闭环
 

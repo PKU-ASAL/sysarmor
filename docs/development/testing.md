@@ -87,7 +87,7 @@ make test-release STAGE=pre-publish|post-publish
 `vm-topology` 的角色：
 
 ```text
-mgr       Manager、Gateway、Worker 和平台存储
+mgr       Manager、Gateway、Flink 和平台存储
 node-a    安装 Agent 的受保护主机
 attacker  C2 和攻击场景支持节点
 ```
@@ -115,7 +115,7 @@ Functional Suite 证明“系统通不通”。
 | `functional-endpoint-local` | 本地状态和容器入口运行行为 | fake binary/本地契约 |
 | `functional-endpoint` | 安装 standalone Agent，验证真实 Event、Signal、关联引用和重启恢复 | owned real Tetragon |
 | `functional-endpoint-container` | 容器 Agent 的 `namespace/self` 隔离 | Manager 分发的容器 Agent |
-| `functional-platform` | Manager、Gateway、Worker、PostgreSQL、Policy、Response 合约 | 构造或 fake 输入 |
+| `functional-platform` | Manager、Gateway、Flink、PostgreSQL、Policy、Response 合约 | 构造或 fake 输入 |
 | `functional-platform-full` | 容器内 Event、Signal、Incident 产品路径 | Tetragon container |
 | `functional-topology` | 三 VM 分发、注册、证书和接入链路 | Manager 分发真实 Agent |
 
@@ -153,11 +153,11 @@ Agent enrollment 模式按测试目标明确区分：
 |---|---|---|
 | Endpoint functional/performance | `standalone` | Agent 本地 Event、Signal 和资源指标 |
 | Topology functional | `managed` | Manager health/session 和接入状态 |
-| Detection topology | `managed` | Gateway -> Kafka -> Worker -> PostgreSQL/OpenSearch -> Manager 查询 |
+| Detection topology | `managed` | Gateway -> Kafka -> Flink -> OpenSearch -> Manager 查询 |
 
-Learning managed 性能实验在负载结束后发布 `rule-only` drain Policy，停止产生新的 Model Candidate，同时保持 Agent spool、Gateway 和 Worker 运行。Agent 只冻结一次 Candidate 计数和 Event sequence cutoff；Worker 从 PostgreSQL `worker_signal_processing` 读取该 Agent、cutoff 以内的 Signal 终态，再与 OpenSearch Model Candidate 按同一 `Signal.id` 精确关联。`events.scope.ndjson` 与 `signals.scope.ndjson` 是有界观察流，只用于 truth、样本和诊断；Ring Buffer eviction 记为 `observation_gap`，不能单独证明生产 DataBatch 丢失。报告不截断或补齐计数，并分别展示端侧 storage drop、Gateway reject、Worker backlog 和引用拒绝。
+Learning managed 性能实验在负载结束后发布 `rule-only` drain Policy，停止产生新的 Model Candidate，同时保持 Agent spool、Gateway 和 Flink 运行。Agent 只冻结一次 Candidate 计数和 Event sequence cutoff；Flink 按同一 `Signal.id` 形成 correlated/projected 结果并写入 OpenSearch。`events.scope.ndjson` 与 `signals.scope.ndjson` 是有界观察流，只用于 truth、样本和诊断；Ring Buffer eviction 记为 `observation_gap`，不能单独证明生产 DataBatch 丢失。报告不截断或补齐计数，并分别展示端侧 storage drop、Gateway reject、Stream backlog 和引用拒绝。
 
-Detection topology 的每个 fresh VM case 会先创建一次性 enrollment，并通过 `sysarmorctl enroll` 切换 Agent 到 managed；collection/detection 策略通过 Manager publish/assign 下发，benchmark 内容在安装阶段签名进入 Agent 默认内容。这样 `EVALUATION_SCOPE=manager` 验收的是实际云端 Worker 链路，而不是 standalone 本地 spool。Standalone 端点能力由 Endpoint functional/performance 单独验收。
+Detection topology 的每个 fresh VM case 会先创建一次性 enrollment，并通过 `sysarmorctl enroll` 切换 Agent 到 managed；collection/detection 策略通过 Manager publish/assign 下发，benchmark 内容在安装阶段签名进入 Agent 默认内容。这样 `EVALUATION_SCOPE=manager` 验收的是实际云端 Flink 链路，而不是 standalone 本地 spool。Standalone 端点能力由 Endpoint functional/performance 单独验收。
 
 Detection 的默认 `alert_score`/`evidence_score` 门槛为 `0.9`，同时仍要求所有真值文件中的 required Event/Signal 全部命中。可通过 `SYSARMOR_DETECTION_MIN_SCORE` 临时提高或降低分数门槛；降低门槛不会放宽 required 标签检查。
 
@@ -216,7 +216,7 @@ Performance Suite 将三种成本分开测量：
 | 范围 | 入口 | 测量对象 |
 |---|---|---|
 | Endpoint | `performance-endpoint` | `node-a` 上 Agent、sensor 和两者汇总 |
-| Platform | `performance-platform` | `mgr` 上 Manager、Gateway、Worker 和基础设施 |
+| Platform | `performance-platform` | `mgr` 上 Manager、Gateway、Flink 和基础设施 |
 | Module | `performance-modules` | rule engine、matcher 等本地 Go 模块 |
 
 ### Endpoint
@@ -283,7 +283,7 @@ make test-performance DOMAIN=platform \
   SYSARMOR_PLATFORM_PERF_INTERVAL=5
 ```
 
-平台侧采集 Manager、Gateway、Worker、Kafka、PostgreSQL、Redis 和 OpenSearch，输出：
+平台侧采集 Manager、Gateway、Flink、Kafka、PostgreSQL、Redis、对象存储和 OpenSearch，输出：
 
 ```text
 test/.results/performance-platform/<run-id>/
@@ -314,7 +314,7 @@ Module benchmark 适合定位算法回归，不包含 sensor、VM、网络或平
 Learning 实验在相同 Endpoint Medium 和相同场景下依次运行 `rule-only`、`learning-only`、
 `hybrid`，每个模式由 Policy Resolver 选择自己的 Collection Policy，并生成一份运行级
 `report.md`。默认使用 managed Agent 与 `vm-topology`，从 Manager 抓取 Incident；只有显式
-设置 `SYSARMOR_LEARNING_AGENT_MODE=standalone` 时才跳过 Worker 与端到端门禁。执行时必须
+设置 `SYSARMOR_LEARNING_AGENT_MODE=standalone` 时才跳过 Flink 与端到端门禁。执行时必须
 提供训练集和独立校准集：
 
 ```bash
@@ -328,10 +328,10 @@ make test-performance DOMAIN=learning PROFILE=medium \
 | 层级 | 指标 | 数据来源 | 门禁语义 |
 |---|---|---|---|
 | Agent 发现 | `attack_campaign_seed_recall` | Endpoint Event、ProcessProfile、Model Candidate | 始终 blocking，默认至少 0.90 |
-| Worker 构图 | `worker_graph_recall` | truth graph Event 与 Incident Evidence `event_refs` | managed `hybrid` 时 blocking，默认至少 0.90 |
+| Flink 构图 | `stream_graph_recall` | truth graph Event 与 Incident Evidence `event_refs` | managed `hybrid` 时 blocking，默认至少 0.90 |
 | 最终结论 | `conclusion_recall` | truth campaign 与 Incident campaign | managed `hybrid` 时 blocking，默认至少 0.90 |
 
-“缺失字段”和“空结果”含义不同：standalone 没有 Worker 产物时报告 unavailable 且不阻断；managed `hybrid` 缺少 Incident artifact 或 truth 时明确失败，合法空 Incident 则使 graph/conclusion recall 为 0 并失败。`learning-only` 只验收 Model Candidate，不借助不存在的 Incident 声称 Worker 图或最终结论覆盖率；完整 Provenance graph 与 Conclusion 由 `hybrid` 验收。报告同时保留三模式 CPU、稳定期 RSS、EPS、drop/parse error、hybrid 相对 rule-only 的 Rule 等价性、ProcessProfile 生命周期和身份缺口，以及 Profile observation、feature update、模型评分、纯生命周期观察和 suppressed checkpoint 五个 Learning 语义调度计数。只有 blocking 门禁全部通过，运行结论才是 passed。
+“缺失字段”和“空结果”含义不同：standalone 没有 Flink 产物时报告 unavailable 且不阻断；managed `hybrid` 缺少 Incident artifact 或 truth 时明确失败，合法空 Incident 则使 graph/conclusion recall 为 0 并失败。`learning-only` 只验收 Model Candidate，不借助不存在的 Incident 声称 Flink 图或最终结论覆盖率；完整 Provenance graph 与 Conclusion 由 `hybrid` 验收。报告同时保留三模式 CPU、稳定期 RSS、EPS、drop/parse error、hybrid 相对 rule-only 的 Rule 等价性、ProcessProfile 生命周期和身份缺口，以及 Profile observation、feature update、模型评分、纯生命周期观察和 suppressed checkpoint 五个 Learning 语义调度计数。只有 blocking 门禁全部通过，运行结论才是 passed。
 
 训练侧 Python 与 Agent 侧 Go 必须通过同一真实 Bundle 和 ProcessProfile 的推理合同：特征向量固定，score 按 `float32` 语义一致，且 `score >= threshold` 的 Candidate 结论一致。两端各自单测通过不能替代这项跨语言合同。
 
@@ -347,7 +347,7 @@ Distribution 验证发行包和安装兼容性，不承担发布决策：
 ```bash
 make test-distribution SOURCE=local
 make test-distribution SOURCE=published \
-  URL=https://github.com/PKU-ASAL/sysarmor/releases/download/<tag>/install.sh
+  URL=https://git.pku.edu.cn/oslab/sysarmor/releases/download/<tag>/install.sh
 ```
 
 Published 测试必须显式指定待验收 tag 的 URL，避免误测其他 pre-release。详细镜像和场景

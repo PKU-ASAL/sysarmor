@@ -1,4 +1,6 @@
-# Streaming Architecture Refactor Implementation Plan
+# Streaming Architecture Refactor Implementation Plan (Completed)
+
+> This historical implementation plan is retained as an audit trail. All tasks below are complete; current contracts are defined by `detector-contract.md` and `streaming-concepts-glossary.md`.
 
 **Goal:** 将 Flink 应用迁移到 `apps/streaming/src/streaming`，收紧 Detector/Engine/Investigation 边界，并为 Nodlink 接入建立清晰的贡献接口。
 
@@ -13,48 +15,48 @@
 - Detector 使用统一 `Signal`、`DetectionResult` 和版本化 keyed state。
 - 新 Detector 不修改 Normalize、Flink DAG、Investigation 和 Projection。
 
-### Task 1: Package migration
+### Task 1: Package migration (Completed)
 
 迁移 `streaming/` 到 `apps/streaming/`，将 import package 从 `sysarmor_streaming` 改为 `streaming`，同步 Docker、Compose、Makefile、架构测试和所有 Python imports。
 
 验证：所有 streaming 单测与 architecture contract 通过。
 
-### Task 2: Layer split
+### Task 2: Layer split (Completed)
 
 将 `operators` 中的代码按职责迁移到 `preprocessing`、`engine`、`investigation` 和 `runtime`，保留 `jobs` 只做 DAG 装配；拆分超过 500 行的 detection/state 文件。
 
 验证：模块依赖方向测试通过，Detector 不反向依赖 Job/Runtime。
 
-### Task 3: Detector registry and policy selection
+### Task 3: Detector registry and policy selection (Completed)
 
 新增显式 `detectors.registry`，Policy 增加 Detector 名单；运行时由名单构建 Detector，不再无条件构建全部 Detector。将输入调度从 Registry 移入 Engine，并按声明裁剪 DetectorInputs。
 
 验证：启用/禁用、未知名称、输入可用性和 Signal kind 测试通过。
 
-### Task 4: Isolation and investigation boundary
+### Task 4: Isolation and investigation boundary (Completed)
 
 逐 Detector 捕获异常并输出失败诊断；Investigation 只消费 DetectionResult，不导入具体 Detector 私有函数；Convergence 改为基于通用结论 Signal/Result。
 
 验证：单 Detector 失败不阻塞其他 Detector，Incident 使用 Detector Evidence。
 
-### Task 5: Remove obsolete compatibility
+### Task 5: Remove obsolete compatibility (Completed)
 
 删除 Detection/Normalize 对旧单条 normalized record 的回退解码和相关测试；标准 Kafka 流只接受 `NormalizedTelemetryBatch`。
 
 验证：旧单条输入明确失败，Batch quick/medium E2E 通过。
 
-### Task 6: Nodlink contribution skeleton
+### Task 6: Nodlink contribution skeleton (Completed)
 
 新增内置 `detectors/nodlink`，先实现合同、Terminal 映射和状态接口占位，再接入 ISG/Hopset/Campaign；新增 `tools/nodlink` replay/calibration/evaluation 入口。
 
 验证：Nodlink 单测、回放测试和 managed hybrid E2E 通过。
 
-当前进度：已完成内置 `nodlink` 的严格 Terminal 映射、有界局部搜索、多 Campaign
+已完成：内置 `nodlink` 的严格 Terminal 映射、有界局部搜索、多 Campaign
 版本化跨批次状态、过期清理、结构评分、完整引用及通用 Incident 链路。新 Terminal
 只合并局部可达、`model_digest` 相同且 Policy 允许 lineage 关联的 Campaign；否则新建
 Campaign。当前搜索是连接现有 Campaign 最近节点的在线 Steiner 贪心基线，`theta=10`；尚未实现论文
 完整的 IV（异常分、距离、fan-out）优先搜索、HopSet HAS 历史分布与 Grubbs 多轮异常
-检验。离线 replay/calibration/evaluation 工具仍待下一阶段实现。
+检验仍是后续算法增强；replay 已实现，calibration/evaluation 仍是后续工具增强。
 
 状态与引用约束：只接受 `ENDPOINT+MODEL+CANDIDATE Signal`；graph rebuild 从当前
 Signal 快照重建 Terminal；过期或淘汰 Terminal 时重建 ISG；只有实际进入同一 ISG 的

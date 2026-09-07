@@ -119,7 +119,7 @@ make doctor
 `make deploy` 依次完成：构建服务二进制、生成签名 Agent release、初始化 PKI 和登录凭据、构建镜像并启动 Compose。标准数据流为：
 
 ```text
-Agent -> Gateway -> Kafka -> Worker -> PostgreSQL / OpenSearch
+Agent -> Gateway -> Kafka -> Flink Normalize/Detection/Projection -> OpenSearch
 Browser -> Manager Console BFF -> Manager
 ```
 

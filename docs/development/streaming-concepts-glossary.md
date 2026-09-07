@@ -61,9 +61,8 @@ Signal 是公共传输和查询对象，会进入 Kafka、Projection 或 OpenSea
 Incident 是平台面向调查和响应的案件对象。它可以由一个或多个 DetectionFinding
 组成，拥有稳定 ID、状态、首次/最后观察时间、证据和响应生命周期。
 
-当前实现正在从“一个分析结果生成一个 Incident”迁移到 Finding 驱动：Nodlink 已经
-输出独立 `DetectionFinding`，后续将以稳定 `correlation_key` 更新同一 Incident，
-而不是因为 Evidence 增加就创建新 ID。
+当前实现按 Finding 驱动：Nodlink 为每个 Campaign 输出独立 `DetectionFinding`，
+Investigation 以稳定 `correlation_key` 生成对应 Incident，而不是因为 Evidence 增加就创建新 ID。
 
 ## 三、证据对象
 
@@ -221,10 +220,7 @@ ISG（Information Subgraph）是 Nodlink 当前 Campaign 选中的节点和边�
 
 当前缺口：
 
-- `DetectionResult` 仍是平铺 Result，多个 Campaign 共享一份 Evidence；
-- Investigation 仍按窗口级结果组装 Incident；
-- Manager 尚未完整下发 `detectors` Policy；
-- Finding 的稳定 `correlation_key` 和 Incident revision 尚未落地。
-
-下一步是先实现 `DetectionResult.findings[]`，使每个 Campaign 的结论、Evidence 和
-contributors 成为不可拆分的完整 Finding，再重构 Investigation 的案件生命周期。
+- Incident 的 first_seen/last_seen/revision 稳定 upsert 仍需完善；
+- Nodlink 的 HAS、Grubbs 和完整 IV 论文增强仍未实现；
+- Evidence pullback 仍是控制链路，尚未回拉真实原始材料；
+- Detector SDK 尚未提取为独立可复用包。

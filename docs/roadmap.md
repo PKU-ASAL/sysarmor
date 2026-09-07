@@ -101,7 +101,7 @@ Agent 已具备有界 Event/Signal 保存、端侧规则与 ProcessProfile 模�
 
 ### 下一阶段专项计划
 
-端云调查闭环的下一阶段专项工作是将云侧溯源检测改造为可插拔 Detector 平台，并逐步从当前最短路径 Evidence 演进到 Terminal 选择、近似 Steiner Tree、路径排序和攻击阶段推理。具体交付顺序、模块合同和验收指标见[溯源图检测平台开发计划](development/provenance-detection-plan.md)。
+端云调查闭环的当前专项基础已经落地为 Flink Detector 平台和内置 Nodlink；后续重点是完整 Steiner Tree、路径排序、攻击阶段推理和真实原始材料回拉。模块合同和当前边界见[Detector 合同](development/detector-contract.md)与[溯源图检测平台计划](development/provenance-detection-plan.md)。
 
 ## 阶段 4：受控响应与动态博弈
 

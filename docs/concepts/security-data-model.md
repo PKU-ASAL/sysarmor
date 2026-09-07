@@ -41,7 +41,7 @@ Candidate 和 Conclusion 是 Signal 的阶段，不是独立数据对象。Candi
 |---|---|---|
 | Rule | 确定性规则或关联规则 | Endpoint/Cloud Candidate 与 Conclusion 已实现 |
 | Model | Learning Model 异常检测 | Endpoint Candidate 已实现 |
-| Graph | 图结构或路径算法检测 | 合同已定义，生产生成器尚未实现 |
+| Graph | 图结构或路径算法检测 | Nodlink 已生成 Cloud Graph Conclusion；更完整的路径推理仍在演进 |
 | System | Agent 健康、自保护或篡改检测 | Endpoint Conclusion 已实现 |
 
 正式文档和报告使用 `<DetectorKind> <Stage>` 描述具体发现：
@@ -64,7 +64,7 @@ where = Endpoint
 
 ## Where：产生位置
 
-`Endpoint` 表示 Signal 由 Agent 端侧产生，`Cloud` 表示 Signal 由 Worker 云侧分析产生。Where 只记录产生位置，不推导 Stage、DetectorKind 或可信度。
+`Endpoint` 表示 Signal 由 Agent 端侧产生，`Cloud` 表示 Signal 由 Flink 云侧分析产生。Where 只记录产生位置，不推导 Stage、DetectorKind 或可信度。
 
 ## Evidence：可复核依据
 
@@ -98,17 +98,17 @@ Event
 
 Signal 使用 `event_refs` 引用事实，使用 `signal_refs` 引用上游发现，并保留实体、lineage、规则或模型 provenance。Incident 保留贡献 Conclusion、Evidence 子图和稳定分析身份。Evidence 的每条生产图边必须由一个或多个 Event 引用支撑；Signal 只选择图种子。身份无法恢复时允许使用显式 gap 节点和 incomplete 边，禁止制造不存在的进程关系。
 
-Endpoint Model Candidate 具有最小强引用合同：必须且只能包含一个 `subject` Process，至少一个 `event_ref` 必须指向同一 DataBatch 中 subject StableID 相同的触发 Event。Agent 构批、Gateway 接收和 Worker 解码使用同一合同；违反合同的批次会以稳定 reason code 明确拒绝。其他历史 Event、父进程和对象引用属于弱引用，可以由 Worker 从历史窗口补全；无法补全时必须标记 gap/incomplete，不能伪造关系或要求端侧无限保留。
+Endpoint Model Candidate 具有最小强引用合同：必须且只能包含一个 `subject` Process，至少一个 `event_ref` 必须指向同一 DataBatch 中 subject StableID 相同的触发 Event。Agent 构批、Gateway 接收和 Flink 解码使用同一合同；违反合同的批次会以稳定 reason code 明确拒绝。其他历史 Event、父进程和对象引用属于弱引用，可以由 Flink 从历史窗口补全；无法补全时必须标记 gap/incomplete，不能伪造关系或要求端侧无限保留。
 
 Event 与 Signal 不会因为重试而改变语义身份。新的输入可以使同一分析窗口重新计算 Incident，但不能把 Candidate 原地改成 Conclusion。
 
-Candidate 本身仍是不可变 Signal。`created`、`spooled`、`gateway_accepted_unique`、`gateway_duplicate_ack`、`worker_correlated` 和 `worker_projected` 是交付阶段指标，不是 Candidate 内部状态；`observation_gap`、`endpoint_storage_drop`、`gateway_reject`、`agent_delivery_backlog`、`worker_pending_backlog` 和 `worker_reference_rejected` 分别表示测试观察覆盖、端侧容量丢弃、Gateway 拒绝、尚未交付、Worker 尚未处理和引用合同拒绝，禁止合并为一个含义模糊的 degraded 原因。生命周期验收使用同一组 `Signal.id`，严格满足 `created = spooled + contract_rejected`、`spooled = gateway_accepted_unique + gateway_rejected`、`gateway_accepted_unique = worker_correlated + worker_reference_rejected` 和 `worker_correlated = worker_projected = projection_artifacts`；`gateway_duplicate_ack` 只表示幂等重试，不参与守恒计算。
+Candidate 本身仍是不可变 Signal。`created`、`spooled`、`gateway_accepted_unique`、`gateway_duplicate_ack`、`stream_correlated` 和 `stream_projected` 是交付阶段指标，不是 Candidate 内部状态；`observation_gap`、`endpoint_storage_drop`、`gateway_reject`、`agent_delivery_backlog`、`stream_pending_backlog` 和 `stream_reference_rejected` 分别表示测试观察覆盖、端侧容量丢弃、Gateway 拒绝、尚未交付、Flink 尚未处理和引用合同拒绝，禁止合并为一个含义模糊的 degraded 原因。生命周期验收使用同一组 `Signal.id`，严格满足 `created = spooled + contract_rejected`、`spooled = gateway_accepted_unique + gateway_rejected`、`gateway_accepted_unique = stream_correlated + stream_reference_rejected` 和 `stream_correlated = stream_projected = projection_artifacts`；`gateway_duplicate_ack` 只表示幂等重试，不参与守恒计算。
 
 ## 当前能力与目标能力
 
 当前已具备 Rule Candidate、Rule Conclusion、Model Candidate、System Conclusion、Incident 收敛，以及从当前和历史 Event 恢复的有界 provenance Evidence 子图。
 
-Graph Conclusion、NodLink Hopset、Steiner Tree、跨保留缺口的完整因果路径恢复和真实原始材料回拉属于目标能力。当前最短路径并集只恢复已观测 Event 支撑的连接；Proto 中存在 Graph 枚举不表示完整图检测已经实现。
+Nodlink Graph Conclusion、Terminal/Campaign、Hopset/ISG 和有界 Evidence 子图已经实现。完整 Steiner Tree、跨保留缺口的完整因果路径恢复、路径排序和真实原始材料回拉仍属于目标能力。
 
 Detection 产品语义中不存在 Terminal。该单词只允许用于：
 

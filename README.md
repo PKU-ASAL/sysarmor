@@ -25,8 +25,8 @@ flowchart LR
 
   subgraph Platform["Management platform"]
     Gateway["Authenticated Gateway"] --> Kafka
-    Kafka --> Worker
-    Worker --> Search["OpenSearch<br/>Event / Signal / Evidence / Incident"]
+    Kafka --> Flink["Flink<br/>Normalize / Detection / Projection"]
+    Flink --> Search["OpenSearch<br/>Event / Signal / Evidence / Incident"]
     Search -->|"Queries"| Manager["Manager API"]
     Console["Web Console"] --> Manager
     Manager --> ControlDB["PostgreSQL<br/>Control-plane state"]
@@ -39,6 +39,12 @@ flowchart LR
 
 The Agent continues local collection, detection, and queries while unenrolled or disconnected. Enrollment adds upload and control without creating a second endpoint data path. See [System Architecture](docs/architecture.md).
 
+Cloud-side streaming runs in `apps/streaming` as three PyFlink jobs: Normalize, Detection, and
+Projection. Detection includes the built-in `rule-correlation-v1` and `nodlink` Detectors;
+Nodlink consumes endpoint Model Candidate Signals and emits per-Campaign Findings with evidence
+subgraphs. See the [Detector contract](docs/development/detector-contract.md) and [streaming
+glossary](docs/development/streaming-concepts-glossary.md).
+
 ## Quickstart
 
 On a systemd-based x86_64 Linux host:
@@ -50,7 +56,8 @@ sudo sysarmorctl event watch --include-recent
 sudo sysarmorctl signal watch --include-recent
 ```
 
-You can also select a release on GitHub Releases and run the exact install command shown on that release.
+You can also select a release on the [Forgejo Releases](https://git.pku.edu.cn/oslab/sysarmor/releases)
+page and run the exact install command shown on that release.
 Release candidates are marked as pre-releases and become stable releases after acceptance. Public packages
 install in standalone mode by default and expose a `linux-container` profile for image builds. See
 [Deployment](docs/operations/deployment.md) for verification, platform limits, and offline distribution
