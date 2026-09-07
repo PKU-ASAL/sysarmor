@@ -14,6 +14,7 @@
 | 配置和发布策略 | [策略指南](guides/policy.md) |
 | 调查一个 Incident | [调查指南](guides/investigation.md) |
 | 开发新的 Detector | [Detector 开发指南](guides/detector-development.md) |
+| 运行 Nodlink 端到端评测 | [Nodlink 评测指南](guides/nodlink-evaluation.md) |
 | 部署和维护平台 | [部署指南](operations/deployment.md)、[维护指南](operations/maintenance.md) |
 | 查找精确字段和命令 | [配置](reference/configuration.md)、[API](reference/api.md)、[CLI](reference/cli.md) |
 | 验证代码和产品链路 | [测试指南](contributing/testing.md) |

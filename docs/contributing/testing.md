@@ -327,6 +327,8 @@ make test-performance DOMAIN=learning PROFILE=medium \
   CALIBRATION_DATA=/path/to/calibration.ndjson
 ```
 
+Nodlink 完整链路的运行步骤、产物和指标解释见 [Nodlink 端到端评测](../guides/nodlink-evaluation.md)。
+
 检测效果分三层验收，不能用上游结果替代下游结果：
 
 | 层级 | 指标 | 数据来源 | 门禁语义 |
