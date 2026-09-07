@@ -242,6 +242,11 @@ capture_managed_stream_artifacts() {
     [[ -s "$policy_out/managed-signals.json" ]] || printf '[]\n' >"$policy_out/managed-signals.json"
     capture_stream_diagnostics "$policy_out"
   fi
+  labels="--label benchmark_run=$RUN_ID --label policy_profile=$policy_name --layer cloud --stage conclusion"
+  if ! wait_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" \
+      "$policy_out/managed-conclusions.json" 1 "$MANAGER_ANALYSIS_WAIT_SECONDS"; then
+    [[ -s "$policy_out/managed-conclusions.json" ]] || printf '[]\n' >"$policy_out/managed-conclusions.json"
+  fi
   build_stream_processing_artifact "$policy_out/managed-signals.json" "$policy_out/stream-processing.json"
 }
 
@@ -968,9 +973,11 @@ for policy in $POLICIES_RAW; do
     "effective_policy": "effective-policy.json",
     "managed_incidents": "managed-incidents.json",
     "managed_signals": "managed-signals.json",
+    "managed_conclusions": "managed-conclusions.json",
     "manager_metrics": "manager-metrics.json",
     "stream_processing": "stream-processing.json",
     "stream_jobs": "stream-jobs.json",
+    "nodlink_metrics": "nodlink-metrics.json",
     "stream_lag": "stream-lag.txt",
     "candidate_lifecycle_final": "candidate-lifecycle-final.json",
     "raw_snapshots": "raw/",
@@ -993,9 +1000,11 @@ EOF
   "effective-policy.json": "four-layer EndpointPolicy document extracted from the Agent current policy response",
   "managed-incidents.json": "Manager Incident documents used for managed Stream graph and conclusion recall gates",
   "managed-signals.json": "Stream-projected Signals used as the authoritative managed Candidate reference source",
+  "managed-conclusions.json": "Cloud Conclusion Signals used for Nodlink latency and Campaign metrics",
   "manager-metrics.json": "tenant-level Stream lifecycle counters retained for diagnostics only",
   "stream-processing.json": "Flink Projection lifecycle rows for the frozen experiment cohort",
   "stream-jobs.json": "Flink JobManager job states captured when Candidate cohort drain timed out",
+  "nodlink-metrics.json": "Optional Nodlink detector processing and state metrics exported by the Detection Job",
   "stream-lag.txt": "Kafka consumer group lag captured when Candidate cohort drain timed out",
   "candidate-lifecycle-final.json": "one-shot Agent Candidate lifecycle snapshot with frozen experiment count and Event sequence cutoff",
   "raw/": "raw low-frequency health semantic snapshots",

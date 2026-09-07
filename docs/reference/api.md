@@ -6,7 +6,7 @@
 
 ```text
 Browser -> same-origin Manager Console BFF -> Manager HTTP API
-Agent -> mTLS Gateway gRPC -> Kafka -> Worker
+Agent -> mTLS Gateway gRPC -> Kafka -> Flink Normalize/Detection/Projection
 sysarmorctl -> local Agent Unix gRPC 或 Manager HTTP API
 ```
 
@@ -129,7 +129,7 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 
 当前数据面 `schema_version` 为 `sysarmor.dataplane/v1`；新 producer 必须在每个 `DataBatch` 中设置。
 
-Signal 的概念语义由[安全数据模型](../concepts/security-data-model.md)定义。生产输入必须明确设置 Stage、DetectorKind 和 Where；`UNSPECIFIED` 由可信边界拒绝。Graph Conclusion 当前只有合同，尚无生产生成器。
+Signal 的概念语义由[安全数据模型](../concepts/security-data-model.md)定义。生产输入必须明确设置 Stage、DetectorKind 和 Where；`UNSPECIFIED` 由可信边界拒绝。云侧 Nodlink 已生成 Graph Conclusion；完整论文级路径排序和阶段推理仍是后续能力。
 
 ## 版本演进
 
@@ -148,7 +148,7 @@ Protobuf 规则：
 5. 删除字段、改变类型/含义、把 optional 变 required 时提升 major。
 6. 仅通过 `make api` 更新生成的 Go 文件。
 
-Worker 不以“protobuf 能解码”替代兼容性检查。空或不支持的版本是永久错误 `unsupported_schema_version`；只有 DLQ 写入成功后才提交源 Kafka offset。
+Flink Job 不以“protobuf 能解码”替代兼容性检查。空或不支持的版本是永久错误 `unsupported_schema_version`；只有 DLQ 写入成功后才提交源 Kafka offset。
 
 未来 v2 的顺序必须是：先部署同时接受 v1/v2 的 consumer，再部署 v2 producer；等待 Kafka 保留窗口内 v1 流量归零，最后在后续版本移除 v1。
 

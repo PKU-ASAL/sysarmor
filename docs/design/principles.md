@@ -18,7 +18,7 @@
 
 ## 统一数据语义
 
-Event、Signal、Stage、DetectorKind、Where、Evidence 和 Incident 的正式定义见[安全数据模型](concepts/security-data-model.md)。本原则只讨论为什么需要这些分层，不在此复制概念合同。
+Event、Signal、Stage、DetectorKind、Where、Evidence 和 Incident 的正式定义见[安全数据模型](../concepts/security-data-model.md)。本原则只讨论为什么需要这些分层，不在此复制概念合同。
 
 这组语义让系统在保留事实、检测发现、可复核依据和安全分析报告之间建立明确边界。由既有 Signal 派生的新 Signal 必须保留稳定引用链和生成规则，使重试、重算和调查能够追踪来源。
 

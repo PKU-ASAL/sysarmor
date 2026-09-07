@@ -24,7 +24,7 @@ export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 .DEFAULT_GOAL := help
 
 .PHONY: doctor up down up-container up-vm-endpoint up-vm-topology up-all down-container down-vm-endpoint down-vm-topology down-all provision status clean help
-.PHONY: test-unit test-layered-architecture test-documentation-contract test-postgres-integration functional-core
+.PHONY: test-unit test-layered-architecture test-documentation-contract functional-core
 .PHONY: functional-endpoint functional-endpoint-local functional-endpoint-container functional-platform functional-platform-full functional-topology
 .PHONY: detection-topology detection-report distribution-package distribution-published release-candidate release-published
 .PHONY: performance-endpoint performance-learning performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
@@ -134,9 +134,6 @@ test-layered-architecture:
 test-documentation-contract:
 	cd .. && python3 -m unittest test.contracts.test_documentation -v
 
-test-postgres-integration:
-	@echo "PostgreSQL control-plane integration is covered by the Go integration suite"
-
 functional-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint bash suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh
 
@@ -241,7 +238,6 @@ report:
 help:
 	@echo "SysArmor public test commands (run from repository root):"
 	@echo "  make test-unit"
-	@echo "  make test-postgres-integration"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection"
 	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"

@@ -152,7 +152,10 @@ def managed_candidate_artifacts(
 ) -> dict[str, Any]:
     if agent_mode != "managed":
         return {"candidate_reference_integrity": {"source": "observation_stream"}}
-    signals = incident_documents(load_json_value(path / "managed-signals.json"))
+    signals = [
+        *incident_documents(load_json_value(path / "managed-signals.json")),
+        *incident_documents(load_json_value(path / "managed-conclusions.json")),
+    ]
     rows = load_json_value(path / "stream-processing.json")
     if not isinstance(agent_id, str) or not agent_id or not isinstance(event_sequence_cutoff, int) or event_sequence_cutoff < 0:
         return missing_stream_processing("invalid Stream cohort identity")
@@ -265,6 +268,91 @@ def managed_analysis_metrics(path: Path, agent_mode: Any, truth_event_ids: set[s
     }
 
 
+def nodlink_quality_metrics(
+    signals: list[dict[str, Any]],
+    incidents: list[dict[str, Any]],
+    truth_event_ids: set[str],
+    campaign_ids: list[str],
+    runtime_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    evidence_refs = _evidence_event_refs(incidents)
+    return {
+        "evidence_precision": (
+            len(evidence_refs.intersection(truth_event_ids)) / len(evidence_refs)
+            if evidence_refs else None
+        ),
+        "campaign_duplication_rate": _duplication_rate(campaign_ids),
+        "candidate_to_conclusion_latency": _nodlink_latency(signals),
+        "detector_processing_ms": _runtime_number(runtime_metrics, "processing_ms"),
+        "detector_state_bytes": _runtime_number(runtime_metrics, "state_bytes"),
+    }
+
+
+def _evidence_event_refs(incidents: list[dict[str, Any]]) -> set[str]:
+    refs: set[str] = set()
+    for incident in incidents:
+        evidence = incident.get("evidence", {})
+        edges = evidence.get("edges", []) if isinstance(evidence, dict) else []
+        for edge in edges if isinstance(edges, list) else []:
+            if isinstance(edge, dict):
+                values = edge.get("eventRefs", edge.get("event_refs", []))
+                refs.update(str(value) for value in values if value) if isinstance(values, list) else None
+    return refs
+
+
+def _duplication_rate(campaign_ids: list[str]) -> float | None:
+    values = [value for value in campaign_ids if value]
+    if not values:
+        return None
+    return (len(values) - len(set(values))) / len(values)
+
+
+def _nodlink_latency(signals: list[dict[str, Any]]) -> dict[str, Any] | None:
+    candidates = {
+        str(signal.get("id")): _timestamp_ns(signal)
+        for signal in signals
+        if signal.get("id") and signal.get("detectorKind", signal.get("detector_kind")) == "DETECTOR_KIND_MODEL"
+    }
+    latencies = []
+    for signal in signals:
+        if signal.get("name") != "nodlink_campaign" or signal.get("stage") != "SIGNAL_STAGE_CONCLUSION":
+            continue
+        conclusion_ns = _timestamp_ns(signal)
+        refs = signal.get("signalRefs", signal.get("signal_refs", []))
+        candidate_ns = [candidates.get(str(ref)) for ref in refs if str(ref) in candidates]
+        if conclusion_ns is not None and candidate_ns and all(value is not None for value in candidate_ns):
+            latencies.append((conclusion_ns - max(candidate_ns)) / 1_000_000)
+    if not latencies:
+        return None
+    values = sorted(latencies)
+    return {
+        "count": len(values),
+        "p50_ms": _percentile(values, 0.50),
+        "p95_ms": _percentile(values, 0.95),
+        "p99_ms": _percentile(values, 0.99),
+    }
+
+
+def _timestamp_ns(value: dict[str, Any]) -> int | None:
+    raw = value.get("observedAtUnixNano", value.get("observed_at_unix_nano"))
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _percentile(values: list[float], quantile: float) -> float:
+    index = min(len(values) - 1, max(0, math.ceil(len(values) * quantile) - 1))
+    return values[index]
+
+
+def _runtime_number(metrics: dict[str, Any] | None, key: str) -> float | int | None:
+    if not isinstance(metrics, dict):
+        return None
+    value = metrics.get(key)
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
 def collect_incident_metrics(
     incident: dict[str, Any], evidence_event_ids: set[str], incident_campaign_ids: set[str]
 ) -> None:
@@ -297,3 +385,23 @@ def load_json_value(path: Path) -> Any:
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
+
+def load_nodlink_quality(path: Path, truth_event_ids: set[str]) -> dict[str, Any]:
+    signals = incident_documents(load_json_value(path / "managed-signals.json"))
+    incidents = incident_documents(load_json_value(path / "managed-incidents.json"))
+    conclusions = [
+        signal.get("signal", signal) for signal in signals
+        if signal.get("name") == "nodlink_campaign"
+        or signal.get("signal", {}).get("name") == "nodlink_campaign"
+    ]
+    campaigns = [
+        str(signal.get("labels", {}).get("campaign_id"))
+        for signal in conclusions
+        if signal.get("labels", {}).get("campaign_id")
+    ]
+    runtime = load_json_value(path / "nodlink-metrics.json")
+    return nodlink_quality_metrics(
+        signals, incidents, truth_event_ids, campaigns,
+        runtime if isinstance(runtime, dict) else None,
+    )

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api api-go api-python build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-postgres-integration test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api api-go api-python build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-streaming test-nodlink-replay nodlink-replay test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
@@ -113,8 +113,21 @@ test-doctor:
 test-unit:
 	$(MAKE) -C test test-unit
 
-test-postgres-integration:
-	bash test/suites/functional/platform/postgres-worker-concurrency.sh
+test-streaming:
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 -m pytest -q apps/streaming/tests
+
+test-nodlink-replay:
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 -m pytest -q tools/nodlink/test_replay.py
+
+nodlink-replay:
+	@if [ -z "$(EVENTS)" ] || [ -z "$(SIGNALS)" ] || [ -z "$(OUTPUT)" ]; then \
+		echo "usage: make nodlink-replay EVENTS=events.scope.ndjson SIGNALS=signals.scope.ndjson OUTPUT=/tmp/nodlink-replay [BATCH_SIZE=256] [ALLOW_CROSS_LINEAGE=1]" >&2; \
+		exit 2; \
+	fi
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 tools/nodlink/replay.py \
+		--events "$(EVENTS)" --signals "$(SIGNALS)" --output "$(OUTPUT)" \
+		--batch-size "$(or $(BATCH_SIZE),256)" \
+		$(if $(ALLOW_CROSS_LINEAGE),--allow-cross-lineage,)
 
 test-functional:
 ifeq ($(FUNCTIONAL_TARGET),)
@@ -187,7 +200,7 @@ release: build-agent-tools pki
 	  --signing-key "$(RELEASE_SIGNING_KEY)" \
 	  --public-key "$(RELEASE_PUBLIC_KEY)"
 
-check-github-release-inputs:
+check-release-inputs:
 	@if ! printf '%s\n' "$${VERSION:-}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
 		echo "VERSION must use MAJOR.MINOR.PATCH, for example VERSION=1.0.0" >&2; \
 		exit 2; \
@@ -205,10 +218,10 @@ check-github-release-inputs:
 		exit 2; \
 	}
 
-release-rc: check-github-release-inputs
+release-rc: check-release-inputs
 	gh workflow run release-candidate.yml --ref "release/v$${VERSION}" -f "rc_number=$${RC}"
 
-release-stable: check-github-release-inputs
+release-stable: check-release-inputs
 	gh workflow run release-stable.yml --ref main -f "version=$${VERSION}" -f "accepted_rc_tag=v$${VERSION}-rc.$${RC}"
 
 up: release auth-init
@@ -269,7 +282,7 @@ help:
 	@echo "SysArmor project commands:"
 	@echo "  make api        generate protobuf code"
 	@echo "  make build SERVICE=manager  build a compose service image"
-	@echo "  make build-binary           build agent/gateway/manager/worker/sysarmorctl"
+	@echo "  make build-binary           build agent/gateway/manager/sysarmorctl and signing tools"
 	@echo "  make install-agent          build and install a standalone Agent plus sysarmorctl"
 	@echo "  make uninstall-agent        remove binaries; add PURGE=1 to remove config and local data"
 	@echo "  make test       run Go tests"
@@ -302,7 +315,9 @@ help:
 	@echo "  make test-help         show all test suite commands"
 	@echo "  make test-doctor       verify the complete test environment"
 	@echo "  make test-unit         run local Go tests"
-	@echo "  make test-postgres-integration  run real PostgreSQL worker concurrency tests"
+	@echo "  make test-streaming         run Flink streaming Python tests"
+	@echo "  make test-nodlink-replay   run Nodlink replay tests"
+	@echo "  make nodlink-replay EVENTS=... SIGNALS=... OUTPUT=...  replay real telemetry"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection    run truth-labeled detection tests"
 	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"

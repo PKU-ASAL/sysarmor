@@ -155,4 +155,4 @@ Response Policy 定义允许的动作和模式。Signal 可以携带 response in
 7. 哪个版本可回退，response 如何撤销或恢复？
 8. Agent 实际应用的版本是否与分配一致？
 
-测试方法见[测试指南](../development/testing.md)，系统运行边界见[系统架构](../architecture.md)。
+测试方法见[测试指南](../contributing/testing.md)，系统运行边界见[系统架构](../architecture/overview.md)。

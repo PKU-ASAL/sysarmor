@@ -63,5 +63,5 @@ sudo sysarmorctl policy explain --file /etc/sysarmor/agent/policy.json
 ## 下一步
 
 - 需要集中管理、查询和关联时，继续阅读 [Agent 管理](guides/agent-management.md)和[部署指南](operations/deployment.md)。
-- 需要理解 Event、Signal、Evidence 和 Incident 时，阅读[系统架构](architecture.md)和[调查指南](guides/investigation.md)。
+- 需要理解 Event、Signal、Evidence 和 Incident 时，阅读[检测概念](concepts/detection.md)和[调查指南](guides/investigation.md)。
 - 需要删除本机安装时，先阅读[维护指南](operations/maintenance.md)，确认是否保留本地数据。

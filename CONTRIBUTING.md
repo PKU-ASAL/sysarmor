@@ -116,7 +116,7 @@ make test-unit
 git diff --check
 ```
 
-Run the applicable Functional, Detection, Performance, Distribution, or release gate for shared contracts and user workflows. The [testing guide](docs/development/testing.md) explains the scope and interpretation of each suite.
+Run the applicable Functional, Detection, Performance, Distribution, or release gate for shared contracts and user workflows. The [testing guide](docs/contributing/testing.md) explains the scope and interpretation of each suite.
 
 Before requesting review:
 

@@ -23,6 +23,7 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(profile_lifecycle_section(summary.get("variants", {})))
     lines.extend(learning_scheduling_section(summary.get("variants", {})))
     lines.extend(candidate_lifecycle_section(summary.get("variants", {})))
+    lines.extend(nodlink_quality_section(summary.get("variants", {})))
     lines.extend(candidate_section(summary.get("variants", {})))
     lines.extend(attack_profile_diagnostics_section(summary.get("variants", {})))
     lines.extend(truth_section(summary.get("truth_steps", {}), summary.get("observations", {})))
@@ -226,6 +227,29 @@ def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
         lines.append(f"| {label} | {display(values[0])} | {display(values[1])} | {display(values[2])} |")
     lines.extend(["", "> Observation gap 仅表示测试观察 Ring Buffer 覆盖；delivery/backlog 表示尚未收敛，reference reject 才表示引用合同失败。", ""])
     return lines
+
+
+def nodlink_quality_section(variants: dict[str, Any]) -> list[str]:
+    rows = (
+        ("Evidence precision", "evidence_precision", "ratio"),
+        ("Campaign duplication rate", "campaign_duplication_rate", "ratio"),
+        ("Candidate -> Conclusion p50", "candidate_to_conclusion_latency", "ms"),
+        ("Candidate -> Conclusion p95", "candidate_to_conclusion_latency", "ms"),
+        ("Candidate -> Conclusion p99", "candidate_to_conclusion_latency", "ms"),
+        ("Detector processing", "detector_processing_ms", "ms"),
+        ("Detector state size", "detector_state_bytes", "bytes"),
+    )
+    lines = ["## Nodlink 指标", "", "| 指标 | rule-only | learning-only | hybrid | 单位 |", "|---|---:|---:|---:|---|"]
+    for label, key, unit in rows:
+        values = []
+        for mode in PROTECTION_MODES:
+            quality = variants.get(mode, {}).get("nodlink_quality", {})
+            value = quality.get(key)
+            if isinstance(value, dict):
+                value = value.get({"Candidate -> Conclusion p50": "p50_ms", "Candidate -> Conclusion p95": "p95_ms", "Candidate -> Conclusion p99": "p99_ms"}.get(label, ""))
+            values.append(display(value))
+        lines.append(f"| {label} | {' | '.join(values)} | {unit} |")
+    return lines + ["", "> Nodlink runtime metrics 来自实际 Detector 产物；缺失时显示 unavailable，不用零值代替。", ""]
 
 
 def truth_section(truth: dict[str, Any], observations: dict[str, Any]) -> list[str]:

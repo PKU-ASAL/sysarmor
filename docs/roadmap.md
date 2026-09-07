@@ -13,7 +13,7 @@
 | 3. 端云调查闭环 | 端侧局部判断与云侧全局关联缺少连续证据链 | 稳定关联、连续下钻、缺口显式 | 后续 |
 | 4. 受控响应与动态博弈 | 固定策略与纯人工响应难以适应持续对抗 | 有界自动化、临时加深、自动恢复 | 后续 |
 
-路线图落实三项[设计原则](design-principles.md)：动态博弈决定系统如何调整，效能平衡决定观察和传输多少，端云协同决定计算、数据和决策放在哪里。核心对象与当前能力边界以[安全数据模型](concepts/security-data-model.md)为准。
+路线图落实三项[设计原则](design/principles.md)：动态博弈决定系统如何调整，效能平衡决定观察和传输多少，端云协同决定计算、数据和决策放在哪里。核心对象与当前能力边界以[安全数据模型](concepts/security-data-model.md)为准。
 
 ## 阶段 1：端点可信运行与自保护
 
@@ -101,7 +101,7 @@ Agent 已具备有界 Event/Signal 保存、端侧规则与 ProcessProfile 模�
 
 ### 下一阶段专项计划
 
-端云调查闭环的下一阶段专项工作是将云侧溯源检测改造为可插拔 Detector 平台，并逐步从当前最短路径 Evidence 演进到 Terminal 选择、近似 Steiner Tree、路径排序和攻击阶段推理。具体交付顺序、模块合同和验收指标见[溯源图检测平台开发计划](development/provenance-detection-plan.md)。
+端云调查闭环的当前专项基础已经落地为 Flink Detector 平台和内置 Nodlink；后续重点是完整 Steiner Tree、路径排序、攻击阶段推理和真实原始材料回拉。模块合同和当前边界见[Detector 开发指南](guides/detector-development.md)与[检测概念](concepts/detection.md)。
 
 ## 阶段 4：受控响应与动态博弈
 
@@ -131,4 +131,4 @@ Agent 已具备有界 Event/Signal 保存、端侧规则与 ProcessProfile 模�
 - 不使用完成百分比。只有全部退出标准具有可重复证据时，阶段才标记为“已验证”。
 - Issue 关闭不代表阶段完成；退出标准仍失败时，状态不得提前更新。
 - roadmap 只记录稳定目标和已存在证据；代码级任务、负责人和时间安排留在 Issue 与 Milestone。
-- 当前能力以[系统架构](architecture.md)、Reference、代码和测试为事实来源；本路线图不把目标能力描述为当前事实。
+- 当前能力以[系统架构](architecture/overview.md)、Reference、代码和测试为事实来源；本路线图不把目标能力描述为当前事实。

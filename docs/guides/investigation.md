@@ -1,6 +1,6 @@
 # 调查指南
 
-本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。概念定义见[安全数据模型](../concepts/security-data-model.md)，生产流见[系统架构](../architecture.md)，接口字段和查询参数以 [API 参考](../reference/api.md)为准。
+本文说明如何从 Event、Signal 和 Evidence 调查 Incident，并明确当前产品边界。概念定义见[安全数据模型](../concepts/security-data-model.md)，生产流见[系统架构](../architecture/overview.md)，接口字段和查询参数以 [API 参考](../reference/api.md)为准。
 
 ## 调查目标
 
@@ -28,7 +28,7 @@ Signal 是检测发现，可以处于 Candidate 或 Conclusion 阶段，不天�
 - `tenant_id`：任何查询和关联都不能跨租户；
 - Agent 与主机身份：Endpoint Signal 的平台文档身份按 tenant、Agent 和 Signal 隔离；
 - 分析作用域：以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分；
-- 时间范围：当前 Worker 使用以批次上界为终点的 15 分钟历史窗口；
+- 时间范围：Flink Detection 使用以批次上界为终点的有界历史窗口；
 - 策略与分析版本：相同数据在不同规则、内容或分析版本下可能产生不同派生结果。
 
 分析作用域不是模糊的“相似数据”集合。缺少细分标签的数据按 Agent 身份隔离，不会自动被拼接进另一个场景；lineage 和实体用于解释上下文，但不是绕过 tenant 与作用域边界的通用关联许可。
@@ -93,7 +93,7 @@ Evidence 按目标模型分为三个层次：
 
 当前控制面已经具备 Evidence pullback 请求、下发和结果回传通道，但 Agent 只根据 `target` 返回一个实体占位子图，不读取 Event、`raw_ref` 或其他原始材料。该结果只能验证控制链路，不能作为“原始证据已回拉”的证明。
 
-当前 Worker 将同一 tenant、分析作用域和时间窗口内的当前与历史 Event 组织为进程、文件和 socket 图。进程执行形成父进程到子进程的边，文件写入和网络连接形成进程到对象的边；贡献 Signal 只提供最多 32 个种子。Evidence 取这些种子在最多 100,000 条 Event 上的最短路径并集。它可以回答“哪些已观测事实连接了这些发现”，但不是完整 Steiner Tree，也不能单独证明攻击意图或唯一攻击路径。
+当前 Flink Detection 将同一 tenant、分析作用域和时间窗口内的 Event 组织为进程、文件和 socket 图；Detector 通过 Finding 绑定结论、contributors 和 EvidenceSubgraph。Nodlink 维护有界 Terminal/Campaign 状态并输出每个 Campaign 的独立 Finding。Evidence 可以回答“哪些已观测事实连接了这些发现”，但不是完整 Steiner Tree，也不能单独证明攻击意图或唯一攻击路径。
 
 使用图结果时遵守：
 
@@ -132,7 +132,7 @@ Signal 中的 response intent 只表达建议。执行前确认：
 
 本地排障与端点测试可通过 Agent Unix socket 查看健康、Event 和 Signal。包含 Gateway 与 Manager 的部署应通过 Manager API 查询平台数据；不要直接查询 Agent SQLite、事件段、PostgreSQL 表或 OpenSearch 内部索引作为稳定用户接口。
 
-平台查询必须携带 tenant 上下文。派生数据通过稳定投影键去重；如果查询结果缺失，先检查 Gateway 接收确认、Kafka/Worker 状态、dead-letter、OpenSearch 必需写入以及分析作用域，而不是直接重放并忽略根因。
+平台查询必须携带 tenant 上下文。派生数据通过稳定投影键去重；如果查询结果缺失，先检查 Gateway 接收确认、Kafka/Flink 状态、dead-letter、OpenSearch 必需写入以及分析作用域，而不是直接重放并忽略根因。
 
 ## 当前能力与限制
 
