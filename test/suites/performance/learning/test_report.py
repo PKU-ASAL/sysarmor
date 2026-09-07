@@ -143,6 +143,21 @@ class ManagedAnalysisArtifactTest(unittest.TestCase):
             self.assertEqual(result["candidate_reference_integrity"]["projected"], 1)
             self.assertEqual(result["candidate_reference_integrity"]["reference_rejected"], 0)
 
+    def test_nodlink_quality_is_rendered_and_hybrid_gates_are_observations_when_missing(self):
+        value = metrics()
+        value["nodlink_quality"] = {
+            "evidence_precision": 0.95,
+            "campaign_duplication_rate": 0.0,
+            "candidate_to_conclusion_latency": {"count": 1, "p50_ms": 1.0, "p95_ms": 2.0, "p99_ms": 2.0},
+            "detector_processing_ms": 3.0,
+            "detector_state_bytes": 1024,
+        }
+        comparison = evaluate_mode(metrics(), value, "hybrid", DEFAULT_GATES)
+        self.assertEqual("passed", comparison["gates"]["nodlink_evidence_precision"]["status"])
+        self.assertEqual("passed", comparison["gates"]["nodlink_latency_p95_ms"]["status"])
+        missing = evaluate_mode(metrics(), metrics(), "hybrid", DEFAULT_GATES)
+        self.assertFalse(missing["gates"]["nodlink_detector_state_bytes"]["blocking"])
+
     def test_managed_candidate_artifacts_reject_duplicate_projection_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)

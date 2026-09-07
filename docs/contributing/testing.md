@@ -337,6 +337,11 @@ make test-performance DOMAIN=learning PROFILE=medium \
 
 “缺失字段”和“空结果”含义不同：standalone 没有 Flink 产物时报告 unavailable 且不阻断；managed `hybrid` 缺少 Incident artifact 或 truth 时明确失败，合法空 Incident 则使 graph/conclusion recall 为 0 并失败。`learning-only` 只验收 Model Candidate，不借助不存在的 Incident 声称 Flink 图或最终结论覆盖率；完整 Provenance graph 与 Conclusion 由 `hybrid` 验收。报告同时保留三模式 CPU、稳定期 RSS、EPS、drop/parse error、hybrid 相对 rule-only 的 Rule 等价性、ProcessProfile 生命周期和身份缺口，以及 Profile observation、feature update、模型评分、纯生命周期观察和 suppressed checkpoint 五个 Learning 语义调度计数。只有 blocking 门禁全部通过，运行结论才是 passed。
 
+Nodlink 专属指标也会写入报告：Evidence precision、Campaign duplication rate、Candidate 到
+Conclusion 的 p50/p95/p99 延迟，以及 Detector processing/state size。前三项从真实 managed
+Signal/Incident artifact 计算；后两项从可选的 `nodlink-metrics.json` 读取。运行尚未导出该
+文件时显示 `unavailable` 并保留为观察项，不用零值假装没有成本。
+
 训练侧 Python 与 Agent 侧 Go 必须通过同一真实 Bundle 和 ProcessProfile 的推理合同：特征向量固定，score 按 `float32` 语义一致，且 `score >= threshold` 的 Candidate 结论一致。两端各自单测通过不能替代这项跨语言合同。
 
 ## Distribution 测试

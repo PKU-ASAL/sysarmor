@@ -139,6 +139,7 @@ def effect_gates(metrics: dict[str, Any], mode: str, limits: dict[str, float]) -
     seed_recall = attack_campaign_seed_recall(metrics)
     graph_recall = stream_graph_recall(metrics)
     incident_recall = conclusion_recall(metrics)
+    quality = metrics.get("nodlink_quality", {})
     return {
         "normal_candidate_rate": gate(
             "unavailable" if rate is None else "passed" if rate <= limits["normal_candidate_rate"] else "failed",
@@ -160,7 +161,24 @@ def effect_gates(metrics: dict[str, Any], mode: str, limits: dict[str, float]) -
             metrics, mode, incident_recall, limits["conclusion_recall"],
             "managed end-to-end Incident campaign recall",
         ),
+        "nodlink_evidence_precision": _quality_gate(quality.get("evidence_precision"), 0.90, mode, "Nodlink Evidence precision"),
+        "nodlink_campaign_duplication": _quality_gate(quality.get("campaign_duplication_rate"), 0.00, mode, "Nodlink Campaign duplication rate", upper=True),
+        "nodlink_latency_p95_ms": _latency_gate(quality.get("candidate_to_conclusion_latency"), mode),
+        "nodlink_detector_processing_ms": _quality_gate(quality.get("detector_processing_ms"), 1000.0, mode, "Nodlink detector processing time", upper=True),
+        "nodlink_detector_state_bytes": _quality_gate(quality.get("detector_state_bytes"), 64 * 1024 * 1024, mode, "Nodlink detector state size", upper=True),
     }
+
+
+def _quality_gate(value, limit, mode, detail, upper=False):
+    if mode != "hybrid" or value is None:
+        return gate("unavailable", value, limit, f"{detail}; Nodlink runtime artifact unavailable", blocking=False)
+    passed = value <= limit if upper else value >= limit
+    return gate("passed" if passed else "failed", value, limit, detail)
+
+
+def _latency_gate(value, mode):
+    p95 = value.get("p95_ms") if isinstance(value, dict) else None
+    return _quality_gate(p95, 5000.0, mode, "Candidate to Conclusion latency p95", upper=True)
 
 
 def model_gate(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:

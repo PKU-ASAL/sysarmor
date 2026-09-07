@@ -25,6 +25,7 @@ from managed_analysis import (
     attack_profile_diagnostics,
     managed_analysis_metrics,
     managed_candidate_artifacts,
+    load_nodlink_quality,
 )
 from protection_mode_contract import PROTECTION_MODES, validate_mode_matrix
 from learning_effect import (
@@ -168,6 +169,7 @@ def variant_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         "candidate_lifecycle": metrics.get("candidate_lifecycle", {}),
         "reference_gaps": metrics.get("reference_gaps", {}),
         "attack_profile_diagnostics": metrics.get("attack_profile_diagnostics", {}),
+        "nodlink_quality": metrics.get("nodlink_quality", {}),
     }
 
 
@@ -242,6 +244,7 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
         "profile_health": profile_health(learning.get("profiles", {})),
         "reliability": {"sensor_drop": health_number(sensor, "eventsDropped", "events_dropped"), "batcher_drop": health_number(batcher, "droppedEvents", "dropped_events"), "parse_errors": health_number(sensor, "parseErrors", "parse_errors")},
         "performance": performance_metrics(path),
+        "nodlink_quality": load_nodlink_quality(path, set()),
         "stream_evictions": latest_stream_evictions(path),
         "candidate_lifecycle": candidate_lifecycle,
         "reference_gaps": {
@@ -310,6 +313,7 @@ def load_endpoint_run(path: Path) -> dict[str, Any]:
                 truth_campaign_ids=result["truth_campaign_ids"],
             )
     result.update(managed_analysis_metrics(path, manifest.get("agent_mode"), truth["event_ids"]))
+    result["nodlink_quality"] = load_nodlink_quality(path, truth["event_ids"])
     return result
 
 

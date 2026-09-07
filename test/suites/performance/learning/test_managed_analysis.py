@@ -129,6 +129,30 @@ class AttackProfileDiagnosticsTest(unittest.TestCase):
 
         self.assertEqual(result["status_counts"], {"candidate_not_projected": 1})
 
+
+class NodlinkQualityMetricsTest(unittest.TestCase):
+    def test_calculates_evidence_precision_campaign_duplication_and_latency(self):
+        signals = [
+            {"id": "candidate-a", "stage": "SIGNAL_STAGE_CANDIDATE", "detectorKind": "DETECTOR_KIND_MODEL", "observedAtUnixNano": 1_000_000_000},
+            {"id": "candidate-b", "stage": "SIGNAL_STAGE_CANDIDATE", "detectorKind": "DETECTOR_KIND_MODEL", "observedAtUnixNano": 2_000_000_000},
+            {"id": "cloud-a", "name": "nodlink_campaign", "stage": "SIGNAL_STAGE_CONCLUSION", "detectorKind": "DETECTOR_KIND_GRAPH", "observedAtUnixNano": 4_000_000_000, "signalRefs": ["candidate-a", "candidate-b"], "labels": {"campaign_id": "campaign-a"}},
+        ]
+        incidents = [{"lineageIds": ["campaign-a"], "evidence": {"edges": [{"eventRefs": ["truth-a", "noise-a"]}]}}]
+
+        result = managed_analysis.nodlink_quality_metrics(
+            signals, incidents, {"truth-a"}, ["campaign-a", "campaign-a"]
+        )
+
+        self.assertEqual(0.5, result["evidence_precision"])
+        self.assertEqual(0.5, result["campaign_duplication_rate"])
+        self.assertEqual({"count": 1, "p50_ms": 2000.0, "p95_ms": 2000.0, "p99_ms": 2000.0}, result["candidate_to_conclusion_latency"])
+
+    def test_missing_runtime_metrics_is_explicitly_unavailable(self):
+        result = managed_analysis.nodlink_quality_metrics([], [], {"truth-a"}, [])
+        self.assertIsNone(result["candidate_to_conclusion_latency"])
+        self.assertIsNone(result["detector_processing_ms"])
+        self.assertIsNone(result["detector_state_bytes"])
+
     def test_campaign_seed_matches_gate_even_when_projected_candidate_predates_truth_ref(self):
         projected = [candidate("candidate-old", "profile-a", ["normal-event"])]
         endpoint = [*projected, candidate("candidate-truth", "profile-a", ["truth-a"])]
