@@ -52,6 +52,8 @@ make test-help
 
 ```bash
 make test-unit
+make test-streaming
+make test-nodlink-replay
 make test-doctor
 make test-functional DOMAIN=endpoint
 make test-detection
@@ -67,6 +69,8 @@ make test-release STAGE=pre-publish
 
 ```bash
 make test-functional DOMAIN=endpoint|platform|topology|all
+make test-streaming
+make test-nodlink-replay
 make test-performance DOMAIN=endpoint|platform|modules|all
 make test-distribution SOURCE=local|published
 make test-release STAGE=pre-publish|post-publish

@@ -66,6 +66,8 @@ Pre-release，验收通过的版本发布为正式版本；公开发行包默认
 ```bash
 make build-binary
 make test-unit
+make test-streaming
+make test-nodlink-replay
 make test-doctor
 make test-performance DOMAIN=endpoint PROFILE=medium
 make test-help

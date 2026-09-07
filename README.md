@@ -70,6 +70,8 @@ See [Quickstart](docs/quickstart.md) for prerequisites, verification, and next s
 ```bash
 make build-binary
 make test-unit
+make test-streaming
+make test-nodlink-replay
 make test-doctor
 make test-performance DOMAIN=endpoint PROFILE=medium
 make test-help

@@ -35,8 +35,8 @@ Event 只回答“发生了什么”，不直接回答“是不是攻击”。�
 
 ### Signal
 
-Signal 是规则、模型、图或系统检测方法产生的统一消息。Signal 不是 Candidate 的
-同义词，也不是 ModelCandidate 的独立消息类型。
+Signal 是规则、模型、图或系统检测方法产生的统一消息。Candidate 是 Signal 的阶段，
+模型发现也使用同一个 Signal 类型。
 
 Signal 的两个正交字段决定分类：
 

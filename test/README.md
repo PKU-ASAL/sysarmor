@@ -1,7 +1,7 @@
 # SysArmor 测试入口
 
 正式测试方法、环境说明和结果判定见
-[测试指南](../docs/development/testing.md)，测试数据契约见
+[测试指南](../docs/contributing/testing.md)，测试数据契约见
 [数据说明](data/README.md)。
 
 从仓库根目录开始：

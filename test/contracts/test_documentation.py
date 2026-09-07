@@ -7,8 +7,8 @@ REQUIRED_PATHS = (
     "CONTRIBUTING.md",
     "docs/README.md",
     "docs/quickstart.md",
-    "docs/design-principles.md",
-    "docs/architecture.md",
+    "docs/design/principles.md",
+    "docs/architecture/overview.md",
     "docs/roadmap.md",
     "docs/concepts/security-data-model.md",
     "docs/guides/agent-management.md",
@@ -19,7 +19,9 @@ REQUIRED_PATHS = (
     "docs/reference/configuration.md",
     "docs/reference/api.md",
     "docs/reference/cli.md",
-    "docs/development/testing.md",
+    "docs/concepts/detection.md",
+    "docs/guides/detector-development.md",
+    "docs/contributing/testing.md",
 )
 
 RETIRED_PATHS = (
@@ -47,7 +49,7 @@ CANONICAL_PHRASES = (
 )
 
 RETIRED_DETECTION_LANGUAGE = re.compile(
-    r"terminal signal|terminal state|Learning Signal|Model Signal", re.IGNORECASE
+    r"terminal signal|terminal state|LearningSignal|ModelCandidate", re.IGNORECASE
 )
 
 
@@ -69,7 +71,7 @@ class DocumentationContractTest(unittest.TestCase):
         for phrase in CANONICAL_PHRASES:
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
-        self.assertIn("生产生成器尚未实现", text)
+        self.assertIn("Nodlink 已生成 Cloud Graph Conclusion", text)
 
     def test_formal_sources_do_not_use_retired_detection_language(self):
         violations = []
@@ -86,7 +88,7 @@ class DocumentationContractTest(unittest.TestCase):
             "test/suites/functional/topology/scenario-container.sh",
             "test/suites/functional/endpoint/e2e-namespace-self-container.sh",
             "docs/operations/deployment.md",
-            "docs/development/testing.md",
+            "docs/contributing/testing.md",
         )
         violations = [
             path for path in sources if ".scratchpad/.cache" in (self.repo / path).read_text()

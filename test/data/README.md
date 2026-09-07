@@ -181,4 +181,4 @@ make test-detection \
   SCENARIOS='apt-fileless-c2 apt-staged-drop benign-ci-noise'
 ```
 
-测试运行和结果解释见[测试指南](../../docs/development/testing.md)。
+测试运行和结果解释见[测试指南](../../docs/contributing/testing.md)。
