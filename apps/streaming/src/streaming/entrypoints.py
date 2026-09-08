@@ -4,7 +4,7 @@ import os
 
 from streaming.jobs.detection import build_graph
 from streaming.jobs.normalize import BYTE_ARRAY, NormalizeFunction, REJECTION_TAG
-from streaming.jobs.projection import FAILURE_TAG, ProjectionFunction
+from streaming.jobs.projection import FAILURE_TAG, METRICS_TAG, ProjectionFunction
 from streaming.runtime.config import StreamingConfig
 from streaming.runtime.kafka import configure_environment, sink, source
 from streaming.runtime.opensearch import OpenSearchProjector
@@ -38,6 +38,7 @@ def run_detection():
     sink(streams.artifacts, config.artifact_topic, config, "sysarmor-detection-artifact-v1")
     sink(streams.late, config.late_topic, config, "sysarmor-detection-late-v1")
     sink(streams.failures, config.failure_topic, config, "sysarmor-detection-failure-v1")
+    sink(streams.metrics, config.metrics_topic, config, "sysarmor-detection-metrics-v1")
     env.execute("sysarmor-detection-v1")
 
 
@@ -57,6 +58,12 @@ def run_projection():
         config.failure_topic,
         config,
         "sysarmor-projection-failure-v1",
+    )
+    sink(
+        projected.get_side_output(METRICS_TAG),
+        config.metrics_topic,
+        config,
+        "sysarmor-projection-metrics-v1",
     )
     env.execute("sysarmor-projection-v1")
 

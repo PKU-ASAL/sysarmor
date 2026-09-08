@@ -1,6 +1,7 @@
 """Build bounded detection state and emit analysis artifacts."""
 
 import json
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 
@@ -42,6 +43,7 @@ SIGNAL_COUNT_STATE = ValueStateDescriptor("signal-count", Types.LONG())
 RARITY_STATE = ListStateDescriptor("rarity-observations", Types.STRING())
 LATE_TAG = OutputTag("late-telemetry", BYTE_ARRAY)
 FAILURE_TAG = OutputTag("detection-failures", BYTE_ARRAY)
+METRICS_TAG = OutputTag("detection-metrics", BYTE_ARRAY)
 MIN_WATERMARK_MS = -(1 << 63)
 DEFAULT_OUT_OF_ORDERNESS_MS = 5_000
 CLEANUP_TIMER_BUCKET_MS = 1_000
@@ -57,6 +59,7 @@ class DetectionStreams:
     artifacts: object
     late: object
     failures: object
+    metrics: object
 
 
 class TelemetryTimestampAssigner(TimestampAssigner):
@@ -486,7 +489,19 @@ class WindowedDetectionFunction(DetectionFunction):
         self._window_buffer.update([])
         self._window_timer.clear()
         if values:
+            started = time.perf_counter()
             yield from self._process_records(values, ctx)
+            yield METRICS_TAG, json.dumps({
+                "job": JOB_NAME,
+                "scope": values[0].context.analysis_scope_key,
+                "agent_id": values[0].context.agent_id,
+                "window_start_ns": min(_record_observed_ns(item) for item in values),
+                "window_end_ns": max(_record_observed_ns(item) for item in values),
+                "input_records": len(values),
+                "flush_reason": "timer" if timestamp else "count",
+                "processing_ms": (time.perf_counter() - started) * 1000,
+                "state_bytes": sum(len(value) for _, value in self._detector_state.items()),
+            }, sort_keys=True).encode()
 
 
 def telemetry_key(value) -> str:
@@ -527,6 +542,7 @@ def build_graph(telemetry_stream, policy_stream, out_of_orderness_ms=DEFAULT_OUT
         failures=validated.get_side_output(FAILURE_TAG).union(
             artifacts.get_side_output(FAILURE_TAG)
         ),
+        metrics=artifacts.get_side_output(METRICS_TAG),
     )
 
 

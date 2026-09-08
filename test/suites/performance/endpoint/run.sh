@@ -248,6 +248,44 @@ capture_managed_stream_artifacts() {
     [[ -s "$policy_out/managed-conclusions.json" ]] || printf '[]\n' >"$policy_out/managed-conclusions.json"
   fi
   build_stream_processing_artifact "$policy_out/managed-signals.json" "$policy_out/stream-processing.json"
+  capture_nodlink_metrics "$policy_out" "$AGENT_ID"
+}
+
+capture_nodlink_metrics() {
+  local policy_out="$1" agent_id="$2" raw="$policy_out/nodlink-metrics.raw" topic="sysarmor.data.detection.metrics.v1"
+  vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic $topic --from-beginning --timeout-ms 3000 --max-messages 10000" \
+    >"$raw" 2>/dev/null || true
+  python3 - "$raw" "$policy_out/nodlink-metrics.json" "$agent_id" <<'PY'
+import json, sys
+source, target, agent_id = sys.argv[1:]
+rows = []
+try:
+    values = open(source).read().splitlines()
+except OSError:
+    values = []
+for line in values:
+    try:
+        value = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if isinstance(value, dict) and value.get("agent_id") == agent_id:
+        rows.append(value)
+detection = [row for row in rows if row.get("job") == "sysarmor-detection-v1"]
+projection = [row for row in rows if row.get("job") == "sysarmor-projection-v1"]
+processing = [float(row["processing_ms"]) for row in detection if isinstance(row.get("processing_ms"), (int, float))]
+states = [int(row["state_bytes"]) for row in detection if isinstance(row.get("state_bytes"), int)]
+windows = [int(row["input_records"]) for row in detection if isinstance(row.get("input_records"), int)]
+result = {
+    "detector_windows": len(detection),
+    "processing_ms": max(processing) if processing else None,
+    "processing_p95_ms": sorted(processing)[min(len(processing) - 1, max(0, (len(processing) * 95 + 99) // 100 - 1))] if processing else None,
+    "state_bytes": max(states) if states else None,
+    "detector_input_records": sum(windows) if windows else 0,
+    "projection_metrics": projection[-1] if projection else None,
+}
+open(target, "w").write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+PY
+  rm -f "$raw"
 }
 
 capture_stream_diagnostics() {
@@ -977,7 +1015,7 @@ for policy in $POLICIES_RAW; do
     "manager_metrics": "manager-metrics.json",
     "stream_processing": "stream-processing.json",
     "stream_jobs": "stream-jobs.json",
-    "nodlink_metrics": "nodlink-metrics.json",
+  "nodlink_metrics": "nodlink-metrics.json",
     "stream_lag": "stream-lag.txt",
     "candidate_lifecycle_final": "candidate-lifecycle-final.json",
     "raw_snapshots": "raw/",

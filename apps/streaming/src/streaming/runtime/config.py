@@ -13,6 +13,7 @@ class StreamingConfig:
     opensearch_url: str
     late_topic: str
     failure_topic: str
+    metrics_topic: str
     checkpoint_uri: str
     checkpoint_interval_ms: int
     parallelism: int
@@ -51,6 +52,10 @@ class StreamingConfig:
             failure_topic=_env(
                 "SYSARMOR_KAFKA_FAILURE_TOPIC",
                 "sysarmor.data.pipeline.failure.rejected.v1",
+            ),
+            metrics_topic=_env(
+                "SYSARMOR_KAFKA_METRICS_TOPIC",
+                "sysarmor.data.detection.metrics.v1",
             ),
             checkpoint_uri=_env(
                 "SYSARMOR_FLINK_CHECKPOINT_URI",
