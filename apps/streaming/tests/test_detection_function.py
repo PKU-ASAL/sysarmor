@@ -28,6 +28,19 @@ class DetectionFunctionTest(unittest.TestCase):
         self.assertEqual(1, len(runtime._list_state("window-buffer").values))
         list(function.on_timer(10_000, context))
         self.assertEqual([], runtime._list_state("window-buffer").values)
+
+    def test_windowed_function_flushes_previous_window_before_switching(self):
+        function, runtime = opened_windowed_function()
+        policy = detection_policy("tenant-a", "policy-a", 7)
+        context = ReadContext(
+            {detection.policy_key(policy): policy.SerializeToString()}, watermark_ms=0
+        )
+        first = event_record("scope-a", "policy-a", 7, 100, "event-a")
+        second = event_record("scope-a", "policy-a", 7, 10_000_100_000, "event-b")
+        list(function.process_element(input_bytes(first), context))
+        list(function.process_element(input_bytes(second), context))
+        self.assertEqual(1, function.metrics()["batches"])
+        self.assertEqual(1, len(runtime._list_state("window-buffer").values))
     def test_detection_function_reports_batch_metrics(self):
         function, _ = opened_function()
         self.assertEqual(

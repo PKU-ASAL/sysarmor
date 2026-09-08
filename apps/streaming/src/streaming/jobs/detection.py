@@ -460,6 +460,10 @@ class WindowedDetectionFunction(DetectionFunction):
                     ).SerializeToString()
         if not current:
             return
+        latest_ms = max(_record_observed_ns(record) for record in current) // 1_000_000
+        existing_timer = _state_count(self._window_timer)
+        if existing_timer and latest_ms >= existing_timer:
+            yield from self._flush_window(ctx, existing_timer)
         _state_add_all(self._window_buffer, [record.SerializeToString() for record in current])
         latest_ns = max(_record_observed_ns(record) for record in current)
         end_ns = (latest_ns // self.window_size_ns + 1) * self.window_size_ns
