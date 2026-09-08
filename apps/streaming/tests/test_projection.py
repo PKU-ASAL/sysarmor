@@ -108,6 +108,10 @@ class ProjectionTest(unittest.TestCase):
         function.close()
         self.assertTrue(projector.flushed)
 
+    def test_projection_function_reports_processed_records(self):
+        function = ProjectionFunction()
+        self.assertEqual({"processed_records": 0}, function.metrics())
+
     def test_opensearch_projector_puts_idempotent_document_to_kind_index(self):
         received = []
 
@@ -135,6 +139,7 @@ class ProjectionTest(unittest.TestCase):
             )
             projector.put(project_artifact(artifact.SerializeToString()))
             projector.flush()
+            self.assertEqual(1, projector.metrics()["flushed_documents"])
         finally:
             server.shutdown()
             server.server_close()

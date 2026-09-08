@@ -154,6 +154,7 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         self._detectors = OrderedDict()
         self._detector_policies = {}
         self._cached_record_counts = {}
+        self._metrics = {"batches": 0, "records": 0, "analysis_ms": 0.0}
 
     def open(self, runtime_context):
         self._telemetry = runtime_context.get_list_state(TELEMETRY_STATE)
@@ -168,6 +169,7 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         self._detectors = OrderedDict()
         self._detector_policies = {}
         self._cached_record_counts = {}
+        self._metrics = {"batches": 0, "records": 0, "analysis_ms": 0.0}
 
     def process_broadcast_element(self, value, ctx):
         policy = streaming_pb2.DetectionPolicySnapshot.FromString(bytes(value))
@@ -210,6 +212,13 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         policies.update(self._policies_for(ctx, records, policy))
         scope_key = record.context.analysis_scope_key
         results = detector.process_batch(records, 0, policies)
+        self._metrics["batches"] += 1
+        self._metrics["records"] += len(records)
+        self._metrics["analysis_ms"] += sum(
+            float(result.metrics.get("analysis_ms", 0.0))
+            for result in results
+            if hasattr(result, "metrics")
+        )
         for result in results:
             if result.failure is not None:
                 if result.failure.retryable:
@@ -368,6 +377,9 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         self._detectors.pop(cache_key, None)
         self._detector_policies.pop(cache_key, None)
         self._cached_record_counts.pop(cache_key, None)
+
+    def metrics(self) -> dict[str, int | float]:
+        return dict(self._metrics)
 
     def _schedule_cleanup(self, ctx, timestamp_ns: int) -> None:
         if timestamp_ns <= 0:

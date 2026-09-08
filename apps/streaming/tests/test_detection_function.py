@@ -14,6 +14,12 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 
 class DetectionFunctionTest(unittest.TestCase):
+    def test_detection_function_reports_batch_metrics(self):
+        function, _ = opened_function()
+        self.assertEqual(
+            {"batches": 0, "records": 0, "analysis_ms": 0.0},
+            function.metrics(),
+        )
     def test_single_normalized_record_is_rejected(self):
         function, _ = opened_function()
         policy = detection_policy("tenant-a", "policy-a", 7)

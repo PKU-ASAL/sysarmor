@@ -47,3 +47,6 @@ class ProjectionFunction(ProcessFunction):
         if self._projector is not None:
             self._projector.close()
         logging.info("projection completed records=%d", self._processed)
+
+    def metrics(self) -> dict[str, int]:
+        return {"processed_records": self._processed}

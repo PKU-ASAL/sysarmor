@@ -10,6 +10,7 @@ from streaming.detectors.contracts import (
 from streaming.detectors.registry import DetectorRegistry
 from streaming.engine.analysis import analyze
 from streaming.engine.provenance import ProvenanceGraph
+from streaming.engine.window import WindowBatch
 
 
 DEFAULT_STATE_RETENTION_NS = 300_000_000_000
@@ -63,6 +64,10 @@ class DetectionState:
 
     def process(self, record, watermark_ns: int, policies: dict) -> DetectionResult:
         return self.process_batch([record], watermark_ns, policies)[0]
+
+    def process_window(self, window: WindowBatch, policies: dict):
+        """Process one event-time window as one detector computation unit."""
+        return self.process_batch(window.records, window.watermark_ns, policies)
 
     def process_batch(self, records, watermark_ns: int, policies: dict):
         if not records:

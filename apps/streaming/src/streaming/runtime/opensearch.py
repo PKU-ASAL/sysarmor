@@ -23,6 +23,8 @@ class OpenSearchProjector:
         self._flush_interval = max(0.01, flush_interval_seconds)
         self._thread = threading.Thread(target=self._flush_loop, daemon=True)
         self._thread.start()
+        self._flushed_batches = 0
+        self._flushed_documents = 0
 
     def __getstate__(self):
         return {
@@ -39,6 +41,8 @@ class OpenSearchProjector:
         self._batch_size = state["_batch_size"]
         self._batch = state["_batch"]
         self._flush_interval = state["_flush_interval"]
+        self._flushed_batches = 0
+        self._flushed_documents = 0
         self._lock = threading.Lock()
         self._closed = False
         self._error = None
@@ -86,6 +90,9 @@ class OpenSearchProjector:
             with urlopen(request, timeout=self._timeout) as response:
                 if response.status < 200 or response.status >= 300:
                     raise RuntimeError(f"OpenSearch projection status {response.status}")
+            with self._lock:
+                self._flushed_batches += 1
+                self._flushed_documents += len(batch)
         except (HTTPError, URLError, RuntimeError) as error:
             with self._lock:
                 self._batch = batch + self._batch
@@ -109,6 +116,14 @@ class OpenSearchProjector:
     def _raise_error(self) -> None:
         if self._error is not None:
             raise RuntimeError("OpenSearch projection request failed") from self._error
+
+    def metrics(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "pending_documents": len(self._batch),
+                "flushed_batches": self._flushed_batches,
+                "flushed_documents": self._flushed_documents,
+            }
 
 
 def _index_for(kind: str) -> str:

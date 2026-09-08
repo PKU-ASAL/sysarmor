@@ -25,6 +25,7 @@ class AnalysisResult:
     detector_states: dict[str, bytes] = field(default_factory=dict)
     detector_state_updates: dict[str, int] = field(default_factory=dict)
     detector_diagnostics: tuple[dict, ...] = ()
+    metrics: dict = field(default_factory=dict)
 
 
 def analyze(
@@ -48,6 +49,7 @@ def analyze(
     available_signal_kinds = frozenset(
         signal.detector_kind for signal in inputs.signals
     )
+    started = time.perf_counter()
     results, state_updates, diagnostics = _run_detectors(
         inputs,
         delta,
@@ -61,7 +63,17 @@ def analyze(
     incidents = ()
     if decision.incident:
         incidents = investigate(view, results, decision, scorer)
-    return AnalysisResult(cloud_signals, incidents, states, state_updates, diagnostics)
+    return AnalysisResult(
+        cloud_signals, incidents, states, state_updates, diagnostics,
+        {
+            "analysis_ms": (time.perf_counter() - started) * 1000,
+            "detector_count": len(results),
+            "cloud_signal_count": len(cloud_signals),
+            "incident_count": len(incidents),
+            "input_event_count": len(events),
+            "input_signal_count": len(signals),
+        },
+    )
 
 
 def _run_detectors(
