@@ -76,6 +76,15 @@ class DetectorDelta:
             changed.add(RequiredInput.PROVENANCE_EDGE)
         return frozenset(changed)
 
+    @property
+    def new_candidates(self) -> tuple[signal_pb2.Signal, ...]:
+        """Model Candidate Signals introduced by this analysis window."""
+        return tuple(
+            signal for signal in self.new_signals
+            if signal.detector_kind == signal_pb2.DETECTOR_KIND_MODEL
+            and signal.stage == signal_pb2.SIGNAL_STAGE_CANDIDATE
+        )
+
     def merged(self, other: DetectorDelta) -> DetectorDelta:
         return DetectorDelta(
             new_events=(*self.new_events, *other.new_events),

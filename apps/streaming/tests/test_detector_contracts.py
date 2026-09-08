@@ -68,6 +68,19 @@ class DetectorInputsTest(unittest.TestCase):
         self.assertEqual(("signal-old",), delta.expired_signal_refs)
         self.assertTrue(delta.graph_rebuilt)
 
+    def test_delta_exposes_new_model_candidates(self):
+        contracts = load_contracts()
+        candidate = signal_pb2.Signal(
+            id="candidate-a", detector_kind=signal_pb2.DETECTOR_KIND_MODEL,
+            stage=signal_pb2.SIGNAL_STAGE_CANDIDATE,
+        )
+        conclusion = signal_pb2.Signal(
+            id="conclusion-a", detector_kind=signal_pb2.DETECTOR_KIND_GRAPH,
+            stage=signal_pb2.SIGNAL_STAGE_CONCLUSION,
+        )
+        delta = contracts.DetectorDelta(new_signals=(candidate, conclusion))
+        self.assertEqual(("candidate-a",), tuple(item.id for item in delta.new_candidates))
+
     def test_candidates_derive_model_candidate_subset(self):
         contracts = load_contracts()
         model_candidate = signal_pb2.Signal(

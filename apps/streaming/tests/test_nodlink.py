@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from packages.contracts.proto.policy.v1 import policy_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
@@ -16,6 +17,24 @@ from streaming.detectors.nodlink.campaign import update_campaigns
 
 
 class NodlinkDetectorTest(unittest.TestCase):
+    def test_incremental_analysis_only_maps_new_model_candidates(self):
+        candidates = (model_signal("p-curl", "exec-curl"),)
+        graph = ProvenanceGraph.from_events(causal_events())
+        detector = NodlinkDetector()
+        first = detector.analyze(DetectorInputs(
+            signals=candidates, graph=graph,
+            delta=DetectorDelta(new_signals=candidates),
+        ))
+        with mock.patch(
+            "streaming.detectors.nodlink.detector.terminals_from_signals",
+            wraps=__import__("streaming.detectors.nodlink.terminal", fromlist=["terminals_from_signals"]).terminals_from_signals,
+        ) as mapped:
+            detector.analyze(DetectorInputs(
+                signals=candidates, graph=graph, detector_state=first.state_update,
+                delta=DetectorDelta(new_events=tuple(causal_events())),
+            ))
+        self.assertEqual((), mapped.call_args.args[0])
+
     def test_maps_model_signals_to_terminal_scores_and_evidence(self):
         candidates = [
             model_signal("p-curl", "exec-curl"),
@@ -122,10 +141,12 @@ class NodlinkDetectorTest(unittest.TestCase):
         detector = NodlinkDetector()
         first = detector.analyze(DetectorInputs(
             signals=(model_signal("p-curl", "exec-curl"),), graph=graph,
+            delta=DetectorDelta(new_signals=(model_signal("p-curl", "exec-curl"),)),
         ))
         second = detector.analyze(DetectorInputs(
             signals=(model_signal("p-bash", "exec-bash"),), graph=graph,
             detector_state=first.state_update,
+            delta=DetectorDelta(new_signals=(model_signal("p-bash", "exec-bash"),)),
         ))
 
         self.assertEqual(("nodlink_campaign",), tuple(item.name for item in second.derived_signals))

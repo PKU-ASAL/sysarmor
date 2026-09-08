@@ -27,7 +27,8 @@ class NodlinkDetector:
 
     def analyze(self, inputs: DetectorInputs) -> DetectionResult:
         state = NodlinkState.decode(inputs.detector_state)
-        terminals, rejected = terminals_from_signals(inputs.candidates)
+        candidates = _candidate_inputs(inputs)
+        terminals, rejected = terminals_from_signals(candidates)
         campaigns = update_campaigns(
             inputs.graph,
             state.campaigns,
@@ -40,11 +41,11 @@ class NodlinkDetector:
         findings = tuple(_finding(inputs.graph, item) for item in campaigns)
         detected = tuple(item for item in findings if item[1].eligible)
         signals = tuple(
-            _campaign_signal(campaign, score, inputs.candidates)
+            _campaign_signal(campaign, score, inputs.signals)
             for campaign, score, _ in detected
         )
         detection_findings = tuple(
-            _detection_finding(campaign, score, evidence, signal, inputs.candidates)
+            _detection_finding(campaign, score, evidence, signal, inputs.signals)
             for (campaign, score, evidence), signal in zip(detected, signals)
         )
         return DetectionResult(
@@ -62,6 +63,12 @@ class NodlinkDetector:
 def _finding(graph, campaign):
     evidence = graph.subgraph(set(campaign.node_ids), set(campaign.edge_ids))
     return campaign, score_campaign(campaign, evidence), evidence
+
+
+def _candidate_inputs(inputs):
+    if inputs.delta.graph_rebuilt or not inputs.detector_state:
+        return inputs.candidates
+    return inputs.delta.new_candidates
 
 
 def _campaign_signal(campaign, score, candidates):

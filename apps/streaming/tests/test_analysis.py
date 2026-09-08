@@ -75,6 +75,11 @@ class AnalysisTest(unittest.TestCase):
 
         self.assertEqual(["healthy"], calls)
         self.assertEqual("failing", result.detector_diagnostics[0]["detector"])
+        healthy = result.detector_diagnostics[1]
+        self.assertEqual("healthy", healthy["detector"])
+        self.assertEqual("ok", healthy["status"])
+        self.assertGreaterEqual(healthy["processing_ms"], 0)
+        self.assertEqual(0, healthy["state_bytes"])
 
     def test_incremental_delta_runs_only_detectors_affected_by_changed_inputs(self):
         module = load_analysis()

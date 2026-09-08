@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field, replace
 import logging
+import time
 
 from streaming.detectors.contracts import (
     DetectorDelta,
@@ -94,6 +95,7 @@ def _run_detectors(
         detector_inputs = _inputs_for(
             detector, inputs, detector_delta, states.get(state_key, b"")
         )
+        started = time.perf_counter()
         try:
             result = detector.analyze(detector_inputs)
         except Exception as error:
@@ -101,6 +103,16 @@ def _run_detectors(
             LOGGER.warning("detector analysis failed: %s", failure, exc_info=True)
             diagnostics.append(failure)
             continue
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        diagnostics.append({
+            "detector": detector.name,
+            "version": detector.version,
+            "status": "ok",
+            "processing_ms": elapsed_ms,
+            "state_bytes": len(result.state_update or states.get(state_key, b"")),
+            "new_event_count": len(detector_delta.new_events),
+            "new_signal_count": len(detector_delta.new_signals),
+        })
         if result.state_update is not None:
             if not detector.state_requirements.keyed:
                 raise ValueError(f"detector {detector.name} returned undeclared keyed state")
