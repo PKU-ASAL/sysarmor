@@ -34,6 +34,7 @@ class WindowAccumulatorTest(unittest.TestCase):
         batches = accumulator.add(record("scope-a", 12, 2))
         self.assertEqual((10,), tuple(item.window_start_ns for item in batches))
         self.assertEqual("count", batches[0].flush_reason)
+        self.assertEqual(0, accumulator.pending_records())
 
 
 if __name__ == "__main__":

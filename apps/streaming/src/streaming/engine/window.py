@@ -28,7 +28,7 @@ class WindowBatch:
 class WindowAccumulator:
     window_size_ns: int = 10_000_000_000
     max_records: int = 256
-    _windows: dict[tuple[str, int], list] = field(default_factory=dict)
+    _windows: dict[tuple[str, str, str, int], list] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.window_size_ns <= 0 or self.max_records <= 0:
@@ -55,6 +55,9 @@ class WindowAccumulator:
 
     def flush_all(self, reason: str = "shutdown") -> tuple[WindowBatch, ...]:
         return tuple(batch for key in sorted(self._windows) for batch in self._flush(key, reason, 0))
+
+    def pending_records(self) -> int:
+        return sum(len(values) for values in self._windows.values())
 
     def _flush(self, key, reason: str, watermark_ns: int) -> tuple[WindowBatch, ...]:
         records = tuple(self._windows.pop(key))
