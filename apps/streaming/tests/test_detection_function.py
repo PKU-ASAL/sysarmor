@@ -14,6 +14,20 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 
 class DetectionFunctionTest(unittest.TestCase):
+    def test_windowed_function_buffers_until_event_time_timer(self):
+        function, runtime = opened_windowed_function()
+        policy = detection_policy("tenant-a", "policy-a", 7)
+        context = ReadContext(
+            {detection.policy_key(policy): policy.SerializeToString()}, watermark_ms=0
+        )
+        record = event_record("scope-a", "policy-a", 7, 100, "event-a")
+
+        self.assertEqual([], list(function.process_element(
+            input_bytes(record), context
+        )))
+        self.assertEqual(1, len(runtime._list_state("window-buffer").values))
+        list(function.on_timer(10_000, context))
+        self.assertEqual([], runtime._list_state("window-buffer").values)
     def test_detection_function_reports_batch_metrics(self):
         function, _ = opened_function()
         self.assertEqual(
@@ -843,6 +857,13 @@ class DetectionFunctionTest(unittest.TestCase):
 def opened_function():
     runtime = RuntimeContext()
     function = detection.DetectionFunction()
+    function.open(runtime)
+    return function, runtime
+
+
+def opened_windowed_function():
+    runtime = RuntimeContext()
+    function = detection.WindowedDetectionFunction()
     function.open(runtime)
     return function, runtime
 

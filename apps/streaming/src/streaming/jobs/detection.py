@@ -29,12 +29,14 @@ BYTE_ARRAY = Types.PRIMITIVE_ARRAY(Types.BYTE())
 POLICY_STATE = MapStateDescriptor("detection-policies", Types.STRING(), BYTE_ARRAY)
 RARITY_POLICY_STATE = MapStateDescriptor("rarity-policies", Types.STRING(), BYTE_ARRAY)
 TELEMETRY_STATE = ListStateDescriptor("bounded-telemetry", BYTE_ARRAY)
+WINDOW_BUFFER_STATE = ListStateDescriptor("window-buffer", BYTE_ARRAY)
 EMITTED_STATE = ListStateDescriptor("emitted-artifacts", Types.STRING())
 DETECTOR_STATE = MapStateDescriptor("detector-states", Types.STRING(), BYTE_ARRAY)
 DETECTOR_STATE_EXPIRY = MapStateDescriptor(
     "detector-state-expiries", Types.STRING(), Types.LONG()
 )
 CLEANUP_TIMER_STATE = ValueStateDescriptor("cleanup-timer", Types.LONG())
+WINDOW_TIMER_STATE = ValueStateDescriptor("window-timer", Types.LONG())
 TELEMETRY_COUNT_STATE = ValueStateDescriptor("telemetry-count", Types.LONG())
 SIGNAL_COUNT_STATE = ValueStateDescriptor("signal-count", Types.LONG())
 RARITY_STATE = ListStateDescriptor("rarity-observations", Types.STRING())
@@ -206,6 +208,11 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
             self._telemetry_count.update(_state_count(self._telemetry_count) + len(records))
             self._schedule_cleanup(ctx, max(_record_expiry_ns(item, policy) for item in records))
             return
+        yield from self._process_records(records, ctx)
+
+    def _process_records(self, records, ctx):
+        record = records[0]
+        policy = _require_policy(ctx, record, POLICY_STATE)
         detector = self._restore_detector(record, ctx)
         cache_key = _cache_key(record)
         policies = self._detector_policies[cache_key]
@@ -426,6 +433,58 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         )
 
 
+class WindowedDetectionFunction(DetectionFunction):
+    """Buffer one keyed scope and invoke detection at a bounded window edge."""
+
+    window_size_ns = 10_000_000_000
+    max_window_records = 256
+
+    def open(self, runtime_context):
+        super().open(runtime_context)
+        self._window_buffer = runtime_context.get_list_state(WINDOW_BUFFER_STATE)
+        self._window_timer = runtime_context.get_state(WINDOW_TIMER_STATE)
+
+    def process_element(self, value, ctx):
+        try:
+            records, _ = _decode_batch(value)
+        except ValueError as error:
+            yield FAILURE_TAG, _batch_failure(bytes(value), str(error))
+            return
+        policy = _require_policy(ctx, records[0], POLICY_STATE)
+        current = tuple(record for record in records if not _record_is_late(record, _watermark_ns(ctx)))
+        if len(current) != len(records):
+            for record in records:
+                if _record_is_late(record, _watermark_ns(ctx)):
+                    yield LATE_TAG, streaming_pb2.LateTelemetry(
+                        telemetry=record, watermark_unix_nano=_watermark_ns(ctx)
+                    ).SerializeToString()
+        if not current:
+            return
+        _state_add_all(self._window_buffer, [record.SerializeToString() for record in current])
+        latest_ns = max(_record_observed_ns(record) for record in current)
+        end_ns = (latest_ns // self.window_size_ns + 1) * self.window_size_ns
+        timer_ms = _cleanup_timer_ms(end_ns)
+        self._window_timer.update(timer_ms)
+        ctx.timer_service().register_event_time_timer(timer_ms)
+        if len(tuple(self._window_buffer.get())) >= self.max_window_records:
+            yield from self._flush_window(ctx, timer_ms)
+
+    def on_timer(self, timestamp, ctx):
+        window_timer = _state_count(self._window_timer)
+        cleanup_timer = _state_count(self._cleanup_timer)
+        if window_timer and timestamp == window_timer:
+            yield from self._flush_window(ctx, timestamp)
+        if cleanup_timer and timestamp == cleanup_timer:
+            yield from super().on_timer(timestamp, ctx)
+
+    def _flush_window(self, ctx, timestamp):
+        values = tuple(_decode_stored_record(item) for item in self._window_buffer.get())
+        self._window_buffer.update([])
+        self._window_timer.clear()
+        if values:
+            yield from self._process_records(values, ctx)
+
+
 def telemetry_key(value) -> str:
     records, _ = _decode_batch(value)
     return _cache_key(records[0])
@@ -454,7 +513,7 @@ def build_graph(telemetry_stream, policy_stream, out_of_orderness_ms=DEFAULT_OUT
     keyed = rarity.key_by(telemetry_key, key_type=Types.STRING())
     policies = policy_stream.broadcast(POLICY_STATE)
     artifacts = keyed.connect(policies).process(
-        DetectionFunction(), output_type=BYTE_ARRAY
+        WindowedDetectionFunction(), output_type=BYTE_ARRAY
     )
     return DetectionStreams(
         artifacts=artifacts,
