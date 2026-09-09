@@ -118,6 +118,9 @@ services:
         s3.path.style.access: true
         s3.access-key: sysarmor
         s3.secret-key: sysarmor-secret
+        taskmanager.memory.jvm-metaspace.size: 384m
+        taskmanager.memory.managed.size: 512m
+        taskmanager.numberOfTaskSlots: 8
     ports:
       - "${SYSARMOR_FLINK_UI_PORT:-18081}:8081"
 
@@ -142,6 +145,9 @@ services:
         s3.path.style.access: true
         s3.access-key: sysarmor
         s3.secret-key: sysarmor-secret
+        taskmanager.memory.jvm-metaspace.size: 384m
+        taskmanager.memory.managed.size: 512m
+        taskmanager.numberOfTaskSlots: 8
 
   flink-normalize:
     image: sysarmor-flink:1.20.2

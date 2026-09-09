@@ -76,6 +76,9 @@ services:
         s3.path.style.access: true
         s3.access-key: sysarmor
         s3.secret-key: sysarmor-secret
+        taskmanager.memory.jvm-metaspace.size: 384m
+        taskmanager.memory.managed.size: 512m
+        taskmanager.numberOfTaskSlots: 8
 
   flink-taskmanager:
     build:
@@ -96,6 +99,9 @@ services:
         s3.path.style.access: true
         s3.access-key: sysarmor
         s3.secret-key: sysarmor-secret
+        taskmanager.memory.jvm-metaspace.size: 384m
+        taskmanager.memory.managed.size: 512m
+        taskmanager.numberOfTaskSlots: 8
 
   flink-normalize:
     build:
