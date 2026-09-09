@@ -26,8 +26,10 @@ class DetectionFunctionTest(unittest.TestCase):
             input_bytes(record), context
         )))
         self.assertEqual(1, len(runtime._list_state("window-buffer").values))
+        self.assertEqual(1, runtime.get_state(detection.WINDOW_BUFFER_COUNT_STATE).value())
         list(function.on_timer(10_000, context))
         self.assertEqual([], runtime._list_state("window-buffer").values)
+        self.assertEqual(0, runtime.get_state(detection.WINDOW_BUFFER_COUNT_STATE).value())
 
     def test_windowed_function_flushes_previous_window_before_switching(self):
         function, runtime = opened_windowed_function()

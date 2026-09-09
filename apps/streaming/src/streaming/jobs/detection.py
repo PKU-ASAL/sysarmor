@@ -31,6 +31,7 @@ POLICY_STATE = MapStateDescriptor("detection-policies", Types.STRING(), BYTE_ARR
 RARITY_POLICY_STATE = MapStateDescriptor("rarity-policies", Types.STRING(), BYTE_ARRAY)
 TELEMETRY_STATE = ListStateDescriptor("bounded-telemetry", BYTE_ARRAY)
 WINDOW_BUFFER_STATE = ListStateDescriptor("window-buffer", BYTE_ARRAY)
+WINDOW_BUFFER_COUNT_STATE = ValueStateDescriptor("window-buffer-count", Types.LONG())
 EMITTED_STATE = ListStateDescriptor("emitted-artifacts", Types.STRING())
 DETECTOR_STATE = MapStateDescriptor("detector-states", Types.STRING(), BYTE_ARRAY)
 DETECTOR_STATE_EXPIRY = MapStateDescriptor(
@@ -445,6 +446,7 @@ class WindowedDetectionFunction(DetectionFunction):
     def open(self, runtime_context):
         super().open(runtime_context)
         self._window_buffer = runtime_context.get_list_state(WINDOW_BUFFER_STATE)
+        self._window_buffer_count = runtime_context.get_state(WINDOW_BUFFER_COUNT_STATE)
         self._window_timer = runtime_context.get_state(WINDOW_TIMER_STATE)
 
     def process_element(self, value, ctx):
@@ -467,13 +469,16 @@ class WindowedDetectionFunction(DetectionFunction):
         existing_timer = _state_count(self._window_timer)
         if existing_timer and latest_ms >= existing_timer:
             yield from self._flush_window(ctx, existing_timer)
-        _state_add_all(self._window_buffer, [record.SerializeToString() for record in current])
+        values = [record.SerializeToString() for record in current]
+        _state_add_all(self._window_buffer, values)
+        buffered_count = _state_count(self._window_buffer_count) + len(values)
+        self._window_buffer_count.update(buffered_count)
         latest_ns = max(_record_observed_ns(record) for record in current)
         end_ns = (latest_ns // self.window_size_ns + 1) * self.window_size_ns
         timer_ms = _cleanup_timer_ms(end_ns)
         self._window_timer.update(timer_ms)
         ctx.timer_service().register_event_time_timer(timer_ms)
-        if len(tuple(self._window_buffer.get())) >= self.max_window_records:
+        if buffered_count >= self.max_window_records:
             yield from self._flush_window(ctx, timer_ms)
 
     def on_timer(self, timestamp, ctx):
@@ -487,6 +492,7 @@ class WindowedDetectionFunction(DetectionFunction):
     def _flush_window(self, ctx, timestamp):
         values = tuple(_decode_stored_record(item) for item in self._window_buffer.get())
         self._window_buffer.update([])
+        self._window_buffer_count.update(0)
         self._window_timer.clear()
         if values:
             started = time.perf_counter()
