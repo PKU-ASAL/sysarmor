@@ -253,8 +253,15 @@ capture_managed_stream_artifacts() {
 
 capture_nodlink_metrics() {
   local policy_out="$1" agent_id="$2" raw="$policy_out/nodlink-metrics.raw" topic="sysarmor.data.detection.metrics.v1"
-  vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic $topic --from-beginning --timeout-ms 3000 --max-messages 10000" \
-    >"$raw" 2>/dev/null || true
+  local deadline=$((SECONDS + MANAGER_ANALYSIS_WAIT_SECONDS))
+  while (( SECONDS < deadline )); do
+    vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic $topic --from-beginning --timeout-ms 1000 --max-messages 10000" \
+      >"$raw" 2>/dev/null || true
+    if grep -q '"agent_id": "'"$agent_id"'"' "$raw"; then
+      break
+    fi
+    sleep 1
+  done
   python3 - "$raw" "$policy_out/nodlink-metrics.json" "$agent_id" <<'PY'
 import json, sys
 source, target, agent_id = sys.argv[1:]
