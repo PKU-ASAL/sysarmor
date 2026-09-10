@@ -29,6 +29,12 @@ class NodlinkDetector:
         state = NodlinkState.decode(inputs.detector_state)
         candidates = _candidate_inputs(inputs)
         terminals, rejected = terminals_from_signals(candidates)
+        if _can_skip_update(state, inputs, terminals):
+            return DetectionResult(
+                algorithm_name=self.name,
+                algorithm_version=self.version,
+                diagnostics={"status": "unchanged", "campaign_count": len(state.campaigns)},
+            )
         campaigns = update_campaigns(
             inputs.graph,
             state.campaigns,
@@ -37,6 +43,8 @@ class NodlinkDetector:
             inputs.delta.graph_rebuilt,
             _updated_ns(inputs),
             cross_lineage_enabled(inputs.policy),
+            inputs.delta.changed_node_ids,
+            inputs.delta.changed_edge_ids,
         )
         findings = tuple(_finding(inputs.graph, item) for item in campaigns)
         detected = tuple(item for item in findings if item[1].eligible)
@@ -69,6 +77,18 @@ def _candidate_inputs(inputs):
     if inputs.delta.graph_rebuilt or not inputs.detector_state:
         return inputs.candidates
     return inputs.delta.new_candidates
+
+
+def _can_skip_update(state, inputs, terminals):
+    if terminals or inputs.delta.expired_signal_refs or inputs.delta.graph_rebuilt:
+        return False
+    changed_nodes = set(inputs.delta.changed_node_ids)
+    changed_edges = set(inputs.delta.changed_edge_ids)
+    return not any(
+        changed_nodes.intersection(campaign.node_ids)
+        or changed_edges.intersection(campaign.edge_ids)
+        for campaign in state.campaigns
+    )
 
 
 def _campaign_signal(campaign, score, candidates):

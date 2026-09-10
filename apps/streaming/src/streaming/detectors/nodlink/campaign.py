@@ -12,16 +12,27 @@ MAX_TERMINALS = 128
 
 def update_campaigns(
     graph, campaigns, terminals, expired_refs=(), rebuilt=False,
-    updated_ns=0, allow_cross_lineage=False,
+    updated_ns=0, allow_cross_lineage=False, changed_node_ids=(), changed_edge_ids=(),
 ):
     active = () if rebuilt else _remove_expired(campaigns, expired_refs)
-    active = tuple(_rebuild(graph, item) for item in active)
+    active = tuple(
+        _rebuild(graph, item) if _campaign_affected(item, changed_node_ids, changed_edge_ids)
+        else item
+        for item in active
+    )
     for terminal in _ranked_terminals(terminals):
         active = _add_terminal(
             graph, active, terminal, updated_ns, allow_cross_lineage
         )
     active = _merge_connected(graph, active, updated_ns, allow_cross_lineage)
     return _bounded_campaigns(active)
+
+
+def _campaign_affected(campaign, changed_nodes, changed_edges):
+    return bool(
+        set(campaign.node_ids).intersection(changed_nodes)
+        or set(campaign.edge_ids).intersection(changed_edges)
+    )
 
 
 def _add_terminal(graph, campaigns, terminal, updated_ns, allow_cross):

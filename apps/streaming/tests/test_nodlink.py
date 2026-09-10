@@ -17,6 +17,48 @@ from streaming.detectors.nodlink.campaign import update_campaigns
 
 
 class NodlinkDetectorTest(unittest.TestCase):
+    def test_unrelated_graph_delta_does_not_rebuild_campaigns(self):
+        graph = ProvenanceGraph.from_events(causal_events())
+        detector = NodlinkDetector()
+        candidate = model_signal("p-curl", "exec-curl")
+        first = detector.analyze(DetectorInputs(
+            events=tuple(causal_events()), signals=(candidate,), graph=graph,
+            delta=DetectorDelta(new_signals=(candidate,)),
+        ))
+        with mock.patch(
+            "streaming.detectors.nodlink.detector.update_campaigns",
+            wraps=update_campaigns,
+        ) as update:
+            result = detector.analyze(DetectorInputs(
+                signals=(candidate,), graph=graph, detector_state=first.state_update,
+                delta=DetectorDelta(changed_node_ids=("process:unrelated",)),
+            ))
+        update.assert_not_called()
+        self.assertEqual((), result.derived_signals)
+
+    def test_graph_delta_rebuilds_only_affected_campaign(self):
+        graph = ProvenanceGraph.from_events(causal_events())
+        detector = NodlinkDetector()
+        candidate = model_signal("p-curl", "exec-curl")
+        first = detector.analyze(DetectorInputs(
+            events=tuple(causal_events()), signals=(candidate,), graph=graph,
+            delta=DetectorDelta(new_signals=(candidate,)),
+        ))
+        state = NodlinkState.decode(first.state_update)
+        unrelated = Campaign(
+            "campaign-other", "sha256:other", (), ("process:unrelated",), (), 0
+        )
+        encoded = NodlinkState((*state.campaigns, unrelated)).encode()
+        with mock.patch(
+            "streaming.detectors.nodlink.campaign._rebuild",
+            wraps=__import__("streaming.detectors.nodlink.campaign", fromlist=["_rebuild"])._rebuild,
+        ) as rebuild:
+            detector.analyze(DetectorInputs(
+                signals=(candidate,), graph=graph, detector_state=encoded,
+                delta=DetectorDelta(changed_node_ids=("process:p-curl",)),
+            ))
+        self.assertEqual(1, rebuild.call_count)
+
     def test_incremental_analysis_only_maps_new_model_candidates(self):
         candidates = (model_signal("p-curl", "exec-curl"),)
         graph = ProvenanceGraph.from_events(causal_events())
