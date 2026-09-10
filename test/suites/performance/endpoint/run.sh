@@ -255,7 +255,7 @@ capture_nodlink_metrics() {
   local policy_out="$1" agent_id="$2" raw="$policy_out/nodlink-metrics.raw" topic="sysarmor.data.detection.metrics.v1"
   local deadline=$((SECONDS + MANAGER_ANALYSIS_WAIT_SECONDS))
   while (( SECONDS < deadline )); do
-    vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic $topic --from-beginning --timeout-ms 1000 --max-messages 10000" \
+    vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic $topic --from-beginning --timeout-ms 5000 --max-messages 10000" \
       >"$raw" 2>/dev/null || true
     if grep -q '"agent_id": "'"$agent_id"'"' "$raw"; then
       break
@@ -275,8 +275,12 @@ for line in values:
         value = json.loads(line)
     except json.JSONDecodeError:
         continue
-    if isinstance(value, dict) and value.get("agent_id") == agent_id:
+    if isinstance(value, dict):
         rows.append(value)
+if agent_id:
+    matching = [row for row in rows if row.get("agent_id") == agent_id]
+    if matching:
+        rows = matching
 detection = [row for row in rows if row.get("job") == "sysarmor-detection-v1"]
 projection = [row for row in rows if row.get("job") == "sysarmor-projection-v1"]
 processing = [float(row["processing_ms"]) for row in detection if isinstance(row.get("processing_ms"), (int, float))]
@@ -285,7 +289,9 @@ windows = [int(row["input_records"]) for row in detection if isinstance(row.get(
 result = {
     "detector_windows": len(detection),
     "processing_ms": max(processing) if processing else None,
+    "processing_p50_ms": sorted(processing)[max(0, (len(processing) * 50 + 99) // 100 - 1)] if processing else None,
     "processing_p95_ms": sorted(processing)[min(len(processing) - 1, max(0, (len(processing) * 95 + 99) // 100 - 1))] if processing else None,
+    "processing_p99_ms": sorted(processing)[min(len(processing) - 1, max(0, (len(processing) * 99 + 99) // 100 - 1))] if processing else None,
     "state_bytes": max(states) if states else None,
     "detector_input_records": sum(windows) if windows else 0,
     "projection_metrics": projection[-1] if projection else None,

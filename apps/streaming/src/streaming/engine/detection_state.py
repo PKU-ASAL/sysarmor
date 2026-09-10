@@ -55,6 +55,8 @@ class AgentAnalysisContext:
     pending_delta: DetectorDelta = field(default_factory=DetectorDelta)
     detector_states: dict[str, bytes] = field(default_factory=dict)
     detector_state_expiries: dict[str, int] = field(default_factory=dict)
+    event_snapshot: list = field(default_factory=list)
+    signal_snapshot: list = field(default_factory=list)
 
 
 class DetectionState:
@@ -166,11 +168,15 @@ class DetectionState:
         scope.latest_ns = max(scope.latest_ns, observed_ns)
         if record.WhichOneof("payload") == "event":
             scope.events.append((observed_ns, record))
+            scope.event_snapshot.append(record.event)
         else:
             scope.signals.append((observed_ns, record))
+            scope.signal_snapshot.append(record.signal)
         if out_of_order:
             scope.events.sort(key=_record_order)
             scope.signals.sort(key=_record_order)
+            scope.event_snapshot = [item.event for _, item in scope.events]
+            scope.signal_snapshot = [item.signal for _, item in scope.signals]
         expiry = observed_ns + _retention_ns(policy)
         scope.expiries[_record_id(record)] = expiry
         scope.next_expiry_ns = min(scope.next_expiry_ns or expiry, expiry)
@@ -222,8 +228,8 @@ class DetectionState:
     def _analyze(scope, record, policy, watermark_ns, delta):
         context = record.context
         result = analyze(
-            [item.event for _, item in scope.events],
-            [item.signal for _, item in scope.signals],
+            scope.event_snapshot,
+            scope.signal_snapshot,
             policy.detection,
             context=AnalysisContext(
                 tenant_id=context.tenant_id,
@@ -332,6 +338,8 @@ class DetectionState:
             )
         scope.next_expiry_ns = min(scope.expiries.values(), default=0)
         self._scopes[scope_key] = scope
+        scope.event_snapshot = [item.event for _, item in scope.events]
+        scope.signal_snapshot = [item.signal for _, item in scope.signals]
         scope.graph = ProvenanceGraph.from_events(self._events(scope))
         scope.pending_delta = DetectorDelta(graph_rebuilt=True)
 
@@ -379,6 +387,8 @@ class DetectionState:
         eviction = self._evict(scope, policy)
         self._expire_detector_states(scope, scope.latest_ns)
         if eviction.changed:
+            scope.event_snapshot = [item.event for _, item in scope.events]
+            scope.signal_snapshot = [item.signal for _, item in scope.signals]
             scope.graph = ProvenanceGraph.from_events(self._events(scope))
             scope.pending_delta = scope.pending_delta.merged(DetectorDelta(
                 expired_event_refs=eviction.event_refs,

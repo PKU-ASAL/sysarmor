@@ -14,6 +14,13 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 
 class DetectionFunctionTest(unittest.TestCase):
+    def test_windowed_function_keeps_crossing_batch_in_separate_window_entries(self):
+        first = event_record("scope-a", "policy-a", 7, 100, "event-a")
+        second = event_record("scope-a", "policy-a", 7, 10_000_000_100, "event-b")
+        grouped = detection._group_window_records((first, second), 10_000_000_000)
+        self.assertEqual({0, 10_000_000_000}, set(grouped))
+        self.assertEqual(("event-a",), tuple(item.event.id for item in grouped[0]))
+
     def test_windowed_function_buffers_until_event_time_timer(self):
         function, runtime = opened_windowed_function()
         policy = detection_policy("tenant-a", "policy-a", 7)

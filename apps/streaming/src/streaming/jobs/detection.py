@@ -1,6 +1,7 @@
 """Build bounded detection state and emit analysis artifacts."""
 
 import json
+import struct
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -465,35 +466,46 @@ class WindowedDetectionFunction(DetectionFunction):
                     ).SerializeToString()
         if not current:
             return
-        latest_ms = max(_record_observed_ns(record) for record in current) // 1_000_000
-        existing_timer = _state_count(self._window_timer)
-        if existing_timer and latest_ms >= existing_timer:
-            yield from self._flush_window(ctx, existing_timer)
-        values = [record.SerializeToString() for record in current]
-        _state_add_all(self._window_buffer, values)
-        buffered_count = _state_count(self._window_buffer_count) + len(values)
-        self._window_buffer_count.update(buffered_count)
-        latest_ns = max(_record_observed_ns(record) for record in current)
-        end_ns = (latest_ns // self.window_size_ns + 1) * self.window_size_ns
-        timer_ms = _cleanup_timer_ms(end_ns)
-        self._window_timer.update(timer_ms)
-        ctx.timer_service().register_event_time_timer(timer_ms)
-        if buffered_count >= self.max_window_records:
-            yield from self._flush_window(ctx, timer_ms)
+        latest_observed = max(_record_observed_ns(record) for record in current)
+        for window_id in sorted(self._window_ids()):
+            if window_id + self.window_size_ns <= latest_observed:
+                yield from self._flush_window(ctx, 0, window_id)
+        windows = _group_window_records(current, self.window_size_ns)
+        for window_id, records in sorted(windows.items()):
+            buffered_count = self._upsert_window(window_id, records)
+            end_ns = window_id + self.window_size_ns
+            timer_ms = _cleanup_timer_ms(end_ns)
+            current_timer = _state_count(self._window_timer)
+            if not current_timer or timer_ms < current_timer:
+                self._window_timer.update(timer_ms)
+            ctx.timer_service().register_event_time_timer(timer_ms)
+            if buffered_count >= self.max_window_records:
+                yield from self._flush_window(ctx, timer_ms, window_id)
 
     def on_timer(self, timestamp, ctx):
-        window_timer = _state_count(self._window_timer)
         cleanup_timer = _state_count(self._cleanup_timer)
-        if window_timer and timestamp == window_timer:
-            yield from self._flush_window(ctx, timestamp)
+        for window_id in self._window_ids():
+            if _cleanup_timer_ms(window_id + self.window_size_ns) == timestamp:
+                yield from self._flush_window(ctx, timestamp, window_id)
         if cleanup_timer and timestamp == cleanup_timer:
             yield from super().on_timer(timestamp, ctx)
 
-    def _flush_window(self, ctx, timestamp):
-        values = tuple(_decode_stored_record(item) for item in self._window_buffer.get())
-        self._window_buffer.update([])
-        self._window_buffer_count.update(0)
-        self._window_timer.clear()
+    def _flush_window(self, ctx, timestamp, window_id=None):
+        entries = list(self._window_buffer.get())
+        selected = []
+        remaining = []
+        for entry in entries:
+            entry_window, records = _decode_window_entry(entry)
+            if window_id is None or entry_window == window_id:
+                selected.extend(records)
+            else:
+                remaining.append(entry)
+        self._window_buffer.update(remaining)
+        self._window_buffer_count.update(sum(len(_decode_window_entry(item)[1]) for item in remaining))
+        self._window_timer.update(
+            min((_cleanup_timer_ms(item + self.window_size_ns) for item in self._window_ids()), default=0)
+        )
+        values = tuple(selected)
         if values:
             started = time.perf_counter()
             yield from self._process_records(values, ctx)
@@ -509,10 +521,62 @@ class WindowedDetectionFunction(DetectionFunction):
                 "state_bytes": sum(len(value) for _, value in self._detector_state.items()),
             }, sort_keys=True).encode()
 
+    def _window_ids(self):
+        return tuple(_decode_window_entry(item)[0] for item in self._window_buffer.get())
+
+    def _upsert_window(self, window_id, records):
+        entries = list(self._window_buffer.get())
+        updated = False
+        output = []
+        for entry in entries:
+            existing_id, existing = _decode_window_entry(entry)
+            if existing_id == window_id:
+                merged = existing + tuple(records)
+                output.append(_encode_window_entry(window_id, merged))
+                updated = True
+            else:
+                output.append(entry)
+        if not updated:
+            output.append(_encode_window_entry(window_id, records))
+        self._window_buffer.update(output)
+        total = sum(len(_decode_window_entry(item)[1]) for item in output)
+        self._window_buffer_count.update(total)
+        return next(
+            len(_decode_window_entry(item)[1])
+            for item in output
+            if _decode_window_entry(item)[0] == window_id
+        )
+
 
 def telemetry_key(value) -> str:
     records, _ = _decode_batch(value)
     return _cache_key(records[0])
+
+
+def _group_window_records(records, window_size_ns):
+    grouped = {}
+    for record in records:
+        observed = _record_observed_ns(record)
+        window_id = observed // window_size_ns * window_size_ns
+        grouped.setdefault(window_id, []).append(record)
+    return {window_id: tuple(values) for window_id, values in grouped.items()}
+
+
+def _encode_window_entry(window_id, records):
+    batch = streaming_pb2.NormalizedTelemetryBatch(
+        schema_version="sysarmor.telemetry.normalized.batch/v1",
+        records=records,
+    )
+    return struct.pack(">q", int(window_id)) + batch.SerializeToString()
+
+
+def _decode_window_entry(value):
+    raw = bytes(value)
+    if len(raw) < 8:
+        raise ValueError("invalid window buffer entry")
+    window_id = struct.unpack(">q", raw[:8])[0]
+    batch = streaming_pb2.NormalizedTelemetryBatch.FromString(raw[8:])
+    return window_id, tuple(batch.records)
 
 
 def _cache_key(record) -> str:
