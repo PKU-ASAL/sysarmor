@@ -208,7 +208,7 @@ class DetectionState:
         signal_kinds = frozenset(
             record.signal.detector_kind for _, record in scope.signals
         )
-        return DetectorRegistry.affected_by(
+        return DetectorRegistry.triggered_by(
             delta.changed_inputs, frozenset(available), signal_kinds
         )
 

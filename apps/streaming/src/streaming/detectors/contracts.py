@@ -178,6 +178,7 @@ class Detector(Protocol):
     version: str
     required_inputs: tuple[RequiredInput, ...]
     signal_kinds: frozenset[int] | None
+    trigger_inputs: tuple[RequiredInput, ...]
     state_requirements: StateRequirements
 
     def analyze(self, inputs: DetectorInputs) -> DetectionResult: ...

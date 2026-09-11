@@ -320,11 +320,11 @@ class DetectionStateTest(unittest.TestCase):
                 event_record("scope-a", "policy-a", 7, 120, "event-b"), 0, values
             )
 
-        self.assertEqual(1, analyze.call_count)
+        self.assertEqual(0, analyze.call_count)
         self.assertEqual((), result.artifacts)
         self.assertEqual({"event-a", "event-b"}, state.event_ids("scope-a"))
 
-    def test_event_after_model_candidate_runs_model_graph_detector(self):
+    def test_event_after_model_candidate_does_not_trigger_signal_detector(self):
         module = load_state()
         contracts = importlib.import_module("streaming.detectors.contracts")
         calls = []
@@ -362,7 +362,7 @@ class DetectionStateTest(unittest.TestCase):
                 values,
             )
 
-        self.assertEqual(1, len(calls))
+        self.assertEqual(0, len(calls))
 
     def test_signal_only_detector_keeps_event_fast_path(self):
         module = load_state()

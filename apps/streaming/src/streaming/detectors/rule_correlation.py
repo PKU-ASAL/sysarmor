@@ -39,6 +39,7 @@ class RuleCorrelationDetector:
     name = "rule-correlation-v1"
     version = "1"
     required_inputs = (RequiredInput.SIGNAL, RequiredInput.PROVENANCE_EDGE)
+    trigger_inputs = (RequiredInput.SIGNAL,)
     signal_kinds = frozenset({signal_pb2.DETECTOR_KIND_RULE})
     state_requirements = StateRequirements()
 

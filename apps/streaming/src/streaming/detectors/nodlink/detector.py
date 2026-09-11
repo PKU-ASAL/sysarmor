@@ -22,6 +22,7 @@ class NodlinkDetector:
     name = "nodlink"
     version = "1"
     required_inputs = (RequiredInput.SIGNAL, RequiredInput.PROVENANCE_EDGE)
+    trigger_inputs = (RequiredInput.SIGNAL,)
     signal_kinds = frozenset({signal_pb2.DETECTOR_KIND_MODEL})
     state_requirements = StateRequirements(keyed=True, version=2)
 

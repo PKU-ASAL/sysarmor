@@ -92,7 +92,7 @@ def _run_detectors(
     for detector in detectors:
         state_key = detector_state_key(detector)
         missing_state = _prepare_detector_state(detector, state_key, states)
-        affected = DetectorRegistry.detector_affected_by(
+        affected = DetectorRegistry.detector_triggered_by(
             detector,
             delta.changed_inputs,
             available_inputs,

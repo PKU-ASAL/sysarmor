@@ -711,6 +711,9 @@ class DetectionFunctionTest(unittest.TestCase):
         for record in causal_event_records():
             output = list(function.process_element(input_bytes(record), context))
 
+        # Signal arrival is the detector trigger; preceding events only update the graph.
+        output = list(function.process_element(input_bytes(connected), context))
+
         artifacts = [streaming_pb2.AnalysisArtifact.FromString(value) for value in output]
         self.assertTrue(any(item.WhichOneof("payload") == "incident" for item in artifacts))
 

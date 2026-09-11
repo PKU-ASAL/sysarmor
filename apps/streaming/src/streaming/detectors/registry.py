@@ -71,6 +71,27 @@ class DetectorRegistry:
             )
         )
 
+    @classmethod
+    def triggered_by(cls, changed_inputs, available_inputs=None, available_signal_kinds=None):
+        return any(
+            cls.detector_triggered_by(detector, changed_inputs, available_inputs, available_signal_kinds)
+            for detector in cls._registry.values()
+        )
+
+    @staticmethod
+    def detector_triggered_by(detector, changed_inputs, available_inputs=None, available_signal_kinds=None):
+        required = frozenset(detector.required_inputs)
+        default_triggers = (
+            required - {RequiredInput.PROVENANCE_EDGE}
+            if RequiredInput.SIGNAL in required
+            else required
+        )
+        triggers = frozenset(getattr(detector, "trigger_inputs", default_triggers))
+        return bool(
+            changed_inputs.intersection(triggers)
+            and DetectorRegistry.detector_inputs_available(detector, available_inputs, available_signal_kinds)
+        )
+
     @staticmethod
     def detector_inputs_available(
         detector, available_inputs=None, available_signal_kinds=None
