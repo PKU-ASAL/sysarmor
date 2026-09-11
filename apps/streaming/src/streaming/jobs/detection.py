@@ -48,6 +48,9 @@ FAILURE_TAG = OutputTag("detection-failures", BYTE_ARRAY)
 METRICS_TAG = OutputTag("detection-metrics", BYTE_ARRAY)
 MIN_WATERMARK_MS = -(1 << 63)
 DEFAULT_OUT_OF_ORDERNESS_MS = 5_000
+MAX_WINDOW_CANDIDATES = 64
+MAX_WINDOW_GRAPH_DELTA = 2_048
+DETECTOR_BUDGET_MS = 5_000
 CLEANUP_TIMER_BUCKET_MS = 1_000
 MAX_CACHED_AGENT_SCOPES = 64
 MAX_CACHED_RECORDS = MAX_SCOPE_RECORDS
@@ -516,8 +519,28 @@ class WindowedDetectionFunction(DetectionFunction):
                 "window_start_ns": min(_record_observed_ns(item) for item in values),
                 "window_end_ns": max(_record_observed_ns(item) for item in values),
                 "input_records": len(values),
+                "candidate_count": sum(
+                    1 for item in values
+                    if item.WhichOneof("payload") == "signal"
+                    and item.signal.detector_kind == streaming_pb2.DETECTOR_KIND_MODEL
+                    and item.signal.stage == streaming_pb2.SIGNAL_STAGE_CANDIDATE
+                ),
+                "graph_delta_records": sum(
+                    1 for item in values if item.WhichOneof("payload") == "event"
+                ),
                 "flush_reason": "timer" if timestamp else "count",
                 "processing_ms": (time.perf_counter() - started) * 1000,
+                "budget_ms": DETECTOR_BUDGET_MS,
+                "budget_exceeded": (time.perf_counter() - started) * 1000 > DETECTOR_BUDGET_MS,
+                "candidate_budget_exceeded": sum(
+                    1 for item in values
+                    if item.WhichOneof("payload") == "signal"
+                    and item.signal.detector_kind == streaming_pb2.DETECTOR_KIND_MODEL
+                    and item.signal.stage == streaming_pb2.SIGNAL_STAGE_CANDIDATE
+                ) > MAX_WINDOW_CANDIDATES,
+                "graph_delta_budget_exceeded": sum(
+                    1 for item in values if item.WhichOneof("payload") == "event"
+                ) > MAX_WINDOW_GRAPH_DELTA,
                 "state_bytes": sum(len(value) for _, value in self._detector_state.items()),
             }, sort_keys=True).encode()
 

@@ -2,10 +2,18 @@ import unittest
 
 from packages.contracts.proto.policy.v1 import policy_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
-from streaming.graph.index import build
+from streaming.graph.index import CorrelationView, build
 
 
 class CorrelationTest(unittest.TestCase):
+    def test_correlation_view_updates_incrementally_without_rebuilding(self):
+        first = signal_pb2.Signal(id="s1", name="rule-a")
+        second = signal_pb2.Signal(id="s2", name="rule-b")
+        view = CorrelationView.empty().add((first,))
+        updated = view.add((second,))
+        self.assertEqual(["s1"], view.signal_refs("rule-a"))
+        self.assertEqual(["s2"], updated.signal_refs("rule-b"))
+        self.assertEqual([], updated.remove(("s1",)).signal_refs("rule-a"))
     def test_entities_are_normalized_before_deduplication(self):
         signals = [
             signal_pb2.Signal(

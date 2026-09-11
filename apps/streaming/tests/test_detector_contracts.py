@@ -48,6 +48,18 @@ class DetectionResultTest(unittest.TestCase):
 
 
 class DetectorInputsTest(unittest.TestCase):
+    def test_detector_batch_exposes_only_incremental_changes(self):
+        contracts = load_contracts()
+        event = event_pb2.CanonicalEvent(id="event-a")
+        signal = signal_pb2.Signal(id="candidate-a")
+        batch = contracts.DetectorBatch(
+            window_id=7,
+            delta=contracts.DetectorDelta(new_events=(event,), new_signals=(signal,)),
+        )
+        self.assertEqual(7, batch.window_id)
+        self.assertEqual((event,), batch.new_events)
+        self.assertEqual((signal,), batch.new_signals)
+
     def test_delta_carries_only_current_changes(self):
         contracts = load_contracts()
         event = event_pb2.CanonicalEvent(id="event-a")

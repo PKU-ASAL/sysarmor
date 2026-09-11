@@ -11,6 +11,7 @@ from streaming.detectors.registry import DetectorRegistry
 from streaming.detection.analysis import analyze
 from streaming.graph.state import ProvenanceGraph
 from streaming.windows.accumulator import WindowBatch
+from streaming.detection.state_parts import CampaignState, GraphState, SignalState
 
 
 DEFAULT_STATE_RETENTION_NS = 300_000_000_000
@@ -57,6 +58,9 @@ class AgentAnalysisContext:
     detector_state_expiries: dict[str, int] = field(default_factory=dict)
     event_snapshot: list = field(default_factory=list)
     signal_snapshot: list = field(default_factory=list)
+    graph_state: GraphState = field(default_factory=GraphState)
+    signal_state: SignalState = field(default_factory=SignalState)
+    campaign_state: CampaignState = field(default_factory=CampaignState)
 
 
 class DetectionState:
@@ -187,6 +191,7 @@ class DetectionState:
         changed_nodes, changed_edges = (), ()
         if graph_rebuilt:
             scope.graph = ProvenanceGraph.from_events(self._events(scope))
+            scope.graph_state.graph = scope.graph
             changed_nodes = scope.graph.node_ids()
             changed_edges = tuple(edge_id for edge_id, _ in scope.graph.edges())
         elif record.WhichOneof("payload") == "event":
@@ -247,6 +252,8 @@ class DetectionState:
             graph=scope.graph,
             delta=delta,
             detector_states=scope.detector_states,
+            window_id=watermark_ns,
+            watermark_ns=watermark_ns,
         )
         scope.pending_delta = DetectorDelta()
         DetectionState._update_detector_states(
@@ -258,11 +265,13 @@ class DetectionState:
     def _update_detector_states(scope, result, observed_ns, policy) -> None:
         active_keys = set(result.detector_states)
         scope.detector_states = result.detector_states
+        scope.campaign_state.detector_states = result.detector_states
         scope.detector_state_expiries = {
             key: expiry
             for key, expiry in scope.detector_state_expiries.items()
             if key in active_keys
         }
+        scope.campaign_state.detector_state_expiries = scope.detector_state_expiries
         for key, ttl_ns in result.detector_state_updates.items():
             scope.detector_state_expiries[key] = observed_ns + (
                 ttl_ns or _retention_ns(policy)

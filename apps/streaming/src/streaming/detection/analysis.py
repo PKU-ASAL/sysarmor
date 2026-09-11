@@ -3,6 +3,7 @@ import logging
 import time
 
 from streaming.detectors.contracts import (
+    DetectorBatch,
     DetectorDelta,
     DetectorInputs,
     RequiredInput,
@@ -30,7 +31,7 @@ class AnalysisResult:
 
 def analyze(
     events, signals, policy, scorer=None, context=None, graph=None, delta=None,
-    detector_states=None,
+    detector_states=None, window_id=0, watermark_ns=0,
 ) -> AnalysisResult:
     incremental = delta is not None
     delta = delta or DetectorDelta()
@@ -43,6 +44,15 @@ def analyze(
         policy=policy,
         context=context,
         delta=delta,
+        batch=DetectorBatch(
+            window_id,
+            watermark_ns,
+            delta,
+            {
+                "node_ids": delta.changed_node_ids,
+                "edge_ids": delta.changed_edge_ids,
+            },
+        ),
     )
     states = dict(detector_states or {})
     available_inputs = _available_inputs(inputs, delta)
@@ -145,6 +155,11 @@ def _inputs_for(detector, inputs, delta, detector_state):
         graph=(inputs.graph if RequiredInput.PROVENANCE_EDGE in required else None),
         delta=_delta_for(required, delta),
         detector_state=detector_state,
+        batch=replace(
+            inputs.batch,
+            delta=_delta_for(required, delta),
+            detector_state=detector_state,
+        ) if inputs.batch is not None else None,
     )
 
 

@@ -77,7 +77,7 @@ def _finding(graph, campaign):
 def _candidate_inputs(inputs):
     if inputs.delta.graph_rebuilt or not inputs.detector_state:
         return inputs.candidates
-    return inputs.delta.new_candidates
+    return inputs.batch.new_candidates if inputs.batch is not None else inputs.delta.new_candidates
 
 
 def _can_skip_update(state, inputs, terminals):

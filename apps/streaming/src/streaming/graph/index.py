@@ -9,6 +9,29 @@ from streaming.graph.state import entity_id
 class CorrelationView:
     by_name: dict
 
+    @classmethod
+    def empty(cls):
+        return cls(by_name={})
+
+    def add(self, signals, policy=None):
+        enabled = set(policy.endpoint_rules) if policy is not None else set()
+        index = {name: list(values) for name, values in self.by_name.items()}
+        for signal in signals:
+            if enabled and signal.name not in enabled:
+                continue
+            values = index.setdefault(signal.name, [])
+            if signal.id and any(item.id == signal.id for item in values):
+                continue
+            values.append(signal)
+        return CorrelationView(index)
+
+    def remove(self, signal_ids):
+        expired = set(signal_ids)
+        return CorrelationView({
+            name: [signal for signal in values if signal.id not in expired]
+            for name, values in self.by_name.items()
+        })
+
     def has(self, name: str) -> bool:
         return bool(self.by_name.get(name))
 
@@ -34,12 +57,7 @@ class CorrelationView:
 
 
 def build(events, signals, policy) -> CorrelationView:
-    enabled = set(policy.endpoint_rules)
-    by_name = {}
-    for signal in signals:
-        if not enabled or signal.name in enabled:
-            by_name.setdefault(signal.name, []).append(signal)
-    return CorrelationView(by_name=by_name)
+    return CorrelationView.empty().add(signals, policy)
 
 
 def entities_for(signals):

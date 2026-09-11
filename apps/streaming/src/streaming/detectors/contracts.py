@@ -98,6 +98,29 @@ class DetectorDelta:
 
 
 @dataclass(frozen=True)
+class DetectorBatch:
+    """Bounded incremental input delivered to one detector invocation."""
+
+    window_id: int = 0
+    watermark_ns: int = 0
+    delta: DetectorDelta = field(default_factory=DetectorDelta)
+    graph_delta: object | None = None
+    detector_state: bytes = b""
+
+    @property
+    def new_events(self):
+        return self.delta.new_events
+
+    @property
+    def new_signals(self):
+        return self.delta.new_signals
+
+    @property
+    def new_candidates(self):
+        return self.delta.new_candidates
+
+
+@dataclass(frozen=True)
 class DetectionFinding:
     """Self-contained detector finding: conclusion, evidence, and contributors."""
 
@@ -144,6 +167,7 @@ class DetectorInputs:
     policy: object | None = None
     delta: DetectorDelta = field(default_factory=DetectorDelta)
     detector_state: bytes = b""
+    batch: DetectorBatch | None = None
 
     @property
     def candidates(self) -> tuple[signal_pb2.Signal, ...]:
