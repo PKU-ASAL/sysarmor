@@ -19,13 +19,13 @@ from streaming.detectors.contracts import (
     RequiredInput,
     StateRequirements,
 )
-from streaming.engine.correlation import (
+from streaming.graph.index import (
     build,
     common_labels,
     entities_for,
     related,
 )
-from streaming.engine.identity import signal_digest
+from streaming.graph.identity import signal_digest
 from streaming.detectors.shortest_path import connecting_evidence
 
 

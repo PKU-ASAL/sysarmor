@@ -1,7 +1,7 @@
 from packages.contracts.proto.incident.v1 import incident_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 
-from streaming.engine.identity import signal_digest
+from streaming.graph.identity import signal_digest
 from streaming.preprocessing.rarity import count_score
 
 

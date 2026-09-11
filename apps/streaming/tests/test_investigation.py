@@ -6,7 +6,7 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 from streaming.detectors.contracts import DetectionResult
 from streaming.detectors.contracts import DetectionFinding
-from streaming.engine.correlation import build
+from streaming.graph.index import build
 from streaming.investigation.convergence import Decision
 from streaming.investigation.investigation import investigate
 

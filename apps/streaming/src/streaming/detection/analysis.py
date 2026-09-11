@@ -10,9 +10,9 @@ from streaming.detectors.contracts import (
 )
 from streaming.detectors.registry import DetectorRegistry
 from streaming.investigation.convergence import decide
-from streaming.engine.correlation import build
+from streaming.graph.index import build
 from streaming.investigation.investigation import investigate
-from streaming.engine.provenance import ProvenanceGraph
+from streaming.graph.state import ProvenanceGraph
 
 
 LOGGER = logging.getLogger(__name__)

@@ -9,8 +9,8 @@ from tests.test_analysis import causal_events, endpoint_signal, process
 from streaming.detectors.nodlink.detector import NodlinkDetector
 from streaming.detectors.contracts import DetectorInputs
 from streaming.detectors.contracts import DetectorDelta
-from streaming.engine.provenance import ProvenanceGraph
-from streaming.engine.analysis import analyze
+from streaming.graph.state import ProvenanceGraph
+from streaming.detection.analysis import analyze
 from streaming.detectors.nodlink.state import Campaign, NodlinkState
 from streaming.detectors.nodlink.terminal import Terminal, terminals_from_signals
 from streaming.detectors.nodlink.campaign import update_campaigns

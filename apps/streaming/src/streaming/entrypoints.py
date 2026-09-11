@@ -7,7 +7,7 @@ from streaming.jobs.normalize import BYTE_ARRAY, NormalizeFunction, REJECTION_TA
 from streaming.jobs.projection import FAILURE_TAG, METRICS_TAG, ProjectionFunction
 from streaming.runtime.config import StreamingConfig
 from streaming.runtime.kafka import configure_environment, sink, source
-from streaming.runtime.opensearch import OpenSearchProjector
+from streaming.projection.opensearch import OpenSearchProjector
 
 
 def run_normalize():

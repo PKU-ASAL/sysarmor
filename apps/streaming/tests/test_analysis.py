@@ -9,7 +9,7 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 def load_analysis():
     try:
-        return importlib.import_module("streaming.engine.analysis")
+        return importlib.import_module("streaming.detection.analysis")
     except ModuleNotFoundError as error:
         raise AssertionError("analysis operator is not implemented") from error
 

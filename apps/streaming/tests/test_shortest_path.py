@@ -15,7 +15,7 @@ class ShortestPathDetectorTest(unittest.TestCase):
     def test_connecting_evidence_returns_evidence_subgraph(self):
         shortest_path = load_module("streaming.detectors.shortest_path")
         contracts = load_module("streaming.detectors.contracts")
-        provenance = load_module("streaming.engine.provenance")
+        provenance = load_module("streaming.graph.state")
         graph = provenance.ProvenanceGraph.from_events(causal_events())
         inputs = contracts.DetectorInputs(
             signals=(

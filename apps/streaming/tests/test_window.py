@@ -1,7 +1,7 @@
 import unittest
 
 from packages.contracts.proto.streaming.v1 import streaming_pb2
-from streaming.engine.window import WindowAccumulator
+from streaming.windows.accumulator import WindowAccumulator
 
 
 def record(scope, observed_ns, sequence):

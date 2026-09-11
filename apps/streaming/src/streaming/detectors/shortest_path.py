@@ -9,7 +9,7 @@ incomplete gaps) into an EvidenceSubgraph.
 from __future__ import annotations
 
 from packages.contracts.proto.incident.v1 import incident_pb2
-from streaming.engine.provenance import entity_id
+from streaming.graph.state import entity_id
 
 MAX_EVIDENCE_SEEDS = 128
 

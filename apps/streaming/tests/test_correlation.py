@@ -2,7 +2,7 @@ import unittest
 
 from packages.contracts.proto.policy.v1 import policy_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
-from streaming.engine.correlation import build
+from streaming.graph.index import build
 
 
 class CorrelationTest(unittest.TestCase):

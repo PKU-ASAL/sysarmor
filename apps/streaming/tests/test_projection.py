@@ -8,8 +8,8 @@ from threading import Thread
 from packages.contracts.proto.incident.v1 import incident_pb2
 from packages.contracts.proto.signal.v1 import signal_pb2
 from packages.contracts.proto.streaming.v1 import streaming_pb2
-from streaming.projection import project_artifact
-from streaming.runtime.opensearch import OpenSearchProjector
+from streaming.projection.transform import project_artifact
+from streaming.projection.opensearch import OpenSearchProjector
 from streaming.jobs.projection import ProjectionFunction
 
 

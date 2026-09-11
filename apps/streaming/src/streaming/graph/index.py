@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from packages.contracts.proto.signal.v1 import signal_pb2
 
-from streaming.engine.provenance import entity_id
+from streaming.graph.state import entity_id
 
 
 @dataclass(frozen=True)

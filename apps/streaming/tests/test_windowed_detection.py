@@ -2,7 +2,7 @@ import unittest
 from unittest import mock
 
 from packages.contracts.proto.streaming.v1 import streaming_pb2
-from streaming.engine.windowed_detection import WindowedDetectionState
+from streaming.windows.state import WindowedDetectionState
 
 
 def record(sequence, observed_ns):

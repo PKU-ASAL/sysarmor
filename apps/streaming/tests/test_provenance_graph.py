@@ -7,7 +7,7 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 def load_graph():
     try:
-        return importlib.import_module("streaming.engine.provenance")
+        return importlib.import_module("streaming.graph.state")
     except ModuleNotFoundError as error:
         raise AssertionError("provenance operator is not implemented") from error
 

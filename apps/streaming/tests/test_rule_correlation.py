@@ -91,7 +91,7 @@ class RuleCorrelationDetectorTest(unittest.TestCase):
 
     def _inputs(self, events, signals, policy):
         contracts = load_module("streaming.detectors.contracts")
-        provenance = load_module("streaming.engine.provenance")
+        provenance = load_module("streaming.graph.state")
         graph = provenance.ProvenanceGraph.from_events(events)
         return contracts.DetectorInputs(
             events=tuple(events),

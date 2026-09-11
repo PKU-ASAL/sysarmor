@@ -16,7 +16,7 @@ from pyflink.datastream.state import (
 )
 
 from packages.contracts.proto.streaming.v1 import streaming_pb2
-from streaming.engine.detection_state import (
+from streaming.detection.state import (
     MAX_SCOPE_RECORDS,
     DetectionState,
 )

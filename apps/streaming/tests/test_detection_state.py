@@ -10,7 +10,7 @@ from packages.contracts.proto.streaming.v1 import streaming_pb2
 
 def load_state():
     try:
-        return importlib.import_module("streaming.engine.detection_state")
+        return importlib.import_module("streaming.detection.state")
     except ModuleNotFoundError as error:
         raise AssertionError("detection state is not implemented") from error
 
@@ -285,7 +285,7 @@ class DetectionStateTest(unittest.TestCase):
 
     def test_provenance_graph_is_built_once_for_incremental_events(self):
         module = load_state()
-        analysis = importlib.import_module("streaming.engine.analysis")
+        analysis = importlib.import_module("streaming.detection.analysis")
         state = module.DetectionState()
         policy = detection_policy("tenant-a", "policy-a", 7, state_retention_ns=10_000)
         values = {policy_key(policy): policy}

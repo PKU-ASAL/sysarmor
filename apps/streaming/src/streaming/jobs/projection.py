@@ -7,7 +7,7 @@ import time
 from pyflink.common import Types
 from pyflink.datastream import OutputTag, ProcessFunction
 
-from streaming.projection import project_artifact
+from streaming.projection.transform import project_artifact
 from packages.contracts.proto.streaming.v1 import streaming_pb2
 
 

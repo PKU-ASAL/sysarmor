@@ -8,9 +8,9 @@ from streaming.detectors.contracts import (
     RequiredInput,
 )
 from streaming.detectors.registry import DetectorRegistry
-from streaming.engine.analysis import analyze
-from streaming.engine.provenance import ProvenanceGraph
-from streaming.engine.window import WindowBatch
+from streaming.detection.analysis import analyze
+from streaming.graph.state import ProvenanceGraph
+from streaming.windows.accumulator import WindowBatch
 
 
 DEFAULT_STATE_RETENTION_NS = 300_000_000_000
