@@ -54,6 +54,9 @@ class StreamingArchitectureContractTest(unittest.TestCase):
         self.assertNotIn("minio/mc", compose)
         self.assertNotIn("minio:", compose)
         self.assertIn("flink-checkpoints:", compose)
+        self.assertIn("taskmanager.memory.process.size: 3072m", compose)
+        self.assertIn("taskmanager.memory.flink.size: 2048m", compose)
+        self.assertIn("taskmanager.memory.jvm-metaspace.size: 768m", compose)
 
     def test_kafka_topics_are_explicit_versioned_contracts(self):
         compose = (REPO / "deployments/compose.platform.yaml").read_text()
