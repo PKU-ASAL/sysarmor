@@ -16,6 +16,7 @@ from pyflink.datastream.state import (
 )
 
 from packages.contracts.proto.streaming.v1 import streaming_pb2
+from packages.contracts.proto.signal.v1 import signal_pb2
 from streaming.detection.state import (
     MAX_SCOPE_RECORDS,
     DetectionState,
@@ -522,8 +523,7 @@ class WindowedDetectionFunction(DetectionFunction):
                 "candidate_count": sum(
                     1 for item in values
                     if item.WhichOneof("payload") == "signal"
-                    and item.signal.detector_kind == streaming_pb2.DETECTOR_KIND_MODEL
-                    and item.signal.stage == streaming_pb2.SIGNAL_STAGE_CANDIDATE
+                    and _is_model_candidate(item.signal)
                 ),
                 "graph_delta_records": sum(
                     1 for item in values if item.WhichOneof("payload") == "event"
@@ -535,8 +535,7 @@ class WindowedDetectionFunction(DetectionFunction):
                 "candidate_budget_exceeded": sum(
                     1 for item in values
                     if item.WhichOneof("payload") == "signal"
-                    and item.signal.detector_kind == streaming_pb2.DETECTOR_KIND_MODEL
-                    and item.signal.stage == streaming_pb2.SIGNAL_STAGE_CANDIDATE
+                    and _is_model_candidate(item.signal)
                 ) > MAX_WINDOW_CANDIDATES,
                 "graph_delta_budget_exceeded": sum(
                     1 for item in values if item.WhichOneof("payload") == "event"
@@ -583,6 +582,13 @@ def _group_window_records(records, window_size_ns):
         window_id = observed // window_size_ns * window_size_ns
         grouped.setdefault(window_id, []).append(record)
     return {window_id: tuple(values) for window_id, values in grouped.items()}
+
+
+def _is_model_candidate(signal):
+    return (
+        signal.detector_kind == signal_pb2.DETECTOR_KIND_MODEL
+        and signal.stage == signal_pb2.SIGNAL_STAGE_CANDIDATE
+    )
 
 
 def _encode_window_entry(window_id, records):

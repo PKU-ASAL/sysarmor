@@ -14,6 +14,18 @@ from packages.contracts.proto.signal.v1 import signal_pb2
 
 
 class DetectionFunctionTest(unittest.TestCase):
+    def test_model_candidate_metric_predicate_uses_signal_contract(self):
+        candidate = signal_pb2.Signal(
+            detector_kind=signal_pb2.DETECTOR_KIND_MODEL,
+            stage=signal_pb2.SIGNAL_STAGE_CANDIDATE,
+        )
+        conclusion = signal_pb2.Signal(
+            detector_kind=signal_pb2.DETECTOR_KIND_GRAPH,
+            stage=signal_pb2.SIGNAL_STAGE_CONCLUSION,
+        )
+        self.assertTrue(detection._is_model_candidate(candidate))
+        self.assertFalse(detection._is_model_candidate(conclusion))
+
     def test_windowed_function_keeps_crossing_batch_in_separate_window_entries(self):
         first = event_record("scope-a", "policy-a", 7, 100, "event-a")
         second = event_record("scope-a", "policy-a", 7, 10_000_000_100, "event-b")
