@@ -293,7 +293,7 @@ class DetectionFunctionTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(1, len(function._detectors))
+        self.assertEqual(0, len(function._detectors))
         self.assertEqual(2, len(runtime.state.values))
 
     def test_timer_removes_expired_detector_state_from_managed_state(self):
@@ -479,7 +479,7 @@ class DetectionFunctionTest(unittest.TestCase):
         context = ReadContext({detection.policy_key(policy): policy.SerializeToString()}, watermark_ms=0)
         record = event_record("agent-a", "policy-a", 7, 100, "event-a")
 
-        with mock.patch.object(detection.DetectorRegistry, "affected_by", return_value=True), mock.patch.object(
+        with mock.patch.object(detection.DetectorRegistry, "triggered_by", return_value=True), mock.patch.object(
             function, "_restore_detector", wraps=function._restore_detector
         ) as restore:
             list(function.process_element(input_bytes(record), context))
@@ -491,24 +491,14 @@ class DetectionFunctionTest(unittest.TestCase):
         record = event_record("scope-a", "policy-a", 7, 100, "event-a")
 
         with mock.patch.object(
-            detection.DetectorRegistry, "affected_by", return_value=False
+            detection.DetectorRegistry, "triggered_by", return_value=False
         ) as affected_by:
             available = function._can_append_event(record)
 
         self.assertTrue(available)
         affected_by.assert_called_once_with(
-            frozenset(
-                {
-                    detection.RequiredInput.NORMALIZED_EVENT,
-                    detection.RequiredInput.PROVENANCE_EDGE,
-                }
-            ),
-            frozenset(
-                {
-                    detection.RequiredInput.NORMALIZED_EVENT,
-                    detection.RequiredInput.PROVENANCE_EDGE,
-                }
-            ),
+            frozenset({detection.RequiredInput.NORMALIZED_EVENT, detection.RequiredInput.PROVENANCE_EDGE}),
+            frozenset({detection.RequiredInput.NORMALIZED_EVENT, detection.RequiredInput.PROVENANCE_EDGE}),
             frozenset(),
         )
 

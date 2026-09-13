@@ -305,7 +305,7 @@ class DetectionState:
         scope = self._scopes.get(record.context.analysis_scope_key)
         if scope is None:
             return True
-        return DetectorRegistry.affected_by(
+        return DetectorRegistry.triggered_by(
             frozenset(
                 {RequiredInput.NORMALIZED_EVENT, RequiredInput.PROVENANCE_EDGE}
             ),

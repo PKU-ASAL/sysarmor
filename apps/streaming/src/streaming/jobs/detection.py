@@ -309,7 +309,7 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
     def _can_append_event(self, record) -> bool:
         return (
             record.WhichOneof("payload") == "event"
-            and not DetectorRegistry.affected_by(
+            and not DetectorRegistry.triggered_by(
                 EVENT_CHANGED_INPUTS, EVENT_CHANGED_INPUTS, frozenset()
             )
             and _cache_key(record) not in self._detectors
