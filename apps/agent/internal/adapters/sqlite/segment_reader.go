@@ -52,7 +52,7 @@ func (s *Store) ReadBatches(_ context.Context, opts ReadOptions) ([]StoredBatch,
 			return nil, err
 		}
 		for _, batch := range batches {
-			if batch.Position.BatchSequence < opts.FromSequence {
+			if beforeEventCursor(batch.Batch, opts.FromSequence) {
 				continue
 			}
 			if opts.EnrollmentEpoch != "" && batch.Batch.GetHeader().GetEnrollmentEpoch() != opts.EnrollmentEpoch {
@@ -65,6 +65,13 @@ func (s *Store) ReadBatches(_ context.Context, opts ReadOptions) ([]StoredBatch,
 		}
 	}
 	return out, nil
+}
+
+func beforeEventCursor(batch *dataplanev1.DataBatch, cursor uint64) bool {
+	if cursor == 0 || batch.GetHeader().GetEventCount() == 0 {
+		return false
+	}
+	return batch.GetHeader().GetEventSeqEnd() < cursor
 }
 
 func (s *Store) recoverSegments(ctx context.Context) error {

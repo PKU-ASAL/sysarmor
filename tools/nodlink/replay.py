@@ -16,7 +16,7 @@ from packages.contracts.proto.policy.v1 import policy_pb2  # noqa: E402
 from packages.contracts.proto.signal.v1 import signal_pb2  # noqa: E402
 from packages.contracts.proto.streaming.v1 import streaming_pb2  # noqa: E402
 from streaming.detectors.nodlink.state import NodlinkState  # noqa: E402
-from streaming.engine.detection_state import DetectionState  # noqa: E402
+from streaming.detection.state import DetectionState  # noqa: E402
 
 
 def replay_files(events_path, signals_path, output_dir, batch_size=256, allow_cross_lineage=False):

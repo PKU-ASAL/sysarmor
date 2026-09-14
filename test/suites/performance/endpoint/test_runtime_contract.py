@@ -48,6 +48,11 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls.read_text().strip(), "fresh=1 run=run-1 args=/runner")
 
+    def test_managed_benchmark_rejects_reused_vm_without_explicit_override(self):
+        script = ENDPOINT_RUNNER.read_text()
+        self.assertIn('SYSARMOR_BENCH_REUSE_MANAGED:-0', script)
+        self.assertIn('managed benchmark requires fresh VM/enrollment', script)
+
     def test_benchmark_receives_managed_agent_mode(self):
         calls = self.temp / "bash.calls"
         self.write_executable(
@@ -163,7 +168,7 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertIn("gatewayAccepted", function)
         self.assertIn("wait_manager_candidate_cohort", function)
         self.assertIn("CANDIDATE_COHORT_WAIT_SECONDS", function)
-        self.assertIn('CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-300}"', script)
+        self.assertIn('CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-900}"', script)
         self.assertIn("issue-manager-jwt.sh", wait_function)
         self.assertIn("while ((", wait_function)
 
@@ -192,7 +197,8 @@ class RuntimeContractTest(unittest.TestCase):
         function = script.split("capture_final_candidate_lifecycle() {", 1)[1].split("\n}", 1)[0]
 
         self.assertIn('[[ "$PROTECTION_MODE" == "rule-only" ]]', function)
-        self.assertIn("gatewayAccepted = 0", function)
+        self.assertIn("acceptedUniqueDelta = 0", function)
+        self.assertNotIn("gatewayAccepted =", function)
         self.assertIn("experimentCreated = 0", function)
 
     def test_managed_learning_quiesces_candidate_production_before_freeze(self):
@@ -240,6 +246,7 @@ class RuntimeContractTest(unittest.TestCase):
             "vagrant",
             '#!/bin/bash\nprintf "%s\\n" "$*" '
             f'>>"{calls}"\n'
+            'if [[ "$*" == *"read -r"* ]]; then read -r token; fi\n'
             'if [[ "$*" == *"agent health"* ]]; then\n'
             '  printf \'{"policyId":"benchmark-balanced-linux-agent-a","policyVersion":"2"}\\n\'\n'
             'else\n  printf \'{}\\n\'\nfi\n',

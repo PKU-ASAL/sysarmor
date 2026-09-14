@@ -16,6 +16,44 @@ def load_state():
 
 
 class DetectionStateTest(unittest.TestCase):
+    def test_out_of_order_batch_rebuilds_graph_once_after_all_records(self):
+        module = load_state()
+        state = module.DetectionState()
+        policy = detection_policy("tenant-a", "policy-a", 7)
+        values = {policy_key(policy): policy}
+        original = module.ProvenanceGraph.from_events
+        with mock.patch.object(
+            module.ProvenanceGraph,
+            "from_events",
+            autospec=True,
+            side_effect=lambda events: original(events),
+        ) as build_graph:
+            first = state.process(event_record("scope-a", "policy-a", 7, 200, "later"), 0, values)
+            results = state.process_batch(
+                [event_record("scope-a", "policy-a", 7, 100 + i, f"early-{i}") for i in range(3)],
+                0,
+                values,
+            )
+        self.assertEqual(2, build_graph.call_count)
+        self.assertEqual(1, first.metrics["graph_rebuild_calls"])
+        self.assertEqual(1, results[-1].metrics["graph_rebuild_calls"])
+        self.assertEqual(2, first.metrics["graph_rebuild_calls"] + results[-1].metrics["graph_rebuild_calls"])
+        self.assertNotIn("graph_rebuild_count", results[-1].metrics)
+        ordered = state.process(event_record("scope-a", "policy-a", 7, 210, "newest"), 0, values)
+        self.assertEqual(0, ordered.metrics["graph_rebuild_calls"])
+
+    def test_batch_preserves_analysis_diagnostics_once(self):
+        module = load_state()
+        state = module.DetectionState()
+        policy = detection_policy("tenant-a", "policy-a", 7)
+        records = [signal_record("scope-a", "policy-a", 7, 100 + i, str(i),
+                                 signal_pb2.SIGNAL_STAGE_CANDIDATE) for i in range(2)]
+        results = state.process_batch(records, 0, {policy_key(policy): policy})
+        measured = [result for result in results if result.metrics]
+        self.assertEqual(1, len(measured))
+        self.assertGreaterEqual(measured[0].metrics["analysis_ms"], 0)
+        self.assertEqual("rule-correlation-v1", measured[0].detector_diagnostics[0]["detector"])
+
     def test_process_batch_analyzes_records_once_and_returns_all_artifacts(self):
         module = load_state()
         state = module.DetectionState()

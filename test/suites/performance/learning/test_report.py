@@ -440,6 +440,19 @@ class LearningReportTest(unittest.TestCase):
         self.assertEqual(result["gates"]["performance_eps"]["status"], "unavailable")
         self.assertNotEqual(result["verdict"], "passed")
 
+    def test_candidate_deltas_do_not_replace_raw_ack_counters(self):
+        lifecycle = REPORT.candidate_lifecycle_health({
+            "created": 78, "spooled": 78, "gatewayAccepted": 78,
+            "gatewayDuplicateAck": 76, "createdDelta": 63,
+            "spooledDelta": 68, "acceptedUniqueDelta": 73, "duplicateAckDelta": 70,
+        })
+        self.assertEqual(lifecycle["gateway_accepted"], 78)
+        self.assertEqual(lifecycle["gateway_duplicate_ack"], 76)
+        self.assertEqual(lifecycle["created_delta"], 63)
+        self.assertEqual(lifecycle["spooled_delta"], 68)
+        self.assertEqual(lifecycle["accepted_unique_delta"], 73)
+        self.assertEqual(lifecycle["duplicate_ack_delta"], 70)
+
     def test_unresolved_model_event_reference_fails_model_gate(self):
         rule_only = metrics()
         hybrid = metrics()

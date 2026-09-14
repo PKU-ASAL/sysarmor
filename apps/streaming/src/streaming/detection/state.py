@@ -1,4 +1,5 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from time import perf_counter
 
 from packages.contracts.proto.streaming.v1 import streaming_pb2
 
@@ -24,6 +25,8 @@ class DetectionResult:
     late: object | None = None
     failure: object | None = None
     state_rewrite_required: bool = False
+    metrics: dict = field(default_factory=dict)
+    detector_diagnostics: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,9 +89,11 @@ class DetectionState:
         deferred = [result for result in validation if result is not None]
         if not accepted_records:
             return deferred
-        accepted, changes, results = self._apply_batch(
+        started = perf_counter()
+        accepted, changes, results, graph_rebuild_calls = self._apply_batch(
             accepted_records, watermark_ns, policies
         )
+        apply_ms = (perf_counter() - started) * 1000
         if not accepted:
             return results
         last = accepted[-1]
@@ -97,10 +102,22 @@ class DetectionState:
         if not self._should_analyze(scope, delta):
             if DetectorRegistry.affected_by(delta.changed_inputs):
                 scope.pending_delta = DetectorDelta(graph_rebuilt=True)
-            return [*deferred, *self._direct_results(accepted, changes)]
+            return [*deferred, *self._measured_results(accepted, changes, apply_ms, graph_rebuild_calls)]
         policy = policies[_policy_identity(last)]
         result = self._analyze(scope, last, policy, watermark_ns, delta)
-        return [*deferred, *self._direct_results(accepted, changes, result)]
+        return [*deferred, *self._measured_results(accepted, changes, apply_ms, graph_rebuild_calls, result)]
+
+    def _measured_results(self, records, changes, apply_ms, graph_rebuild_calls, analysis=None):
+        started = perf_counter()
+        outputs = self._direct_results(records, changes, analysis)
+        metrics = {
+            **outputs[-1].metrics,
+            "apply_ms": apply_ms,
+            "artifact_build_ms": (perf_counter() - started) * 1000,
+            "graph_rebuild_calls": graph_rebuild_calls,
+        }
+        outputs[-1] = replace(outputs[-1], metrics=metrics)
+        return outputs
 
     def _apply_batch(self, records, watermark_ns, policies):
         accepted, changes = [], []
@@ -111,11 +128,25 @@ class DetectionState:
                 context.analysis_scope_key, AgentAnalysisContext()
             )
             observed_ns = _observed_at(record)
-            change = self._apply(scope, record, policy, observed_ns)
+            change = self._apply(scope, record, policy, observed_ns, defer_rebuild=True)
             self._expire_detector_states(scope, scope.latest_ns)
             accepted.append(record)
             changes.append(change)
-        return accepted, changes, []
+        dirty_scopes = {record.context.analysis_scope_key for record, change in zip(accepted, changes) if change.graph_rebuilt}
+        for scope_key in dirty_scopes:
+            scope = self._scopes[scope_key]
+            scope.graph = ProvenanceGraph.from_events(self._events(scope))
+            scope.graph_state.graph = scope.graph
+            rebuilt_nodes = scope.graph.node_ids()
+            rebuilt_edges = tuple(edge_id for edge_id, _ in scope.graph.edges())
+            changes = [
+                replace(change, changed_node_ids=rebuilt_nodes,
+                        changed_edge_ids=rebuilt_edges)
+                if record.context.analysis_scope_key == scope_key and change.graph_rebuilt
+                else change
+                for record, change in zip(accepted, changes)
+            ]
+        return accepted, changes, [], len(dirty_scopes)
 
     @staticmethod
     def _validate_record(record, watermark_ns, policies):
@@ -148,7 +179,6 @@ class DetectionState:
 
     def _direct_results(self, records, changes, result=None):
         outputs = []
-        last_scope = self._scopes[records[-1].context.analysis_scope_key]
         for index, record in enumerate(records):
             scope = self._scopes[record.context.analysis_scope_key]
             artifacts = self._new_artifacts(
@@ -161,11 +191,14 @@ class DetectionState:
                 DetectionResult(
                     artifacts=artifacts,
                     state_rewrite_required=changes[index].rewrite_required,
+                    metrics=result.metrics if result is not None and index == len(records) - 1 else {},
+                    detector_diagnostics=(result.detector_diagnostics
+                        if result is not None and index == len(records) - 1 else ()),
                 )
             )
         return outputs
 
-    def _apply(self, scope, record, policy, observed_ns) -> _AppliedChange:
+    def _apply(self, scope, record, policy, observed_ns, defer_rebuild=False) -> _AppliedChange:
         previous_order = self._last_record_order(scope)
         current_order = _record_order((observed_ns, record))
         out_of_order = previous_order is not None and current_order < previous_order
@@ -189,12 +222,12 @@ class DetectionState:
             out_of_order and record.WhichOneof("payload") == "event"
         )
         changed_nodes, changed_edges = (), ()
-        if graph_rebuilt:
+        if graph_rebuilt and not defer_rebuild:
             scope.graph = ProvenanceGraph.from_events(self._events(scope))
             scope.graph_state.graph = scope.graph
             changed_nodes = scope.graph.node_ids()
             changed_edges = tuple(edge_id for edge_id, _ in scope.graph.edges())
-        elif record.WhichOneof("payload") == "event":
+        elif record.WhichOneof("payload") == "event" and scope.graph is not None:
             graph_change = scope.graph.add_event(record.event)
             changed_nodes = graph_change.node_ids
             changed_edges = graph_change.edge_ids

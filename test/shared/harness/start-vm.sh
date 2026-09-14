@@ -95,6 +95,13 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
     --exclude 'test/environments/vm-topology/deploy/' \
     --exclude 'third_party/references/code/' \
     "$REPO/" "$PLATFORM_UPLOAD_DIR/"
+  if [[ -d "$REPO/dist/release" ]]; then
+    mkdir -p "$PLATFORM_UPLOAD_DIR/dist/release"
+    rsync -a --delete "$REPO/dist/release/" "$PLATFORM_UPLOAD_DIR/dist/release/"
+  else
+    echo "[start-vm][ERROR] missing dist/release artifact feed" >&2
+    exit 1
+  fi
   mkdir -p \
     "$PLATFORM_UPLOAD_DIR/deployments/vm-build/manager" \
     "$PLATFORM_UPLOAD_DIR/deployments/vm-build/gateway" \

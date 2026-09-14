@@ -83,6 +83,9 @@ class ProvenanceGraph:
         self._edges = {}
         self._edge_order = []
         self._adjacency = {}
+        self._nearest_cache = {}
+        self._nearest_cache_hits = 0
+        self._nearest_cache_misses = 0
 
     @classmethod
     def from_events(cls, events):
@@ -93,6 +96,7 @@ class ProvenanceGraph:
         return graph
 
     def add_event(self, event) -> GraphChange:
+        self._nearest_cache.clear()
         changed_nodes = set()
         stable_id = event.subject_proc.stable_id.strip()
         if stable_id:
@@ -143,6 +147,47 @@ class ProvenanceGraph:
                 queue.append(other)
         return set(), set()
 
+    def nearest_path(self, start, targets, max_hops):
+        """Undirected bounded BFS, with target-ID ties and stable edge order."""
+        targets = set(targets) - {start}
+        if not targets or start not in self._nodes or max_hops <= 0:
+            return None
+        key = (start, tuple(sorted(targets)), max_hops)
+        if key in self._nearest_cache:
+            self._nearest_cache_hits += 1
+            return self._nearest_cache[key]
+        self._nearest_cache_misses += 1
+        parents, seen, frontier = {}, {start}, [start]
+        for _ in range(max_hops):
+            following, matches = [], []
+            for node in frontier:
+                for edge_id in self._adjacency.get(node, ()):
+                    other = self.adjacent(edge_id, node)
+                    if other in seen:
+                        continue
+                    seen.add(other)
+                    parents[other] = (node, edge_id)
+                    following.append(other)
+                    if other in targets:
+                        matches.append(other)
+            if matches:
+                target = min(matches)
+                nodes, edges = self._path(start, target, parents)
+                result = target, nodes, edges
+                if len(self._nearest_cache) < 4096:
+                    self._nearest_cache[key] = result
+                return result
+            if not following:
+                break
+            frontier = following
+        if len(self._nearest_cache) < 4096:
+            self._nearest_cache[key] = None
+        return None
+
+    def nearest_path_metrics(self):
+        return {"hits": self._nearest_cache_hits, "misses": self._nearest_cache_misses,
+                "size": len(self._nearest_cache)}
+
     def subgraph(self, nodes, edges):
         result = incident_pb2.EvidenceSubgraph()
         result.nodes.extend(self._nodes[node_id] for node_id in self._node_order if node_id in nodes)
@@ -168,6 +213,7 @@ class ProvenanceGraph:
         return False
 
     def _add_provenance_edge(self, edge: ProvenanceEdge) -> None:
+        self._nearest_cache.clear()
         self._add_edge_node(edge.from_id, edge.operation, True)
         self._add_edge_node(edge.to_id, edge.operation, False)
         if edge.edge_id not in self._edges:

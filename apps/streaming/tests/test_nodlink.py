@@ -17,6 +17,15 @@ from streaming.detectors.nodlink.campaign import update_campaigns
 
 
 class NodlinkDetectorTest(unittest.TestCase):
+    def test_diagnostics_include_graph_path_cache_metrics(self):
+        graph = ProvenanceGraph.from_events(causal_events())
+        result = NodlinkDetector().analyze(DetectorInputs(
+            events=tuple(causal_events()), graph=graph,
+            signals=(model_signal("p-curl", "exec-curl"),),
+        ))
+        self.assertIn("path_cache", result.diagnostics)
+        self.assertEqual({"hits", "misses", "size"}, set(result.diagnostics["path_cache"]))
+
     def test_unrelated_graph_delta_does_not_rebuild_campaigns(self):
         graph = ProvenanceGraph.from_events(causal_events())
         detector = NodlinkDetector()

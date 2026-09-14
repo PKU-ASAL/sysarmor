@@ -1,4 +1,5 @@
 import unittest
+import json
 from unittest import mock
 
 from packages.contracts.proto.event.v1 import event_pb2
@@ -571,7 +572,10 @@ class DetectionFunctionTest(unittest.TestCase):
 
         self.assertEqual([], first)
         self.assertEqual(2, len(runtime.state.values))
-        artifacts = [streaming_pb2.AnalysisArtifact.FromString(value) for value in second]
+        metrics = [json.loads(item[1]) for item in second if isinstance(item, tuple)]
+        self.assertEqual("analysis", metrics[0]["metric_kind"])
+        self.assertEqual("rule-correlation-v1", metrics[0]["detectors"][0]["detector"])
+        artifacts = [streaming_pb2.AnalysisArtifact.FromString(value) for value in second if not isinstance(value, tuple)]
         self.assertTrue(any(item.WhichOneof("payload") == "incident" for item in artifacts))
 
     def test_missing_policy_fails_job_without_advancing_state(self):
@@ -674,7 +678,7 @@ class DetectionFunctionTest(unittest.TestCase):
             )
         )
 
-        artifacts = [streaming_pb2.AnalysisArtifact.FromString(bytes(item)) for item in output]
+        artifacts = [streaming_pb2.AnalysisArtifact.FromString(bytes(item)) for item in output if not isinstance(item, tuple)]
         self.assertEqual(["signal"], [item.WhichOneof("payload") for item in artifacts])
 
     def test_event_completing_provenance_path_triggers_analysis(self):
@@ -716,7 +720,7 @@ class DetectionFunctionTest(unittest.TestCase):
         # Signal arrival is the detector trigger; preceding events only update the graph.
         output = list(function.process_element(input_bytes(connected), context))
 
-        artifacts = [streaming_pb2.AnalysisArtifact.FromString(value) for value in output]
+        artifacts = [streaming_pb2.AnalysisArtifact.FromString(value) for value in output if not isinstance(value, tuple)]
         self.assertTrue(any(item.WhichOneof("payload") == "incident" for item in artifacts))
 
     def test_event_fast_path_enforces_scope_capacity(self):

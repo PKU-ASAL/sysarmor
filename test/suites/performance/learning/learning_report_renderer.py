@@ -206,6 +206,8 @@ def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
         ("Created", "created"), ("Spooled", "spooled"),
         ("Delivery attempted", "delivery_attempted"),
         ("Gateway accepted unique", "gateway_accepted"), ("Gateway duplicate ACK", "gateway_duplicate_ack"),
+        ("Created delta", "created_delta"), ("Spooled delta", "spooled_delta"),
+        ("Accepted unique delta", "accepted_unique_delta"), ("Duplicate ACK delta", "duplicate_ack_delta"),
         ("Gateway retryable ACK", "gateway_retryable"), ("Delivery errors", "delivery_errors"),
         ("Stream correlated", "stream_correlated"), ("Stream projected", "stream_projected"),
         ("Stream projection artifacts", "stream_projection_artifacts"),
@@ -225,7 +227,7 @@ def candidate_lifecycle_section(variants: dict[str, Any]) -> list[str]:
     for label, key in gaps:
         values = [variants.get(mode, {}).get("reference_gaps", {}).get(key) for mode in PROTECTION_MODES]
         lines.append(f"| {label} | {display(values[0])} | {display(values[1])} | {display(values[2])} |")
-    lines.extend(["", "> Observation gap 仅表示测试观察 Ring Buffer 覆盖；delivery/backlog 表示尚未收敛，reference reject 才表示引用合同失败。", ""])
+    lines.extend(["", "> Delta 为两个健康快照之间的计数差；accepted unique 不包含 duplicate ACK。阶段差分可能包含起点前已生成但随后交付的 Candidate，不能直接视为同一组 Signal ID 的 cohort；duplicate ACK 不参与新增 Candidate 守恒。", "", "> Observation gap 仅表示测试观察 Ring Buffer 覆盖；delivery/backlog 表示尚未收敛，reference reject 才表示引用合同失败。", ""])
     return lines
 
 

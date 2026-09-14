@@ -1,6 +1,7 @@
 """Build bounded detection state and emit analysis artifacts."""
 
 import json
+import os
 import struct
 import time
 from collections import OrderedDict
@@ -25,9 +26,11 @@ from streaming.detectors.contracts import RequiredInput
 from streaming.detectors.registry import DetectorRegistry
 from streaming.preprocessing.rarity_window import RarityObservation, RarityWindow
 from streaming.preprocessing.telemetry_validation import validate_telemetry
+from streaming.preprocessing.policy_validation import validate_policy as _validate_policy
 
 
 JOB_NAME = "sysarmor-detection-v1"
+EXPERIMENT = os.getenv("SYSARMOR_FLINK_EXPERIMENT", "").strip()
 BYTE_ARRAY = Types.PRIMITIVE_ARRAY(Types.BYTE())
 POLICY_STATE = MapStateDescriptor("detection-policies", Types.STRING(), BYTE_ARRAY)
 RARITY_POLICY_STATE = MapStateDescriptor("rarity-policies", Types.STRING(), BYTE_ARRAY)
@@ -254,6 +257,16 @@ class DetectionFunction(KeyedBroadcastProcessFunction):
         self._refresh_cached_detector(cache_key, detector)
         self._schedule_cleanup(ctx, detector.next_cleanup_ns(scope_key))
         for result in results:
+            if result.metrics:
+                yield METRICS_TAG, json.dumps({
+                    "job": JOB_NAME, "metric_kind": "analysis",
+                    "experiment": EXPERIMENT,
+                    "tenant_id": record.context.tenant_id,
+                    "agent_id": record.context.agent_id,
+                    "scope": scope_key,
+                    "metrics": result.metrics,
+                    "detectors": result.detector_diagnostics,
+                }, sort_keys=True).encode()
             for artifact in result.artifacts:
                 yield artifact.SerializeToString()
 
@@ -691,13 +704,6 @@ def _is_late(ctx) -> bool:
         and timestamp_ms is not None
         and timestamp_ms <= watermark_ms
     )
-
-
-def _validate_policy(policy) -> None:
-    if policy.schema_version != "sysarmor.detection.policy/v1":
-        raise ValueError("unsupported detection policy schema")
-    if not policy.tenant_id or not policy.policy_id or policy.policy_version == 0:
-        raise ValueError("incomplete detection policy identity")
 
 
 def _encode_emission(value) -> str:

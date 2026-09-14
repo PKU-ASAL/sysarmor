@@ -19,6 +19,7 @@ class StreamingConfig:
     parallelism: int
     projection_parallelism: int
     kafka_connector_jar: str
+    experiment: str = ""
 
     @classmethod
     def from_env(cls):
@@ -69,7 +70,16 @@ class StreamingConfig:
                 "SYSARMOR_FLINK_PROJECTION_PARALLELISM", 4
             ),
             kafka_connector_jar=os.getenv("SYSARMOR_FLINK_KAFKA_CONNECTOR_JAR", ""),
+            experiment=_experiment(),
         )
+
+    @property
+    def artifact_topic_for_job(self):
+        return _namespaced(self.artifact_topic, self.experiment)
+
+    @property
+    def checkpoint_uri_for_job(self):
+        return self.checkpoint_uri.rstrip("/") + (f"/{self.experiment}" if self.experiment else "")
 
 
 def _required(name: str) -> str:
@@ -92,3 +102,14 @@ def _positive_int(name: str, default: int) -> int:
     if parsed <= 0:
         raise ValueError(f"{name} must be positive")
     return parsed
+
+
+def _experiment() -> str:
+    value = os.getenv("SYSARMOR_FLINK_EXPERIMENT", "").strip()
+    if value and not value.replace("-", "").replace("_", "").isalnum():
+        raise ValueError("SYSARMOR_FLINK_EXPERIMENT contains invalid characters")
+    return value
+
+
+def _namespaced(topic: str, experiment: str) -> str:
+    return f"{topic}.{experiment}" if experiment else topic

@@ -28,7 +28,7 @@ def configure_environment(config: StreamingConfig):
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(config.parallelism)
     env.enable_checkpointing(config.checkpoint_interval_ms)
-    storage = FileSystemCheckpointStorage(config.checkpoint_uri)
+    storage = FileSystemCheckpointStorage(config.checkpoint_uri_for_job)
     env.get_checkpoint_config().set_checkpoint_storage(storage)
     if config.kafka_connector_jar:
         env.add_jars(config.kafka_connector_jar)

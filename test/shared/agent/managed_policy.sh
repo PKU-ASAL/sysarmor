@@ -5,6 +5,7 @@ _sa_build_managed_policy() {
 	python3 - "$collection_file" "$detection_file" "$output_path" "$agent_id" "$protection_mode" <<'PY'
 import json
 import pathlib
+import os
 import re
 import sys
 
@@ -12,6 +13,9 @@ collection_path, detection_path, output_path, agent_id, protection_mode = sys.ar
 collection = json.loads(pathlib.Path(collection_path).read_text())
 detection = json.loads(pathlib.Path(detection_path).read_text())
 base_id = collection.get("policy_id", "benchmark")
+suffix = os.environ.get("SYSARMOR_BENCH_POLICY_SUFFIX", "")
+if suffix:
+    base_id = f"{base_id}-{suffix}"
 if not re.fullmatch(r"[A-Za-z0-9._:-]+", base_id):
     raise SystemExit("invalid collection policy ID")
 version = int(collection.get("version", 1))
@@ -46,6 +50,9 @@ _sa_wait_managed_policy() {
     if (( SECONDS >= deadline )); then
       echo "[managed-policy][ERROR] timeout waiting for managed policy $policy_id@$version" >&2
       echo "$health" >&2
+      echo "[managed-policy][ERROR] last_apply_status=$(jq -r '.detection.lastApplyStatus // .detection.last_apply_status // empty' <<<\"$health\")" >&2
+      echo "[managed-policy][ERROR] last_apply_error=$(jq -r '.detection.lastApplyError // .detection.last_apply_error // empty' <<<\"$health\")" >&2
+      echo "[managed-policy][ERROR] learning_status=$(jq -r '.detection.learning.status // empty' <<<\"$health\")" >&2
       exit 1
     fi
     sleep 1

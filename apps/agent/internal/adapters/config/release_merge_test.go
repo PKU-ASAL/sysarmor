@@ -67,3 +67,12 @@ func TestMergeReleaseContentRejectsDuplicateContentSections(t *testing.T) {
 		t.Fatalf("MergeReleaseContent() error = %v, want duplicate section", err)
 	}
 }
+
+func TestMergeReleaseContentPreservesReleaseLearningConfig(t *testing.T) {
+	existing := []byte("sensor:\n  backend: tetragon\n  mode: managed\ncontent:\n  default_path: /old\n  path: /content\n  trust_keys: old=key\n")
+	release := []byte("sensor:\n  backend: tetragon\n  mode: managed\ncontent:\n  default_path: /new\n  trust_keys: release=key\nlearning:\n  model_path: /models/model.json\n  trust_keys: experiment=key\n")
+	merged, err := MergeReleaseContent(existing, release)
+	if err != nil || !bytes.Contains(merged, []byte("model_path: /models/model.json")) || !bytes.Contains(merged, []byte("trust_keys: experiment=key")) {
+		t.Fatalf("learning config was not merged: err=%v config=%s", err, merged)
+	}
+}

@@ -60,7 +60,7 @@ class NodlinkDetector:
         return DetectionResult(
             algorithm_name=self.name, algorithm_version=self.version,
             derived_signals=signals,
-            diagnostics=_diagnostics(findings, rejected),
+            diagnostics=_diagnostics(findings, rejected, inputs.graph),
             state_update=NodlinkState(campaigns).encode(),
             findings=detection_findings,
         )
@@ -170,8 +170,10 @@ def _updated_ns(inputs):
     return inputs.context.window_end_ns or inputs.context.watermark_ns
 
 
-def _diagnostics(findings, rejected):
+def _diagnostics(findings, rejected, graph=None):
     return {
+        "path_cache": (graph.nearest_path_metrics() if graph is not None else
+                       {"hits": 0, "misses": 0, "size": 0}),
         "campaign_count": len(findings),
         "terminal_count": sum(item[1].terminal_count for item in findings),
         "campaigns": tuple(

@@ -20,10 +20,37 @@ func MergeReleaseContent(existing, release []byte) ([]byte, error) {
 	}
 	content := ContentConfig{DefaultPath: releaseConfig.Content.DefaultPath, Path: existingConfig.Content.Path, TrustKeys: releaseConfig.Content.TrustKeys}
 	merged := replaceTopLevelSection(string(existing), "content", renderContentConfig(content))
+	if releaseConfig.Learning.ModelPath != "" || releaseConfig.Learning.TrustKeys != "" {
+		learning, err := topLevelSection(string(release), "learning")
+		if err != nil {
+			return nil, err
+		}
+		merged = replaceTopLevelSection(merged, "learning", learning)
+	}
 	if _, err := parseValidConfig([]byte(merged), "merged"); err != nil {
 		return nil, err
 	}
 	return []byte(merged), nil
+}
+
+func topLevelSection(raw, section string) (string, error) {
+	lines := strings.Split(raw, "\n")
+	start, end := -1, len(lines)
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(stripComment(line))
+		if start < 0 && line == strings.TrimLeft(line, " \t") && trimmed == section+":" {
+			start = i
+			continue
+		}
+		if start >= 0 && i > start && trimmed != "" && line == strings.TrimLeft(line, " \t") {
+			end = i
+			break
+		}
+	}
+	if start < 0 {
+		return "", fmt.Errorf("release config missing %s section", section)
+	}
+	return strings.Join(lines[start:end], "\n") + "\n", nil
 }
 
 func parseValidConfig(raw []byte, name string) (Config, error) {

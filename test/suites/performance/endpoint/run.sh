@@ -8,6 +8,7 @@ VM_ENV="${SYSARMOR_VM_ENV:-${ENV:-vm-endpoint}}"
 ENVDIR="$(cd "$ROOT/environments/$VM_ENV" && pwd)"
 RESULTS="$ROOT/.results"
 RUN_ID="${SYSARMOR_BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+export SYSARMOR_BENCH_POLICY_SUFFIX="${SYSARMOR_BENCH_POLICY_SUFFIX:-${RUN_ID:0:24}}"
 OUT_DIR="$RESULTS/performance-endpoint/$RUN_ID"
 # shellcheck source=/dev/null
 source "$ROOT/shared/agent/policy_runtime.sh"
@@ -105,8 +106,9 @@ WORKLOAD_WARMUP_SECONDS="${SYSARMOR_BENCH_WORKLOAD_WARMUP_SECONDS:-2}"
 WORKLOAD_REPEAT="${SYSARMOR_BENCH_WORKLOAD_REPEAT:-0}"
 SCENARIO_OBSERVE_SECONDS="${SYSARMOR_BENCH_SCENARIO_OBSERVE_SECONDS:-5}"
 COOLDOWN_SECONDS="${SYSARMOR_BENCH_COOLDOWN_SECONDS:-5}"
-MANAGER_ANALYSIS_WAIT_SECONDS="${SYSARMOR_BENCH_MANAGER_ANALYSIS_WAIT_SECONDS:-30}"
-CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-300}"
+MANAGER_ANALYSIS_WAIT_SECONDS="${SYSARMOR_BENCH_MANAGER_ANALYSIS_WAIT_SECONDS:-180}"
+CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-900}"
+export SYSARMOR_JWT_TTL_SECONDS="${SYSARMOR_JWT_TTL_SECONDS:-3600}"
 WORKLOAD_C2="${SYSARMOR_DIAG_WORKLOAD_C2:-10.66.0.99}"
 PROFILE_ENABLED="${SYSARMOR_BENCH_PROFILE_AGENT:-${SYSARMOR_BENCH_PROFILE_AGENT_CPU:-0}}"
 PROFILE_TYPES="${SYSARMOR_BENCH_PROFILE_TYPES:-cpu heap allocs goroutine runtime}"
@@ -117,6 +119,11 @@ RECORDER_DURATION_SECONDS="${SYSARMOR_BENCH_RECORDER_DURATION_SECONDS:-$((HOST_B
 SYNC_VM_AGENT="${SYSARMOR_BENCH_SYNC_VM_AGENT:-1}"
 BUILD_BINARIES="${SYSARMOR_BENCH_BUILD_BINARIES:-1}"
 VM_FRESH="${SYSARMOR_BENCH_VM_FRESH:-1}"
+REUSE_MANAGED="${SYSARMOR_BENCH_REUSE_MANAGED:-0}"
+if [[ "$AGENT_MODE" == "managed" && "$VM_FRESH" != "1" && "$REUSE_MANAGED" != "1" ]]; then
+  echo "[performance-endpoint][ERROR] managed benchmark requires fresh VM/enrollment; set SYSARMOR_BENCH_REUSE_MANAGED=1 to override" >&2
+  exit 2
+fi
 VM_LIFECYCLE="reuse"
 if [[ "$VM_FRESH" == "1" ]]; then
   VM_LIFECYCLE="fresh"
@@ -235,7 +242,7 @@ capture_managed_stream_artifacts() {
   fi
   labels="--label benchmark_run=$RUN_ID --label policy_profile=$policy_name --layer endpoint --stage candidate"
   expected_candidates="$(jq -er \
-    '.detection.learning.candidates.gatewayAccepted | tonumber' \
+    '.detection.learning.candidates | (.acceptedUniqueDelta // .gatewayAccepted) | tonumber' \
     "$policy_out/candidate-lifecycle-final.json")"
   if ! wait_manager_candidate_cohort "$labels" \
       "$policy_out/managed-signals.json" "$expected_candidates" "$CANDIDATE_COHORT_WAIT_SECONDS"; then
@@ -281,13 +288,15 @@ if agent_id:
     matching = [row for row in rows if row.get("agent_id") == agent_id]
     if matching:
         rows = matching
-detection = [row for row in rows if row.get("job") == "sysarmor-detection-v1"]
+detection = [row for row in rows if row.get("job") == "sysarmor-detection-v1" and row.get("metric_kind", "window") == "window"]
+analysis = [row for row in rows if row.get("job") == "sysarmor-detection-v1" and row.get("metric_kind") == "analysis"]
 projection = [row for row in rows if row.get("job") == "sysarmor-projection-v1"]
 processing = [float(row["processing_ms"]) for row in detection if isinstance(row.get("processing_ms"), (int, float))]
 states = [int(row["state_bytes"]) for row in detection if isinstance(row.get("state_bytes"), int)]
 windows = [int(row["input_records"]) for row in detection if isinstance(row.get("input_records"), int)]
 result = {
     "detector_windows": len(detection),
+    "analysis_batches": analysis,
     "processing_ms": max(processing) if processing else None,
     "processing_p50_ms": sorted(processing)[max(0, (len(processing) * 50 + 99) // 100 - 1)] if processing else None,
     "processing_p95_ms": sorted(processing)[min(len(processing) - 1, max(0, (len(processing) * 95 + 99) // 100 - 1))] if processing else None,
@@ -341,7 +350,8 @@ wait_manager_candidate_cohort() {
 }
 
 capture_final_candidate_lifecycle() {
-  local output="$1" temporary annotated created cutoff
+  local output="$1" temporary annotated created cutoff before accepted accepted_before
+  local spooled spooled_before duplicate duplicate_before
   [[ "$AGENT_MODE" == "managed" ]] || return 0
   temporary="$output.tmp"
   annotated="$output.annotated"
@@ -355,15 +365,28 @@ capture_final_candidate_lifecycle() {
   if [[ "$PROTECTION_MODE" == "rule-only" ]]; then
     if ! jq --argjson cutoff "$cutoff" '
         .detection.learning.candidates.experimentCreated = 0 |
-        .detection.learning.candidates.gatewayAccepted = 0 |
+        .detection.learning.candidates.acceptedUniqueDelta = 0 |
         .localStore.eventSequenceCutoff = $cutoff
       ' "$temporary" >"$annotated"; then
       freeze_candidate_cohort_failed "$output" "$temporary" "$annotated"
       return 1
     fi
   elif ! created="$(jq -er '.detection.learning.candidates.created | tonumber' "$temporary")" ||
-      ! jq --argjson created "$created" --argjson cutoff "$cutoff" '
+      ! before="$(jq -er '.detection.learning.candidates.created | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! accepted="$(jq -er '.detection.learning.candidates.gatewayAccepted | tonumber' "$temporary")" ||
+      ! accepted_before="$(jq -er '.detection.learning.candidates.gatewayAccepted | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! spooled="$(jq -er '.detection.learning.candidates.spooled | tonumber' "$temporary")" ||
+      ! spooled_before="$(jq -er '.detection.learning.candidates.spooled | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! duplicate="$(jq -er '.detection.learning.candidates.gatewayDuplicateAck | tonumber' "$temporary")" ||
+      ! duplicate_before="$(jq -er '.detection.learning.candidates.gatewayDuplicateAck | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! jq --argjson created "$((created - before))" --argjson spooled "$((spooled - spooled_before))" --argjson accepted "$((accepted - accepted_before))" --argjson duplicate "$((duplicate - duplicate_before))" --argjson cutoff "$cutoff" '
+        if ([$created, $spooled, $accepted, $duplicate] | any(. < 0)) then
+          error("Candidate counters reset during measurement") else . end |
         .detection.learning.candidates.experimentCreated = $created |
+        .detection.learning.candidates.createdDelta = $created |
+        .detection.learning.candidates.spooledDelta = $spooled |
+        .detection.learning.candidates.acceptedUniqueDelta = $accepted |
+        .detection.learning.candidates.duplicateAckDelta = $duplicate |
         .localStore.eventSequenceCutoff = $cutoff
       ' "$temporary" >"$annotated"; then
     freeze_candidate_cohort_failed "$output" "$temporary" "$annotated"
@@ -1119,6 +1142,9 @@ EOF
     apply_detection "$policy_out" "$name"
   fi
   capture_effective_policy "$policy_out"
+  if [[ "$AGENT_MODE" == "managed" ]]; then
+    vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json agent health" >"$policy_out/candidate-lifecycle-before.json" 2>/dev/null || true
+  fi
 
   mark "$rec_run_id" settle_start "$name"
   sleep "$SETTLE_SECONDS"

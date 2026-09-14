@@ -2,6 +2,12 @@
 
 本文说明如何为 SysArmor Streaming 开发云端 Detector，包括输入/输出合同、模块边界、状态和测试方式。Detector 复用标准化事实和共享 ProvenanceGraph；新增 Detector 只需实现合同、注册组件并在 Policy 中启用。
 
+批处理性能指标 `graph_rebuild_calls` 表示本次 `_apply_batch` 实际执行的
+`ProvenanceGraph.from_events()` 次数：同一作用域批末重建一次计 1，有序增量更新计 0。
+它不包含批处理外的 restore/cleanup 建图。原 `graph_rebuild_count` 累计的是逐记录重建
+标志，已停止输出；历史报告中的该字段不能按实际调用次数解释。Metrics Topic 与离线
+回放均在批次结果的 `metrics` 中携带新字段。
+
 ## 1. 目标与原则
 
 Detector 开发遵循三条原则：
@@ -311,3 +317,31 @@ Detector 私有状态必须有明确容量、TTL 和版本；诊断必须暴露�
 - Detector 异常只产生诊断，不阻断其他算法。
 - Python 代码兼容部署端 Python 3.10。
 - 单元测试、Replay 和相关 managed E2E 通过。
+# 方案 B 首批运行与评测接口
+
+领域批处理结果现在保留 `metrics` 和 `detector_diagnostics`。Detection Job 在
+Metrics Topic 输出 `metric_kind=analysis` 的独立记录，包含 tenant、scope、
+各 Detector 的耗时、版本和失败诊断。原有窗口记录与分析记录分别聚合，
+`nodlink-metrics.json` 的 `analysis_batches` 保存分析明细。
+
+注意：历史报告 `processing_ms` 是窗口耗时的最大值，不是总耗时，也不是
+Nodlink 独立耗时；`state_bytes` 是 Detector 状态字节数，不代表 Flink 总状态。
+
+离线对比通过生产状态机执行：
+
+```python
+from streaming.evaluation import replay
+
+baseline = replay(records, policies, ["rule-correlation-v1"])
+hybrid = replay(records, policies, ["rule-correlation-v1", "nodlink"])
+```
+
+`records` 为按到达顺序提供的 NormalizedTelemetry，`policies` 为
+`(tenant_id, policy_id, policy_version)` 到 DetectionPolicySnapshot 的映射。
+每次调用拥有独立状态，不修改输入策略，也不读取任何算法私有 Campaign。
+结果包含序列化 AnalysisArtifact 与逐批耗时；耗时不参与确定性结果比较。
+该入口不模拟 watermark/checkpoint，不能代替真实 Flink 恢复、迟到与背压验收。
+
+共享图的 `nearest_path(start, targets, max_hops)` 使用一次有界无向 BFS，
+距离相同时按目标 ID 选择，保持既有邻接顺序。Nodlink 使用 9 条边上限，
+等价于原有最多 10 个路径节点。它只缩小计算量，不升级为有向因果推理。
