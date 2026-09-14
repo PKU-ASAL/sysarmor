@@ -1,0 +1,158 @@
+package analysis
+
+import (
+	"testing"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/detection/rarity"
+	domaintelemetry "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/telemetry"
+)
+
+func TestAnalyzeAttackChainProducesCloudSignalsAndIncident(t *testing.T) {
+	result := NewAnalyzer().Analyze(nil, []domaintelemetry.Signal{
+		endpoint("web_runtime_spawns_shell", "lin-a", domaintelemetry.SignalStageCandidate, process("p-web")),
+		endpoint("payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, file("/dev/shm/x.sh")),
+		endpoint("reverse_shell_pattern", "lin-a", domaintelemetry.SignalStageConclusion, process("p-bash"), socket("10.66.0.99:443")),
+	}, nil)
+	if !hasCloud(result.CloudSignals, "dropped_payload_executed_and_connects") || !hasCloud(result.CloudSignals, "web_shell_chain") {
+		t.Fatalf("cloud signals = %+v", result.CloudSignals)
+	}
+	for _, signal := range result.CloudSignals {
+		if signal.Stage != domaintelemetry.SignalStageConclusion || signal.DetectorKind != domaintelemetry.DetectorKindRule {
+			t.Fatalf("cloud signal metadata = %+v", signal)
+		}
+	}
+	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Method != "rarity+causal-topk" {
+		t.Fatalf("incidents = %+v", result.Incidents)
+	}
+}
+
+func TestAnalyzeHonorsCrossLineagePolicy(t *testing.T) {
+	signals := []domaintelemetry.Signal{
+		endpointWithID("drop-a", "payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, file("/tmp/payload")),
+		endpointWithID("exec-a", "suspicious_exec_connect", "lin-b", domaintelemetry.SignalStageCandidate, file("/tmp/payload"), socket("10.66.0.99:443")),
+	}
+	linked := NewAnalyzer().Analyze(nil, signals, nil)
+	if len(linked.CloudSignals) != 1 || len(linked.CloudSignals[0].SignalRefs) != 2 {
+		t.Fatalf("cloud signals = %+v, want contributing endpoint signal refs", linked.CloudSignals)
+	}
+	result := NewAnalyzer().Analyze(nil, signals, &detection.Policy{Converge: &detection.ConvergePolicy{CrossLineage: false}})
+	if len(result.CloudSignals) != 0 || len(result.Incidents) != 0 {
+		t.Fatalf("analysis = %+v", result)
+	}
+}
+
+func TestAnalyzeEvidenceRecoversIntermediateEventNodes(t *testing.T) {
+	events := []domaintelemetry.Event{
+		{ID: "exec-curl", Behavior: "process.exec", ParentStableID: "p-shell", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-curl"}},
+		{ID: "write", Behavior: "file.write", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-curl"}, Object: &domaintelemetry.ObjectRef{Kind: "file", FilePath: "/dev/shm/x.sh"}},
+		{ID: "exec-bash", Behavior: "process.exec", ParentStableID: "p-curl", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"}},
+		{ID: "connect", Behavior: "network.connect", SubjectProcess: &domaintelemetry.ProcessRef{StableID: "p-bash"}, Object: &domaintelemetry.ObjectRef{Kind: "socket", SocketAddress: "10.66.0.99:443"}},
+	}
+	signals := []domaintelemetry.Signal{
+		endpoint("payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, process("p-shell"), file("/dev/shm/x.sh")),
+		endpoint("suspicious_exec_connect", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.66.0.99:443")),
+	}
+	result := NewAnalyzer().Analyze(events, signals, nil)
+	if len(result.Incidents) != 1 {
+		t.Fatalf("analysis = %+v", result)
+	}
+	evidence := result.Incidents[0].Evidence
+	if evidence == nil || !containsGraphNode(evidence.Nodes, "process:p-bash") || !containsEventRef(evidence.Edges, "exec-bash") {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
+func TestAnalyzeUsesAdditiveThreshold(t *testing.T) {
+	policy := &detection.Policy{Converge: &detection.ConvergePolicy{Mode: "additive_threshold", AdditiveRiskThreshold: 100}}
+	result := NewAnalyzer().Analyze(nil, []domaintelemetry.Signal{
+		endpoint("download", "lin-a", domaintelemetry.SignalStageConclusion, socket("10.0.0.1:80")),
+		endpoint("download", "lin-a", domaintelemetry.SignalStageCandidate, socket("10.0.0.1:80")),
+	}, policy)
+	if len(result.Incidents) != 1 || result.Incidents[0].Converge.Method != "additive_threshold" {
+		t.Fatalf("analysis = %+v", result)
+	}
+}
+
+func TestAnalyzeUsesRarityBaseline(t *testing.T) {
+	analyzer := NewAnalyzer()
+	analyzer.SetRarityBaseline(rarity.Baseline{WorkloadCounts: map[string]map[string]uint64{
+		"container:checkout": {"reverse_shell_pattern": 3},
+	}})
+	result := analyzer.Analyze(nil, []domaintelemetry.Signal{
+		endpoint("reverse_shell_pattern", "lin-a", domaintelemetry.SignalStageConclusion, container("checkout"), process("p-bash")),
+	}, nil)
+	if result.Incidents[0].Converge.Score != 12.5 {
+		t.Fatalf("score = %f, want 12.5", result.Incidents[0].Converge.Score)
+	}
+}
+
+func TestAnalyzeIDsIgnoreCallHistoryAndInputOrder(t *testing.T) {
+	analyzer := NewAnalyzer()
+	signals := []domaintelemetry.Signal{
+		endpoint("payload_dropped", "lin-a", domaintelemetry.SignalStageCandidate, file("/tmp/payload")),
+		endpoint("suspicious_exec_connect", "lin-b", domaintelemetry.SignalStageCandidate, file("/tmp/payload"), socket("10.0.0.1:443")),
+	}
+	first := analyzer.Analyze(nil, signals, nil)
+	second := analyzer.Analyze(nil, []domaintelemetry.Signal{signals[1], signals[0]}, nil)
+	if first.CloudSignals[0].ID != second.CloudSignals[0].ID || first.Incidents[0].ID != second.Incidents[0].ID {
+		t.Fatalf("first = %+v, second = %+v", first, second)
+	}
+}
+
+func endpoint(name, lineage string, stage domaintelemetry.SignalStage, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
+	return endpointWithID("", name, lineage, stage, entities...)
+}
+
+func endpointWithID(id, name, lineage string, stage domaintelemetry.SignalStage, entities ...domaintelemetry.Entity) domaintelemetry.Signal {
+	return domaintelemetry.Signal{
+		ID: id, Name: name, Where: domaintelemetry.SignalWhereEndpoint, BaseRisk: 50, GlobalRarity: 1,
+		LineageID: lineage, Stage: stage, DetectorKind: domaintelemetry.DetectorKindRule,
+		Entities: entities, Labels: map[string]string{"scenario": "scenario-a"},
+	}
+}
+
+func process(key string) domaintelemetry.Entity {
+	return domaintelemetry.Entity{Kind: "process", Key: key, Role: "subject"}
+}
+
+func file(key string) domaintelemetry.Entity {
+	return domaintelemetry.Entity{Kind: "file", Key: key, Role: "object"}
+}
+
+func socket(key string) domaintelemetry.Entity {
+	return domaintelemetry.Entity{Kind: "socket", Key: key, Role: "object"}
+}
+
+func container(key string) domaintelemetry.Entity {
+	return domaintelemetry.Entity{Kind: "container", Key: key, Role: "scope"}
+}
+
+func hasCloud(signals []domaintelemetry.Signal, name string) bool {
+	for _, signal := range signals {
+		if signal.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func containsGraphNode(nodes []domaintelemetry.GraphNode, id string) bool {
+	for _, node := range nodes {
+		if node.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEventRef(edges []domaintelemetry.GraphEdge, ref string) bool {
+	for _, edge := range edges {
+		for _, eventRef := range edge.EventRefs {
+			if eventRef == ref {
+				return true
+			}
+		}
+	}
+	return false
+}

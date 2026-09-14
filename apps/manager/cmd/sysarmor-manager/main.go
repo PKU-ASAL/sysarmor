@@ -7,105 +7,71 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
-	_ "github.com/lib/pq"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/api"
-	managerauth "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/auth"
-	platformopensearch "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/platform/opensearch"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/bootstrap"
 )
 
 var version = "dev"
 
 func main() {
 	listen := flag.String("listen", ":9443", "manager HTTP listen address")
-	storeBackend := flag.String("store-backend", backend.KindPostgres, "store backend: postgres")
-	storePath := flag.String("store", "", "deprecated: file store path is not used by product backends")
-	postgresDriver := flag.String("postgres-driver", envDefault("SYSARMOR_POSTGRES_DRIVER", "postgres"), "database/sql driver name for postgres backend")
-	postgresDSN := flag.String("postgres-dsn", envDefault("SYSARMOR_POSTGRES_DSN", ""), "Postgres DSN for postgres backend")
-	opensearchURL := flag.String("opensearch-url", envDefault("SYSARMOR_OPENSEARCH_URL", ""), "OpenSearch URL for searchable telemetry")
+	postgresDriver := flag.String("postgres-driver", envDefault("SYSARMOR_POSTGRES_DRIVER", "postgres"), "PostgreSQL database/sql driver name")
+	postgresDSN := flag.String("postgres-dsn", envDefault("SYSARMOR_POSTGRES_DSN", ""), "PostgreSQL DSN")
+	opensearchURL := flag.String("opensearch-url", envDefault("SYSARMOR_OPENSEARCH_URL", ""), "OpenSearch URL")
 	opensearchUsername := flag.String("opensearch-username", envDefault("SYSARMOR_OPENSEARCH_USERNAME", ""), "OpenSearch basic auth username")
 	opensearchPassword := flag.String("opensearch-password", envDefault("SYSARMOR_OPENSEARCH_PASSWORD", ""), "OpenSearch basic auth password")
+	kafkaBrokers := flag.String("kafka-brokers", envDefault("SYSARMOR_KAFKA_BROKERS", ""), "comma-separated Kafka brokers")
 	jwtPublicKey := flag.String("jwt-public-key", envDefault("SYSARMOR_JWT_PUBLIC_KEY_FILE", ""), "trusted BFF RS256 JWT public key PEM")
 	jwtIssuer := flag.String("jwt-issuer", envDefault("SYSARMOR_JWT_ISSUER", ""), "required JWT issuer")
 	jwtAudience := flag.String("jwt-audience", envDefault("SYSARMOR_JWT_AUDIENCE", ""), "required JWT audience")
 	flag.Parse()
-
 	if flag.NArg() > 0 && flag.Arg(0) == "version" {
 		fmt.Println(version)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	openCtx, cancel := context.WithTimeout(runCtx, 15*time.Second)
 	defer cancel()
-	if *storeBackend == backend.KindFile {
-		fmt.Fprintln(os.Stderr, "open store: file backend has been removed from the sysarmor-manager product path; use postgres")
-		os.Exit(1)
-	}
-	verifier, err := managerauth.NewVerifier(ctx, managerauth.Config{
-		PublicKeyFile: *jwtPublicKey, Issuer: *jwtIssuer, Audience: *jwtAudience,
+	server, closer, err := bootstrap.NewManager(openCtx, bootstrap.ManagerConfig{
+		ListenAddress: *listen, PostgresDriver: *postgresDriver, PostgresDSN: *postgresDSN,
+		KafkaBrokers:  splitCSV(*kafkaBrokers),
+		OpenSearchURL: *opensearchURL, OpenSearchUsername: *opensearchUsername, OpenSearchPassword: *opensearchPassword,
+		JWT:        bootstrap.JWTConfig{PublicKeyFile: *jwtPublicKey, Issuer: *jwtIssuer, Audience: *jwtAudience},
+		Enrollment: bootstrap.EnrollmentHTTPConfig{CACertFile: os.Getenv("SYSARMOR_AGENT_CA_CERT"), CAKeyFile: os.Getenv("SYSARMOR_AGENT_CA_KEY"), TrustDomain: os.Getenv("SYSARMOR_TRUST_DOMAIN"), PublicURL: os.Getenv("SYSARMOR_PUBLIC_URL"), ArtifactPublicKeyFile: os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"), ArtifactDir: envDefault("SYSARMOR_ARTIFACT_DIR", "/var/lib/sysarmor/manager/artifacts"), DeployGatewayAddress: os.Getenv("SYSARMOR_DEPLOY_GATEWAY_ADDR"), DeployGatewayServerName: os.Getenv("SYSARMOR_DEPLOY_GATEWAY_SNI"), PackageDownloadBaseURL: os.Getenv("SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL")},
+		Artifact:   bootstrap.ArtifactConfig{ArtifactPublicKeyFile: os.Getenv("SYSARMOR_ARTIFACT_PUBLIC_KEY"), ArtifactDir: envDefault("SYSARMOR_ARTIFACT_DIR", "/var/lib/sysarmor/manager/artifacts")},
 	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "configure JWT verifier: %v\n", err)
-		os.Exit(1)
-	}
-	storeResult, err := backend.Open(ctx, backend.Options{
-		Kind:           *storeBackend,
-		Path:           *storePath,
-		PostgresDriver: *postgresDriver,
-		PostgresDSN:    *postgresDSN,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "open store: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := storeResult.Close(); err != nil {
-			log.Printf("close store backend: %v", err)
-		}
-	}()
-	st := storeResult.Store
-	var searcher platformopensearch.Searcher
-	if strings.TrimSpace(*opensearchURL) != "" {
-		searcher, err = platformopensearch.NewHTTPIndexerWithAuth(*opensearchURL, *opensearchUsername, *opensearchPassword)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "open opensearch searcher: %v\n", err)
-			os.Exit(1)
-		}
-	}
-	managerSrv, err := managerServerForBackend(*storeBackend, st, searcher)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure production manager: %v\n", err)
 		os.Exit(1)
 	}
-	if err := managerSrv.SeedArtifactFeedFromEnv(ctx); err != nil {
-		log.Printf("seed package index: %v", err)
+	defer func() {
+		if err := closer.Close(); err != nil {
+			log.Printf("close postgres: %v", err)
+		}
+	}()
+	shutdownErr := make(chan error, 1)
+	go func() {
+		<-runCtx.Done()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		shutdownErr <- server.Shutdown(shutdownCtx)
+	}()
+	serveErr := server.ListenAndServe()
+	if serveErr != nil && serveErr != http.ErrServerClosed {
+		stop()
 	}
-
-	srv := newManagerHTTPServer(*listen, managerSrv.HandlerWithAuth(verifier))
-	log.Printf("sysarmor-manager listening on %s store_backend=%s store=%s", *listen, *storeBackend, *storePath)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		fmt.Fprintf(os.Stderr, "manager serve: %v\n", err)
+	if err := <-shutdownErr; err != nil {
+		fmt.Fprintf(os.Stderr, "manager shutdown: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func managerServerForBackend(kind string, st managerapi.ManagerStore, searcher platformopensearch.Searcher) (*managerapi.Server, error) {
-	if kind == backend.KindMemory {
-		return managerapi.NewServerWithSearch(st, searcher), nil
-	}
-	return managerapi.NewProductionServerWithSearch(st, searcher)
-}
-
-func newManagerHTTPServer(listen string, handler http.Handler) *http.Server {
-	return &http.Server{
-		Addr:              listen,
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+	if serveErr != nil && serveErr != http.ErrServerClosed {
+		fmt.Fprintf(os.Stderr, "manager serve: %v\n", serveErr)
+		os.Exit(1)
 	}
 }
 
@@ -114,4 +80,14 @@ func envDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func splitCSV(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }

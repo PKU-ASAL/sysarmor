@@ -27,12 +27,19 @@ class StartVMContractTest(unittest.TestCase):
             script,
         )
 
+    def test_topology_waits_for_all_streaming_jobs(self):
+        script = (Path(__file__).resolve().parent / "start-vm.sh").read_text()
+
+        self.assertIn("Flink jobs did not become RUNNING", script)
+        for job in ("sysarmor-normalize-v1", "sysarmor-detection-v1", "sysarmor-projection-v1"):
+            self.assertIn(job, script)
+
     def test_topology_uploads_platform_as_archive(self):
         script = (Path(__file__).resolve().parent / "start-vm.sh").read_text()
 
         self.assertIn('tar -C "$PLATFORM_UPLOAD_DIR" -cf "$PLATFORM_SOURCE_BUNDLE" .', script)
         self.assertIn(
-            'vagrant upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr',
+            'vm_upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr',
             script,
         )
         self.assertNotIn(
@@ -49,9 +56,28 @@ class StartVMContractTest(unittest.TestCase):
             ".run/",
             ".scratchpad/",
             ".superpowers/",
+            "**/.venv/",
+            "**/.pytest_cache/",
+            "**/__pycache__/",
+            "**/node_modules/",
         ):
             with self.subTest(directory=directory):
                 self.assertIn(f"--exclude '{directory}'", script)
+
+    def test_topology_logs_large_upload_and_readiness_progress(self):
+        script = (Path(__file__).resolve().parent / "start-vm.sh").read_text()
+
+        self.assertIn("uploading platform source", script)
+        self.assertIn("uploading VM image bundle", script)
+        self.assertIn("waiting for manager/gateway health", script)
+        self.assertIn("waiting for Flink jobs", script)
+
+    def test_topology_rebuilds_staging_directory_before_rsync(self):
+        script = (Path(__file__).resolve().parent / "start-vm.sh").read_text()
+
+        reset = script.index('rm -rf "$PLATFORM_UPLOAD_DIR"')
+        rsync = script.index("rsync -a --delete", reset)
+        self.assertLess(reset, rsync)
 
     def test_topology_platform_archive_is_ignored(self):
         repo = Path(__file__).resolve().parents[3]

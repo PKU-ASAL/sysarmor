@@ -331,6 +331,10 @@ func marshalProtoJSON(msg proto.Message) ([]byte, error) {
 	return protojson.MarshalOptions{}.Marshal(msg)
 }
 
+func marshalHealthJSON(msg proto.Message) ([]byte, error) {
+	return protojson.MarshalOptions{EmitUnpopulated: true}.Marshal(msg)
+}
+
 func marshalProtoJSONLine(msg proto.Message) ([]byte, error) {
 	return protojson.MarshalOptions{}.Marshal(msg)
 }

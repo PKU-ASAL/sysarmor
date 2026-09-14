@@ -1,40 +1,64 @@
 package main
 
 import (
-	"net/http"
+	"os"
 	"strings"
 	"testing"
-
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store"
-	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/store/backend"
 )
 
-func TestNewManagerHTTPServerConfiguresTimeouts(t *testing.T) {
-	server := newManagerHTTPServer(":0", http.NewServeMux())
-
-	if server.ReadHeaderTimeout <= 0 {
-		t.Fatalf("ReadHeaderTimeout = %s, want positive", server.ReadHeaderTimeout)
+func TestManagerCommandUsesPostgresBootstrap(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if server.ReadTimeout <= 0 {
-		t.Fatalf("ReadTimeout = %s, want positive", server.ReadTimeout)
+	text := string(source)
+	if !strings.Contains(text, "bootstrap.NewManager") {
+		t.Fatal("manager command must use bootstrap.NewManager")
 	}
-	if server.WriteTimeout <= 0 {
-		t.Fatalf("WriteTimeout = %s, want positive", server.WriteTimeout)
-	}
-	if server.IdleTimeout <= 0 {
-		t.Fatalf("IdleTimeout = %s, want positive", server.IdleTimeout)
+	for _, legacy := range []string{"store-backend", "\"-store\"", "/internal/store", "managerServerForBackend"} {
+		if strings.Contains(text, legacy) {
+			t.Fatalf("manager command still contains legacy path %q", legacy)
+		}
 	}
 }
 
-func TestManagerServerSecurityProfileFollowsStoreBackend(t *testing.T) {
-	t.Setenv("SYSARMOR_ARTIFACT_PUBLIC_KEY", "")
-	t.Setenv("SYSARMOR_AGENT_CA_CERT", "")
-	t.Setenv("SYSARMOR_AGENT_CA_KEY", "")
-
-	if _, err := managerServerForBackend(backend.KindMemory, &store.Store{}, nil); err != nil {
-		t.Fatalf("memory manager server error = %v", err)
+func TestManagerCommandDependsOnBootstrapOnly(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := managerServerForBackend(backend.KindPostgres, &store.Store{}, nil); err == nil || !strings.Contains(err.Error(), "SYSARMOR_ARTIFACT_PUBLIC_KEY") {
-		t.Fatalf("postgres manager server error = %v, want production security requirement", err)
+	text := string(source)
+	for _, forbidden := range []string{
+		"github.com/lib/pq",
+		"/internal/adapters/",
+		"/packages/contracts/",
+		"google.golang.org/grpc",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("manager command imports technical dependency %q", forbidden)
+		}
+	}
+}
+
+func TestManagerCommandOwnsGracefulShutdown(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, required := range []string{"signal.NotifyContext", "server.Shutdown"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("manager command missing graceful shutdown operation %q", required)
+		}
+	}
+}
+
+func TestEnvDefault(t *testing.T) {
+	t.Setenv("SYSARMOR_TEST_DEFAULT", " value ")
+	if got := envDefault("SYSARMOR_TEST_DEFAULT", "fallback"); got != "value" {
+		t.Fatalf("envDefault = %q", got)
+	}
+	if got := envDefault("SYSARMOR_TEST_MISSING", "fallback"); got != "fallback" {
+		t.Fatalf("envDefault fallback = %q", got)
 	}
 }

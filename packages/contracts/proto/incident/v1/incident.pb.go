@@ -96,6 +96,8 @@ type GraphEdge struct {
 	From          string                 `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
 	To            string                 `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
 	Kind          string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
+	EventRefs     []string               `protobuf:"bytes,5,rep,name=event_refs,json=eventRefs,proto3" json:"event_refs,omitempty"`
+	Incomplete    bool                   `protobuf:"varint,6,opt,name=incomplete,proto3" json:"incomplete,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -156,6 +158,20 @@ func (x *GraphEdge) GetKind() string {
 		return x.Kind
 	}
 	return ""
+}
+
+func (x *GraphEdge) GetEventRefs() []string {
+	if x != nil {
+		return x.EventRefs
+	}
+	return nil
+}
+
+func (x *GraphEdge) GetIncomplete() bool {
+	if x != nil {
+		return x.Incomplete
+	}
+	return false
 }
 
 type EvidenceSubgraph struct {
@@ -293,7 +309,6 @@ type Incident struct {
 	Severity            uint32                 `protobuf:"varint,3,opt,name=severity,proto3" json:"severity,omitempty"`
 	Mitre               []string               `protobuf:"bytes,4,rep,name=mitre,proto3" json:"mitre,omitempty"`
 	LineageIds          []string               `protobuf:"bytes,5,rep,name=lineage_ids,json=lineageIds,proto3" json:"lineage_ids,omitempty"`
-	Terminals           []string               `protobuf:"bytes,6,rep,name=terminals,proto3" json:"terminals,omitempty"`
 	Evidence            *EvidenceSubgraph      `protobuf:"bytes,7,opt,name=evidence,proto3" json:"evidence,omitempty"`
 	Converge            *ConvergeTrace         `protobuf:"bytes,8,opt,name=converge,proto3" json:"converge,omitempty"`
 	ContributingSignals []*v1.Signal           `protobuf:"bytes,9,rep,name=contributing_signals,json=contributingSignals,proto3" json:"contributing_signals,omitempty"`
@@ -303,6 +318,7 @@ type Incident struct {
 	AnalysisVersion     string                 `protobuf:"bytes,13,opt,name=analysis_version,json=analysisVersion,proto3" json:"analysis_version,omitempty"`
 	FirstObservedAt     string                 `protobuf:"bytes,14,opt,name=first_observed_at,json=firstObservedAt,proto3" json:"first_observed_at,omitempty"`
 	LastObservedAt      string                 `protobuf:"bytes,15,opt,name=last_observed_at,json=lastObservedAt,proto3" json:"last_observed_at,omitempty"`
+	ConclusionEntities  []string               `protobuf:"bytes,16,rep,name=conclusion_entities,json=conclusionEntities,proto3" json:"conclusion_entities,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -372,13 +388,6 @@ func (x *Incident) GetLineageIds() []string {
 	return nil
 }
 
-func (x *Incident) GetTerminals() []string {
-	if x != nil {
-		return x.Terminals
-	}
-	return nil
-}
-
 func (x *Incident) GetEvidence() *EvidenceSubgraph {
 	if x != nil {
 		return x.Evidence
@@ -442,6 +451,13 @@ func (x *Incident) GetLastObservedAt() string {
 	return ""
 }
 
+func (x *Incident) GetConclusionEntities() []string {
+	if x != nil {
+		return x.ConclusionEntities
+	}
+	return nil
+}
+
 var File_packages_contracts_proto_incident_v1_incident_proto protoreflect.FileDescriptor
 
 const file_packages_contracts_proto_incident_v1_incident_proto_rawDesc = "" +
@@ -451,12 +467,17 @@ const file_packages_contracts_proto_incident_v1_incident_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05label\x18\x03 \x01(\tR\x05label\x129\n" +
-	"\bentities\x18\x04 \x03(\v2\x1d.sysarmor.signal.v1.EntityRefR\bentities\"S\n" +
+	"\bentities\x18\x04 \x03(\v2\x1d.sysarmor.signal.v1.EntityRefR\bentities\"\x92\x01\n" +
 	"\tGraphEdge\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x03 \x01(\tR\x02to\x12\x12\n" +
-	"\x04kind\x18\x04 \x01(\tR\x04kind\"\x80\x01\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x1d\n" +
+	"\n" +
+	"event_refs\x18\x05 \x03(\tR\teventRefs\x12\x1e\n" +
+	"\n" +
+	"incomplete\x18\x06 \x01(\bR\n" +
+	"incomplete\"\x80\x01\n" +
 	"\x10EvidenceSubgraph\x125\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x1f.sysarmor.incident.v1.GraphNodeR\x05nodes\x125\n" +
 	"\x05edges\x18\x02 \x03(\v2\x1f.sysarmor.incident.v1.GraphEdgeR\x05edges\"\x8f\x01\n" +
@@ -465,15 +486,14 @@ const file_packages_contracts_proto_incident_v1_incident_proto_rawDesc = "" +
 	"\bseed_ids\x18\x02 \x03(\tR\aseedIds\x12\x19\n" +
 	"\bpath_ids\x18\x03 \x03(\tR\apathIds\x12\x14\n" +
 	"\x05score\x18\x04 \x01(\x02R\x05score\x12\x1a\n" +
-	"\bcontrols\x18\x05 \x03(\tR\bcontrols\"\xbf\x05\n" +
+	"\bcontrols\x18\x05 \x03(\tR\bcontrols\"\xe3\x05\n" +
 	"\bIncident\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x12\x1a\n" +
 	"\bseverity\x18\x03 \x01(\rR\bseverity\x12\x14\n" +
 	"\x05mitre\x18\x04 \x03(\tR\x05mitre\x12\x1f\n" +
 	"\vlineage_ids\x18\x05 \x03(\tR\n" +
-	"lineageIds\x12\x1c\n" +
-	"\tterminals\x18\x06 \x03(\tR\tterminals\x12B\n" +
+	"lineageIds\x12B\n" +
 	"\bevidence\x18\a \x01(\v2&.sysarmor.incident.v1.EvidenceSubgraphR\bevidence\x12?\n" +
 	"\bconverge\x18\b \x01(\v2#.sysarmor.incident.v1.ConvergeTraceR\bconverge\x12M\n" +
 	"\x14contributing_signals\x18\t \x03(\v2\x1a.sysarmor.signal.v1.SignalR\x13contributingSignals\x12B\n" +
@@ -483,10 +503,11 @@ const file_packages_contracts_proto_incident_v1_incident_proto_rawDesc = "" +
 	"\x0fcorrelation_key\x18\f \x01(\tR\x0ecorrelationKey\x12)\n" +
 	"\x10analysis_version\x18\r \x01(\tR\x0fanalysisVersion\x12*\n" +
 	"\x11first_observed_at\x18\x0e \x01(\tR\x0ffirstObservedAt\x12(\n" +
-	"\x10last_observed_at\x18\x0f \x01(\tR\x0elastObservedAt\x1a9\n" +
+	"\x10last_observed_at\x18\x0f \x01(\tR\x0elastObservedAt\x12/\n" +
+	"\x13conclusion_entities\x18\x10 \x03(\tR\x12conclusionEntities\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B[ZYgithub.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1;incidentv1b\x06proto3"
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\tterminalsB[ZYgithub.com/sysarmor/sysarmor-next-project/packages/contracts/proto/incident/v1;incidentv1b\x06proto3"
 
 var (
 	file_packages_contracts_proto_incident_v1_incident_proto_rawDescOnce sync.Once

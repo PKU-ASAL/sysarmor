@@ -1,5 +1,6 @@
 services:
   postgres:
+    image: sysarmor-postgres:latest
     build: ./infra/postgres
     container_name: sysarmor-postgres
     environment:
@@ -17,6 +18,7 @@ services:
       retries: 20
 
   kafka:
+    image: sysarmor-kafka:latest
     build: ./infra/kafka
     container_name: sysarmor-kafka
     environment:
@@ -29,10 +31,11 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_TRANSACTION_MAX_TIMEOUT_MS: "3600000"
     ports:
       - "${SYSARMOR_KAFKA_PORT:-19092}:9092"
     healthcheck:
@@ -41,7 +44,173 @@ services:
       timeout: 5s
       retries: 30
 
+  kafka-init:
+    image: sysarmor-kafka:latest
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/opt/sysarmor/kafka/init.sh"]
+    environment:
+      SYSARMOR_KAFKA_BROKERS: kafka:9092
+    volumes:
+      - ./kafka:/opt/sysarmor/kafka:ro
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-alpha.84
+    container_name: sysarmor-rustfs
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: sysarmor
+      RUSTFS_SECRET_KEY: sysarmor-secret
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+    volumes:
+      - flink-checkpoints:/data
+    ports:
+      - "${SYSARMOR_MINIO_PORT:-19000}:9000"
+      - "${SYSARMOR_MINIO_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rustfs-init:
+    image: python:3.12-alpine
+    container_name: sysarmor-rustfs-init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    command: ["python3", "-m", "streaming.runtime.s3_init"]
+    working_dir: /opt/sysarmor
+    volumes:
+      - ../apps/streaming/src:/opt/sysarmor/streaming/src:ro
+    environment:
+      PYTHONPATH: /opt/sysarmor/streaming/src
+      S3_ENDPOINT: http://rustfs:9000
+      S3_ACCESS_KEY: sysarmor
+      S3_SECRET_KEY: sysarmor-secret
+      S3_BUCKET: sysarmor-flink
+
+  flink-jobmanager:
+    image: sysarmor-flink:1.20.2
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    container_name: sysarmor-flink-jobmanager
+    command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      rustfs-init:
+        condition: service_completed_successfully
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      AWS_ENDPOINT: http://rustfs:9000
+      FLINK_PROPERTIES: |
+        s3.endpoint: http://rustfs:9000
+        s3.path.style.access: true
+        s3.access-key: sysarmor
+        s3.secret-key: sysarmor-secret
+        taskmanager.memory.process.size: 3072m
+        taskmanager.memory.flink.size: 2048m
+        taskmanager.memory.jvm-metaspace.size: 768m
+        taskmanager.memory.managed.size: 768m
+        taskmanager.numberOfTaskSlots: 3
+    ports:
+      - "${SYSARMOR_FLINK_UI_PORT:-18081}:8081"
+
+  flink-taskmanager:
+    image: sysarmor-flink:1.20.2
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    container_name: sysarmor-flink-taskmanager
+    command: taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "3"
+      AWS_ENDPOINT: http://rustfs:9000
+      FLINK_PROPERTIES: |
+        s3.endpoint: http://rustfs:9000
+        s3.path.style.access: true
+        s3.access-key: sysarmor
+        s3.secret-key: sysarmor-secret
+        taskmanager.memory.process.size: 3072m
+        taskmanager.memory.flink.size: 2048m
+        taskmanager.memory.jvm-metaspace.size: 768m
+        taskmanager.memory.managed.size: 768m
+        taskmanager.numberOfTaskSlots: 3
+
+  flink-normalize:
+    image: sysarmor-flink:1.20.2
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: normalize
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+  flink-detection:
+    image: sysarmor-flink:1.20.2
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: detection
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+  flink-projection:
+    image: sysarmor-flink:1.20.2
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      opensearch-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    env_file:
+      - ./streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: projection
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      SYSARMOR_OPENSEARCH_URL: http://opensearch:9200
+
   redis:
+    image: sysarmor-redis:latest
     build: ./infra/redis
     container_name: sysarmor-redis
     ports:
@@ -88,6 +257,7 @@ services:
       - "${SYSARMOR_PACKAGE_PORT:-18080}:80"
 
   manager:
+    image: sysarmor-manager:latest
     build:
       context: ..
       dockerfile: deployments/manager/Dockerfile
@@ -103,6 +273,7 @@ services:
       - ./manager/manager.env.example
     environment:
       SYSARMOR_POSTGRES_DSN: postgres://sysarmor:sysarmor@postgres:5432/sysarmor?sslmode=disable
+      SYSARMOR_KAFKA_BROKERS: kafka:9092
       SYSARMOR_ARTIFACT_DIR: /var/lib/sysarmor/manager/artifacts
       SYSARMOR_AGENT_PACKAGE_INDEX_URL: http://packages/index.json
       SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL: ${SYSARMOR_AGENT_PACKAGE_DOWNLOAD_BASE_URL:-http://127.0.0.1:18080}
@@ -116,6 +287,7 @@ services:
       - "${SYSARMOR_MANAGER_PORT:-19443}:9443"
 
   manager-ui:
+    image: sysarmor-manager-ui:latest
     build:
       context: ..
       dockerfile: deployments/manager-ui/Dockerfile
@@ -134,6 +306,7 @@ services:
       - "${SYSARMOR_MANAGER_UI_PORT:-4173}:4173"
 
   gateway:
+    image: sysarmor-gateway:latest
     build:
       context: ..
       dockerfile: deployments/gateway/Dockerfile
@@ -143,6 +316,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     env_file:
@@ -157,35 +332,12 @@ services:
       - "${SYSARMOR_GATEWAY_PORT:-19444}:9444"
       - "${SYSARMOR_GATEWAY_HEALTH_PORT:-19445}:9445"
 
-  worker:
-    build:
-      context: ..
-      dockerfile: deployments/worker/Dockerfile
-    container_name: sysarmor-worker
-    restart: on-failure
-    depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
-      opensearch-init:
-        condition: service_completed_successfully
-    env_file:
-      - ./worker/worker.env.example
-    environment:
-      SYSARMOR_POSTGRES_DSN: postgres://sysarmor:sysarmor@postgres:5432/sysarmor?sslmode=disable
-      SYSARMOR_KAFKA_BROKERS: kafka:9092
-      SYSARMOR_KAFKA_TOPIC: sysarmor.agent.databatch.raw
-      SYSARMOR_KAFKA_GROUP_ID: sysarmor-ingest-worker
-      SYSARMOR_OPENSEARCH_URL: http://opensearch:9200
-
 volumes:
   postgres-data:
   redis-data:
   opensearch-data:
   manager-artifacts:
+  flink-checkpoints:
 
 secrets:
   auth-secret:

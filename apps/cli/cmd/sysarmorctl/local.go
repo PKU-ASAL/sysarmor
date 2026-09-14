@@ -53,7 +53,7 @@ func isLocalAgentCommand(args []string) bool {
 }
 
 func isStreamingWatchCommand(args []string) bool {
-	if len(args) < 2 || hasFlag(args, "--snapshot") || flagValue(args, "--limit") != "" {
+	if len(args) < 2 || hasFlag(args, "--snapshot") {
 		return false
 	}
 	return (args[0] == "event" && args[1] == "watch") || (args[0] == "signal" && args[1] == "watch")
@@ -155,7 +155,7 @@ func queryLocalAgentWithManager(socketPath, managerURL string, args []string) ([
 		if err != nil {
 			return nil, err
 		}
-		return marshalProtoJSON(resp)
+		return marshalHealthJSON(resp)
 	case "agent capability":
 		resp, err := client.Capability(ctx, &controlplanev1.CapabilityRequest{Context: reqCtx})
 		if err != nil {

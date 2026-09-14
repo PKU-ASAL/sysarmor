@@ -119,13 +119,13 @@ message SensorHealth {
 }
 
 message TelemetryBusHealth {
+  reserved 3, 7;
+  reserved "event_dropped", "signal_dropped";
   uint64 event_capacity = 1;
   uint64 event_buffered = 2;
-  uint64 event_dropped = 3;
   uint64 event_subscribers = 4;
   uint64 signal_capacity = 5;
   uint64 signal_buffered = 6;
-  uint64 signal_dropped = 7;
   uint64 signal_subscribers = 8;
 }
 
@@ -184,6 +184,47 @@ message DetectionContentRef {
   string digest = 4;
 }
 
+message LearningRuntimeHealth {
+  string status = 1;
+  string last_error = 2;
+  ProcessProfileRuntimeHealth profiles = 3;
+  CandidateLifecycleRuntimeHealth candidates = 4;
+}
+
+message CandidateLifecycleRuntimeHealth {
+  uint64 created = 1;
+  uint64 spooled = 2;
+  uint64 gateway_accepted = 3;
+  uint64 contract_rejected = 4;
+  uint64 gateway_rejected = 5;
+  uint64 gateway_duplicate_ack = 6;
+  uint64 delivery_attempted = 7;
+  uint64 gateway_retryable = 8;
+  uint64 delivery_errors = 9;
+  string last_delivery_error = 10;
+}
+
+message ProcessProfileRuntimeHealth {
+  uint64 active = 1;
+  uint64 exited = 2;
+  uint64 retained = 3;
+  uint64 compactions = 4;
+  uint64 expired = 5;
+  uint64 capacity_evictions = 6;
+  uint64 file_evictions = 7;
+  uint64 network_evictions = 8;
+  uint64 event_ref_evictions = 9;
+  uint64 identity_retained = 10;
+  uint64 identity_evictions = 11;
+  uint64 active_evictions = 12;
+  uint64 identity_gaps = 13;
+  uint64 profile_observations = 14;
+  uint64 feature_updates = 15;
+  uint64 learning_score_calls = 16;
+  uint64 lifecycle_only_observations = 17;
+  uint64 suppressed_checkpoints = 18;
+}
+
 message DetectionRuntimeHealth {
   string policy_id = 1;
   uint64 policy_version = 2;
@@ -192,6 +233,7 @@ message DetectionRuntimeHealth {
   string last_apply_error = 5;
   string updated_at = 6;
   string default_manifest_version = 7;
+  LearningRuntimeHealth learning = 8;
 }
 
 message LocalStreamHealth {

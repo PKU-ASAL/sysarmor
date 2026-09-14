@@ -1,0 +1,78 @@
+package ports
+
+import (
+	"context"
+	"time"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/audit"
+	domainpolicy "github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/policy"
+	"github.com/sysarmor/sysarmor-next-project/apps/manager/internal/domain/tenant"
+)
+
+type PolicyRepository interface {
+	Get(context.Context, tenant.ID, domainpolicy.ID, domainpolicy.Version) (domainpolicy.Policy, error)
+	Current(context.Context, tenant.ID, domainpolicy.ID) (domainpolicy.Policy, error)
+	Published(context.Context, tenant.ID, domainpolicy.ID, domainpolicy.Version) (domainpolicy.Policy, error)
+	List(context.Context, tenant.ID, domainpolicy.Filter) ([]domainpolicy.Policy, error)
+	Put(context.Context, domainpolicy.Policy) error
+}
+
+type RuleRepository interface {
+	List(context.Context, tenant.ID, domainpolicy.RuleFilter) ([]domainpolicy.Rule, error)
+}
+
+type AssignmentRepository interface {
+	Candidates(context.Context, tenant.ID, domainpolicy.Target) ([]domainpolicy.Assignment, error)
+	List(context.Context, tenant.ID, domainpolicy.AssignmentFilter) ([]domainpolicy.Assignment, error)
+	Put(context.Context, domainpolicy.Assignment) error
+}
+
+type PolicyControlCommand struct {
+	ID            string
+	TenantID      tenant.ID
+	AgentID       string
+	PolicyID      domainpolicy.ID
+	PolicyVersion domainpolicy.Version
+	Payload       []byte
+	Actor         string
+	Reason        string
+	CreatedAt     time.Time
+}
+
+type PolicyControlRepository interface {
+	Put(context.Context, PolicyControlCommand) error
+}
+
+type AuditRepository interface {
+	Append(context.Context, tenant.ID, audit.Record) error
+	List(context.Context, tenant.ID, domainpolicy.ID) ([]audit.Record, error)
+}
+
+type PolicyTransaction interface {
+	Policies() PolicyRepository
+	Rules() RuleRepository
+	Assignments() AssignmentRepository
+	Controls() PolicyControlRepository
+	Audits() AuditRepository
+}
+
+type PolicyUnitOfWork interface {
+	Execute(context.Context, func(context.Context, PolicyTransaction) error) error
+}
+
+type PolicySnapshot struct {
+	TenantID tenant.ID
+	PolicyID domainpolicy.ID
+	Version  domainpolicy.Version
+	Document []byte
+}
+
+type PolicySnapshotOutbox interface {
+	Pending(context.Context, int) ([]PolicySnapshot, error)
+	MarkPublished(context.Context, PolicySnapshot) error
+	RecordFailure(context.Context, PolicySnapshot, string) error
+}
+
+type PolicySnapshotPublisher interface {
+	PublishPolicySnapshot(context.Context, PolicySnapshot) error
+}

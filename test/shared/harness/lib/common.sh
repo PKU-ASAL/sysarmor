@@ -119,7 +119,7 @@ sa_build_go_bins() {
   for pkg in "$@"; do
     case "$pkg" in
       sysarmor-agent|sysarmor-content-sign) app="agent" ;;
-      sysarmor-gateway|sysarmor-manager|sysarmor-worker) app="manager" ;;
+      sysarmor-gateway|sysarmor-manager) app="manager" ;;
       sysarmorctl) app="cli" ;;
       *) echo "unsupported SysArmor binary: $pkg" >&2; return 2 ;;
     esac
@@ -127,18 +127,19 @@ sa_build_go_bins() {
   done
 }
 
-sa_start_memory_gateway() {
+sa_start_postgres_gateway() {
   local extra_args=("$@")
   "$BIN/sysarmor-gateway" \
     --listen "127.0.0.1:$GRPC_PORT" \
     --health-listen "127.0.0.1:$GATEWAY_HEALTH_PORT" \
-    --store-backend memory \
+    --postgres-driver "${SYSARMOR_POSTGRES_DRIVER:-postgres}" \
+    --postgres-dsn "${SYSARMOR_POSTGRES_DSN:?SYSARMOR_POSTGRES_DSN is required}" \
     "${extra_args[@]}" \
     >"$TMP/gateway.log" 2>&1 &
   GATEWAY_PID=$!
 }
 
-sa_start_memory_manager() {
+sa_start_postgres_manager() {
   local extra_args=("$@")
   local jwt_dir="$TMP/manager-jwt"
   local jwt_issuer="sysarmor-test"
@@ -148,7 +149,8 @@ sa_start_memory_manager() {
   export SYSARMOR_MANAGER_JWT
   "$BIN/sysarmor-manager" \
     --listen "127.0.0.1:$MANAGER_PORT" \
-    --store-backend memory \
+    --postgres-driver "${SYSARMOR_POSTGRES_DRIVER:-postgres}" \
+    --postgres-dsn "${SYSARMOR_POSTGRES_DSN:?SYSARMOR_POSTGRES_DSN is required}" \
     --jwt-public-key "$jwt_dir/manager-jwt-public.pem" \
     --jwt-issuer "$jwt_issuer" \
     --jwt-audience "$jwt_audience" \
@@ -159,12 +161,6 @@ sa_start_memory_manager() {
 
 sa_manager_curl() {
   command curl -H "Authorization: Bearer ${SYSARMOR_MANAGER_JWT:?manager JWT not initialized}" "$@"
-}
-
-sa_start_memory_agent_stack() {
-  local token="${1:-}"
-  sa_start_memory_manager
-  sa_start_memory_gateway --local-ingest --dev-token "$token"
 }
 
 sa_manager_ctl() {

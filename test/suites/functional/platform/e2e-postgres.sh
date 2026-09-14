@@ -5,4 +5,4 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../../.." && pwd)"
 
 cd "$REPO"
-go test ./apps/manager/internal/store/backend -run 'TestOpenPostgres'
+go test ./apps/manager/internal/adapters/outbound/postgres/... -count=1

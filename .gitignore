@@ -2,16 +2,13 @@
 .scratchpad/
 .superpowers/
 
-# working documents and planning artifacts
-docs/business/
-docs/superpowers/
-
 # test results (large, regenerated)
 test/.results/
 test/.results/*.jsonl
 test/.results/*.txt
 test/.results/*.json
 test/.results/*.csv
+test/environments/vm-topology/.results/
 
 # vm topology deployment cache (large, regenerated)
 test/environments/vm-topology/deploy/platform/
@@ -31,6 +28,7 @@ deployments/pki/agent-plane-mtls/runtime/
 **/.vagrant/
 
 # python
+.venv/
 __pycache__/
 *.pyc
 

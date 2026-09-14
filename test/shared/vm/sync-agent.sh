@@ -20,6 +20,19 @@ TETRAGON_PROCESS_CACHE_SIZE="${SYSARMOR_TETRAGON_PROCESS_CACHE_SIZE:-4096}"
 TETRAGON_DATA_CACHE_SIZE="${SYSARMOR_TETRAGON_DATA_CACHE_SIZE:-128}"
 TETRAGON_EVENT_QUEUE_SIZE="${SYSARMOR_TETRAGON_EVENT_QUEUE_SIZE:-1024}"
 TETRAGON_RB_QUEUE_SIZE="${SYSARMOR_TETRAGON_RB_QUEUE_SIZE:-8192}"
+INCLUDE_BENCH_CONTENT="${SYSARMOR_VM_INCLUDE_BENCH_CONTENT:-0}"
+LEARNING_MODEL="${SYSARMOR_LEARNING_MODEL:-}"
+LEARNING_TRUST_KEYS="${SYSARMOR_LEARNING_TRUST_KEYS:-}"
+case "$INCLUDE_BENCH_CONTENT" in
+  0|1) ;;
+  *) echo "[sync-agent-vm][ERROR] SYSARMOR_VM_INCLUDE_BENCH_CONTENT must be 0 or 1" >&2; exit 1 ;;
+esac
+if [[ -n "$LEARNING_MODEL" || -n "$LEARNING_TRUST_KEYS" ]]; then
+  if [[ -z "$LEARNING_MODEL" || -z "$LEARNING_TRUST_KEYS" || ! -f "$LEARNING_MODEL" ]]; then
+    echo "[sync-agent-vm][ERROR] Learning model and trust keys must be configured together" >&2
+    exit 1
+  fi
+fi
 
 if [[ ! -x "$REPO/dist/bin/sysarmor-agent" || ! -x "$REPO/dist/bin/sysarmorctl" || ! -x "$REPO/dist/bin/sysarmor-content-sign" ]]; then
   echo "[sync-agent-vm][ERROR] missing Agent development binaries; run make build-binary first" >&2
@@ -41,6 +54,12 @@ vagrant upload "$REPO/dist/bin/sysarmor-agent" /tmp/sysarmor-agent.upload "$NODE
 vagrant upload "$REPO/dist/bin/sysarmorctl" /tmp/sysarmorctl.upload "$NODE" >/dev/null
 vagrant upload "$REPO/dist/bin/sysarmor-content-sign" /tmp/sysarmor-content-sign.upload "$NODE" >/dev/null
 vagrant upload "$REPO/deployments" /tmp/sysarmor-deployments.upload "$NODE" >/dev/null
+if [[ -n "$LEARNING_MODEL" ]]; then
+  vagrant upload "$LEARNING_MODEL" /tmp/sysarmor-learning-model.upload "$NODE" >/dev/null
+fi
+if [[ "$INCLUDE_BENCH_CONTENT" == "1" ]]; then
+  vagrant upload "$ROOT/data/content" /tmp/sysarmor-bench-content.upload "$NODE" >/dev/null
+fi
 if [[ "$VM_ENV" == "vm-topology" ]]; then
   vagrant upload "$PKI_DIR" /tmp/sysarmor-pki.upload "$NODE" >/dev/null
 fi
@@ -64,6 +83,14 @@ sudo pkill -x sysarmor-agent 2>/dev/null || true
 sudo pkill -x tetragon 2>/dev/null || true
 sudo pkill -x tetra 2>/dev/null || true
 sudo install -m 0755 /tmp/sysarmorctl.upload /usr/local/bin/sysarmorctl
+content_source=/tmp/sysarmor-deployments.upload/agent/content
+if [ '$INCLUDE_BENCH_CONTENT' = '1' ]; then
+  sudo rm -rf /tmp/sysarmor-agent-content
+  sudo install -d -m 0755 /tmp/sysarmor-agent-content
+  sudo cp -a /tmp/sysarmor-deployments.upload/agent/content/. /tmp/sysarmor-agent-content/
+  sudo cp -a /tmp/sysarmor-bench-content.upload/. /tmp/sysarmor-agent-content/
+  content_source=/tmp/sysarmor-agent-content
+fi
 if [ '$VM_ENV' = 'vm-topology' ]; then
   sudo install -d -m 0755 /etc/sysarmor/pki
   sudo install -m 0644 /tmp/sysarmor-pki.upload/ca.pem /etc/sysarmor/pki/ca.pem
@@ -114,11 +141,21 @@ health:
 policy:
   path: /etc/sysarmor/agent/policy.json
 EOF
+if [ -n '$LEARNING_MODEL' ]; then
+  sudo install -d -m 0755 /etc/sysarmor/agent/learning
+  sudo install -m 0644 /tmp/sysarmor-learning-model.upload /etc/sysarmor/agent/learning/model-bundle.json
+  sudo tee -a /tmp/sysarmor-agent.yaml >/dev/null <<LEARNING_EOF
+learning:
+  model_path: /etc/sysarmor/agent/learning/model-bundle.json
+  trust_keys: $LEARNING_TRUST_KEYS
+LEARNING_EOF
+fi
 if ! sudo SYSARMOR_AGENT_BIN=/tmp/sysarmor-agent.upload \
   SYSARMOR_CTL_BIN=/tmp/sysarmorctl.upload \
   SYSARMOR_CONTENT_SIGN_BIN=/tmp/sysarmor-content-sign.upload \
   SYSARMOR_AGENT_CONFIG=/tmp/sysarmor-agent.yaml \
   SYSARMOR_COLLECTION_POLICY=/tmp/sysarmor-deployments.upload/agent/policy.json \
+  SYSARMOR_CONTENT_SOURCE="\$content_source" \
   SYSARMOR_TETRAGON_BUNDLE_DIR='$TETRAGON_BUNDLE_DIR' \
   SYSARMOR_TETRAGON_INSTALL_DIR='$TETRAGON_INSTALL_DIR' \
   $archive_env \

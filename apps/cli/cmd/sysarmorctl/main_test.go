@@ -118,6 +118,23 @@ func TestEnrollmentCommandTimeoutDefaultsToPolicyActivationWindow(t *testing.T) 
 	}
 }
 
+func TestHealthJSONEmitsZeroCandidateLifecycleCounters(t *testing.T) {
+	raw, err := marshalHealthJSON(&controlplanev1.HealthResponse{
+		Detection: &controlplanev1.DetectionRuntimeHealth{
+			Learning: &controlplanev1.LearningRuntimeHealth{Candidates: &controlplanev1.CandidateLifecycleRuntimeHealth{}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	for _, field := range []string{"created", "spooled", "gatewayAccepted", "gatewayDuplicateAck", "contractRejected", "gatewayRejected"} {
+		if !strings.Contains(text, `"`+field+`":"0"`) {
+			t.Fatalf("health JSON does not contain explicit %s zero: %s", field, text)
+		}
+	}
+}
+
 func TestLocalEnrollmentReadsTokenFile(t *testing.T) {
 	tokenPath := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tokenPath, []byte("secret-from-file\n"), 0o600); err != nil {
@@ -187,6 +204,22 @@ func TestQueryRarityBaseline(t *testing.T) {
 	want := "/api/v1/rarity-baseline?signal=download_by_lolbin&workload=container%3Acheckout-api"
 	if gotPath != want {
 		t.Fatalf("path = %q, want %q", gotPath, want)
+	}
+}
+
+func TestQuerySignalsUsesStage(t *testing.T) {
+	var gotPath string
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.String()
+		_, _ = fmt.Fprintln(w, "[]")
+	}))
+	defer server.Close()
+
+	if _, err := query(server.URL, []string{"manager", "signals", "--stage", "candidate"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/api/v1/signals?stage=candidate" {
+		t.Fatalf("path=%q", gotPath)
 	}
 }
 
@@ -810,6 +843,17 @@ func TestStreamingWatchWritesFramesBeforeTimeout(t *testing.T) {
 	}
 	if lines := nonEmptyLines(string(body)); len(lines) != 1 {
 		t.Fatalf("stream signal body = %s", string(body))
+	}
+}
+
+func TestWatchWithLimitStillUsesStreamingOutput(t *testing.T) {
+	for _, args := range [][]string{
+		{"event", "watch", "--limit", "20000"},
+		{"signal", "watch", "--limit", "20000"},
+	} {
+		if !isStreamingWatchCommand(args) {
+			t.Fatalf("watch command should stream: %v", args)
+		}
 	}
 }
 

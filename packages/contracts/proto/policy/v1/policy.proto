@@ -10,6 +10,7 @@ message ConvergeParams {
   uint32 max_path_hops = 3;
   uint32 additive_risk_threshold = 4;
   bool cross_lineage = 5;
+  uint64 state_retention_ns = 6;
 }
 
 message RarityParams {
@@ -23,6 +24,8 @@ message DetectionPolicy {
   repeated string cloud_rules = 2;
   ConvergeParams converge = 3;
   RarityParams rarity = 4;
+  // Explicit allow-list of cloud Detectors. Empty means the platform default.
+  repeated string detectors = 5;
 }
 
 message PolicyEnvelope {
@@ -31,4 +34,3 @@ message PolicyEnvelope {
   uint64 version = 3;
   DetectionPolicy detection = 4;
 }
-

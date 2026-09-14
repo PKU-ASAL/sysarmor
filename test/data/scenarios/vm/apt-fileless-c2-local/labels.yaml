@@ -29,6 +29,10 @@ labels:
       behavior: file.write
       match:
         path: "/dev/shm/x.sh"
+    - id: payload_beacon_write
+      behavior: file.write
+      match:
+        path: "/dev/shm/.beacon"
     - id: payload_chmod
       behavior: file.chmod
       match:
@@ -54,18 +58,22 @@ labels:
         - "file:/dev/shm/x.sh"
       link_events:
         - payload_write
+    - id: payload_dropped_beacon
+      name: payload_dropped
+      entities:
+        - "file:/dev/shm/.beacon"
     - id: payload_lifecycle
       name: payload_lifecycle
       entities:
-        - "file:/dev/shm/x.sh"
+        - "file:/dev/shm/.beacon"
         - "socket:10.66.0.99:443"
       link_events:
-        - payload_write
+        - payload_beacon_write
         - payload_exec
         - reverse_c2
     - id: reverse_shell_pattern
       name: reverse_shell_pattern
-      terminal: true
+      stage: conclusion
       entities:
         - "socket:10.66.0.99:443"
       link_events:

@@ -12,6 +12,7 @@ AGENT_ID="vm-owned-tetragon"
 CASE_LABEL="functional-topology"
 
 mkdir -p "$RESULTS"
+source "$ROOT/shared/agent/managed_enrollment.sh"
 
 cleanup() {
   (
@@ -31,6 +32,9 @@ MANAGER_CTL="SYSARMOR_MANAGER_JWT='$MANAGER_JWT' /tmp/sysarmorctl"
 echo "[e2e-agent-systemd-vm] publishing agent artifact through manager"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"; cleanup' EXIT
+
+sa_manager_seed_policy_history "$REPO" "$ENVDIR" "$PKI_DIR" "$RESULTS"
+
 TETRAGON_ARCHIVE="${SYSARMOR_TETRAGON_ARCHIVE:-}"
 if [[ -z "$TETRAGON_ARCHIVE" && -f "$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz" ]]; then
   TETRAGON_ARCHIVE="$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz"
@@ -54,8 +58,6 @@ fi
   --content-key-id topology-test \
   --signing-key "$SIGNING_KEY" >/dev/null
 vagrant upload "$TMP/sysarmor-agent-linux-amd64.tar.gz" /tmp/sysarmor-agent-linux-amd64.tar.gz mgr >/dev/null
-
-vagrant ssh mgr -c "curl -sf -H 'Authorization: Bearer $MANAGER_JWT' -X POST 'http://127.0.0.1:9443/api/v1/reset'" >/dev/null
 
 ARTIFACT_JSON="$RESULTS/e2e-agent-systemd-vm.artifact.json"
 vagrant ssh mgr -c "$MANAGER_CTL --manager-url http://127.0.0.1:9443 --json manager artifacts upload --file /tmp/sysarmor-agent-linux-amd64.tar.gz --name sysarmor-agent --kind agent --version topology-test --os linux --arch amd64 --status active" >"$ARTIFACT_JSON"
@@ -101,19 +103,19 @@ wait_contains() {
       vagrant ssh mgr -c "sudo docker logs sysarmor-manager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
       echo "--- gateway log ---" >&2
       vagrant ssh mgr -c "sudo docker logs sysarmor-gateway --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
-      echo "--- worker log ---" >&2
-      vagrant ssh mgr -c "sudo docker logs sysarmor-worker --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
+      echo "--- Flink logs ---" >&2
+      vagrant ssh mgr -c "sudo docker logs sysarmor-flink-jobmanager --tail 120 2>/dev/null || true; sudo docker logs sysarmor-flink-taskmanager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
       exit 1
     fi
     sleep 1
   done
 }
 
-wait_contains "agent-health" "\"agent_id\":\"$AGENT_ID\"" "$RESULTS/e2e-agent-systemd-vm.health.json" \
+wait_contains "agent-health" "\"agentId\":\"$AGENT_ID\"" "$RESULTS/e2e-agent-systemd-vm.health.json" \
   vagrant ssh mgr -c "$MANAGER_CTL --manager-url 127.0.0.1:9443 --json manager health get --agent-id $AGENT_ID --tenant-id default"
 wait_contains "agent-health artifact agent" '"backend":"tetragon"' "$RESULTS/e2e-agent-systemd-vm.health.json" \
   vagrant ssh mgr -c "$MANAGER_CTL --manager-url 127.0.0.1:9443 --json manager health get --agent-id $AGENT_ID --tenant-id default"
-wait_contains "agent sensor policy ready" '"policy_loaded":true' "$RESULTS/e2e-agent-systemd-vm.health.json" \
+wait_contains "agent sensor policy ready" '"policyLoaded":true' "$RESULTS/e2e-agent-systemd-vm.health.json" \
   vagrant ssh mgr -c "$MANAGER_CTL --manager-url 127.0.0.1:9443 --json manager health get --agent-id $AGENT_ID --tenant-id default"
 vagrant ssh node-a -c "sudo /bin/true"
 wait_contains "agent-session" "\"agent_id\":\"$AGENT_ID\"" "$RESULTS/e2e-agent-systemd-vm.sessions.json" \
@@ -135,6 +137,7 @@ cat >"$TMP/topology-rollout-policy.json" <<'JSON'
   "policy_id": "topology-rollout-policy",
   "version": 2,
   "tenant_id": "default",
+	"protection_mode": "rule-only",
   "collection": {
     "behaviors": ["process.exec", "file.write", "network.connect"],
     "observe_only": true
@@ -145,8 +148,9 @@ cat >"$TMP/topology-rollout-policy.json" <<'JSON'
     "mode": "observe",
     "rulesets": [{"ref": "ruleset:cep-endpoint", "version": "v1", "enabled": true}]
   },
-  "mode": "observe",
-  "published": false
+	"telemetry": {"max_batch_items": 256, "max_batch_bytes": 262144, "flush_interval": "1s"},
+	"response_policy": {"allowed_actions": ["collect", "noop"], "allowed_modes": ["observe"]},
+	  "published": false
 }
 JSON
 vagrant ssh mgr -c "curl -sf -H 'Authorization: Bearer $MANAGER_JWT' -H 'Content-Type: application/json' -X POST http://127.0.0.1:9443/api/v1/policies --data-binary @-" \
@@ -198,10 +202,10 @@ def parse_timestamp(value):
     return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 health = json.loads(sys.argv[2])
-sensor = health.get("sensor_health") or {}
-if parse_timestamp(health.get("observed_at", "")) <= parse_timestamp(sys.argv[1]):
+sensor = health.get("sensor") or {}
+if parse_timestamp(health.get("observedAt", "")) <= parse_timestamp(sys.argv[1]):
     raise SystemExit(1)
-if sensor.get("running") is not True or sensor.get("policy_loaded") is not True:
+if sensor.get("running") is not True or sensor.get("policyLoaded") is not True:
     raise SystemExit(1)
 print(json.dumps(health, separators=(",", ":")))
 PY
@@ -212,7 +216,7 @@ HEALTH_BEFORE_RESTART="$RESULTS/e2e-agent-systemd-vm.health-before-restart.json"
 vagrant ssh mgr -c "$MANAGER_CTL --manager-url 127.0.0.1:9443 --json manager health get --agent-id $AGENT_ID --tenant-id default" >"$HEALTH_BEFORE_RESTART"
 HEALTH_OBSERVED_BEFORE="$(python3 - "$HEALTH_BEFORE_RESTART" <<'PY'
 import json, sys
-print(json.load(open(sys.argv[1]))["observed_at"])
+print(json.load(open(sys.argv[1]))["observedAt"])
 PY
 )"
 
@@ -241,7 +245,7 @@ until [[ -n "$PID_AFTER" && "$PID_AFTER" != "0" && "$PID_AFTER" != "$PID_BEFORE"
   PID_AFTER="$(read_agent_pid)"
 done
 
-wait_contains "fresh ready agent-health after systemd restart" "\"agent_id\":\"$AGENT_ID\"" "$RESULTS/e2e-agent-systemd-vm.health-after-restart.json" \
+wait_contains "fresh ready agent-health after systemd restart" "\"agentId\":\"$AGENT_ID\"" "$RESULTS/e2e-agent-systemd-vm.health-after-restart.json" \
   health_is_ready_after "$HEALTH_OBSERVED_BEFORE" "$AGENT_ID"
 wait_contains "managed policy rollout after restart" '"status":"applied"' "$RESULTS/e2e-agent-systemd-vm.rollout-after-restart.json" \
   vagrant ssh mgr -c "curl -sf -H 'Authorization: Bearer $MANAGER_JWT' 'http://127.0.0.1:9443/api/v1/policy-rollouts?tenant_id=default&agent_id=$AGENT_ID&status=applied'"
@@ -322,9 +326,9 @@ summary = {
     "health_after_restart_status": health_after.get("status"),
     "session_count": len(sessions),
     "event_count": len(events),
-    "sensor_backend": (health.get("sensor_capability") or {}).get("backend"),
-    "sensor_running": (health.get("sensor_health") or {}).get("running"),
-    "systemd_restart_verified": bool(health_after.get("agent_id") == agent_id),
+    "sensor_backend": (health.get("capability") or {}).get("backend"),
+    "sensor_running": (health.get("sensor") or {}).get("running"),
+    "systemd_restart_verified": bool(health_after.get("agentId") == agent_id),
     "online_unenrollment_applied": unenrollment.get("status") == "applied",
     "manager_unenrollment_completed": completed_enrollment.get("unenrollment_status") == "endpoint_completed",
     "standalone_after_unenrollment_restart": standalone_after.get("policyId") == "standalone-default",

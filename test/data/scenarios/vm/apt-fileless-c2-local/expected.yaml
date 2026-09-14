@@ -12,9 +12,9 @@ endpoint_signals:
   must_contain:
     - { name: download_by_lolbin, entities_keys: ["socket:10.66.0.99:8080"] }
     - { name: payload_dropped, entities_keys: ["file:/dev/shm/x.sh"] }
-    - { name: reverse_shell_pattern, terminal: true,
+    - { name: reverse_shell_pattern, stage: conclusion,
         entities_keys: ["socket:10.66.0.99:443"], has_evidence_bundle: true }
   may_contain:
     - { name: sensitive_cred_read }
 negative:
-  endpoint_terminal_required: true
+  endpoint_conclusion_required: true

@@ -4,8 +4,6 @@
   "collection": {
     "behaviors": [
       "process.exec",
-      "process.exit",
-      "process.fork",
       "file.read",
       "file.write",
       "file.chmod",

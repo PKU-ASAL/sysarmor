@@ -1,6 +1,8 @@
 # 配置参考
 
-本文定义当前 Agent YAML、安装路径、平台端口和主要环境变量。代码中的解析器、部署脚本和 Compose 文件是最终事实来源；未知 Agent section 或 key 会直接报错。
+本文定义当前 Agent YAML、安装路径、平台端口和主要环境变量。Agent YAML 的实现事实来源是
+`apps/agent/internal/adapters/config/`，由 Bootstrap 在创建运行资源前严格解析；部署脚本和
+Compose 文件定义安装与平台配置。未知 Agent section 或 key 会直接报错。
 
 ## Agent 配置
 
@@ -34,7 +36,9 @@
 | `policy.path` | `/etc/sysarmor/agent/policy.json` | 统一策略文件 |
 | `content.path` | `/var/lib/sysarmor/agent/content` | 已应用内容存储目录 |
 | `content.trust_keys` | 空 | 逗号分隔的 `key_id=base64_ed25519_public_key` |
-| `resource.max_active_cep_groups` | `4096` | 非负；CEP 活跃组上限 |
+| `learning.model_path` | 空 | 待预加载的已签名模型 Bundle；空值表示 Learning 模型不可用 |
+| `learning.trust_keys` | 空 | 模型专用的 `key_id=base64_ed25519_public_key`，不与 Content 共用权限域 |
+| `resource.max_active_cep_groups` | `16384` | 非负；CEP 活跃组上限 |
 | `resource.max_event_refs_per_signal` | `128` | 非负；Signal 事件引用上限 |
 
 ### 平台连接
@@ -76,6 +80,20 @@
 
 统一 Policy 可在有效范围内覆盖这些基线值。
 
+### Learning Detector
+
+训练工具生成的是待签名 Bundle。发布时必须使用模型专用 Ed25519 私钥签名，再把对应公钥写入 `learning.trust_keys`：
+
+```bash
+sysarmor-model-sign \
+  --key /secure/model-signing-key.pem \
+  --key-id model-release-2026 \
+  --input model-bundle.json \
+  --output model-bundle.signed.json
+```
+
+Agent 对 Bundle 使用 8 MiB 上限和严格 JSON 解码，并依次校验模型摘要、payload 摘要与可信签名。`learning.model_path` 只负责预加载可信模型，不负责启用检测：当前 Endpoint Policy 的 Detection 还必须携带完全匹配的 `learning_model.ref/version/digest`。缺少模型路径表示模型不可用；配置了但无法读取、校验或验证签名时，Learning health 为 `degraded`，规则检测与事件采集继续运行，不加载默认模型。
+
 ## Endpoint Policy
 
 `policy.path` 指向的 JSON 是 Agent 实际应用的统一 Endpoint Policy，不是 Manager 保存的发布元数据。顶层必填 `policy_id`、正整数 `version`，以及 `collection`、`detection`、`telemetry`、`response` 四个对象。安装包使用的最小有效结构为：
@@ -88,7 +106,14 @@
     "behaviors": ["process.exec", "file.write", "network.connect"],
     "observe_only": true
   },
-  "detection": {},
+  "detection": {
+    "policy_id": "standalone-default-detection",
+    "version": 1,
+    "mode": "observe",
+    "rulesets": [
+      {"ref": "ruleset:cep-endpoint", "version": "v1", "enabled": true}
+    ]
+  },
   "telemetry": {
     "max_batch_items": 256,
     "max_batch_bytes": 262144,
@@ -101,7 +126,7 @@
 | Section | 主要字段 | 约束 |
 |---|---|---|
 | `collection` | `behaviors`、`binary_prefixes`、`file_prefixes`、`socket_families`、`socket_addrs`、`socket_ports`、`scope_type`、`scope_selector`、`observe_only` | `behaviors` 接受行为 ID 数组，也接受带 selector 的对象数组 |
-| `detection` | `policy_id`、`version`、`mode`、`scope`、`rulesets`、`rule_overrides`、`context_refs`、`ioc_refs` | 空对象使用当前默认检测行为；未解析引用当前可能被跳过或降级 |
+| `detection` | `policy_id`、`version`、`mode`、`scope`、`rulesets`、`rule_overrides`、`context_refs`、`ioc_refs`、`learning_model` | `learning_model` 必须包含 ref/version/digest，并与已加载模型完全一致；未解析规则引用可能被跳过或降级 |
 | `telemetry` | `max_batch_items`、`max_batch_bytes`、`flush_interval` | Agent 配置表中的有效范围同样适用 |
 | `response` | `allowed_actions`、`allowed_modes`、`approval_required`、`approval_threshold`、`approval_roles`、`allow_destructive` | 空对象归一化为默认 `collect`/`noop` 与 `observe`；破坏性动作必须显式允许 |
 
@@ -149,11 +174,16 @@ sudo sysarmorctl policy apply --file /path/to/policy.json --dry-run
 | 服务 | 核心变量 |
 |---|---|
 | Manager | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_OPENSEARCH_URL`、`SYSARMOR_ARTIFACT_DIR`、`SYSARMOR_AGENT_PACKAGE_INDEX_URL`、`SYSARMOR_ARTIFACT_PUBLIC_KEY`、`SYSARMOR_AGENT_CA_CERT`、`SYSARMOR_AGENT_CA_KEY`、`SYSARMOR_JWT_PUBLIC_KEY_FILE`、`SYSARMOR_JWT_ISSUER`、`SYSARMOR_JWT_AUDIENCE` |
-| Gateway | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_REDIS_ADDR`、`SYSARMOR_GRPC_TLS_CERT`、`SYSARMOR_GRPC_TLS_KEY`、`SYSARMOR_GRPC_CLIENT_CA`、`SYSARMOR_GRPC_REQUIRE_CLIENT_CERT` |
-| Worker | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_KAFKA_TOPIC`、`SYSARMOR_KAFKA_GROUP_ID`、`SYSARMOR_OPENSEARCH_URL` |
+| Gateway | `SYSARMOR_POSTGRES_DSN`、`SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_REDIS_ADDR`、`SYSARMOR_GRPC_TLS_CERT`、`SYSARMOR_GRPC_TLS_KEY`、`SYSARMOR_GRPC_CLIENT_CA` |
+| Streaming | `SYSARMOR_KAFKA_BROKERS`、`SYSARMOR_OPENSEARCH_URL`、`SYSARMOR_S3_ENDPOINT`、`SYSARMOR_FLINK_JOB` |
 | Manager Console | `AUTH_SECRET_FILE`、`SYSARMOR_BOOTSTRAP_ADMIN_USERNAME_FILE`、`SYSARMOR_BOOTSTRAP_ADMIN_PASSWORD_FILE`、`SYSARMOR_BFF_JWT_PRIVATE_KEY_FILE`、`SYSARMOR_MANAGER_JWT_ISSUER`、`SYSARMOR_MANAGER_JWT_AUDIENCE`、`MANAGER_API_ORIGIN` |
 
-示例值位于 `deployments/{manager,gateway,worker,manager-ui}/*.env.example`。示例中的数据库密码只适用于隔离的本地 Compose；生产环境必须从环境或机密管理系统注入。
+示例值位于 `deployments/{manager,gateway,streaming,manager-ui}/*.env.example`。示例中的数据库密码只适用于隔离的本地 Compose；生产环境必须从环境或机密管理系统注入。
+
+Manager 的生产启动路径要求 PostgreSQL，`SYSARMOR_POSTGRES_DRIVER` 默认是
+`postgres`，`SYSARMOR_POSTGRES_DSN` 必须非空；不存在 memory/file backend 配置或自动回退。
+Streaming 还要求非空 Kafka brokers/topic/group 与 OpenSearch URL。OpenSearch 基本认证可通过
+`SYSARMOR_OPENSEARCH_USERNAME` 和 `SYSARMOR_OPENSEARCH_PASSWORD` 注入，禁止写入仓库配置。
 
 ## `configs/` 的边界
 

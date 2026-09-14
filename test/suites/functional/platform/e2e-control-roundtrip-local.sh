@@ -6,6 +6,6 @@ REPO="$(cd "$ROOT/.." && pwd)"
 
 echo "[e2e-control-roundtrip-local] running gateway and agent control roundtrip contracts"
 cd "$REPO"
-go test ./apps/manager/internal/gateway -run 'TestControlPlaneConnect(SendsPendingControlCommandAndPersistsAck|ReconnectReturnsResumeAndPendingCommands|AcceptsAgentAck)$' -count=1
-go test ./apps/agent/internal/daemon -run 'TestAgentRuntimeControlChannel(ProcessesPendingResponse|AppliesContentUpdate)$' -count=1
+go test ./apps/manager/internal/adapters/inbound/grpc/control ./apps/manager/internal/adapters/outbound/postgres/control ./apps/manager/internal/application/gateway/... -count=1
+go test ./apps/agent/internal/bootstrap/runtime -run 'TestRuntimeControlChannel(ProcessesPendingResponse|AppliesContentUpdate)$' -count=1
 echo "[e2e-control-roundtrip-local] ok"

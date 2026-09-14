@@ -35,6 +35,12 @@ def phase(summary, name):
     return value if isinstance(value, dict) else {}
 
 
+def raw_phase(summary, name):
+    phases = summary.get("raw_phases", {})
+    value = phases.get(name, {})
+    return value if isinstance(value, dict) else {}
+
+
 def marker_detail(summary, marker_name):
     for marker in summary.get("markers", []):
         if marker.get("phase") == marker_name:
@@ -115,9 +121,14 @@ def build_row(policy_dir):
         "event_watch_error_lines": count_diagnostics(summary, "event_watch_errors"),
         "signal_watch_error_lines": count_diagnostics(summary, "signal_watch_errors"),
     }
+    row.update(phase_fields("normal_activity", raw_phase(summary, "normal_activity")))
     for name in ("startup", "steady", "workload", "activity", "persistence", "overall"):
         row.update(phase_fields(name, phase(summary, name)))
     return row
+
+
+def policy_directories(out_dir):
+    return [child for child in sorted(out_dir.iterdir()) if child.is_dir() and (child / "summary.json").exists()]
 
 
 def main():
@@ -125,9 +136,8 @@ def main():
         raise SystemExit("usage: report.py <performance-endpoint-dir>")
     out_dir = Path(sys.argv[1])
     rows = []
-    for child in sorted(out_dir.iterdir()):
-        if child.is_dir() and (child / "collection-apply.json").exists():
-            rows.append(build_row(child))
+    for child in policy_directories(out_dir):
+        rows.append(build_row(child))
     deprecated_matrix_json = out_dir / "matrix.json"
     if deprecated_matrix_json.exists():
         deprecated_matrix_json.unlink()
@@ -149,7 +159,7 @@ def main():
         "event_watch_error_lines",
         "signal_watch_error_lines",
     ]
-    for name in ("startup", "steady", "workload", "activity", "persistence", "overall"):
+    for name in ("normal_activity", "startup", "steady", "workload", "activity", "persistence", "overall"):
         fields.extend(phase_fields(name, {}).keys())
     with matrix_csv.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)

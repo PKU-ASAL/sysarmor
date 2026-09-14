@@ -1,0 +1,86 @@
+package runtime
+
+import (
+	"testing"
+	"time"
+
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/config"
+	"github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/sqlite"
+	telemetryadapter "github.com/sysarmor/sysarmor-next-project/apps/agent/internal/adapters/telemetry"
+	agenthealth "github.com/sysarmor/sysarmor-next-project/packages/contracts/health"
+	controlplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/controlplane/v1"
+	dataplanev1 "github.com/sysarmor/sysarmor-next-project/packages/contracts/proto/dataplane/v1"
+)
+
+func TestRuntimeSwitchesBatchIdentityAfterEnrollment(t *testing.T) {
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	builder := telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0)
+	runner.telemetryState.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryState.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
+
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateManaged, EnrollmentID: "enroll-a", AgentID: "agent-a", TenantID: "tenant-a"}); err != nil {
+		t.Fatal(err)
+	}
+	boundary := <-runner.telemetryState.telemetryBatcher.Batches()
+	if boundary.GetHeader().GetAgentId() != "device-a" || boundary.GetHeader().GetTenantId() != "local" {
+		t.Fatalf("boundary batch identity = %+v", boundary.GetHeader())
+	}
+	managed := builder.NewBatch(time.Now())
+	if managed.GetHeader().GetAgentId() != "agent-a" || managed.GetHeader().GetTenantId() != "tenant-a" {
+		t.Fatalf("managed batch identity = %+v", managed.GetHeader())
+	}
+	if managed.GetHeader().GetEnrollmentEpoch() != "enroll-a" {
+		t.Fatalf("managed enrollment epoch = %q", managed.GetHeader().GetEnrollmentEpoch())
+	}
+	managedContext := &controlplanev1.RequestContext{AgentId: "agent-a", TenantId: "tenant-a"}
+	if err := runner.managementState.validateControlContext(managedContext); err != nil {
+		t.Fatalf("managed control context rejected: %v", err)
+	}
+	ack := runner.managementState.bindControlAckIdentity(&controlplanev1.ControlAck{AgentId: "device-a", TenantId: "local"})
+	if ack.GetAgentId() != "agent-a" || ack.GetTenantId() != "tenant-a" {
+		t.Fatalf("managed ack identity = %+v", ack)
+	}
+
+	if err := runner.managementState.reconcileManagementContext(sqlite.Enrollment{State: sqlite.StateStandalone}); err != nil {
+		t.Fatal(err)
+	}
+	standalone := builder.NewBatch(time.Now())
+	if standalone.GetHeader().GetAgentId() != "device-a" || standalone.GetHeader().GetTenantId() != "local" {
+		t.Fatalf("standalone batch identity = %+v", standalone.GetHeader())
+	}
+}
+
+func TestRuntimeKeepsPendingBatchForUnchangedIdentity(t *testing.T) {
+	runner := &Coordinator{Config: config.Config{Agent: config.AgentConfig{ID: "device-a", HostID: "host-a", TenantID: "local"}}}
+	runner.wireComponents()
+	runner.managementState.setRuntimeIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+	builder := telemetryadapter.NewBatchBuilder(&runner.telemetryState, 0)
+	runner.telemetryState.telemetryBatcher = telemetryadapter.NewBatcher(builder.NewBatch, 10, time.Hour, 2)
+	runner.telemetryState.telemetryBatcher.Add(&dataplanev1.DataBatch{Events: []*dataplanev1.EventFrame{{Sequence: 1}}})
+
+	runner.managementState.applyProjectedIdentity(runtimeIdentity{AgentID: "device-a", HostID: "host-a", TenantID: "local"})
+
+	stats := runner.telemetryState.telemetryBatcher.Stats()
+	if stats.PendingEvents != 1 || stats.QueuedBatches != 0 {
+		t.Fatalf("batcher stats = %+v, want pending event without flush", stats)
+	}
+}
+
+func TestManagedSessionUsesEnrollmentIdentityWhilePolicyPending(t *testing.T) {
+	sessionIdentity := runtimeIdentity{AgentID: "agent-a", HostID: "host-a", TenantID: "tenant-a"}
+	health := bindHealthToSession(agenthealth.AgentHealth{
+		AgentID: "device-a", HostID: "host-a", TenantID: "local",
+		PendingPolicy: agenthealth.PendingPolicyStatus{Status: "pending", Source: "managed"},
+	}, sessionIdentity)
+	if health.AgentID != "agent-a" || health.TenantID != "tenant-a" || health.HostID != "host-a" {
+		t.Fatalf("managed session health identity = %+v", health)
+	}
+	ack := bindControlAckToSession(&controlplanev1.ControlAck{
+		AgentId: "device-a", TenantId: "local", Status: "pending",
+	}, sessionIdentity)
+	if ack.GetAgentId() != "agent-a" || ack.GetTenantId() != "tenant-a" {
+		t.Fatalf("managed session ack identity = %+v", ack)
+	}
+}

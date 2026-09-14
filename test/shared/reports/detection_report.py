@@ -65,7 +65,7 @@ def parse_time(value):
 def frame_time(row):
     if not isinstance(row, dict):
         return None
-    ts = parse_time(row.get("observedAt") or row.get("observed_at"))
+    ts = parse_time(row.get("observedAt") or row.get("observed_at") or row.get("@timestamp"))
     if ts:
         return ts
     body = row.get("event") or row.get("signal") or {}
@@ -205,10 +205,9 @@ def signal_name(signal):
     return str(signal.get("name") or signal.get("ruleId") or signal.get("rule_id") or "")
 
 
-def signal_terminal(signal):
-    if bool(signal.get("terminal")):
-        return True
-    return bool(signal.get("responseIntent") or signal.get("response_intent"))
+def signal_stage(signal):
+    value = str(signal.get("stage") or "").upper()
+    return value.removeprefix("SIGNAL_STAGE_").lower()
 
 
 def signal_where(signal):
@@ -241,7 +240,7 @@ def canonical_signal(row):
     return {
         "id": signal_id(signal),
         "name": signal_name(signal),
-        "terminal": signal_terminal(signal),
+        "stage": signal_stage(signal),
         "where": signal_where(signal),
         "entities": signal_entities(signal),
         "event_refs": signal_event_refs(signal),
@@ -338,7 +337,7 @@ def signal_label_matches(label, signal):
     name = str(label.get("name") or "")
     if name and signal["name"] != name:
         return False
-    if "terminal" in label and bool(label.get("terminal")) != signal["terminal"]:
+    if "stage" in label and str(label.get("stage") or "").lower() != signal["stage"]:
         return False
     where = str(label.get("where") or "").upper()
     if where and where not in signal["where"]:
@@ -419,23 +418,23 @@ def objective_ids(labels_doc, name, label_type):
     return {str(x) for x in objective.get(key) or [] if str(x)}
 
 
-def objective_metrics(name, event_rows, signal_rows, terminal_signal_ids, signal_precision):
+def objective_metrics(name, event_rows, signal_rows, conclusion_signal_ids, signal_precision):
     event_ids = {row["label_id"] for row in event_rows if name in row["objectives"]}
     signal_ids = {row["label_id"] for row in signal_rows if name in row["objectives"]}
-    terminal_ids = {label_id for label_id in signal_ids if label_id in terminal_signal_ids}
+    conclusion_ids = {label_id for label_id in signal_ids if label_id in conclusion_signal_ids}
     event_hit = sum(1 for row in event_rows if name in row["objectives"] and row["matched"])
     signal_hit = sum(1 for row in signal_rows if name in row["objectives"] and row["matched"])
-    terminal_hit = sum(1 for row in signal_rows if name in row["objectives"] and row["matched"] and row["label_id"] in terminal_signal_ids)
+    conclusion_hit = sum(1 for row in signal_rows if name in row["objectives"] and row["matched"] and row["label_id"] in conclusion_signal_ids)
     event_recall = ratio(event_hit, len(event_ids))
     signal_recall = ratio(signal_hit, len(signal_ids))
-    terminal_recall = ratio(terminal_hit, len(terminal_ids))
+    conclusion_recall = ratio(conclusion_hit, len(conclusion_ids))
     if not event_ids and not signal_ids:
         score = ""
     else:
         score = round(
             0.45 * score_or_default(event_recall, 1.0)
             + 0.45 * score_or_default(signal_recall, 1.0)
-            + 0.05 * score_or_default(terminal_recall, 1.0)
+            + 0.05 * score_or_default(conclusion_recall, 1.0)
             + 0.05 * score_or_default(signal_precision, 1.0),
             4,
         )
@@ -443,7 +442,7 @@ def objective_metrics(name, event_rows, signal_rows, terminal_signal_ids, signal
         f"{name}_score": score,
         f"{name}_event_recall": event_recall,
         f"{name}_signal_recall": signal_recall,
-        f"{name}_terminal_recall": terminal_recall,
+        f"{name}_conclusion_recall": conclusion_recall,
         f"{name}_matched_event_labels": event_hit,
         f"{name}_required_event_labels": len(event_ids),
         f"{name}_matched_signal_labels": signal_hit,
@@ -508,7 +507,11 @@ def evaluate_case(labels_doc, events, signals, bench_summary, auxiliary_events=N
     signal_label_rows = []
     matched_signal_ids = set()
     linked_signal_count = 0
-    terminal_signal_ids = {str(label.get("id") or "") for label in signal_labels if bool(label.get("terminal"))}
+    conclusion_signal_ids = {
+        str(label.get("id") or "")
+        for label in signal_labels
+        if str(label.get("stage") or "").lower() == "conclusion"
+    }
     for label in signal_labels:
         hits = [sig for sig in observed_signals if signal_label_matches(label, sig)]
         label_id = str(label.get("id") or "")
@@ -544,11 +547,11 @@ def evaluate_case(labels_doc, events, signals, bench_summary, auxiliary_events=N
             "match_quality": quality,
         })
 
-    terminal_observed = [sig for sig in observed_signals if sig["terminal"]]
-    terminal_allowed = int(policy.get("terminal_signals_allowed", 999999))
-    terminal_fp = max(0, len(terminal_observed) - terminal_allowed)
+    conclusion_observed = [sig for sig in observed_signals if sig["stage"] == "conclusion"]
+    conclusion_allowed = int(policy.get("conclusion_signals_allowed", 999999))
+    conclusion_fp = max(0, len(conclusion_observed) - conclusion_allowed)
     if kind == "benign":
-        false_positive_signals = len([sig for sig in observed_signals if sig["name"] in forbidden_signal_names or sig["terminal"]])
+        false_positive_signals = len([sig for sig in observed_signals if sig["name"] in forbidden_signal_names or sig["stage"] == "conclusion"])
     else:
         false_positive_signals = len([sig for sig in observed_signals if sig["id"] not in matched_signal_ids])
     event_noise = len([ev for ev in observed_events if ev["id"] not in matched_event_ids])
@@ -560,12 +563,12 @@ def evaluate_case(labels_doc, events, signals, bench_summary, auxiliary_events=N
     if not event_labels:
         event_noise_ratio = ""
     signal_event_link_rate = ratio(linked_signal_count, len([row for row in signal_label_rows if row["matched"]]))
-    alert = objective_metrics("alert", event_label_rows, signal_label_rows, terminal_signal_ids, signal_precision)
-    evidence = objective_metrics("evidence", event_label_rows, signal_label_rows, terminal_signal_ids, signal_precision)
+    alert = objective_metrics("alert", event_label_rows, signal_label_rows, conclusion_signal_ids, signal_precision)
+    evidence = objective_metrics("evidence", event_label_rows, signal_label_rows, conclusion_signal_ids, signal_precision)
     if kind == "benign":
         fp_policy_score = 1.0 if false_positive_signals == 0 else 0.0
-        terminal_policy_score = 1.0 if terminal_fp == 0 else 0.0
-        alert["alert_score"] = round(0.7 * fp_policy_score + 0.3 * terminal_policy_score, 4)
+        conclusion_policy_score = 1.0 if conclusion_fp == 0 else 0.0
+        alert["alert_score"] = round(0.7 * fp_policy_score + 0.3 * conclusion_policy_score, 4)
         evidence["evidence_score"] = alert["alert_score"]
 
     workload_phase = (bench_summary or {}).get("raw_phases", {}).get("workload", {})
@@ -586,7 +589,7 @@ def evaluate_case(labels_doc, events, signals, bench_summary, auxiliary_events=N
             "event_noise_ratio": event_noise_ratio,
             "signal_event_link_rate": signal_event_link_rate,
             "false_positive_signals": false_positive_signals,
-            "terminal_false_positive_signals": terminal_fp,
+            "conclusion_false_positive_signals": conclusion_fp,
             "observed_events": len(observed_events),
             "observed_signals": len(observed_signals),
             "supplemental_referenced_events": len(supplemental_events),
@@ -655,15 +658,11 @@ def build_rows(args):
         all_signals = load_ndjson(signals_path) if signals_path else []
         bench_summary = load_json(case["bench_case_dir"] / "summary.json")
         window_start, window_end, window_name = detection_window(bench_summary)
+        events = filter_frames_by_window(all_events, window_start, window_end)
+        auxiliary_events = filter_frames_by_window(auxiliary_events, window_start, window_end)
+        signals = filter_frames_by_window(all_signals, window_start, window_end)
         if args.scope in ("manager", "full", "control"):
-            events = all_events
-            auxiliary_events = auxiliary_events
-            signals = all_signals
             window_name = "manager_query"
-        else:
-            events = filter_frames_by_window(all_events, window_start, window_end)
-            auxiliary_events = filter_frames_by_window(auxiliary_events, window_start, window_end)
-            signals = filter_frames_by_window(all_signals, window_start, window_end)
         evaluation = evaluate_case(labels_doc, events, signals, bench_summary, auxiliary_events)
         metrics = evaluation["metrics"]
         base = {
@@ -742,7 +741,7 @@ def main():
         "alert_score",
         "alert_event_recall",
         "alert_signal_recall",
-        "alert_terminal_recall",
+        "alert_conclusion_recall",
         "alert_matched_event_labels",
         "alert_required_event_labels",
         "alert_matched_signal_labels",
@@ -750,7 +749,7 @@ def main():
         "evidence_score",
         "evidence_event_recall",
         "evidence_signal_recall",
-        "evidence_terminal_recall",
+        "evidence_conclusion_recall",
         "evidence_matched_event_labels",
         "evidence_required_event_labels",
         "evidence_matched_signal_labels",
@@ -759,7 +758,7 @@ def main():
         "event_noise_ratio",
         "signal_event_link_rate",
         "false_positive_signals",
-        "terminal_false_positive_signals",
+        "conclusion_false_positive_signals",
         "observed_events",
         "observed_events_total",
         "supplemental_referenced_events",

@@ -6,7 +6,6 @@
 # node-a    10.66.0.11  受害端点（web 运行时 + CI 构建 + 假凭据）
 # mgr       10.66.0.10  manager control/query API
 # gateway   10.66.0.14  agent data/control endpoint
-# worker    10.66.0.13  Kafka ingest consumer + detection/indexing
 # postgres 10.66.0.20  control/state/audit store
 # kafka    10.66.0.21  telemetry ingest log
 # redis    10.66.0.22  hot state
@@ -92,36 +91,9 @@ services:
       SYSARMOR_GRPC_TLS_CERT: /etc/sysarmor/pki/gateway.pem
       SYSARMOR_GRPC_TLS_KEY: /etc/sysarmor/pki/gateway-key.pem
       SYSARMOR_GRPC_CLIENT_CA: /etc/sysarmor/pki/ca.pem
-      SYSARMOR_GRPC_REQUIRE_CLIENT_CERT: true
     volumes:
       - ../../../bin:/opt/sysarmor/bin:ro
       - ../../.results/container-runtime/pki:/etc/sysarmor/pki:ro
-
-  worker:
-    build:
-      context: ../../.results/container-runtime/worker
-      dockerfile: Dockerfile
-    container_name: worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
-      opensearch-init:
-        condition: service_completed_successfully
-    networks:
-      sysarmor-net:
-        ipv4_address: 10.66.0.13
-    environment:
-      SYSARMOR_POSTGRES_DSN: postgres://sysarmor:sysarmor@postgres:5432/sysarmor?sslmode=disable
-      SYSARMOR_KAFKA_BROKERS: kafka:9092
-      SYSARMOR_KAFKA_TOPIC: sysarmor.agent.databatch.raw
-      SYSARMOR_KAFKA_GROUP_ID: sysarmor-ingest-worker
-      SYSARMOR_OPENSEARCH_URL: http://10.66.0.23:9200
-      SYSARMOR_OPENSEARCH_USERNAME: admin
-      SYSARMOR_OPENSEARCH_PASSWORD: admin
 
   postgres:
     image: postgres:16-alpine

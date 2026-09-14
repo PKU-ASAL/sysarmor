@@ -13,6 +13,35 @@ PLATFORM_SOURCE_BUNDLE="$VM_DEPLOY_DIR/platform.tar"
 PLATFORM_IMAGE_BUNDLE="$PLATFORM_IMAGES_DIR/vm-images.tar"
 PLATFORM_IMAGE_MANIFEST="$PLATFORM_IMAGES_DIR/images.manifest"
 BUILD_BINARIES="${SYSARMOR_VM_BUILD_BINARIES:-1}"
+VM_SSH_TIMEOUT_SECONDS="${SYSARMOR_VM_SSH_TIMEOUT_SECONDS:-20}"
+VM_UPLOAD_TIMEOUT_SECONDS="${SYSARMOR_VM_UPLOAD_TIMEOUT_SECONDS:-900}"
+VM_REMOTE_SETUP_TIMEOUT_SECONDS="${SYSARMOR_VM_REMOTE_SETUP_TIMEOUT_SECONDS:-900}"
+
+vm_ssh() {
+  timeout --foreground "${VM_SSH_TIMEOUT_SECONDS}s" vagrant ssh "$@"
+}
+
+vm_upload() {
+  timeout --foreground "${VM_UPLOAD_TIMEOUT_SECONDS}s" vagrant upload "$@"
+}
+
+vm_remote_setup() {
+  timeout --foreground "${VM_REMOTE_SETUP_TIMEOUT_SECONDS}s" vagrant ssh "$@"
+}
+
+ensure_image() {
+  local image="$1"
+  local mirror
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    return
+  fi
+  mirror="${SYSARMOR_DOCKER_REGISTRY_MIRROR:-https://docker.1ms.run}"
+  mirror="${mirror#https://}"
+  mirror="${mirror#http://}"
+  echo ">>> 通过 Docker registry mirror 拉取 $image"
+  docker pull "${mirror%/}/$image"
+  docker tag "${mirror%/}/$image" "$image"
+}
 
 case "$ENV_NAME" in
   vm-endpoint|vm-topology) ;;
@@ -46,6 +75,7 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   fi
 
   echo ">>> 准备 VM topology deployment 源码包"
+  rm -rf "$PLATFORM_UPLOAD_DIR"
   mkdir -p "$PLATFORM_UPLOAD_DIR" "$PLATFORM_IMAGES_DIR"
   rsync -a --delete \
     --exclude '.agents/' \
@@ -56,29 +86,51 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
     --exclude '.run/' \
     --exclude '.scratchpad/' \
     --exclude '.superpowers/' \
+    --exclude '**/.venv/' \
+    --exclude '**/.pytest_cache/' \
+    --exclude '**/__pycache__/' \
+    --exclude '**/node_modules/' \
     --exclude 'dist/' \
     --exclude 'test/.results/' \
     --exclude 'test/environments/vm-topology/deploy/' \
     --exclude 'third_party/references/code/' \
     "$REPO/" "$PLATFORM_UPLOAD_DIR/"
+  if [[ -d "$REPO/dist/release" ]]; then
+    mkdir -p "$PLATFORM_UPLOAD_DIR/dist/release"
+    rsync -a --delete "$REPO/dist/release/" "$PLATFORM_UPLOAD_DIR/dist/release/"
+  else
+    echo "[start-vm][ERROR] missing dist/release artifact feed" >&2
+    exit 1
+  fi
   mkdir -p \
     "$PLATFORM_UPLOAD_DIR/deployments/vm-build/manager" \
     "$PLATFORM_UPLOAD_DIR/deployments/vm-build/gateway" \
-    "$PLATFORM_UPLOAD_DIR/deployments/vm-build/worker"
+    "$PLATFORM_UPLOAD_DIR/deployments/vm-build"
   install -m 0755 "$REPO/dist/bin/sysarmor-manager" "$PLATFORM_UPLOAD_DIR/deployments/vm-build/manager/sysarmor-manager"
   install -m 0755 "$REPO/dist/bin/sysarmor-gateway" "$PLATFORM_UPLOAD_DIR/deployments/vm-build/gateway/sysarmor-gateway"
-  install -m 0755 "$REPO/dist/bin/sysarmor-worker" "$PLATFORM_UPLOAD_DIR/deployments/vm-build/worker/sysarmor-worker"
   mkdir -p "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime"
   rsync -a --delete "$PKI_DIR/" "$PLATFORM_UPLOAD_DIR/deployments/pki/agent-plane-mtls/runtime/"
   tar -C "$PLATFORM_UPLOAD_DIR" -cf "$PLATFORM_SOURCE_BUNDLE" .
-  required_images=(ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine)
+  required_images=(ubuntu:24.04 redis:7-alpine apache/kafka:latest opensearchproject/opensearch:2.14.0 nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine)
+  for image in "${required_images[@]}"; do
+    ensure_image "$image"
+  done
+  docker compose -f "$REPO/deployments/compose.platform.yaml" build \
+    postgres kafka redis opensearch manager manager-ui gateway
+  docker build --network=host -t sysarmor-flink:1.20.2 -f "$REPO/deployments/streaming/Dockerfile" "$REPO"
+  required_images+=(
+    sysarmor-flink:1.20.2
+    sysarmor-postgres:latest
+    sysarmor-kafka:latest
+    sysarmor-redis:latest
+    sysarmor-opensearch:latest
+    sysarmor-manager:latest
+    sysarmor-manager-ui:latest
+    sysarmor-gateway:latest
+  )
   tmp_manifest="$PLATFORM_IMAGE_MANIFEST.tmp"
   : > "$tmp_manifest"
   for image in "${required_images[@]}"; do
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
-      echo "[start-vm][ERROR] required local Docker image missing: $image" >&2
-      exit 1
-    fi
     image_id="$(docker image inspect --format '{{.Id}}' "$image")"
     printf '%s %s\n' "$image" "$image_id" >> "$tmp_manifest"
   done
@@ -92,20 +144,23 @@ if [[ "$ENV_NAME" == "vm-topology" ]]; then
   fi
 
   echo ">>> 启动 VM topology platform services"
-  if ! vagrant ssh mgr -c "command -v docker >/dev/null && (docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null)" >/dev/null 2>&1; then
+  if ! vm_ssh mgr -c "command -v docker >/dev/null && (docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null)" >/dev/null 2>&1; then
     vagrant provision mgr >/dev/null
   fi
-  vagrant upload "$REPO/dist/bin/sysarmorctl" /tmp/sysarmorctl.upload mgr >/dev/null
-  vagrant upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr >/dev/null
-  vagrant upload "$PLATFORM_IMAGE_MANIFEST" /tmp/sysarmor-vm-images.manifest mgr >/dev/null
+  echo "[start-vm] uploading platform source ($(du -h "$PLATFORM_SOURCE_BUNDLE" | awk '{print $1}'))"
+  vm_upload "$REPO/dist/bin/sysarmorctl" /tmp/sysarmorctl.upload mgr >/dev/null
+  vm_upload "$PLATFORM_SOURCE_BUNDLE" /tmp/sysarmor-platform.tar mgr >/dev/null
+  vm_upload "$PLATFORM_IMAGE_MANIFEST" /tmp/sysarmor-vm-images.manifest mgr >/dev/null
   image_upload=0
-  if vagrant ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine >/dev/null" >/dev/null 2>&1; then
+  if vm_ssh mgr -c "test -f /opt/sysarmor/images/vm-images.tar && test -f /opt/sysarmor/images/images.manifest && cmp -s /tmp/sysarmor-vm-images.manifest /opt/sysarmor/images/images.manifest && sudo docker image inspect ubuntu:24.04 redis:7-alpine sysarmor-postgres:latest apache/kafka:latest sysarmor-opensearch:latest nginx:alpine node:24-alpine rustfs/rustfs:1.0.0-alpha.84 flink:1.20.2-scala_2.12-java17 python:3.12-alpine sysarmor-flink:1.20.2 sysarmor-kafka:latest sysarmor-redis:latest sysarmor-manager:latest sysarmor-manager-ui:latest sysarmor-gateway:latest >/dev/null" >/dev/null 2>&1; then
     echo ">>> 复用 mgr VM image bundle"
   else
     image_upload=1
-    vagrant upload "$PLATFORM_IMAGE_BUNDLE" /tmp/sysarmor-vm-images.tar mgr >/dev/null
+    echo "[start-vm] uploading VM image bundle ($(du -h "$PLATFORM_IMAGE_BUNDLE" | awk '{print $1}'))"
+    vm_upload "$PLATFORM_IMAGE_BUNDLE" /tmp/sysarmor-vm-images.tar mgr >/dev/null
   fi
-  vagrant ssh mgr -c "
+  echo "[start-vm] loading images and starting Compose (image_upload=$image_upload)"
+  vm_remote_setup mgr -c "
 set -euo pipefail
 IMAGE_UPLOAD=$image_upload
 sudo install -m 0755 /tmp/sysarmorctl.upload /tmp/sysarmorctl
@@ -135,11 +190,12 @@ else
   COMPOSE='docker-compose'
 fi
 sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml down -v --remove-orphans >/tmp/sysarmor-compose-down.log 2>&1 || true
-sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml up -d --build >/tmp/sysarmor-compose-up.log 2>&1
+sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml up -d --no-build >/tmp/sysarmor-compose-up.log 2>&1
 " >/dev/null
+  echo "[start-vm] waiting for manager/gateway health (timeout=120s)"
   ready=0
   for _ in $(seq 1 120); do
-    if vagrant ssh mgr -c "curl -sf http://127.0.0.1:9443/healthz >/dev/null && curl -sf http://127.0.0.1:9445/healthz | grep -F '\"mtls\":true' >/dev/null" >/dev/null 2>&1; then
+    if vm_ssh mgr -c "curl -sf http://127.0.0.1:9443/healthz >/dev/null && curl -sf http://127.0.0.1:9445/healthz | grep -F '\"mtls\":true' >/dev/null" >/dev/null 2>&1; then
       ready=1
       break
     fi
@@ -147,12 +203,25 @@ sudo \$COMPOSE -f deployments/compose.platform.yaml -f deployments/compose.vm-to
   done
   if [[ "$ready" != "1" ]]; then
     echo "[start-vm][ERROR] manager/gateway health did not become ready" >&2
-    vagrant ssh mgr -c "cat /tmp/sysarmor-docker-load.log 2>/dev/null || true" >&2 2>/dev/null || true
-    vagrant ssh mgr -c "cat /tmp/sysarmor-compose-up.log 2>/dev/null || true" >&2 2>/dev/null || true
-    vagrant ssh mgr -c "cd /opt/sysarmor/platform && if docker compose version >/dev/null 2>&1; then sudo docker compose -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps; else sudo docker-compose -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps; fi || true" >&2 2>/dev/null || true
-    vagrant ssh mgr -c "sudo docker logs sysarmor-manager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
-    vagrant ssh mgr -c "sudo docker logs sysarmor-gateway --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
-    vagrant ssh mgr -c "sudo docker logs sysarmor-worker --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
+    vm_ssh mgr -c "cat /tmp/sysarmor-docker-load.log 2>/dev/null || true" >&2 2>/dev/null || true
+    vm_ssh mgr -c "cat /tmp/sysarmor-compose-up.log 2>/dev/null || true" >&2 2>/dev/null || true
+    vm_ssh mgr -c "cd /opt/sysarmor/platform && if docker compose version >/dev/null 2>&1; then sudo docker compose -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps; else sudo docker-compose -f deployments/compose.platform.yaml -f deployments/compose.vm-topology.yaml ps; fi || true" >&2 2>/dev/null || true
+    vm_ssh mgr -c "sudo docker logs sysarmor-manager --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
+    vm_ssh mgr -c "sudo docker logs sysarmor-gateway --tail 120 2>/dev/null || true" >&2 2>/dev/null || true
+    exit 1
+  fi
+  echo "[start-vm] waiting for Flink jobs (timeout=120s)"
+  flink_ready=0
+  for _ in $(seq 1 120); do
+    if vm_ssh mgr -c "curl -sf http://127.0.0.1:18081/jobs/overview | python3 -c 'import json,sys; jobs=json.load(sys.stdin).get(\"jobs\", []); required={\"sysarmor-normalize-v1\",\"sysarmor-detection-v1\",\"sysarmor-projection-v1\"}; running={item.get(\"name\") for item in jobs if item.get(\"state\")==\"RUNNING\"}; raise SystemExit(0 if required <= running else 1)'" >/dev/null 2>&1; then
+      flink_ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$flink_ready" != "1" ]]; then
+    echo "[start-vm][ERROR] Flink jobs did not become RUNNING" >&2
+    vm_ssh mgr -c "curl -s http://127.0.0.1:18081/jobs/overview || true; sudo docker logs sysarmor-flink-jobmanager --tail 160 2>/dev/null || true" >&2 2>/dev/null || true
     exit 1
   fi
 fi

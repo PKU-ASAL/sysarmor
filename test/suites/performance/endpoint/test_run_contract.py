@@ -40,13 +40,31 @@ class PerformanceEndpointPolicyFlowTest(unittest.TestCase):
         recorder = self.script.index('recorder "$rec_run_id" "$rec_labels" start', loop)
 
         self.assertLess(reset, recorder)
-        self.assertIn("--json policy current", self.script)
-        self.assertIn('.policyId == "standalone-default" and (.version | tostring) == "1"', self.script)
+        self.assertIn('source "$ROOT/shared/agent/policy_runtime.sh"', self.script)
 
     def test_stops_active_recorder_when_the_script_exits_early(self):
         self.assertIn("trap cleanup_active_recorder EXIT", self.script)
         self.assertIn('ACTIVE_REC_RUN_ID="$rec_run_id"', self.script)
         self.assertIn('ACTIVE_REC_RUN_ID=""', self.script)
+
+    def test_generates_human_readable_report_after_matrix(self):
+        matrix = self.script.index('python3 "$HERE/report.py" "$OUT_DIR"')
+        human = self.script.index('human_report.py', matrix)
+        output = self.script.index('$OUT_DIR/report.md', human)
+        self.assertLess(matrix, human)
+        self.assertIn('[performance-endpoint][WARN] human report generation failed', self.script)
+        self.assertGreater(output, human)
+
+    def test_serial_activity_finishes_normal_before_starting_scenario(self):
+        script = self.script
+        normal_done = script.index("normal_activity_done")
+        scenario_start = script.index("scenario_start")
+        self.assertLess(normal_done, scenario_start)
+        self.assertIn('ACTIVITY_MODE="${SYSARMOR_BENCH_ACTIVITY_MODE:-parallel}"', script)
+
+    def test_activity_mode_and_normal_markers_are_recorded(self):
+        self.assertIn('"activity_mode": "$ACTIVITY_MODE"', self.script)
+        self.assertIn("normal_activity_start", self.script)
 
 
 if __name__ == "__main__":

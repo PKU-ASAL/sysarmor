@@ -51,8 +51,9 @@
               }
             },
             "output": {
-              "terminal": false
-            }
+              "stage": "candidate"
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "download_by_lolbin",
@@ -80,7 +81,8 @@
               "ioc": {
                 "required": ["ioc:c2-download-port-feed"]
               }
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "payload_dropped",
@@ -109,7 +111,8 @@
               "context": {
                 "required": ["ctx:payload-path-prefixes"]
               }
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "credential_file_read",
@@ -123,6 +126,10 @@
                     {"condition": {"field": "file.path", "op": "prefix", "ref": "ctx:credential-path-prefixes"}},
                     {"condition": {"field": "process.binary", "op": "not_in", "ref": "ctx:trusted-admin-binaries"}},
                     {"not": {"any": [
+                      {"all": [
+                        {"condition": {"field": "process.binary", "op": "eq", "value": "/usr/bin/sudo"}},
+                        {"condition": {"field": "file.path", "op": "prefix", "value": "/etc/sudoers"}}
+                      ]},
                       {"all": [
                         {"condition": {"field": "process.binary", "op": "eq", "value": "/usr/bin/sudo"}},
                         {"condition": {"field": "process.sudo_command", "op": "eq", "value": "sysarmorctl"}}
@@ -150,7 +157,8 @@
             "suppress": {
               "within": "5m",
               "by": ["lineage_id", "process.binary", "file.path"]
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "account_database_read",
@@ -185,7 +193,8 @@
             "suppress": {
               "within": "5m",
               "by": ["lineage_id", "process.binary", "file.path"]
-            }
+            },
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "reverse_shell_pattern",
@@ -215,11 +224,11 @@
               }
             },
             "output": {
-			  "terminal": true,
+			  "stage": "conclusion",
               "response_intent": {
                 "action": "collect_evidence",
                 "confidence": 80,
-                "reason": "terminal endpoint reverse shell pattern"
+                "reason": "endpoint reverse shell rule conclusion"
               }
             }
           },
@@ -278,7 +287,7 @@
                 "required": ["ioc:c2-control-port-feed"]
               }
             },
-            "output": {"terminal": false}
+            "output": {"stage": "candidate"}
           },
           {
             "rule_id": "payload_lifecycle",
@@ -343,7 +352,7 @@
                 "required": ["ioc:c2-control-port-feed"]
               }
             },
-            "output": {"terminal": false}
+            "output": {"stage": "candidate"}
           }
         ]
       }

@@ -1,6 +1,6 @@
 # 统一策略指南
 
-本文解释如何使用统一策略协调 collection、detection、telemetry 和 response。它关注决策方法与变更流程；字段、默认值和 Schema 以 [Configuration Reference](../reference/configuration.md) 为准。
+本文解释如何使用统一策略协调 collection、detection、telemetry 和 response。核心对象与 Signal 分类见[安全数据模型](../concepts/security-data-model.md)；字段、默认值和 Schema 以[配置参考](../reference/configuration.md)为准。
 
 ## 为什么必须统一
 
@@ -17,6 +17,20 @@
 
 单独调整其中一层容易产生不可解释状态。例如扩大 detection 规则却不采集所需行为不会增加可见性；提高 collection 粒度却不调整 telemetry 预算可能只会增加本地丢弃；生成 response intent 并不代表端点被授权执行动作。
 
+## 保护模式与策略解析
+
+Manager 使用 `EndpointProtectionMode` 管理一组完整策略，默认值是 `rule-only`。它位于四层 Policy 之上，只决定如何解析 Bundle，不进入 Agent 运行时：
+
+| Mode | Detection | Collection | 状态 |
+|---|---|---|---|
+| `rule-only` | 至少一个启用的 Ruleset，不允许模型引用 | Bundle 明确声明的规则采集面 | 默认、生产 |
+| `learning-only` | 只允许版本化 `learning_model` | 自动并入完整因果骨架 | 实验、observe-only |
+| `hybrid` | Ruleset 与 `learning_model` 同时存在 | 规则采集面与因果骨架并集 | 生产 |
+
+正式链路是 `EndpointProtectionMode -> Policy Resolver -> Versioned Policy Bundle -> 四层 EndpointPolicy`。Manager 保存的新 Bundle 必须显式包含 `protection_mode`、`collection`、`detection`、`telemetry` 和 `response_policy`；缺字段、能力与 Mode 不一致或模型身份不完整都会拒绝保存。系统不推断旧格式，也不使用 `minimal/balanced/deep` 等名称映射保护模式。
+
+Resolver 生成的下发文档只包含 `policy_id`、`version` 和四层 Endpoint Policy。Agent 不知道 Mode；Detection 未携带 `learning_model` 时，即使本机预装了模型也不会评分。携带模型引用时，ref、version 和 digest 必须与已验证 Bundle 完全一致，否则应用失败并保留上一有效策略。
+
 ## 策略生命周期
 
 ```text
@@ -30,7 +44,7 @@
   -> 根据效果与资源指标继续调整
 ```
 
-端点策略要求非空 `policy_id`、正整数 `version`，并同时包含四个部分。顶层字段采用严格解析；Collection 子结构当前仍可能忽略未知字段，因此发布前必须使用 explain/dry-run 验证，不能把“未报错”当成字段已经生效。更新只有在完整策略可解析、可校验并可编译时才能替换有效策略；失败时保留上一有效版本。
+端点策略要求非空 `policy_id`、正整数 `version`，并同时包含四个部分。Manager Bundle 及 Detection 顶层采用严格解析；Collection 子结构当前仍可能忽略未知字段，因此发布前必须使用 explain/dry-run 验证，不能把“未报错”当成字段已经生效。更新只有在完整策略可解析、可校验并可编译时才能替换有效策略；失败时保留上一有效版本。
 
 发布新策略时应由调用方递增版本，并记录明确、可审计的变更原因；Manager 和 Agent 当前不会强制拒绝降级版本。修改 collection 或 response 时尤其应先在有限作用域验证，不能依赖覆盖发布来掩盖失败。
 
@@ -56,7 +70,7 @@ Signal 是结构化行为信号，不等同于告警。规则应明确：
 - 输入需要哪些 Event、Signal、实体或内容版本；
 - 输出 Signal 的稳定身份、名称、风险、严重度和置信度；
 - Event、上游 Signal、实体、lineage 和 Evidence 引用如何保留；
-- 规则是否为 terminal、是否允许跨 lineage，以及何时只观察不响应；
+- 输出是 Candidate 还是 Conclusion、检测器类型、是否允许跨 lineage，以及何时只观察不响应；
 - 重放同一输入时是否生成同一语义结果。
 
 规则内容与策略分离：策略引用有版本的 ruleset、context 和 IOC；规则覆盖只表达启停、模式、严重度、作用域、响应意图和参数等有意差异。这样可以审计“使用了什么内容”与“如何应用内容”。
@@ -94,7 +108,7 @@ Response Policy 定义允许的动作和模式。Signal 可以携带 response in
 
 策略不得只靠文件位置表达作用域。Manager 分配记录绑定 tenant、Agent 或选择器、策略 ID 和版本；Agent 实际应用的版本必须可查询。Collection 内部还可以限定运行目标，例如 namespace 等 sensor 支持的作用域。
 
-平台云侧关联另有分析作用域：当前使用 `case_type`、`scenario`、`workload` 标签中的有效值限定历史关联。它与策略分配作用域用途不同：前者防止无关数据被拼接，后者决定谁接收策略。两者都不能跨 tenant。
+平台云侧关联另有分析作用域：以 Agent 身份为锚，可选由 `scenario`、`workload` 标签细分。它与策略分配作用域用途不同：前者防止无关数据被拼接，后者决定谁接收策略。两者都不能跨 tenant。
 
 ## 推荐调优流程
 
@@ -141,4 +155,4 @@ Response Policy 定义允许的动作和模式。Signal 可以携带 response in
 7. 哪个版本可回退，response 如何撤销或恢复？
 8. Agent 实际应用的版本是否与分配一致？
 
-测试方法见[测试指南](../development/testing.md)，系统运行边界见[系统架构](../architecture.md)。
+测试方法见[测试指南](../contributing/testing.md)，系统运行边界见[系统架构](../architecture/overview.md)。

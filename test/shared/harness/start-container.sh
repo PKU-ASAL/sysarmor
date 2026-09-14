@@ -42,8 +42,6 @@ EOF
 
 prepare_runtime_image manager sysarmor-manager 'CMD ["--listen", "0.0.0.0:9443"]'
 prepare_runtime_image gateway sysarmor-gateway 'CMD ["--listen", "0.0.0.0:9444", "--health-listen", "0.0.0.0:9445"]'
-prepare_runtime_image worker sysarmor-worker ''
-
 required_images=(apache/kafka:latest sysarmor-opensearch:latest)
 for image in "${required_images[@]}"; do
   if ! docker image inspect "$image" >/dev/null 2>&1; then
@@ -53,7 +51,7 @@ for image in "${required_images[@]}"; do
 done
 
 cd "$ROOT/environments/container"
-docker compose up -d --build --force-recreate postgres kafka redis opensearch mgr gateway worker
+docker compose up -d --build --force-recreate postgres kafka redis opensearch mgr gateway
 docker compose up -d --build --force-recreate attacker node-a
 
 echo ">>> 等待 manager health"

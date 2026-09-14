@@ -12,21 +12,22 @@ ENV       ?= container
 SCENARIO  ?= apt-fileless-c2
 DUR       ?= 30
 RUN_ID    ?= manual
-SYSARMOR_BENCH_PROFILE ?= quick
+SYSARMOR_BENCH_PROFILE ?= $(if $(PROFILE),$(PROFILE),quick)
 SYSARMOR_BENCH_WORKLOAD ?= business-normal
 SYSARMOR_BENCH_SCENARIO ?=
 SYSARMOR_BENCH_POLICIES ?=
 EVALUATION_SCOPE ?= local
-TETRAGON_ARCHIVE ?= $(abspath $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(firstword $(wildcard ../.cache/tetragon-v1.7.0-amd64.tar.gz ../.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz))))
+PERFORMANCE_TARGET_learning := performance-learning
+TETRAGON_ARCHIVE ?= $(abspath $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(wildcard ../.cache/tetragon-v1.7.0-amd64.tar.gz)))
 export SYSARMOR_TETRAGON_ARCHIVE := $(TETRAGON_ARCHIVE)
 
 .DEFAULT_GOAL := help
 
 .PHONY: doctor up down up-container up-vm-endpoint up-vm-topology up-all down-container down-vm-endpoint down-vm-topology down-all provision status clean help
-.PHONY: test-unit functional-core
+.PHONY: test-unit test-layered-architecture test-documentation-contract functional-core
 .PHONY: functional-endpoint functional-endpoint-local functional-endpoint-container functional-platform functional-platform-full functional-topology
 .PHONY: detection-topology detection-report distribution-package distribution-published release-candidate release-published
-.PHONY: performance-endpoint performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
+.PHONY: performance-endpoint performance-learning performance-local-store performance-platform performance-modules performance-rule-engine performance-matcher
 .PHONY: diag-endpoint recorder-start recorder-mark recorder-stop recorder-report
 .PHONY: capture-endpoint capture-topology report
 
@@ -72,7 +73,7 @@ doctor:
 	else \
 		echo "[doctor][ERROR] 未找到 Tetragon archive" >&2; \
 		echo "  修复: 设置 SYSARMOR_TETRAGON_ARCHIVE=/path/to/tetragon-v1.7.0-amd64.tar.gz" >&2; \
-		echo "  或放置到 .cache/ 或 .scratchpad/.cache/ 目录" >&2; \
+		echo "  或放置到 .cache/ 目录" >&2; \
 		failed=1; \
 	fi; \
 	if [ "$$failed" -ne 0 ]; then exit 1; fi; \
@@ -124,8 +125,14 @@ clean:
 
 # Unit and functional suites --------------------------------------------------
 
-test-unit:
+test-unit: test-layered-architecture test-documentation-contract
 	cd .. && go test ./...
+
+test-layered-architecture:
+	cd .. && python3 -m unittest test.contracts.test_layered_architecture -v
+
+test-documentation-contract:
+	cd .. && python3 -m unittest test.contracts.test_documentation -v
 
 functional-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint bash suites/functional/endpoint/e2e-real-tetragon-owned-vm.sh
@@ -168,6 +175,9 @@ capture-topology: doctor
 
 performance-endpoint: doctor
 	ENV=vm-endpoint SYSARMOR_VM_ENV=vm-endpoint SYSARMOR_BENCH_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_BENCH_WORKLOAD=$(SYSARMOR_BENCH_WORKLOAD) SYSARMOR_BENCH_SCENARIO=$(SYSARMOR_BENCH_SCENARIO) SYSARMOR_BENCH_POLICIES="$(SYSARMOR_BENCH_POLICIES)" bash suites/performance/endpoint/run.sh
+
+performance-learning: doctor
+	SYSARMOR_LEARNING_PROFILE=$(SYSARMOR_BENCH_PROFILE) SYSARMOR_LEARNING_TRAINING_DATA="$(if $(wildcard $(TRAINING_DATA)),$(abspath $(TRAINING_DATA)),$(abspath ../$(TRAINING_DATA)))" SYSARMOR_LEARNING_CALIBRATION_DATA="$(if $(wildcard $(CALIBRATION_DATA)),$(abspath $(CALIBRATION_DATA)),$(abspath ../$(CALIBRATION_DATA)))" bash suites/performance/learning/run.sh
 
 performance-local-store:
 	bash suites/performance/endpoint/local-store.sh
@@ -230,7 +240,7 @@ help:
 	@echo "  make test-unit"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection"
-	@echo "  make test-performance DOMAIN=endpoint|platform|modules|all PROFILE=medium"
+	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"
 	@echo "  make test-distribution SOURCE=local|published URL=https://..."
 	@echo "  make test-release STAGE=pre-publish|post-publish URL=https://..."
 	@echo "  make test-doctor"

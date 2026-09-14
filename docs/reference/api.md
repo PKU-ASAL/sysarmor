@@ -1,12 +1,12 @@
 # API 与协议参考
 
-本文说明 SysArmor 当前 API 边界、端点分类和版本演进规则。精确请求/响应字段以 `apps/manager/internal/api/` 的 handler 与测试、`packages/contracts/proto/` 的 protobuf 为准。
+本文说明 SysArmor 当前 API 边界、端点分类和版本演进规则。精确请求/响应字段以 `apps/manager/internal/adapters/inbound/http/manager/` 的 handler 与测试、`packages/contracts/proto/` 的 protobuf 为准。
 
 ## 信任边界
 
 ```text
 Browser -> same-origin Manager Console BFF -> Manager HTTP API
-Agent -> mTLS Gateway gRPC -> Kafka -> Worker
+Agent -> mTLS Gateway gRPC -> Kafka -> Flink Normalize/Detection/Projection
 sysarmorctl -> local Agent Unix gRPC 或 Manager HTTP API
 ```
 
@@ -49,6 +49,34 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 | `/api/v1/response-approvals` | `POST` | 响应审批 |
 | `/api/v1/evidence-pullbacks` | `GET`、`POST` | Evidence 回拉请求 |
 
+`POST /api/v1/policies` 接收 Manager 的 Versioned Policy Bundle，不接收 Agent 下发文档。
+请求必须显式包含保护模式和完整四层策略：
+
+```json
+{
+  "policy_id": "endpoint-default",
+  "version": 2,
+  "protection_mode": "hybrid",
+  "collection": {"behaviors": ["process.exec", "file.write", "network.connect"]},
+  "detection": {
+    "rulesets": [{"ref": "ruleset:cep-endpoint", "version": "v1", "enabled": true}],
+    "learning_model": {
+      "ref": "model:process-profile-v2",
+      "version": "2",
+      "digest": "sha256:0123456789abcdef"
+    }
+  },
+  "telemetry": {"max_batch_items": 256, "max_batch_bytes": 262144, "flush_interval": "1s"},
+  "response_policy": {"allowed_actions": ["collect", "noop"], "allowed_modes": ["observe"]}
+}
+```
+
+`protection_mode` 只允许 `rule-only`、`learning-only`、`hybrid`，默认产品策略是
+`rule-only`，但 API 请求不得省略字段。Resolver 校验模式与 Detection 能力，Learning 模式
+补齐因果 Collection；`learning-only` 必须保持 observe-only。下发给 Agent 的文档只包含
+`policy_id`、`version`、`collection`、`detection`、`telemetry`、`response`，不包含
+`protection_mode`。缺层次、能力冲突或模型身份不完整返回 `400`，不会推断旧格式。
+
 ### 状态与数据接口
 
 | Method | Path | 用途 |
@@ -65,7 +93,7 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 | `GET` | `/api/v1/rarity-baseline` | rarity 基线 |
 | `GET` | `/api/v1/data-resume` | Agent 上传续传 cursor |
 
-测试和维护接口 `/api/v1/reset`、`/api/v1/recompute` 不应作为稳定产品集成契约。
+旧测试和维护接口 `/api/v1/reset`、`/api/v1/recompute` 已移除，不属于产品集成契约。
 
 创建 enrollment 会同时返回手工注册 token 和 `install_url`。`install_url` 中的 bootstrap ticket 只能读取一次；兑换时 Manager 轮换 enrollment token，因此创建响应中的手工 token 随即失效。安装脚本通过 `Authorization: Enrollment <token>` 获取受保护 artifact，并用 token 与 CSR 请求证书。相同 token 与相同公钥的证书请求幂等返回原证书，不同公钥返回冲突。tenant、Agent ID、Gateway 和 TLS server name 只取 Manager enrollment，CSR subject 不参与授权。
 
@@ -86,18 +114,22 @@ Manager 默认监听容器端口 `9443`，本地 Compose 映射为 `19443`。除
 
 本地 CLI 默认连接 `/run/sysarmor/agent/control.sock`。Gateway 健康 HTTP 默认监听 `9445`，提供 `/healthz` 与 `/metrics`。
 
+`HealthResponse.detection.learning.profiles` 同时报告 ProcessProfile 生命周期和 Learning 语义调度累计计数。调度字段为 `profile_observations`、`feature_updates`、`learning_score_calls`、`lifecycle_only_observations` 和 `suppressed_checkpoints`；它们分别表示进入 Learning 观察的 Event、产生新模型特征的观察、实际模型评分、仅改变进程生命周期的观察，以及因没有新评分状态而被抑制的检查点。字段号固定为 14–18，零值表示当前进程生命周期内尚未发生，不表示指标不可用。
+
 ## Protobuf 包
 
 | 包 | 主要契约 |
 |---|---|
 | `sysarmor.event.v1` | 规范化 `CanonicalEvent` |
-| `sysarmor.signal.v1` | `Signal`、Entity、Evidence、Response intent |
+| `sysarmor.signal.v1` | `Signal`、Stage、DetectorKind、Where、Entity、Evidence、Response intent |
 | `sysarmor.incident.v1` | Incident、Evidence 子图和 converge trace |
 | `sysarmor.dataplane.v1` | `DataBatch`、序列、drop/parse delta 和 ack |
 | `sysarmor.controlplane.v1` | Agent 本地及远程控制帧 |
 | `sysarmor.policy.v1` | Policy wire model |
 
 当前数据面 `schema_version` 为 `sysarmor.dataplane/v1`；新 producer 必须在每个 `DataBatch` 中设置。
+
+Signal 的概念语义由[安全数据模型](../concepts/security-data-model.md)定义。生产输入必须明确设置 Stage、DetectorKind 和 Where；`UNSPECIFIED` 由可信边界拒绝。云侧 Nodlink 已生成 Graph Conclusion；完整论文级路径排序和阶段推理仍是后续能力。
 
 ## 版本演进
 
@@ -116,7 +148,7 @@ Protobuf 规则：
 5. 删除字段、改变类型/含义、把 optional 变 required 时提升 major。
 6. 仅通过 `make api` 更新生成的 Go 文件。
 
-Worker 不以“protobuf 能解码”替代兼容性检查。空或不支持的版本是永久错误 `unsupported_schema_version`；只有 DLQ 写入成功后才提交源 Kafka offset。
+Flink Job 不以“protobuf 能解码”替代兼容性检查。空或不支持的版本是永久错误 `unsupported_schema_version`；只有 DLQ 写入成功后才提交源 Kafka offset。
 
 未来 v2 的顺序必须是：先部署同时接受 v1/v2 的 consumer，再部署 v2 producer；等待 Kafka 保留窗口内 v1 流量归零，最后在后续版本移除 v1。
 

@@ -1,0 +1,9 @@
+# name	partitions	replication-factor	cleanup.policy	retention.ms
+sysarmor.control.policy.endpoint.published.v1	3	1	compact	-1
+sysarmor.data.telemetry.endpoint.batch.ingress.v1	6	1	delete	604800000
+sysarmor.data.telemetry.record.normalized.v1	6	1	delete	259200000
+sysarmor.data.detection.artifact.analyzed.v1	6	1	delete	604800000
+sysarmor.data.detection.record.late.v1	3	1	delete	604800000
+sysarmor.data.projection.document.projected.v1	3	1	delete	259200000
+sysarmor.data.pipeline.failure.rejected.v1	3	1	delete	2592000000
+sysarmor.data.detection.metrics.v1	3	1	delete	2592000000

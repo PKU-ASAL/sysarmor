@@ -1,0 +1,26 @@
+name: Architecture Contract
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  layered-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify layered architecture
+        run: python3 -m unittest test.contracts.test_layered_architecture -v
+      - name: Verify documentation contract
+        run: python3 -m unittest test.contracts.test_documentation -v

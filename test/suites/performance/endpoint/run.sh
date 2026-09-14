@@ -8,23 +8,81 @@ VM_ENV="${SYSARMOR_VM_ENV:-${ENV:-vm-endpoint}}"
 ENVDIR="$(cd "$ROOT/environments/$VM_ENV" && pwd)"
 RESULTS="$ROOT/.results"
 RUN_ID="${SYSARMOR_BENCH_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+export SYSARMOR_BENCH_POLICY_SUFFIX="${SYSARMOR_BENCH_POLICY_SUFFIX:-${RUN_ID:0:24}}"
 OUT_DIR="$RESULTS/performance-endpoint/$RUN_ID"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/policy_runtime.sh"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/managed_enrollment.sh"
+# shellcheck source=/dev/null
+source "$ROOT/shared/agent/managed_policy.sh"
+# shellcheck source=/dev/null
+source "$ROOT/shared/detection/runtime.sh"
 BENCH_PROFILE="${SYSARMOR_BENCH_PROFILE:-quick}"
 AGENT_SOCK="${SYSARMOR_AGENT_SOCK:-/run/sysarmor/agent/control.sock}"
+AGENT_MODE="${SYSARMOR_BENCH_AGENT_MODE:-standalone}"
 AGENT_ID=""
 TENANT_ID=""
+PKI_DIR="${SYSARMOR_VM_MTLS_DIR:-$RESULTS/pki/$VM_ENV}"
+case "$AGENT_MODE" in
+  standalone|managed) ;;
+  *)
+    echo "[performance-endpoint][ERROR] unsupported Agent mode: $AGENT_MODE" >&2
+    exit 1
+    ;;
+esac
 if [[ -v SYSARMOR_BENCH_WORKLOAD ]]; then
   WORKLOAD="$SYSARMOR_BENCH_WORKLOAD"
 else
   WORKLOAD="${DIAG_SCENARIO:-edr-activity-heavy}"
 fi
 SCENARIO="${SYSARMOR_BENCH_SCENARIO:-}"
+ACTIVITY_MODE="${SYSARMOR_BENCH_ACTIVITY_MODE:-parallel}"
 VARIANT="${SYSARMOR_BENCH_VARIANT:-}"
+LEARNING_MODEL="${SYSARMOR_BENCH_LEARNING_MODEL:-}"
+LEARNING_TRUST_KEYS="${SYSARMOR_BENCH_LEARNING_TRUST_KEYS:-}"
+PROTECTION_MODE="${SYSARMOR_BENCH_PROTECTION_MODE:-rule-only}"
 MATCHER_STRATEGY="${SYSARMOR_BENCH_MATCHER_STRATEGY:-${SYSARMOR_TEST_MATCHER_STRATEGY:-}}"
 POLICIES_RAW="${SYSARMOR_BENCH_POLICIES:-${POLICIES:-test/data/policies/collection-minimal.json test/data/policies/collection-balanced.json test/data/policies/collection-deep.json}}"
 CONTENT_DIR="${SYSARMOR_BENCH_CONTENT_DIR:-test/data/content}"
 DETECTION_POLICY="${SYSARMOR_BENCH_DETECTION_POLICY:-test/data/policies/detection-cep-endpoint.json}"
 APPLY_DETECTION="${SYSARMOR_BENCH_APPLY_DETECTION:-1}"
+if [[ -n "$LEARNING_MODEL" || -n "$LEARNING_TRUST_KEYS" ]]; then
+  if [[ -z "$LEARNING_MODEL" || -z "$LEARNING_TRUST_KEYS" ]]; then
+    echo "[performance-endpoint][ERROR] Learning model and trust keys must be configured together" >&2
+    exit 1
+  fi
+  [[ -f "$LEARNING_MODEL" ]] || {
+    echo "[performance-endpoint][ERROR] Learning model not found: $LEARNING_MODEL" >&2
+    exit 1
+  }
+  LEARNING_MODEL="$(cd "$(dirname "$LEARNING_MODEL")" && pwd)/$(basename "$LEARNING_MODEL")"
+fi
+case "$PROTECTION_MODE" in
+  rule-only)
+    if [[ -n "$LEARNING_MODEL" ]]; then
+      echo "[performance-endpoint][ERROR] rule-only mode cannot load a Learning model" >&2
+      exit 1
+    fi
+    ;;
+  learning-only|hybrid)
+    if [[ -z "$LEARNING_MODEL" || -z "$LEARNING_TRUST_KEYS" ]]; then
+      echo "[performance-endpoint][ERROR] $PROTECTION_MODE mode requires a Learning model and trust keys" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "[performance-endpoint][ERROR] unsupported protection mode: $PROTECTION_MODE" >&2
+    exit 1
+    ;;
+esac
+case "$ACTIVITY_MODE" in
+  parallel|serial) ;;
+  *)
+    echo "[performance-endpoint][ERROR] unsupported activity mode: $ACTIVITY_MODE" >&2
+    exit 1
+    ;;
+esac
 case "$BENCH_PROFILE" in
   quick|medium|long)
     # Profiles provide defaults only; SYSARMOR_BENCH_* env vars may override them.
@@ -48,6 +106,9 @@ WORKLOAD_WARMUP_SECONDS="${SYSARMOR_BENCH_WORKLOAD_WARMUP_SECONDS:-2}"
 WORKLOAD_REPEAT="${SYSARMOR_BENCH_WORKLOAD_REPEAT:-0}"
 SCENARIO_OBSERVE_SECONDS="${SYSARMOR_BENCH_SCENARIO_OBSERVE_SECONDS:-5}"
 COOLDOWN_SECONDS="${SYSARMOR_BENCH_COOLDOWN_SECONDS:-5}"
+MANAGER_ANALYSIS_WAIT_SECONDS="${SYSARMOR_BENCH_MANAGER_ANALYSIS_WAIT_SECONDS:-180}"
+CANDIDATE_COHORT_WAIT_SECONDS="${SYSARMOR_BENCH_CANDIDATE_COHORT_WAIT_SECONDS:-900}"
+export SYSARMOR_JWT_TTL_SECONDS="${SYSARMOR_JWT_TTL_SECONDS:-3600}"
 WORKLOAD_C2="${SYSARMOR_DIAG_WORKLOAD_C2:-10.66.0.99}"
 PROFILE_ENABLED="${SYSARMOR_BENCH_PROFILE_AGENT:-${SYSARMOR_BENCH_PROFILE_AGENT_CPU:-0}}"
 PROFILE_TYPES="${SYSARMOR_BENCH_PROFILE_TYPES:-cpu heap allocs goroutine runtime}"
@@ -58,6 +119,11 @@ RECORDER_DURATION_SECONDS="${SYSARMOR_BENCH_RECORDER_DURATION_SECONDS:-$((HOST_B
 SYNC_VM_AGENT="${SYSARMOR_BENCH_SYNC_VM_AGENT:-1}"
 BUILD_BINARIES="${SYSARMOR_BENCH_BUILD_BINARIES:-1}"
 VM_FRESH="${SYSARMOR_BENCH_VM_FRESH:-1}"
+REUSE_MANAGED="${SYSARMOR_BENCH_REUSE_MANAGED:-0}"
+if [[ "$AGENT_MODE" == "managed" && "$VM_FRESH" != "1" && "$REUSE_MANAGED" != "1" ]]; then
+  echo "[performance-endpoint][ERROR] managed benchmark requires fresh VM/enrollment; set SYSARMOR_BENCH_REUSE_MANAGED=1 to override" >&2
+  exit 2
+fi
 VM_LIFECYCLE="reuse"
 if [[ "$VM_FRESH" == "1" ]]; then
   VM_LIFECYCLE="fresh"
@@ -73,6 +139,10 @@ cat >"$OUT_DIR/manifest.json" <<EOF
   "run_id": "$RUN_ID",
   "workload": "$WORKLOAD",
   "scenario": "$SCENARIO",
+  "activity_mode": "$ACTIVITY_MODE",
+  "agent_mode": "$AGENT_MODE",
+  "protection_mode": "$PROTECTION_MODE",
+  "learning_model": "${LEARNING_MODEL:+configured}",
   "policies": "$POLICIES_RAW",
   "host_baseline_seconds": $HOST_BASELINE_SECONDS,
   "agent_idle_seconds": $AGENT_IDLE_SECONDS,
@@ -113,6 +183,261 @@ wait_agent_socket() {
     fi
     sleep 1
   done
+}
+
+enroll_managed_agent() {
+  [[ "$AGENT_MODE" == "managed" ]] || return 0
+  [[ "$VM_ENV" == "vm-topology" ]] || {
+    echo "[performance-endpoint][ERROR] managed benchmark requires vm-topology" >&2
+    exit 1
+  }
+  sa_agent_enroll_managed_topology "$REPO" "$ENVDIR" "$PKI_DIR" \
+    "$AGENT_SOCK" "$AGENT_ID"
+}
+
+apply_managed_policy() {
+  local policy_out="$1" policy="$2"
+  sa_agent_apply_managed_policy "$REPO" "$ENVDIR" "$PKI_DIR" "$AGENT_SOCK" \
+    "$AGENT_ID" "$REPO/$policy" "$RESOLVED_DETECTION_POLICY" "$policy_out"
+}
+
+quiesce_managed_candidate_production() {
+  local policy_out="$1" policy="$2" drain_collection="$policy_out/candidate-drain-collection.json"
+  [[ "$AGENT_MODE" == "managed" && "$PROTECTION_MODE" != "rule-only" ]] || return 0
+  jq '
+    .policy_id = ((.policy_id // "benchmark") + "-candidate-drain") |
+    .version = 1
+  ' "$REPO/$policy" >"$drain_collection"
+  SYSARMOR_BENCH_PROTECTION_MODE=rule-only sa_agent_apply_managed_policy \
+    "$REPO" "$ENVDIR" "$PKI_DIR" "$AGENT_SOCK" "$AGENT_ID" \
+    "$drain_collection" "$REPO/$DETECTION_POLICY" "$policy_out/candidate-drain"
+  sleep "$MANAGER_ANALYSIS_WAIT_SECONDS"
+}
+
+capture_managed_incidents() {
+  local policy_out="$1" policy_name="$2"
+  local manager_jwt labels output
+  [[ "$AGENT_MODE" == "managed" ]] || return 0
+  manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
+    "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
+  labels="--label benchmark_run=$RUN_ID --label policy_profile=$policy_name"
+  output="$policy_out/managed-incidents.json"
+  if ! wait_manager_resource "$manager_jwt" "$ENVDIR" incidents "$labels" \
+      "$output" 1 "$MANAGER_ANALYSIS_WAIT_SECONDS"; then
+    [[ -s "$output" ]] || printf '[]\n' >"$output"
+    echo "[performance-endpoint][WARN] no managed Incident observed for policy=$policy_name" >&2
+  fi
+}
+
+capture_managed_stream_artifacts() {
+  local policy_out="$1" policy_name="$2"
+  local manager_jwt labels expected_candidates
+  [[ "$AGENT_MODE" == "managed" ]] || return 0
+  manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
+    "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
+  capture_final_candidate_lifecycle "$policy_out/candidate-lifecycle-final.json"
+  if ! query_manager_metrics "$manager_jwt" >"$policy_out/manager-metrics.json"; then
+    rm -f "$policy_out/manager-metrics.json"
+    echo "[performance-endpoint][WARN] manager metrics snapshot unavailable" >&2
+  fi
+  labels="--label benchmark_run=$RUN_ID --label policy_profile=$policy_name --layer endpoint --stage candidate"
+  expected_candidates="$(jq -er \
+    '.detection.learning.candidates | (.acceptedUniqueDelta // .gatewayAccepted) | tonumber' \
+    "$policy_out/candidate-lifecycle-final.json")"
+  if ! wait_manager_candidate_cohort "$labels" \
+      "$policy_out/managed-signals.json" "$expected_candidates" "$CANDIDATE_COHORT_WAIT_SECONDS"; then
+    [[ -s "$policy_out/managed-signals.json" ]] || printf '[]\n' >"$policy_out/managed-signals.json"
+    capture_stream_diagnostics "$policy_out"
+  fi
+  labels="--label benchmark_run=$RUN_ID --label policy_profile=$policy_name --layer cloud --stage conclusion"
+  if ! wait_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels" \
+      "$policy_out/managed-conclusions.json" 1 "$MANAGER_ANALYSIS_WAIT_SECONDS"; then
+    [[ -s "$policy_out/managed-conclusions.json" ]] || printf '[]\n' >"$policy_out/managed-conclusions.json"
+  fi
+  build_stream_processing_artifact "$policy_out/managed-signals.json" "$policy_out/stream-processing.json"
+  capture_nodlink_metrics "$policy_out" "$AGENT_ID"
+}
+
+capture_nodlink_metrics() {
+  local policy_out="$1" agent_id="$2" raw="$policy_out/nodlink-metrics.raw" topic="sysarmor.data.detection.metrics.v1"
+  local deadline=$((SECONDS + MANAGER_ANALYSIS_WAIT_SECONDS))
+  while (( SECONDS < deadline )); do
+    vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic $topic --from-beginning --timeout-ms 5000 --max-messages 10000" \
+      >"$raw" 2>/dev/null || true
+    if grep -q '"agent_id": "'"$agent_id"'"' "$raw"; then
+      break
+    fi
+    sleep 1
+  done
+  python3 - "$raw" "$policy_out/nodlink-metrics.json" "$agent_id" <<'PY'
+import json, sys
+source, target, agent_id = sys.argv[1:]
+rows = []
+try:
+    values = open(source).read().splitlines()
+except OSError:
+    values = []
+for line in values:
+    try:
+        value = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if isinstance(value, dict):
+        rows.append(value)
+if agent_id:
+    matching = [row for row in rows if row.get("agent_id") == agent_id]
+    if matching:
+        rows = matching
+detection = [row for row in rows if row.get("job") == "sysarmor-detection-v1" and row.get("metric_kind", "window") == "window"]
+analysis = [row for row in rows if row.get("job") == "sysarmor-detection-v1" and row.get("metric_kind") == "analysis"]
+projection = [row for row in rows if row.get("job") == "sysarmor-projection-v1"]
+processing = [float(row["processing_ms"]) for row in detection if isinstance(row.get("processing_ms"), (int, float))]
+states = [int(row["state_bytes"]) for row in detection if isinstance(row.get("state_bytes"), int)]
+windows = [int(row["input_records"]) for row in detection if isinstance(row.get("input_records"), int)]
+result = {
+    "detector_windows": len(detection),
+    "analysis_batches": analysis,
+    "processing_ms": max(processing) if processing else None,
+    "processing_p50_ms": sorted(processing)[max(0, (len(processing) * 50 + 99) // 100 - 1)] if processing else None,
+    "processing_p95_ms": sorted(processing)[min(len(processing) - 1, max(0, (len(processing) * 95 + 99) // 100 - 1))] if processing else None,
+    "processing_p99_ms": sorted(processing)[min(len(processing) - 1, max(0, (len(processing) * 99 + 99) // 100 - 1))] if processing else None,
+    "state_bytes": max(states) if states else None,
+    "detector_input_records": sum(windows) if windows else 0,
+    "projection_metrics": projection[-1] if projection else None,
+}
+open(target, "w").write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+PY
+  rm -f "$raw"
+}
+
+capture_stream_diagnostics() {
+  local policy_out="$1"
+  vagrant ssh mgr -c "curl -sf http://127.0.0.1:18081/jobs/overview" \
+    >"$policy_out/stream-jobs.json" 2>/dev/null || printf '{}\n' >"$policy_out/stream-jobs.json"
+  vagrant ssh mgr -c "sudo docker exec sysarmor-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --all-groups" \
+    >"$policy_out/stream-lag.txt" 2>/dev/null || printf 'unavailable\n' >"$policy_out/stream-lag.txt"
+}
+
+wait_manager_candidate_cohort() {
+  local labels="$1" output="$2" expected="$3" wait_seconds="$4"
+  local deadline=$((SECONDS + wait_seconds)) temporary="$output.tmp" actual=0 manager_jwt
+  local page_file="$output.page" merged="$output.merged" offset page_count
+  while (( SECONDS < deadline )); do
+    manager_jwt="$("$REPO/tools/auth/issue-manager-jwt.sh" \
+      "$PKI_DIR/manager-jwt-private.pem" sysarmor-bff sysarmor-manager)"
+    printf '[]\n' >"$temporary"
+    offset=0
+    while :; do
+      capture_manager_resource "$manager_jwt" "$ENVDIR" signals "$labels --offset $offset" >"$page_file" 2>/dev/null || break
+      page_count="$(jq 'length' "$page_file")"
+      jq -s '.[0] + .[1]' "$temporary" "$page_file" >"$merged"
+      mv "$merged" "$temporary"
+      (( page_count < 1000 )) && break
+      offset=$((offset + page_count))
+    done
+    if jq -e 'type == "array"' "$temporary" >/dev/null; then
+      actual="$(jq '[.[] | select(.detector_kind == "DETECTOR_KIND_MODEL") | .id] | unique | length' "$temporary")"
+      mv "$temporary" "$output"
+      if (( actual >= expected )); then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  rm -f "$temporary" "$page_file" "$merged"
+  echo "[performance-endpoint][WARN] Stream Candidate cohort incomplete: expected=$expected actual=$actual" >&2
+  return 1
+}
+
+capture_final_candidate_lifecycle() {
+  local output="$1" temporary annotated created cutoff before accepted accepted_before
+  local spooled spooled_before duplicate duplicate_before
+  [[ "$AGENT_MODE" == "managed" ]] || return 0
+  temporary="$output.tmp"
+  annotated="$output.annotated"
+  if ! vagrant ssh node-a -c \
+      "sudo sysarmorctl --socket '$AGENT_SOCK' --json agent health" \
+      >"$temporary" 2>/dev/null ||
+      ! cutoff="$(jq -er '.localStore.latestEventSequence | tonumber' "$temporary")"; then
+    freeze_candidate_cohort_failed "$output" "$temporary" "$annotated"
+    return 1
+  fi
+  if [[ "$PROTECTION_MODE" == "rule-only" ]]; then
+    if ! jq --argjson cutoff "$cutoff" '
+        .detection.learning.candidates.experimentCreated = 0 |
+        .detection.learning.candidates.acceptedUniqueDelta = 0 |
+        .localStore.eventSequenceCutoff = $cutoff
+      ' "$temporary" >"$annotated"; then
+      freeze_candidate_cohort_failed "$output" "$temporary" "$annotated"
+      return 1
+    fi
+  elif ! created="$(jq -er '.detection.learning.candidates.created | tonumber' "$temporary")" ||
+      ! before="$(jq -er '.detection.learning.candidates.created | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! accepted="$(jq -er '.detection.learning.candidates.gatewayAccepted | tonumber' "$temporary")" ||
+      ! accepted_before="$(jq -er '.detection.learning.candidates.gatewayAccepted | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! spooled="$(jq -er '.detection.learning.candidates.spooled | tonumber' "$temporary")" ||
+      ! spooled_before="$(jq -er '.detection.learning.candidates.spooled | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! duplicate="$(jq -er '.detection.learning.candidates.gatewayDuplicateAck | tonumber' "$temporary")" ||
+      ! duplicate_before="$(jq -er '.detection.learning.candidates.gatewayDuplicateAck | tonumber' "$(dirname "$output")/candidate-lifecycle-before.json")" ||
+      ! jq --argjson created "$((created - before))" --argjson spooled "$((spooled - spooled_before))" --argjson accepted "$((accepted - accepted_before))" --argjson duplicate "$((duplicate - duplicate_before))" --argjson cutoff "$cutoff" '
+        if ([$created, $spooled, $accepted, $duplicate] | any(. < 0)) then
+          error("Candidate counters reset during measurement") else . end |
+        .detection.learning.candidates.experimentCreated = $created |
+        .detection.learning.candidates.createdDelta = $created |
+        .detection.learning.candidates.spooledDelta = $spooled |
+        .detection.learning.candidates.acceptedUniqueDelta = $accepted |
+        .detection.learning.candidates.duplicateAckDelta = $duplicate |
+        .localStore.eventSequenceCutoff = $cutoff
+      ' "$temporary" >"$annotated"; then
+    freeze_candidate_cohort_failed "$output" "$temporary" "$annotated"
+    return 1
+  fi
+  mv "$annotated" "$output"
+  rm -f "$temporary"
+}
+
+freeze_candidate_cohort_failed() {
+  local output="$1" temporary="$2" annotated="$3"
+    rm -f "$temporary" "$annotated"
+    printf '{}\n' >"$output"
+    echo "[performance-endpoint][WARN] failed to freeze Agent Candidate cohort" >&2
+}
+
+query_manager_metrics() {
+  local manager_jwt="$1"
+  printf '%s\n' "$manager_jwt" | (cd "$ENVDIR" && vagrant ssh mgr -c \
+    "IFS= read -r SYSARMOR_MANAGER_JWT; export SYSARMOR_MANAGER_JWT; exec /tmp/sysarmorctl --manager-url 127.0.0.1:9443 --json manager metrics") \
+    2>/dev/null
+}
+
+build_stream_processing_artifact() {
+  local signals_path="$1" output="$2"
+  python3 - "$signals_path" "$output" <<'PY'
+import json, sys
+source, target = sys.argv[1:]
+try:
+    values = json.load(open(source))
+except (OSError, json.JSONDecodeError):
+    values = []
+if isinstance(values, dict):
+    values = values.get("items", values.get("signals", []))
+rows = []
+for value in values if isinstance(values, list) else []:
+    if not isinstance(value, dict) or value.get("detector_kind") != "DETECTOR_KIND_MODEL":
+        continue
+    rows.append({
+        "signal_id": value.get("id", value.get("signal_id", "")),
+        "agent_id": value.get("agent_id", value.get("agentId", "")),
+        "batch_id": value.get("batch_id", value.get("batchId", "")),
+        "subject_id": value.get("subject_id", value.get("subjectId", "")),
+        "trigger_event_id": value.get("trigger_event_id", value.get("triggerEventId", "")),
+        "event_sequence": int(value.get("event_sequence", value.get("eventSequence", 0)) or 0),
+        "status": "projected",
+        "failure_class": "",
+    })
+with open(target, "w") as handle:
+    json.dump(rows, handle, indent=2)
+PY
 }
 
 resolve_agent_identity() {
@@ -449,6 +774,27 @@ run_case_activity() {
   local rec_run_id="${4:-}"
   local workload_pid=""
 
+  if [[ "$ACTIVITY_MODE" == "serial" ]]; then
+    if [[ -z "$workload_name" || -z "$scenario_name" ]]; then
+      echo "[performance-endpoint][ERROR] serial activity requires both workload and scenario" >&2
+      exit 1
+    fi
+    mark "$rec_run_id" normal_activity_start "$workload_name"
+    run_workload "$policy_out" "$workload_name"
+    mark "$rec_run_id" normal_activity_done "$workload_name"
+    start_agent_profile_window "$policy_out" activity "$ACTIVITY_PROFILE_SECONDS"
+    mark "$rec_run_id" scenario_start "$scenario_name"
+    run_scenario "$policy_out" "$scenario_name"
+    mark "$rec_run_id" scenario_done "$scenario_name"
+    finish_agent_profile_window "$policy_out" activity "$rec_run_id"
+    mark "$rec_run_id" scenario_observe_start "$scenario_name"
+    start_agent_profile_window "$policy_out" persistence "$SCENARIO_OBSERVE_SECONDS"
+    sleep "$SCENARIO_OBSERVE_SECONDS"
+    mark "$rec_run_id" scenario_observe_done "$scenario_name"
+    finish_agent_profile_window "$policy_out" persistence "$rec_run_id"
+    return 0
+  fi
+
   if [[ -n "$workload_name" ]]; then
     start_workload_background "$policy_out" "$workload_name"
     workload_pid="$WORKLOAD_PID"
@@ -502,7 +848,11 @@ else
   echo "[performance-endpoint] reusing existing VM environment: $VM_ENV"
 fi
 if [[ "$SYNC_VM_AGENT" == "1" ]]; then
-  SYSARMOR_VM_ENV="$VM_ENV" bash "$ROOT/shared/vm/sync-agent.sh"
+  include_bench_content=0
+  [[ "$AGENT_MODE" == "managed" ]] && include_bench_content=1
+  SYSARMOR_VM_ENV="$VM_ENV" SYSARMOR_VM_INCLUDE_BENCH_CONTENT="$include_bench_content" \
+    SYSARMOR_LEARNING_MODEL="$LEARNING_MODEL" SYSARMOR_LEARNING_TRUST_KEYS="$LEARNING_TRUST_KEYS" \
+    bash "$ROOT/shared/vm/sync-agent.sh"
   cd "$ENVDIR"
   vagrant rsync node-a >/dev/null 2>&1 || true
 else
@@ -510,17 +860,34 @@ else
 fi
 wait_agent_socket
 resolve_agent_identity
+enroll_managed_agent
+resolve_agent_identity
 set_runtime_feature_flags "$MATCHER_STRATEGY"
 
 echo "[performance-endpoint] uploading content packs and policies"
 vagrant upload "$REPO/$CONTENT_DIR" /tmp/sysarmor-bench-content node-a >/dev/null
-vagrant upload "$REPO/deployments/agent/policy.json" /tmp/sysarmor-bench-baseline.policy node-a >/dev/null
 if [[ "$APPLY_DETECTION" == "1" && ! -f "$REPO/$DETECTION_POLICY" ]]; then
   echo "[performance-endpoint][ERROR] detection policy not found: $DETECTION_POLICY" >&2
   exit 1
 fi
 if [[ "$APPLY_DETECTION" == "1" ]]; then
-  vagrant upload "$REPO/$DETECTION_POLICY" /tmp/sysarmor-bench-detection.policy node-a >/dev/null
+  RESOLVED_DETECTION_POLICY="$OUT_DIR/detection-policy.json"
+  if [[ "$PROTECTION_MODE" == "rule-only" ]]; then
+    jq '.' "$REPO/$DETECTION_POLICY" >"$RESOLVED_DETECTION_POLICY"
+  else
+    MODEL_REF="$(jq -er '.model_ref' "$LEARNING_MODEL")"
+    MODEL_VERSION="$(jq -er '.model_version' "$LEARNING_MODEL")"
+    MODEL_DIGEST="$(jq -er '.model_digest' "$LEARNING_MODEL")"
+    jq \
+      --arg mode "$PROTECTION_MODE" \
+      --arg ref "$MODEL_REF" \
+      --arg version "$MODEL_VERSION" \
+      --arg digest "$MODEL_DIGEST" \
+      'if $mode == "learning-only" then .rulesets = [] else . end |
+       .learning_model = {ref: $ref, version: $version, digest: $digest}' \
+      "$REPO/$DETECTION_POLICY" >"$RESOLVED_DETECTION_POLICY"
+  fi
+  vagrant upload "$RESOLVED_DETECTION_POLICY" /tmp/sysarmor-bench-detection.policy node-a >/dev/null
 fi
 
 apply_content() {
@@ -536,36 +903,6 @@ apply_content() {
         exit 1
       }
   done
-}
-
-reset_endpoint_policy() {
-  local policy_out="$1"
-  echo "[performance-endpoint] restoring baseline endpoint policy"
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply --file /tmp/sysarmor-bench-baseline.policy --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
-    > "$policy_out/baseline-apply.json" \
-    2>"$policy_out/baseline-apply.err" || {
-      echo "[performance-endpoint][ERROR] baseline endpoint policy apply failed" >&2
-      cat "$policy_out/baseline-apply.err" >&2 2>/dev/null || true
-      exit 1
-    }
-  if ! jq -e '.status == "applied" or .status == "degraded"' "$policy_out/baseline-apply.json" >/dev/null; then
-    echo "[performance-endpoint][ERROR] baseline endpoint policy was rejected" >&2
-    cat "$policy_out/baseline-apply.json" >&2 2>/dev/null || true
-    exit 1
-  fi
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy current" \
-    > "$policy_out/baseline-current.json" \
-    2>"$policy_out/baseline-current.err" || {
-      echo "[performance-endpoint][ERROR] failed to read current baseline endpoint policy" >&2
-      cat "$policy_out/baseline-current.err" >&2 2>/dev/null || true
-      exit 1
-    }
-  if ! jq -e '.policyId == "standalone-default" and (.version | tostring) == "1"' "$policy_out/baseline-current.json" >/dev/null; then
-    echo "[performance-endpoint][ERROR] current endpoint policy does not match the baseline" >&2
-    cat "$policy_out/baseline-current.json" >&2 2>/dev/null || true
-    exit 1
-  fi
-  sleep "$POLICY_SETTLE_SECONDS"
 }
 
 apply_detection() {
@@ -599,6 +936,23 @@ apply_detection() {
     fi
   else
     echo "[performance-endpoint] detection policy apply disabled"
+  fi
+}
+
+capture_effective_policy() {
+  local policy_out="$1"
+  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy current" \
+    > "$policy_out/current-policy.json" \
+    2>"$policy_out/current-policy.err" || {
+      echo "[performance-endpoint][ERROR] failed to read effective endpoint policy" >&2
+      cat "$policy_out/current-policy.err" >&2 2>/dev/null || true
+      exit 1
+    }
+  if ! jq -e '.rawJson | strings | fromjson' "$policy_out/current-policy.json" \
+    > "$policy_out/effective-policy.json"; then
+    echo "[performance-endpoint][ERROR] current endpoint policy does not contain a valid document" >&2
+    cat "$policy_out/current-policy.json" >&2 2>/dev/null || true
+    exit 1
   fi
 }
 
@@ -644,7 +998,11 @@ for policy in $POLICIES_RAW; do
   "baseline_policy_file": "deployments/agent/policy.json",
   "workload": "$case_workload",
   "scenario": "$case_scenario",
+  "activity_mode": "$ACTIVITY_MODE",
+  "agent_mode": "$AGENT_MODE",
   "variant": "$VARIANT",
+  "protection_mode": "$PROTECTION_MODE",
+  "learning_model": "${LEARNING_MODEL:+configured}",
   "matcher_strategy": "$MATCHER_STRATEGY",
   "agent_id": "$AGENT_ID",
   "tenant_id": "$TENANT_ID",
@@ -685,6 +1043,17 @@ for policy in $POLICIES_RAW; do
     "signals": "signals.ndjson",
     "signals_scope": "signals.scope.ndjson",
     "scope_labels": "scope-labels.json",
+    "current_policy": "current-policy.json",
+    "effective_policy": "effective-policy.json",
+    "managed_incidents": "managed-incidents.json",
+    "managed_signals": "managed-signals.json",
+    "managed_conclusions": "managed-conclusions.json",
+    "manager_metrics": "manager-metrics.json",
+    "stream_processing": "stream-processing.json",
+    "stream_jobs": "stream-jobs.json",
+  "nodlink_metrics": "nodlink-metrics.json",
+    "stream_lag": "stream-lag.txt",
+    "candidate_lifecycle_final": "candidate-lifecycle-final.json",
     "raw_snapshots": "raw/",
     "raw_archive": "raw.tar",
     "profiles": "profiles/"
@@ -701,6 +1070,17 @@ EOF
   "events.scope.ndjson": "offline label-scoped event stream derived from events.ndjson",
   "signals.scope.ndjson": "offline label-scoped signal stream derived from signals.ndjson",
   "scope-labels.json": "labels used to derive *.scope.ndjson from the raw streams",
+  "current-policy.json": "Agent policy current response captured after all policy sections were applied",
+  "effective-policy.json": "four-layer EndpointPolicy document extracted from the Agent current policy response",
+  "managed-incidents.json": "Manager Incident documents used for managed Stream graph and conclusion recall gates",
+  "managed-signals.json": "Stream-projected Signals used as the authoritative managed Candidate reference source",
+  "managed-conclusions.json": "Cloud Conclusion Signals used for Nodlink latency and Campaign metrics",
+  "manager-metrics.json": "tenant-level Stream lifecycle counters retained for diagnostics only",
+  "stream-processing.json": "Flink Projection lifecycle rows for the frozen experiment cohort",
+  "stream-jobs.json": "Flink JobManager job states captured when Candidate cohort drain timed out",
+  "nodlink-metrics.json": "Optional Nodlink detector processing and state metrics exported by the Detection Job",
+  "stream-lag.txt": "Kafka consumer group lag captured when Candidate cohort drain timed out",
+  "candidate-lifecycle-final.json": "one-shot Agent Candidate lifecycle snapshot with frozen experiment count and Event sequence cutoff",
   "raw/": "raw low-frequency health semantic snapshots",
   "raw.tar": "archive of raw semantic snapshots pulled from the VM",
   "profiles/": "optional raw pprof/runtime diagnostic artifacts when profiling is enabled; CPU profiles are serialized and intended for root-cause attribution, not for low-disturbance resource conclusions"
@@ -715,8 +1095,10 @@ EOF
 
   echo "[performance-endpoint] recording policy=$name workload=${case_workload:-none} scenario=${case_scenario:-none}"
   set_agent_labels "$RUN_ID" "$name" "$case_workload" "$case_scenario"
-  reset_endpoint_policy "$policy_out"
-  apply_content "$policy_out"
+  if [[ "$AGENT_MODE" == "standalone" ]]; then
+    reset_endpoint_policy "$policy_out"
+    apply_content "$policy_out"
+  fi
   SYSARMOR_RECORDER_DURATION="$RECORDER_DURATION_SECONDS" recorder "$rec_run_id" "$rec_labels" start
   ACTIVE_REC_RUN_ID="$rec_run_id"
   ACTIVE_REC_LABELS="$rec_labels"
@@ -733,26 +1115,36 @@ EOF
 
   echo "[performance-endpoint] applying policy: $policy"
   mark "$rec_run_id" policy_apply_start "$policy"
-  vagrant upload "$REPO/$policy" "/tmp/sysarmor-bench-$name.policy" node-a >/dev/null
   start_agent_profile_window "$policy_out" policy_apply "$((POLICY_SETTLE_SECONDS + 5))"
-  vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply collection --file '/tmp/sysarmor-bench-$name.policy' --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
-    > "$policy_out/collection-apply.json" \
-    2>"$policy_out/collection-apply.err" || {
-      echo "[performance-endpoint][ERROR] policy apply failed: $policy" >&2
-      cat "$policy_out/collection-apply.err" >&2 2>/dev/null || true
+  if [[ "$AGENT_MODE" == "managed" ]]; then
+    apply_managed_policy "$policy_out" "$policy"
+  else
+    vagrant upload "$REPO/$policy" "/tmp/sysarmor-bench-$name.policy" node-a >/dev/null
+    vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json policy apply collection --file '/tmp/sysarmor-bench-$name.policy' --agent-id '$AGENT_ID' --tenant-id '$TENANT_ID' --timeout 60s" \
+      > "$policy_out/collection-apply.json" \
+      2>"$policy_out/collection-apply.err" || {
+        echo "[performance-endpoint][ERROR] policy apply failed: $policy" >&2
+        cat "$policy_out/collection-apply.err" >&2 2>/dev/null || true
+        exit 1
+      }
+    if ! grep -Fq 'generated_policy_hash' "$policy_out/collection-apply.json" && ! grep -Fq 'resolved_refs' "$policy_out/collection-apply.json"; then
+      echo "[performance-endpoint][ERROR] policy apply did not report generated policy details: $policy" >&2
+      cat "$policy_out/collection-apply.json" >&2 2>/dev/null || true
       exit 1
-    }
-  mark "$rec_run_id" policy_apply_done "$policy"
-  if ! grep -Fq 'generated_policy_hash' "$policy_out/collection-apply.json" && ! grep -Fq 'resolved_refs' "$policy_out/collection-apply.json"; then
-    echo "[performance-endpoint][ERROR] policy apply did not report generated policy details: $policy" >&2
-    cat "$policy_out/collection-apply.json" >&2 2>/dev/null || true
-    exit 1
+    fi
   fi
+  mark "$rec_run_id" policy_apply_done "$policy"
 
   echo "[performance-endpoint] waiting ${POLICY_SETTLE_SECONDS}s for sensor BPF reload"
   sleep "$POLICY_SETTLE_SECONDS"
   finish_agent_profile_window "$policy_out" policy_apply "$rec_run_id"
-  apply_detection "$policy_out" "$name"
+  if [[ "$AGENT_MODE" == "standalone" ]]; then
+    apply_detection "$policy_out" "$name"
+  fi
+  capture_effective_policy "$policy_out"
+  if [[ "$AGENT_MODE" == "managed" ]]; then
+    vagrant ssh node-a -c "sudo sysarmorctl --socket '$AGENT_SOCK' --json agent health" >"$policy_out/candidate-lifecycle-before.json" 2>/dev/null || true
+  fi
 
   mark "$rec_run_id" settle_start "$name"
   sleep "$SETTLE_SECONDS"
@@ -771,6 +1163,9 @@ EOF
   ACTIVE_REC_RUN_ID=""
   ACTIVE_REC_LABELS=""
   recorder "$rec_run_id" "$rec_labels" report
+  quiesce_managed_candidate_production "$policy_out" "$policy"
+  capture_managed_stream_artifacts "$policy_out" "$name"
+  capture_managed_incidents "$policy_out" "$name"
 
   cp "$rec_dir/timeline.csv" "$policy_out/timeline.csv"
   cp "$rec_dir/markers.ndjson" "$policy_out/markers.ndjson"
@@ -790,5 +1185,9 @@ EOF
 done
 
 python3 "$HERE/report.py" "$OUT_DIR"
+
+if ! python3 "$HERE/human_report.py" "$OUT_DIR" --output "$OUT_DIR/report.md"; then
+  echo "[performance-endpoint][WARN] human report generation failed; matrix remains available" >&2
+fi
 
 echo "[performance-endpoint] matrix written to $OUT_DIR/matrix.csv"

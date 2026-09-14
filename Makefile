@@ -1,14 +1,13 @@
 .DEFAULT_GOAL := help
 
-.PHONY: api build build-agent-binary build-agent-tools build-binary business-docx install-agent uninstall-agent test test-help test-doctor test-unit test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle test-business-docx up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-github-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
+.PHONY: api api-go api-python build build-agent-binary build-agent-tools build-binary install-agent uninstall-agent test test-help test-doctor test-unit test-streaming test-nodlink-replay nodlink-replay test-functional test-detection test-performance test-distribution test-release test-opensearch-lifecycle up deploy down status reset clean clean-bin pki auth-init doctor release release-rc release-stable check-release-inputs web-install web-dev web-up web-build web-preview web-status web-stop help
 
 PROTO_FILES := $(shell find packages/contracts/proto -name '*.proto' | sort)
 GOCACHE ?= /tmp/sysarmor-go-cache
 GOBIN_PATH := $(shell go env GOPATH)/bin
+PYTHON_PROTO_OUT := apps/streaming/src
 BIN_DIR ?= dist/bin
 RELEASE_DIR ?= dist/release
-BUSINESS_DOCX_SOURCE ?= docs/business/sysarmor-project-proposal.zh-CN.md
-BUSINESS_DOCX_OUTPUT ?= dist/docs/sysarmor-project-proposal.zh-CN.docx
 PACKAGE_BASE_URL ?= http://packages
 RELEASE_VERSION ?= dev
 RELEASE_OS ?= linux
@@ -17,7 +16,7 @@ RELEASE_CHANNELS ?= dev-agent linux-systemd-dev linux-container-dev
 RELEASE_AGENT_BIN ?= $(BIN_DIR)/sysarmor-agent
 RELEASE_SIGNING_KEY ?= $(PKI_RUNTIME_DIR)/artifact-signing-key.pem
 RELEASE_PUBLIC_KEY ?= $(PKI_RUNTIME_DIR)/artifact-public.pem
-TETRAGON_ARCHIVE_CANDIDATE := $(firstword $(wildcard .cache/tetragon-v1.7.0-amd64.tar.gz .scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz))
+TETRAGON_ARCHIVE_CANDIDATE := $(wildcard .cache/tetragon-v1.7.0-amd64.tar.gz)
 TETRAGON_ARCHIVE ?= $(or $(SYSARMOR_TETRAGON_ARCHIVE),$(if $(TETRAGON_ARCHIVE_CANDIDATE),$(abspath $(TETRAGON_ARCHIVE_CANDIDATE))))
 # Preserve release inputs as data instead of recursively expanding Make syntax.
 override VERSION := $(value VERSION)
@@ -29,6 +28,7 @@ FUNCTIONAL_TARGET_topology := functional-topology
 FUNCTIONAL_TARGET_all := functional-core
 FUNCTIONAL_TARGET := $(FUNCTIONAL_TARGET_$(DOMAIN))
 PERFORMANCE_TARGET_endpoint := performance-endpoint
+PERFORMANCE_TARGET_learning := performance-learning
 PERFORMANCE_TARGET_platform := performance-platform
 PERFORMANCE_TARGET_modules := performance-modules
 PERFORMANCE_TARGET_all := performance-endpoint performance-platform performance-modules
@@ -55,9 +55,15 @@ WEB_RUN_DIR ?= .run
 WEB_LOG ?= $(WEB_RUN_DIR)/manager-console.log
 WEB_PID ?= $(WEB_RUN_DIR)/manager-console.pid
 
-api:
+api: api-go api-python
+
+api-go:
 	PATH="$(GOBIN_PATH):$$PATH" protoc --go_out=. --go_opt=paths=source_relative $(PROTO_FILES)
 	PATH="$(GOBIN_PATH):$$PATH" protoc --go-grpc_out=. --go-grpc_opt=paths=source_relative $(PROTO_FILES)
+
+api-python:
+	mkdir -p $(PYTHON_PROTO_OUT)
+	PYTHONWARNINGS=ignore::DeprecationWarning uv run --project apps/streaming --group dev python -m grpc_tools.protoc -I . --python_out=$(PYTHON_PROTO_OUT) $(PROTO_FILES)
 
 build:
 	@if [ -z "$(SERVICE)" ]; then \
@@ -76,6 +82,7 @@ build-agent-binary:
 build-agent-tools: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmorctl ./apps/cli/cmd/sysarmorctl
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
+	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
 install-agent: build-agent-tools
 	sudo SYSARMOR_AGENT_BIN=$(BIN_DIR)/sysarmor-agent SYSARMOR_CTL_BIN=$(BIN_DIR)/sysarmorctl SYSARMOR_CONTENT_SIGN_BIN=$(BIN_DIR)/sysarmor-content-sign deployments/agent/install-agent.sh
@@ -90,12 +97,9 @@ uninstall-agent:
 build-binary: build-agent-binary
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-gateway ./apps/manager/cmd/sysarmor-gateway
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-manager ./apps/manager/cmd/sysarmor-manager
-	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-worker ./apps/manager/cmd/sysarmor-worker
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmorctl ./apps/cli/cmd/sysarmorctl
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-content-sign ./apps/agent/cmd/sysarmor-content-sign
-
-business-docx:
-	bash tools/docs/build-business-docx.sh "$(BUSINESS_DOCX_SOURCE)" "$(BUSINESS_DOCX_OUTPUT)"
+	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go build -o $(BIN_DIR)/sysarmor-model-sign ./apps/agent/cmd/sysarmor-model-sign
 
 test:
 	CGO_ENABLED=0 GOCACHE=$(GOCACHE) go test ./...
@@ -108,6 +112,22 @@ test-doctor:
 
 test-unit:
 	$(MAKE) -C test test-unit
+
+test-streaming:
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 -m pytest -q apps/streaming/tests
+
+test-nodlink-replay:
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 -m pytest -q tools/nodlink/test_replay.py
+
+nodlink-replay:
+	@if [ -z "$(EVENTS)" ] || [ -z "$(SIGNALS)" ] || [ -z "$(OUTPUT)" ]; then \
+		echo "usage: make nodlink-replay EVENTS=events.scope.ndjson SIGNALS=signals.scope.ndjson OUTPUT=/tmp/nodlink-replay [BATCH_SIZE=256] [ALLOW_CROSS_LINEAGE=1]" >&2; \
+		exit 2; \
+	fi
+	PYTHONPATH=apps/streaming/src:apps/streaming python3 tools/nodlink/replay.py \
+		--events "$(EVENTS)" --signals "$(SIGNALS)" --output "$(OUTPUT)" \
+		--batch-size "$(or $(BATCH_SIZE),256)" \
+		$(if $(ALLOW_CROSS_LINEAGE),--allow-cross-lineage,)
 
 test-functional:
 ifeq ($(FUNCTIONAL_TARGET),)
@@ -130,7 +150,9 @@ else
 		SYSARMOR_BENCH_PROFILE=$(PROFILE) \
 		SYSARMOR_BENCH_WORKLOAD=$(WORKLOAD) \
 		SYSARMOR_BENCH_SCENARIO=$(SCENARIO) \
-		SYSARMOR_BENCH_POLICIES="$(POLICIES)"
+		SYSARMOR_BENCH_POLICIES="$(POLICIES)" \
+		TRAINING_DATA="$(TRAINING_DATA)" \
+		CALIBRATION_DATA="$(CALIBRATION_DATA)"
 endif
 
 test-distribution:
@@ -151,9 +173,6 @@ endif
 
 test-opensearch-lifecycle:
 	bash test/suites/functional/platform/opensearch-alias-lifecycle.sh
-
-test-business-docx:
-	bash test/suites/docs/business-docx.sh
 
 pki:
 	@if [ ! -f "$(PKI_RUNTIME_DIR)/gateway.pem" ] || [ ! -f "$(PKI_RUNTIME_DIR)/gateway-key.pem" ] || [ ! -f "$(PKI_RUNTIME_DIR)/ca.pem" ]; then \
@@ -181,7 +200,7 @@ release: build-agent-tools pki
 	  --signing-key "$(RELEASE_SIGNING_KEY)" \
 	  --public-key "$(RELEASE_PUBLIC_KEY)"
 
-check-github-release-inputs:
+check-release-inputs:
 	@if ! printf '%s\n' "$${VERSION:-}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
 		echo "VERSION must use MAJOR.MINOR.PATCH, for example VERSION=1.0.0" >&2; \
 		exit 2; \
@@ -199,10 +218,10 @@ check-github-release-inputs:
 		exit 2; \
 	}
 
-release-rc: check-github-release-inputs
+release-rc: check-release-inputs
 	gh workflow run release-candidate.yml --ref "release/v$${VERSION}" -f "rc_number=$${RC}"
 
-release-stable: check-github-release-inputs
+release-stable: check-release-inputs
 	gh workflow run release-stable.yml --ref main -f "version=$${VERSION}" -f "accepted_rc_tag=v$${VERSION}-rc.$${RC}"
 
 up: release auth-init
@@ -263,8 +282,7 @@ help:
 	@echo "SysArmor project commands:"
 	@echo "  make api        generate protobuf code"
 	@echo "  make build SERVICE=manager  build a compose service image"
-	@echo "  make build-binary           build agent/gateway/manager/worker/sysarmorctl"
-	@echo "  make business-docx          build formal proposal DOCX under dist/docs/"
+	@echo "  make build-binary           build agent/gateway/manager/sysarmorctl and signing tools"
 	@echo "  make install-agent          build and install a standalone Agent plus sysarmorctl"
 	@echo "  make uninstall-agent        remove binaries; add PURGE=1 to remove config and local data"
 	@echo "  make test       run Go tests"
@@ -297,9 +315,11 @@ help:
 	@echo "  make test-help         show all test suite commands"
 	@echo "  make test-doctor       verify the complete test environment"
 	@echo "  make test-unit         run local Go tests"
+	@echo "  make test-streaming         run Flink streaming Python tests"
+	@echo "  make test-nodlink-replay   run Nodlink replay tests"
+	@echo "  make nodlink-replay EVENTS=... SIGNALS=... OUTPUT=...  replay real telemetry"
 	@echo "  make test-functional DOMAIN=endpoint|platform|topology|all"
 	@echo "  make test-detection    run truth-labeled detection tests"
-	@echo "  make test-performance DOMAIN=endpoint|platform|modules|all PROFILE=medium"
+	@echo "  make test-performance DOMAIN=endpoint|learning|platform|modules|all PROFILE=medium"
 	@echo "  make test-distribution SOURCE=local|published URL=https://..."
 	@echo "  make test-release STAGE=pre-publish|post-publish URL=https://..."
-	@echo "  make test-business-docx validate the formal proposal DOCX build"

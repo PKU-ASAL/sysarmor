@@ -54,9 +54,6 @@ done
 if [[ -z "$TETRAGON_ARCHIVE" && -f "$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz" ]]; then
   TETRAGON_ARCHIVE="$REPO/.cache/tetragon-v1.7.0-amd64.tar.gz"
 fi
-if [[ -z "$TETRAGON_ARCHIVE" && -f "$REPO/.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz" ]]; then
-  TETRAGON_ARCHIVE="$REPO/.scratchpad/.cache/tetragon-v1.7.0-amd64.tar.gz"
-fi
 if [[ -z "$TETRAGON_ARCHIVE" || ! -f "$TETRAGON_ARCHIVE" ]]; then
   echo "[build-release][ERROR] tetragon archive is required; set --tetragon-archive or cache tetragon-v1.7.0-amd64.tar.gz" >&2
   exit 1

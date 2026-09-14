@@ -32,6 +32,14 @@ class TopologyE2EContractTest(unittest.TestCase):
         self.assertIn("enrollments list --tenant-id default --status issued", script)
         self.assertNotIn("enrollments list --tenant-id default --status active", script)
 
+    def test_vm_topology_seeds_published_default_policy_before_enrollment(self):
+        script = (Path(__file__).resolve().parent / "e2e-systemd-vm.sh").read_text()
+
+        policy_seed = script.index("sa_manager_seed_policy_history")
+        enrollment = script.index("manager enrollments create")
+        self.assertIn('source "$ROOT/shared/agent/managed_enrollment.sh"', script)
+        self.assertLess(policy_seed, enrollment)
+
     def test_container_harness_initializes_content_signing_key(self):
         harness = (
             Path(__file__).resolve().parents[3] / "shared/harness/start-container.sh"
@@ -67,7 +75,10 @@ class TopologyE2EContractTest(unittest.TestCase):
     def test_vm_topology_waits_for_sensor_policy_before_workload(self):
         script = (Path(__file__).resolve().parent / "e2e-systemd-vm.sh").read_text()
 
-        self.assertIn('"policy_loaded":true', script)
+        self.assertIn(r'\"agentId\":\"$AGENT_ID\"', script)
+        self.assertEqual(script.count(r'\"agent_id\":\"$AGENT_ID\"'), 1)
+        self.assertIn('health_after.get("agentId") == agent_id', script)
+        self.assertIn('"policyLoaded":true', script)
         self.assertIn("sudo /bin/true", script)
         self.assertIn("SYSARMOR_TOPOLOGY_WAIT_SECONDS:-120", script)
 
@@ -82,6 +93,15 @@ class TopologyE2EContractTest(unittest.TestCase):
         self.assertIn('"policyId":"standalone-default"', script)
         self.assertIn("managed enrollment credentials removed", script)
         self.assertIn("standalone policy after unenrollment restart", script)
+
+    def test_legacy_upgrade_uses_current_wire_health(self):
+        script = (Path(__file__).resolve().parent / "legacy-managed-upgrade-unenrollment.sh").read_text()
+
+        self.assertIn("legacy_install_agent", script)
+        self.assertIn("legacy_refresh_manager_credentials", script)
+        self.assertEqual(script.count(r'\"agentId\":\"$LEGACY_AGENT_ID\"'), 2)
+        self.assertNotIn(r'\"agent_id\":\"$LEGACY_AGENT_ID\"', script)
+        self.assertIn('"observedAt"]', script)
 
     def test_rc5_managed_fixture_is_authentic_schema_v1(self):
         root = rc5_fixture_dir()
@@ -160,9 +180,9 @@ class TopologyE2EContractTest(unittest.TestCase):
         main = (suite / "e2e-systemd-vm.sh").read_text()
 
         self.assertIn("health_is_ready_after", main)
-        self.assertIn("parse_timestamp(health.get(\"observed_at\", \"\"))", main)
+        self.assertIn("parse_timestamp(health.get(\"observedAt\", \"\"))", main)
         self.assertIn('sensor.get("running") is not True', main)
-        self.assertIn('sensor.get("policy_loaded") is not True', main)
+        self.assertIn('sensor.get("policyLoaded") is not True', main)
 
 
 if __name__ == "__main__":

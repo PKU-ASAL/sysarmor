@@ -21,6 +21,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SignalWhere identifies the processing location that produced a Signal.
 type SignalWhere int32
 
 const (
@@ -68,6 +69,112 @@ func (x SignalWhere) Number() protoreflect.EnumNumber {
 // Deprecated: Use SignalWhere.Descriptor instead.
 func (SignalWhere) EnumDescriptor() ([]byte, []int) {
 	return file_packages_contracts_proto_signal_v1_signal_proto_rawDescGZIP(), []int{0}
+}
+
+// SignalStage identifies the maturity of a detection finding.
+type SignalStage int32
+
+const (
+	SignalStage_SIGNAL_STAGE_UNSPECIFIED SignalStage = 0
+	SignalStage_SIGNAL_STAGE_CANDIDATE   SignalStage = 1
+	SignalStage_SIGNAL_STAGE_CONCLUSION  SignalStage = 2
+)
+
+// Enum value maps for SignalStage.
+var (
+	SignalStage_name = map[int32]string{
+		0: "SIGNAL_STAGE_UNSPECIFIED",
+		1: "SIGNAL_STAGE_CANDIDATE",
+		2: "SIGNAL_STAGE_CONCLUSION",
+	}
+	SignalStage_value = map[string]int32{
+		"SIGNAL_STAGE_UNSPECIFIED": 0,
+		"SIGNAL_STAGE_CANDIDATE":   1,
+		"SIGNAL_STAGE_CONCLUSION":  2,
+	}
+)
+
+func (x SignalStage) Enum() *SignalStage {
+	p := new(SignalStage)
+	*p = x
+	return p
+}
+
+func (x SignalStage) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SignalStage) Descriptor() protoreflect.EnumDescriptor {
+	return file_packages_contracts_proto_signal_v1_signal_proto_enumTypes[1].Descriptor()
+}
+
+func (SignalStage) Type() protoreflect.EnumType {
+	return &file_packages_contracts_proto_signal_v1_signal_proto_enumTypes[1]
+}
+
+func (x SignalStage) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SignalStage.Descriptor instead.
+func (SignalStage) EnumDescriptor() ([]byte, []int) {
+	return file_packages_contracts_proto_signal_v1_signal_proto_rawDescGZIP(), []int{1}
+}
+
+// DetectorKind identifies the detection method that produced a Signal.
+type DetectorKind int32
+
+const (
+	DetectorKind_DETECTOR_KIND_UNSPECIFIED DetectorKind = 0
+	DetectorKind_DETECTOR_KIND_RULE        DetectorKind = 1
+	DetectorKind_DETECTOR_KIND_MODEL       DetectorKind = 2
+	DetectorKind_DETECTOR_KIND_GRAPH       DetectorKind = 3
+	DetectorKind_DETECTOR_KIND_SYSTEM      DetectorKind = 4
+)
+
+// Enum value maps for DetectorKind.
+var (
+	DetectorKind_name = map[int32]string{
+		0: "DETECTOR_KIND_UNSPECIFIED",
+		1: "DETECTOR_KIND_RULE",
+		2: "DETECTOR_KIND_MODEL",
+		3: "DETECTOR_KIND_GRAPH",
+		4: "DETECTOR_KIND_SYSTEM",
+	}
+	DetectorKind_value = map[string]int32{
+		"DETECTOR_KIND_UNSPECIFIED": 0,
+		"DETECTOR_KIND_RULE":        1,
+		"DETECTOR_KIND_MODEL":       2,
+		"DETECTOR_KIND_GRAPH":       3,
+		"DETECTOR_KIND_SYSTEM":      4,
+	}
+)
+
+func (x DetectorKind) Enum() *DetectorKind {
+	p := new(DetectorKind)
+	*p = x
+	return p
+}
+
+func (x DetectorKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DetectorKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_packages_contracts_proto_signal_v1_signal_proto_enumTypes[2].Descriptor()
+}
+
+func (DetectorKind) Type() protoreflect.EnumType {
+	return &file_packages_contracts_proto_signal_v1_signal_proto_enumTypes[2]
+}
+
+func (x DetectorKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DetectorKind.Descriptor instead.
+func (DetectorKind) EnumDescriptor() ([]byte, []int) {
+	return file_packages_contracts_proto_signal_v1_signal_proto_rawDescGZIP(), []int{2}
 }
 
 type EntityRef struct {
@@ -335,32 +442,40 @@ func (x *ContentRef) GetDigest() string {
 }
 
 type Signal struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Where          SignalWhere            `protobuf:"varint,3,opt,name=where,proto3,enum=sysarmor.signal.v1.SignalWhere" json:"where,omitempty"`
-	BaseRisk       uint32                 `protobuf:"varint,4,opt,name=base_risk,json=baseRisk,proto3" json:"base_risk,omitempty"`
-	LocalRarity    float32                `protobuf:"fixed32,5,opt,name=local_rarity,json=localRarity,proto3" json:"local_rarity,omitempty"`
-	GlobalRarity   float32                `protobuf:"fixed32,6,opt,name=global_rarity,json=globalRarity,proto3" json:"global_rarity,omitempty"`
-	LineageId      string                 `protobuf:"bytes,7,opt,name=lineage_id,json=lineageId,proto3" json:"lineage_id,omitempty"`
-	Entities       []*EntityRef           `protobuf:"bytes,8,rep,name=entities,proto3" json:"entities,omitempty"`
-	EventRefs      []string               `protobuf:"bytes,9,rep,name=event_refs,json=eventRefs,proto3" json:"event_refs,omitempty"`
-	SignalRefs     []string               `protobuf:"bytes,10,rep,name=signal_refs,json=signalRefs,proto3" json:"signal_refs,omitempty"`
-	Terminal       bool                   `protobuf:"varint,11,opt,name=terminal,proto3" json:"terminal,omitempty"`
-	Evidence       *EvidenceBundle        `protobuf:"bytes,12,opt,name=evidence,proto3" json:"evidence,omitempty"`
-	CrossLineage   bool                   `protobuf:"varint,14,opt,name=cross_lineage,json=crossLineage,proto3" json:"cross_lineage,omitempty"`
-	ResponseIntent *ResponseIntent        `protobuf:"bytes,15,opt,name=response_intent,json=responseIntent,proto3" json:"response_intent,omitempty"`
-	RuleId         string                 `protobuf:"bytes,16,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
-	RuleVersion    uint64                 `protobuf:"varint,17,opt,name=rule_version,json=ruleVersion,proto3" json:"rule_version,omitempty"`
-	RulesetRef     string                 `protobuf:"bytes,18,opt,name=ruleset_ref,json=rulesetRef,proto3" json:"ruleset_ref,omitempty"`
-	ContextRefs    []*ContentRef          `protobuf:"bytes,19,rep,name=context_refs,json=contextRefs,proto3" json:"context_refs,omitempty"`
-	IocRefs        []*ContentRef          `protobuf:"bytes,20,rep,name=ioc_refs,json=iocRefs,proto3" json:"ioc_refs,omitempty"`
-	Severity       string                 `protobuf:"bytes,21,opt,name=severity,proto3" json:"severity,omitempty"`
-	Confidence     uint32                 `protobuf:"varint,22,opt,name=confidence,proto3" json:"confidence,omitempty"`
-	Mode           string                 `protobuf:"bytes,23,opt,name=mode,proto3" json:"mode,omitempty"`
-	Labels         map[string]string      `protobuf:"bytes,24,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// where records the producing location; it does not imply stage or detector kind.
+	Where          SignalWhere       `protobuf:"varint,3,opt,name=where,proto3,enum=sysarmor.signal.v1.SignalWhere" json:"where,omitempty"`
+	BaseRisk       uint32            `protobuf:"varint,4,opt,name=base_risk,json=baseRisk,proto3" json:"base_risk,omitempty"`
+	LocalRarity    float32           `protobuf:"fixed32,5,opt,name=local_rarity,json=localRarity,proto3" json:"local_rarity,omitempty"`
+	GlobalRarity   float32           `protobuf:"fixed32,6,opt,name=global_rarity,json=globalRarity,proto3" json:"global_rarity,omitempty"`
+	LineageId      string            `protobuf:"bytes,7,opt,name=lineage_id,json=lineageId,proto3" json:"lineage_id,omitempty"`
+	Entities       []*EntityRef      `protobuf:"bytes,8,rep,name=entities,proto3" json:"entities,omitempty"`
+	EventRefs      []string          `protobuf:"bytes,9,rep,name=event_refs,json=eventRefs,proto3" json:"event_refs,omitempty"`
+	SignalRefs     []string          `protobuf:"bytes,10,rep,name=signal_refs,json=signalRefs,proto3" json:"signal_refs,omitempty"`
+	Evidence       *EvidenceBundle   `protobuf:"bytes,12,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	CrossLineage   bool              `protobuf:"varint,14,opt,name=cross_lineage,json=crossLineage,proto3" json:"cross_lineage,omitempty"`
+	ResponseIntent *ResponseIntent   `protobuf:"bytes,15,opt,name=response_intent,json=responseIntent,proto3" json:"response_intent,omitempty"`
+	RuleId         string            `protobuf:"bytes,16,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
+	RuleVersion    uint64            `protobuf:"varint,17,opt,name=rule_version,json=ruleVersion,proto3" json:"rule_version,omitempty"`
+	RulesetRef     string            `protobuf:"bytes,18,opt,name=ruleset_ref,json=rulesetRef,proto3" json:"ruleset_ref,omitempty"`
+	ContextRefs    []*ContentRef     `protobuf:"bytes,19,rep,name=context_refs,json=contextRefs,proto3" json:"context_refs,omitempty"`
+	IocRefs        []*ContentRef     `protobuf:"bytes,20,rep,name=ioc_refs,json=iocRefs,proto3" json:"ioc_refs,omitempty"`
+	Severity       string            `protobuf:"bytes,21,opt,name=severity,proto3" json:"severity,omitempty"`
+	Confidence     uint32            `protobuf:"varint,22,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Mode           string            `protobuf:"bytes,23,opt,name=mode,proto3" json:"mode,omitempty"`
+	Labels         map[string]string `protobuf:"bytes,24,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// stage distinguishes a finding that needs correlation from a conclusion.
+	Stage SignalStage `protobuf:"varint,25,opt,name=stage,proto3,enum=sysarmor.signal.v1.SignalStage" json:"stage,omitempty"`
+	// detector_kind records the method that produced this finding.
+	DetectorKind  DetectorKind `protobuf:"varint,26,opt,name=detector_kind,json=detectorKind,proto3,enum=sysarmor.signal.v1.DetectorKind" json:"detector_kind,omitempty"`
+	ModelRef      string       `protobuf:"bytes,27,opt,name=model_ref,json=modelRef,proto3" json:"model_ref,omitempty"`
+	ModelVersion  string       `protobuf:"bytes,28,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	ModelDigest   string       `protobuf:"bytes,29,opt,name=model_digest,json=modelDigest,proto3" json:"model_digest,omitempty"`
+	FeatureSchema string       `protobuf:"bytes,30,opt,name=feature_schema,json=featureSchema,proto3" json:"feature_schema,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Signal) Reset() {
@@ -463,13 +578,6 @@ func (x *Signal) GetSignalRefs() []string {
 	return nil
 }
 
-func (x *Signal) GetTerminal() bool {
-	if x != nil {
-		return x.Terminal
-	}
-	return false
-}
-
 func (x *Signal) GetEvidence() *EvidenceBundle {
 	if x != nil {
 		return x.Evidence
@@ -554,6 +662,48 @@ func (x *Signal) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *Signal) GetStage() SignalStage {
+	if x != nil {
+		return x.Stage
+	}
+	return SignalStage_SIGNAL_STAGE_UNSPECIFIED
+}
+
+func (x *Signal) GetDetectorKind() DetectorKind {
+	if x != nil {
+		return x.DetectorKind
+	}
+	return DetectorKind_DETECTOR_KIND_UNSPECIFIED
+}
+
+func (x *Signal) GetModelRef() string {
+	if x != nil {
+		return x.ModelRef
+	}
+	return ""
+}
+
+func (x *Signal) GetModelVersion() string {
+	if x != nil {
+		return x.ModelVersion
+	}
+	return ""
+}
+
+func (x *Signal) GetModelDigest() string {
+	if x != nil {
+		return x.ModelDigest
+	}
+	return ""
+}
+
+func (x *Signal) GetFeatureSchema() string {
+	if x != nil {
+		return x.FeatureSchema
+	}
+	return ""
+}
+
 var File_packages_contracts_proto_signal_v1_signal_proto protoreflect.FileDescriptor
 
 const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
@@ -581,7 +731,7 @@ const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
 	"ContentRef\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
-	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xe6\a\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xe4\t\n" +
 	"\x06Signal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x125\n" +
@@ -596,8 +746,7 @@ const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
 	"event_refs\x18\t \x03(\tR\teventRefs\x12\x1f\n" +
 	"\vsignal_refs\x18\n" +
 	" \x03(\tR\n" +
-	"signalRefs\x12\x1a\n" +
-	"\bterminal\x18\v \x01(\bR\bterminal\x12>\n" +
+	"signalRefs\x12>\n" +
 	"\bevidence\x18\f \x01(\v2\".sysarmor.signal.v1.EvidenceBundleR\bevidence\x12#\n" +
 	"\rcross_lineage\x18\x0e \x01(\bR\fcrossLineage\x12K\n" +
 	"\x0fresponse_intent\x18\x0f \x01(\v2\".sysarmor.signal.v1.ResponseIntentR\x0eresponseIntent\x12\x17\n" +
@@ -612,14 +761,30 @@ const file_packages_contracts_proto_signal_v1_signal_proto_rawDesc = "" +
 	"confidence\x18\x16 \x01(\rR\n" +
 	"confidence\x12\x12\n" +
 	"\x04mode\x18\x17 \x01(\tR\x04mode\x12>\n" +
-	"\x06labels\x18\x18 \x03(\v2&.sysarmor.signal.v1.Signal.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\x18 \x03(\v2&.sysarmor.signal.v1.Signal.LabelsEntryR\x06labels\x125\n" +
+	"\x05stage\x18\x19 \x01(\x0e2\x1f.sysarmor.signal.v1.SignalStageR\x05stage\x12E\n" +
+	"\rdetector_kind\x18\x1a \x01(\x0e2 .sysarmor.signal.v1.DetectorKindR\fdetectorKind\x12\x1b\n" +
+	"\tmodel_ref\x18\x1b \x01(\tR\bmodelRef\x12#\n" +
+	"\rmodel_version\x18\x1c \x01(\tR\fmodelVersion\x12!\n" +
+	"\fmodel_digest\x18\x1d \x01(\tR\vmodelDigest\x12%\n" +
+	"\x0efeature_schema\x18\x1e \x01(\tR\rfeatureSchema\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\r\x10\x0eR\bscenario*^\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\v\x10\fJ\x04\b\r\x10\x0eR\bterminalR\bscenario*^\n" +
 	"\vSignalWhere\x12\x1c\n" +
 	"\x18SIGNAL_WHERE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15SIGNAL_WHERE_ENDPOINT\x10\x01\x12\x16\n" +
-	"\x12SIGNAL_WHERE_CLOUD\x10\x02BWZUgithub.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1;signalv1b\x06proto3"
+	"\x12SIGNAL_WHERE_CLOUD\x10\x02*d\n" +
+	"\vSignalStage\x12\x1c\n" +
+	"\x18SIGNAL_STAGE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16SIGNAL_STAGE_CANDIDATE\x10\x01\x12\x1b\n" +
+	"\x17SIGNAL_STAGE_CONCLUSION\x10\x02*\x91\x01\n" +
+	"\fDetectorKind\x12\x1d\n" +
+	"\x19DETECTOR_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12DETECTOR_KIND_RULE\x10\x01\x12\x17\n" +
+	"\x13DETECTOR_KIND_MODEL\x10\x02\x12\x17\n" +
+	"\x13DETECTOR_KIND_GRAPH\x10\x03\x12\x18\n" +
+	"\x14DETECTOR_KIND_SYSTEM\x10\x04BWZUgithub.com/sysarmor/sysarmor-next-project/packages/contracts/proto/signal/v1;signalv1b\x06proto3"
 
 var (
 	file_packages_contracts_proto_signal_v1_signal_proto_rawDescOnce sync.Once
@@ -633,31 +798,35 @@ func file_packages_contracts_proto_signal_v1_signal_proto_rawDescGZIP() []byte {
 	return file_packages_contracts_proto_signal_v1_signal_proto_rawDescData
 }
 
-var file_packages_contracts_proto_signal_v1_signal_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_packages_contracts_proto_signal_v1_signal_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_packages_contracts_proto_signal_v1_signal_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_packages_contracts_proto_signal_v1_signal_proto_goTypes = []any{
 	(SignalWhere)(0),       // 0: sysarmor.signal.v1.SignalWhere
-	(*EntityRef)(nil),      // 1: sysarmor.signal.v1.EntityRef
-	(*EvidenceBundle)(nil), // 2: sysarmor.signal.v1.EvidenceBundle
-	(*ResponseIntent)(nil), // 3: sysarmor.signal.v1.ResponseIntent
-	(*ContentRef)(nil),     // 4: sysarmor.signal.v1.ContentRef
-	(*Signal)(nil),         // 5: sysarmor.signal.v1.Signal
-	nil,                    // 6: sysarmor.signal.v1.Signal.LabelsEntry
+	(SignalStage)(0),       // 1: sysarmor.signal.v1.SignalStage
+	(DetectorKind)(0),      // 2: sysarmor.signal.v1.DetectorKind
+	(*EntityRef)(nil),      // 3: sysarmor.signal.v1.EntityRef
+	(*EvidenceBundle)(nil), // 4: sysarmor.signal.v1.EvidenceBundle
+	(*ResponseIntent)(nil), // 5: sysarmor.signal.v1.ResponseIntent
+	(*ContentRef)(nil),     // 6: sysarmor.signal.v1.ContentRef
+	(*Signal)(nil),         // 7: sysarmor.signal.v1.Signal
+	nil,                    // 8: sysarmor.signal.v1.Signal.LabelsEntry
 }
 var file_packages_contracts_proto_signal_v1_signal_proto_depIdxs = []int32{
-	1, // 0: sysarmor.signal.v1.EvidenceBundle.entities:type_name -> sysarmor.signal.v1.EntityRef
-	0, // 1: sysarmor.signal.v1.Signal.where:type_name -> sysarmor.signal.v1.SignalWhere
-	1, // 2: sysarmor.signal.v1.Signal.entities:type_name -> sysarmor.signal.v1.EntityRef
-	2, // 3: sysarmor.signal.v1.Signal.evidence:type_name -> sysarmor.signal.v1.EvidenceBundle
-	3, // 4: sysarmor.signal.v1.Signal.response_intent:type_name -> sysarmor.signal.v1.ResponseIntent
-	4, // 5: sysarmor.signal.v1.Signal.context_refs:type_name -> sysarmor.signal.v1.ContentRef
-	4, // 6: sysarmor.signal.v1.Signal.ioc_refs:type_name -> sysarmor.signal.v1.ContentRef
-	6, // 7: sysarmor.signal.v1.Signal.labels:type_name -> sysarmor.signal.v1.Signal.LabelsEntry
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	3,  // 0: sysarmor.signal.v1.EvidenceBundle.entities:type_name -> sysarmor.signal.v1.EntityRef
+	0,  // 1: sysarmor.signal.v1.Signal.where:type_name -> sysarmor.signal.v1.SignalWhere
+	3,  // 2: sysarmor.signal.v1.Signal.entities:type_name -> sysarmor.signal.v1.EntityRef
+	4,  // 3: sysarmor.signal.v1.Signal.evidence:type_name -> sysarmor.signal.v1.EvidenceBundle
+	5,  // 4: sysarmor.signal.v1.Signal.response_intent:type_name -> sysarmor.signal.v1.ResponseIntent
+	6,  // 5: sysarmor.signal.v1.Signal.context_refs:type_name -> sysarmor.signal.v1.ContentRef
+	6,  // 6: sysarmor.signal.v1.Signal.ioc_refs:type_name -> sysarmor.signal.v1.ContentRef
+	8,  // 7: sysarmor.signal.v1.Signal.labels:type_name -> sysarmor.signal.v1.Signal.LabelsEntry
+	1,  // 8: sysarmor.signal.v1.Signal.stage:type_name -> sysarmor.signal.v1.SignalStage
+	2,  // 9: sysarmor.signal.v1.Signal.detector_kind:type_name -> sysarmor.signal.v1.DetectorKind
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_packages_contracts_proto_signal_v1_signal_proto_init() }
@@ -670,7 +839,7 @@ func file_packages_contracts_proto_signal_v1_signal_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_packages_contracts_proto_signal_v1_signal_proto_rawDesc), len(file_packages_contracts_proto_signal_v1_signal_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      3,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,

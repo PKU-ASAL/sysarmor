@@ -16,7 +16,7 @@
 
 - Linux；安装 Agent 还要求 systemd 和 root 权限。
 - Go、Docker Compose、`make`、OpenSSL 和 `curl`。
-- 构建 release 或运行真实测试时，需要与主机架构匹配的 Tetragon 归档；根 Makefile 默认查找 `.cache/` 或 `.scratchpad/.cache/` 下的 `tetragon-v1.7.0-amd64.tar.gz`。
+- 构建 release 或运行真实测试时，需要与主机架构匹配的 Tetragon 归档；可设置 `SYSARMOR_TETRAGON_ARCHIVE`，或将 `tetragon-v1.7.0-amd64.tar.gz` 放入仓库 `.cache/`。
 
 真实测试环境使用独立的完整预检：
 
@@ -48,7 +48,7 @@ sudo sysarmorctl agent health
 
 ### 安装 GitHub 发行包
 
-在 GitHub Releases 页面选择目标版本，使用该版本说明中的固定 URL。候选版本标记为
+在 Forgejo Releases 页面选择目标版本，使用该版本说明中的固定 URL。候选版本标记为
 Pre-release；正式版本不带该标记：
 
 ```bash
@@ -119,8 +119,16 @@ make doctor
 `make deploy` 依次完成：构建服务二进制、生成签名 Agent release、初始化 PKI 和登录凭据、构建镜像并启动 Compose。标准数据流为：
 
 ```text
-Agent -> Gateway -> Kafka -> Worker -> PostgreSQL / OpenSearch
+Agent -> Gateway -> Kafka -> Flink Normalize/Detection/Projection -> OpenSearch
 Browser -> Manager Console BFF -> Manager
+```
+
+完整 Compose 平台包含 Kafka、Kafka topic 初始化、RustFS checkpoint 存储、Flink
+JobManager、TaskManager、Normalize Job、Detection Job、Projection Job、PostgreSQL、Redis、
+OpenSearch、Manager、Gateway 和 Manager UI。查看服务状态：
+
+```bash
+make status
 ```
 
 默认宿主机入口：

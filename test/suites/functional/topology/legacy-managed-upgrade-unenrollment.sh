@@ -4,6 +4,21 @@ LEGACY_AGENT_ID="vm-legacy-rc5"
 LEGACY_SOURCE="v0.1.0-rc.5"
 LEGACY_PREFIX="e2e-agent-systemd-vm.legacy"
 
+legacy_refresh_manager_credentials() {
+  MANAGER_JWT="$("$REPO/tools/auth/issue-manager-jwt.sh" \
+    "$PKI_DIR/manager-jwt-private.pem" \
+    sysarmor-bff \
+    sysarmor-manager)"
+  MANAGER_CTL="SYSARMOR_MANAGER_JWT='$MANAGER_JWT' /tmp/sysarmorctl"
+}
+
+legacy_install_agent() {
+  local install_url="$1"
+  if ! vagrant ssh node-a -c "sudo systemctl stop sysarmor-agent 2>/dev/null || true; sudo rm -rf /opt/sysarmor/agent /etc/sysarmor/agent /var/lib/sysarmor/agent /etc/systemd/system/sysarmor-agent.service; curl -fsSL '$install_url' | sudo bash" >/dev/null; then
+    echo "[e2e-agent-systemd-vm] legacy install is still completing enrollment; waiting for issued state" >&2
+  fi
+}
+
 legacy_create_and_install() {
   local enrollment_json="$RESULTS/$LEGACY_PREFIX.enrollment.json"
   vagrant ssh mgr -c "$MANAGER_CTL --manager-url http://10.66.0.10:9443 --json manager enrollments create --agent-id $LEGACY_AGENT_ID --host-id vm-node-a --gateway-addr 10.66.0.10:9444 --gateway-sni sysarmor-gateway.local --channel topology-test --ttl 1h --label suite=functional-topology --label upgrade=$LEGACY_SOURCE" >"$enrollment_json"
@@ -18,16 +33,16 @@ import json, sys
 print(json.load(open(sys.argv[1]))["install_url"])
 PY
 )"
-  vagrant ssh node-a -c "sudo systemctl stop sysarmor-agent 2>/dev/null || true; sudo rm -rf /opt/sysarmor/agent /etc/sysarmor/agent /var/lib/sysarmor/agent /etc/systemd/system/sysarmor-agent.service; curl -fsSL '$install_url' | sudo bash" >/dev/null
+  legacy_install_agent "$install_url"
   vagrant ssh node-a -c "printf '\nmanager:\n  tls_insecure: true\n' | sudo tee -a /etc/sysarmor/agent/agent.yaml >/dev/null; sudo systemctl restart sysarmor-agent"
   wait_contains "legacy enrollment issued" "\"enrollment_id\":\"$LEGACY_ENROLLMENT_ID\"" "$RESULTS/$LEGACY_PREFIX.enrollments-issued.json" \
     vagrant ssh mgr -c "$MANAGER_CTL --manager-url 127.0.0.1:9443 --json manager enrollments list --tenant-id default --status issued"
   local health_before="$RESULTS/$LEGACY_PREFIX.health-before-upgrade.json"
-  wait_contains "legacy health before upgrade" "\"agent_id\":\"$LEGACY_AGENT_ID\"" "$health_before" \
+  wait_contains "legacy health before upgrade" "\"agentId\":\"$LEGACY_AGENT_ID\"" "$health_before" \
     vagrant ssh mgr -c "$MANAGER_CTL --manager-url 127.0.0.1:9443 --json manager health get --agent-id $LEGACY_AGENT_ID --tenant-id default"
   LEGACY_HEALTH_OBSERVED_BEFORE="$(python3 - "$health_before" <<'PY'
 import json, sys
-print(json.load(open(sys.argv[1]))["observed_at"])
+print(json.load(open(sys.argv[1]))["observedAt"])
 PY
 )"
   vagrant ssh node-a -c "sudo systemctl stop sysarmor-agent"
@@ -101,7 +116,7 @@ legacy_mark_manager_certificate() {
 
 legacy_assert_migration() {
   vagrant ssh node-a -c "sudo systemctl start sysarmor-agent"
-  wait_contains "legacy agent health" "\"agent_id\":\"$LEGACY_AGENT_ID\"" "$RESULTS/$LEGACY_PREFIX.health.json" \
+  wait_contains "legacy agent health" "\"agentId\":\"$LEGACY_AGENT_ID\"" "$RESULTS/$LEGACY_PREFIX.health.json" \
     health_is_ready_after "$LEGACY_HEALTH_OBSERVED_BEFORE" "$LEGACY_AGENT_ID"
   vagrant ssh node-a -c "sudo python3 -" >"$RESULTS/$LEGACY_PREFIX.migration.json" <<'PY'
 import json
@@ -150,8 +165,9 @@ PY
 }
 
 run_legacy_managed_upgrade_unenrollment() {
-  : "${ROOT:?}" "${RESULTS:?}" "${MANAGER_CTL:?}" "${ENVDIR:?}"
+  : "${ROOT:?}" "${RESULTS:?}" "${ENVDIR:?}" "${REPO:?}" "${PKI_DIR:?}"
   echo "[e2e-agent-systemd-vm] verifying $LEGACY_SOURCE managed state upgrade unenrollment"
+  legacy_refresh_manager_credentials
   legacy_create_and_install
   legacy_read_certificate_serial
   legacy_import_rc5_state

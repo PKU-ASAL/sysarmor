@@ -12,7 +12,7 @@ labels:
   events: []
   signals: []
 policy:
-  terminal_signals_allowed: 0
+  conclusion_signals_allowed: 0
   forbidden_signal_names:
     - download_by_lolbin
     - payload_dropped

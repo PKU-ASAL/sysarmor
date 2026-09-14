@@ -16,10 +16,147 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_TRANSACTION_MAX_TIMEOUT_MS: "3600000"
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-alpha.84
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: sysarmor
+      RUSTFS_SECRET_KEY: sysarmor-secret
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+    volumes:
+      - flink-checkpoints:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rustfs-init:
+    image: python:3.12-alpine
+    command: ["python3", "-m", "streaming.runtime.s3_init"]
+    working_dir: /opt/sysarmor
+    volumes:
+      - ../apps/streaming/src:/opt/sysarmor/streaming/src:ro
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      PYTHONPATH: /opt/sysarmor/streaming/src
+      S3_ENDPOINT: http://rustfs:9000
+      S3_ACCESS_KEY: sysarmor
+      S3_SECRET_KEY: sysarmor-secret
+      S3_BUCKET: sysarmor-flink
+
+  flink-jobmanager:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      AWS_ENDPOINT: http://rustfs:9000
+      FLINK_PROPERTIES: |
+        s3.endpoint: http://rustfs:9000
+        s3.path.style.access: true
+        s3.access-key: sysarmor
+        s3.secret-key: sysarmor-secret
+        taskmanager.memory.process.size: 3072m
+        taskmanager.memory.flink.size: 2048m
+        taskmanager.memory.jvm-metaspace.size: 768m
+        taskmanager.memory.managed.size: 768m
+        taskmanager.numberOfTaskSlots: 3
+
+  flink-taskmanager:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "3"
+      AWS_ENDPOINT: http://rustfs:9000
+      FLINK_PROPERTIES: |
+        s3.endpoint: http://rustfs:9000
+        s3.path.style.access: true
+        s3.access-key: sysarmor
+        s3.secret-key: sysarmor-secret
+        taskmanager.memory.process.size: 3072m
+        taskmanager.memory.flink.size: 2048m
+        taskmanager.memory.jvm-metaspace.size: 768m
+        taskmanager.memory.managed.size: 768m
+        taskmanager.numberOfTaskSlots: 3
+
+  flink-normalize:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: normalize
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+  flink-detection:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: detection
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+
+  flink-projection:
+    build:
+      context: ..
+      dockerfile: deployments/streaming/Dockerfile
+    command: ["flink", "run", "-m", "flink-jobmanager:8081", "-py", "/opt/sysarmor/streaming/src/streaming/entrypoints.py"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      opensearch:
+        condition: service_started
+    env_file:
+      - streaming/streaming.env.example
+    environment:
+      SYSARMOR_FLINK_JOB: projection
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      SYSARMOR_OPENSEARCH_URL: http://opensearch:9200
 
   redis:
     build:
@@ -44,7 +181,5 @@ services:
       - "9444:9444"
       - "9445:9445"
 
-  worker:
-    build:
-      context: ./vm-build/worker
-      dockerfile: Dockerfile
+volumes:
+  flink-checkpoints:

@@ -21,7 +21,7 @@ trap cleanup EXIT
 echo "[e2e-policy-publish] building binaries"
 sa_build_go_bins sysarmor-manager sysarmorctl
 
-sa_start_memory_manager
+sa_start_postgres_manager
 
 sa_wait_url_contains "$MGR_URL/healthz" '"ok":true' "$TMP/health.json"
 
@@ -30,9 +30,13 @@ cat > "$TMP/policy.json" <<'JSON'
   "policy_id": "draft-policy",
   "version": 2,
   "tenant_id": "default",
+	"protection_mode": "rule-only",
+	"collection": {"behaviors": ["process.exec", "network.connect"], "observe_only": true},
+	"detection": {"rulesets": [{"ref": "ruleset:cep-endpoint", "version": "v1", "enabled": true}]},
+	"telemetry": {"max_batch_items": 256, "max_batch_bytes": 262144, "flush_interval": "1s"},
+	"response_policy": {"allowed_actions": ["collect", "noop"], "allowed_modes": ["observe"]},
   "endpoint_rules": ["download_by_lolbin"],
   "cloud_rules": ["web_shell_chain"],
-  "mode": "observe",
   "published": false
 }
 JSON
